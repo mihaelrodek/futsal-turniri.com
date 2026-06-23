@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Archive-request lifecycle for co-owned team presets.
+
+      Once a preset has a co-owner (the share link has been claimed)
+      neither side can unilaterally delete. Instead, one owner files
+      an archive request; the other must confirm. On confirmation
+      `archived = true` and the preset is hidden from both Moji parovi
+      lists. On rejection `archive_request_by_uid` is cleared and the
+      preset stays visible.
+
+      Columns:
+        archive_request_by_uid — UID of the owner who filed the request,
+                                 null when no request is pending
+        archived               — true once both sides agreed; the
+                                 preset stays in the DB for historical
+                                 reference but no longer renders in UI
+        archived_at            — timestamp of confirmation
+    -->
+
+    <changeSet id="2026-05-13-user-team-presets-archive" author="mrodek">
+        <addColumn tableName="user_team_presets">
+            <column name="archive_request_by_uid" type="varchar(64)"/>
+            <column name="archived" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="archived_at" type="timestamptz"/>
+        </addColumn>
+
+        <!-- Partial index for the "show me my pending archive requests"
+             screen — most rows will never have a request, so a regular
+             index would be mostly bloat. -->
+        <createIndex tableName="user_team_presets" indexName="idx_user_team_presets_archive_req">
+            <column name="archive_request_by_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

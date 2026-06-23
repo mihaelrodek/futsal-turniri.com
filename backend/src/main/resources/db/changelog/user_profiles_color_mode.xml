@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Per-user theme preference. Stored as a 10-char string so we can add
+      more values later (e.g. "system") without a new migration. Null
+      means "no preference set" — the frontend falls back to the
+      pre-login default (light).
+    -->
+
+    <changeSet id="2026-05-13-user-profiles-color-mode" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="color_mode" type="varchar(10)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

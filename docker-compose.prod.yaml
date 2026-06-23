@@ -1,0 +1,175 @@
+# Production stack for nogometni-turniri.com.
+#
+# Topology:
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │   Internet → 80/443 → edge (Caddy + SPA static files)       │
+#   │                          │                                  │
+#   │                  /api/*  ▼                                  │
+#   │                       backend (Quarkus, port 8085)          │
+#   │                          │                                  │
+#   │              ┌───────────┼────────────┐                     │
+#   │              ▼           ▼            ▼                     │
+#   │          postgres      minio    (Firebase OIDC, external)   │
+#   │                                                             │
+#   │   futsal_internal network (postgres + minio not host-exposed) │
+#   └─────────────────────────────────────────────────────────────┘
+#
+# Run from the repo root, with .env.prod in the same directory:
+#
+#   docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build
+#
+# Update workflow:
+#
+#   git pull
+#   docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build
+#   docker image prune -f       # reclaim space from old images
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: futsal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - futsal_internal
+    # Bound to 127.0.0.1 ONLY — reachable from inside the VPS (e.g. via an
+    # SSH tunnel for DBeaver) but never from the public internet. Port 5432
+    # is also blocked by UFW, but binding to localhost is the real defense.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-02T17-50-41Z
+    container_name: futsal-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+    networks:
+      - futsal_internal
+    # No `ports:` — bucket is private; the SPA reaches images through
+    # the backend's /api/resources/{id}/image proxy.
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: futsal-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        until mc alias set minio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          echo "Waiting for MinIO..."; sleep 2
+        done
+        mc mb -p minio/$$MINIO_BUCKET || true
+        echo "MinIO bucket $$MINIO_BUCKET ready (private; backend-only access)."
+    restart: "no"
+    networks:
+      - futsal_internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: src/main/docker/Dockerfile.jvm
+    image: futsal-backend:latest
+    container_name: futsal-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # Activate the prod profile so %prod overrides in application.properties
+      # take effect (Swagger off, JSON logs on if configured, etc.).
+      QUARKUS_PROFILE: prod
+
+      # Datasource — Postgres is reachable as `postgres` on the internal net.
+      POSTGRES_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # MinIO — internal endpoint name. The backend never touches the
+      # public URL; the /api/resources/{id}/image proxy streams bytes.
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+
+      # Firebase OIDC — only needs the project id; no client secret.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+
+      # Public-facing config used by the sitemap / preview / startup checks.
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL}
+
+      # Web Push (VAPID). If unset the backend boots but /push/public-key
+      # returns ready=false and the frontend hook silently no-ops.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:mihael.rodek1@gmail.com}
+    networks:
+      - futsal_internal
+
+  edge:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Vite inlines these at build time (Firebase web config is non-secret).
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+    image: futsal-edge:latest
+    container_name: futsal-edge
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Caddy persists Let's Encrypt account + certs here. Without this
+      # volume, every container restart would re-fetch certs and you'd
+      # hit the Let's Encrypt rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - futsal_internal
+
+volumes:
+  pg_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  futsal_internal:
+    driver: bridge

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+    http://www.liquibase.org/xml/ns/dbchangelog
+    https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <include file="db/changelog/pgcrypto.xml"/>
+    <include file="/db/changelog/resources.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournaments.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/additional_options.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_additional_options.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/rounds.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/teams.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/matches.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/standings.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/team_requests.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_geocoding.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/team_requests_phone_optional.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_creator.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/teams_self_register.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_team_presets.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/team_requests_creator.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_profiles.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_profiles_slug.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournaments_soft_delete.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_profiles_avatar.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournaments_slug.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/push_subscriptions.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/teams_claim_sharing.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_team_presets_hidden.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_team_presets_sharing.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_team_presets_archive.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/user_profiles_color_mode.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournaments_podium.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_format.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/group_stage.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/knockout.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/scheduling.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/players.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_events.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_live_mode.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_second_half.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournaments_featured.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_subscriptions.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_awards.xml" relativeToChangelogFile="false"/>
+</databaseChangeLog>

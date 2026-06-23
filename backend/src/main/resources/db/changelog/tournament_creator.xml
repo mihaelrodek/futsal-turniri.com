@@ -1,0 +1,24 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Track who created each tournament so we can gate edits to the creator
+        (plus admins, which is enforced in the controller via the SecurityIdentity
+        role mapping). Both columns are nullable for backwards-compat with
+        tournaments that existed before this migration; those legacy rows will
+        be editable only by users with the admin role.
+    -->
+    <changeSet id="2026-04-26-30-tournaments-creator" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="created_by_uid" type="varchar(64)"/>
+            <column name="created_by_name" type="varchar(200)"/>
+        </addColumn>
+        <createIndex tableName="tournaments" indexName="idx_tournaments_created_by_uid">
+            <column name="created_by_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

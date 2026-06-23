@@ -1,0 +1,63 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-50-teams-seq" author="mrodek">
+        <createSequence sequenceName="seq_teams_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-51-teams" author="mrodek">
+        <createTable tableName="teams">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="is_eliminated" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="extra_life" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="wins" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="losses" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="teams" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id"
+                                 onDelete="CASCADE" constraintName="fk_teams_tournament"/>
+
+        <createIndex tableName="teams" indexName="idx_teams_tournament">
+            <column name="tournament_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2025-11-09-add-paid" author="extmrodek">
+        <addColumn tableName="teams">
+            <column name="paid" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

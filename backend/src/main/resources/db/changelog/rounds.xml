@@ -1,0 +1,36 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-60-rounds-seq" author="mrodek">
+        <createSequence sequenceName="seq_rounds_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-61-rounds" author="mrodek">
+        <createTable tableName="rounds">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="number" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(20)"/>
+            <column name="created_at" type="timestamptz"/>
+            <column name="locked_at" type="timestamptz"/>
+            <column name="completed_at" type="timestamptz"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="rounds" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_rounds_tournament"/>
+
+        <addUniqueConstraint tableName="rounds" columnNames="tournament_id,number"
+                             constraintName="uq_round_number_per_tournament"/>
+    </changeSet>
+</databaseChangeLog>

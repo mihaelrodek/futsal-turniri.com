@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Move team-sharing from the tournament-bound Team entity to the
+      profile-level UserTeamPreset entity. The user now shares a NAME
+      ("Marko & Pero"), not an individual tournament team. When the
+      partner claims, every tournament where the primary played as
+      that name shows up on the partner's profile too — past and
+      future — via the widened findMyParticipations query.
+
+      Schema:
+        claim_token   — opaque random string for /claim-name/{token}
+        co_owner_uid  — Firebase UID of the partner once they claim
+
+      Backfill: every existing preset gets a token so it's immediately
+      shareable.
+    -->
+
+    <changeSet id="2026-05-13-user-team-presets-sharing" author="mrodek">
+        <addColumn tableName="user_team_presets">
+            <column name="claim_token" type="varchar(48)"/>
+            <column name="co_owner_uid" type="varchar(64)"/>
+        </addColumn>
+
+        <sql>
+            UPDATE user_team_presets
+            SET claim_token = replace(gen_random_uuid()::text, '-', '')
+            WHERE claim_token IS NULL;
+        </sql>
+
+        <createIndex
+                tableName="user_team_presets"
+                indexName="uq_user_team_presets_claim_token"
+                unique="true">
+            <column name="claim_token"/>
+        </createIndex>
+
+        <createIndex
+                tableName="user_team_presets"
+                indexName="idx_user_team_presets_co_owner">
+            <column name="co_owner_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,52 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2026-04-26-01-team-requests-seq" author="mrodek">
+        <createSequence sequenceName="seq_team_requests_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-04-26-02-team-requests" author="mrodek">
+        <createTable tableName="team_requests">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="uuid" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="player_name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="phone" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="varchar(1000)"/>
+            <column name="status" type="varchar(20)" defaultValue="OPEN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="team_requests" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_team_requests_tournament"/>
+
+        <createIndex tableName="team_requests" indexName="idx_team_requests_tournament">
+            <column name="tournament_id"/>
+        </createIndex>
+        <createIndex tableName="team_requests" indexName="idx_team_requests_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

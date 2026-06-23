@@ -1,0 +1,28 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Optional profile avatar — links a user_profiles row to a row in the
+        resources table. Nullable because most users won't upload one.
+        ON DELETE SET NULL so deleting the underlying resource (e.g. via a
+        future cleanup job) leaves the user profile intact.
+    -->
+    <changeSet id="2026-05-10-10-user-profiles-avatar" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="avatar_resource_id" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        <addForeignKeyConstraint
+                baseTableName="user_profiles"
+                baseColumnNames="avatar_resource_id"
+                referencedTableName="resources"
+                referencedColumnNames="id"
+                constraintName="fk_user_profiles_avatar"
+                onDelete="SET NULL"/>
+    </changeSet>
+</databaseChangeLog>

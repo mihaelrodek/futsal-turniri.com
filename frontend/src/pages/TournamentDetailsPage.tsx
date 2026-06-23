@@ -1,0 +1,1044 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+    Box,
+    Button,
+    chakra,
+    Flex,
+    HStack,
+    Spinner,
+    Text,
+    VStack,
+} from "@chakra-ui/react"
+import { registerLocale } from "react-datepicker"
+import { hr } from "date-fns/locale"
+import "react-datepicker/dist/react-datepicker.css"
+import "../datepicker.css"
+import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { FiArrowLeft, FiCode, FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
+import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
+import TournamentNotificationBell from "../components/TournamentNotificationBell"
+import TournamentAwards from "../components/TournamentAwards"
+import { showError, showSuccess } from "../toaster"
+
+import type { TournamentDetails } from "../types/tournaments"
+import type { TeamShort } from "../types/teams"
+
+import {
+    fetchTournamentDetails,
+    fetchTournamentTeams,
+    replaceTeams,
+    updateTournament,
+    uploadTournamentPoster,
+    deleteTournamentPoster,
+    approveTeam,
+    deleteTeam,
+    deleteTournament,
+    selfRegisterTeam,
+    featureTournament,
+    unfeatureTournament,
+} from "../api/tournaments"
+import { listPresets } from "../api/userTeamPresets"
+import type { UserTeamPreset } from "../api/userTeamPresets"
+import { listTeamRequestsForTournament } from "../api/teamRequests"
+import type { TeamRequest } from "../api/teamRequests"
+import { useAuth } from "../auth/AuthContext"
+import { useDocumentHead } from "../hooks/useDocumentHead"
+import GroupsTab from "../components/GroupsTab"
+import BracketTab from "../components/BracketTab"
+import ScheduleTab from "../components/ScheduleTab"
+
+import {
+    buildEditForm,
+    editFormToPayload,
+    toLocalOffsetIso,
+} from "../tournament/parts"
+import type { EditForm, SectionKey } from "../tournament/parts"
+import OverviewSection from "../tournament/OverviewSection"
+import { POSTER_ACCEPT, POSTER_MAX_MB } from "../tournament/OverviewSection"
+import TeamsSection from "../tournament/TeamsSection"
+import StatsSection from "../tournament/StatsSection"
+import {
+    DeleteTeamDialog,
+    DeleteTournamentDialog,
+    SelfRegisterDialog,
+    TeamInfoDialog,
+} from "../tournament/dialogs"
+
+/* ──────────────────────────────────────────────────────────────────────────
+   TournamentDetailsPage — the shell.
+
+   Route component for /turniri/:uuid. Owns the shared state (tournament,
+   teams, team-requests, auth, refreshAll) and the section navigation.
+
+   Layout:
+     • a slim always-visible header (name + status + UŽIVO badge),
+     • the top-level section nav (Detalji · Ekipe · Ždrijeb · Raspored),
+     • the active section's content below it.
+
+   The Detalji tab is one cohesive card holding the full tournament
+   details (poster, meta, rewards, contact, extras) plus the organizer
+   edit form. The Ždrijeb tab hosts the Grupe / Eliminacija sub-tabs.
+   ────────────────────────────────────────────────────────────────────── */
+
+// Register the Croatian locale once for the calendar UI used by the edit form.
+registerLocale("hr", hr)
+
+/** Sub-tabs inside the Ždrijeb tab. */
+type DrawSubKey = "grupe" | "eliminacija"
+
+/** Compact header action button — icon always shown; label collapses on
+ *  small screens to keep the cluster on one row next to the title. */
+function HeaderAction({
+    icon,
+    label,
+    onClick,
+    danger,
+}: {
+    icon: React.ReactNode
+    label: string
+    onClick: () => void
+    danger?: boolean
+}) {
+    return (
+        <chakra.button
+            type="button"
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            display="inline-flex"
+            alignItems="center"
+            gap="2"
+            bg="bg.panel"
+            color={danger ? "accent.red" : "fg.ink"}
+            borderWidth="1px"
+            borderColor={danger ? "rgba(220,38,38,0.3)" : "border"}
+            px={{ base: "2.5", md: "3.5" }}
+            py="2"
+            rounded="full"
+            fontWeight={600}
+            fontSize="13px"
+            cursor="pointer"
+            transition="background 150ms"
+            _hover={{ bg: "bg.surfaceTint" }}
+        >
+            {icon}
+            <chakra.span display={{ base: "none", lg: "inline" }}>{label}</chakra.span>
+        </chakra.button>
+    )
+}
+
+export default function TournamentDetailsPage() {
+    const { uuid } = useParams<{ uuid: string }>()
+    const navigate = useNavigate()
+    const location = useLocation()
+    const { user, isAdmin, loading: authLoading } = useAuth()
+
+    /* ---------- Core state ---------- */
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [t, setT] = useState<TournamentDetails | null>(null)
+    const [teams, setTeams] = useState<TeamShort[]>([])
+
+    /* ---------- Active-tab persistence ----------
+     * Mirror `section` + `drawSub` into the URL query string so a hard
+     * refresh, a shared link, or a "back" from a child route lands the
+     * user on the same tab they were viewing.
+     *
+     *   /turniri/foo                            → details (default)
+     *   /turniri/foo?tab=teams                  → ekipe
+     *   /turniri/foo?tab=bracket&sub=eliminacija → ždrijeb / eliminacija
+     *
+     * Initial state is read from the URL (once, at mount). Updates are
+     * pushed back via `setSearchParams({ replace: true })` so they don't
+     * stack history entries — clicking tabs feels like a panel switch,
+     * not a navigation. */
+    const [searchParams, setSearchParams] = useSearchParams()
+    const SECTION_KEYS: SectionKey[] = ["details", "teams", "bracket", "raspored", "stats"]
+    const DRAW_SUB_KEYS: DrawSubKey[] = ["grupe", "eliminacija"]
+    const initialSection = ((): SectionKey => {
+        const t = searchParams.get("tab")
+        return (t && (SECTION_KEYS as string[]).includes(t)) ? (t as SectionKey) : "details"
+    })()
+    const initialDrawSub = ((): DrawSubKey => {
+        const s = searchParams.get("sub")
+        return (s && (DRAW_SUB_KEYS as string[]).includes(s)) ? (s as DrawSubKey) : "grupe"
+    })()
+    const [section, setSection] = useState<SectionKey>(initialSection)
+    const [drawSub, setDrawSub] = useState<DrawSubKey>(initialDrawSub)
+
+    // Write the active tab(s) back to the URL whenever they change. The
+    // `details` default is encoded as "no `tab` param" so the canonical
+    // share URL stays clean. The `sub` param is only meaningful inside
+    // the bracket section, so it's stripped from the URL whenever the
+    // user navigates away from "bracket".
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams)
+        if (section === "details") next.delete("tab")
+        else next.set("tab", section)
+        if (section === "bracket" && drawSub !== "grupe") {
+            next.set("sub", drawSub)
+        } else {
+            next.delete("sub")
+        }
+        // Only call setSearchParams if the serialised form actually
+        // changes — re-setting to the same string triggers a re-render
+        // loop in some react-router builds.
+        if (next.toString() !== searchParams.toString()) {
+            setSearchParams(next, { replace: true })
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [section, drawSub])
+
+    /* ---------- Dialog / confirm state ---------- */
+    const [pendingDeleteTeam, setPendingDeleteTeam] = useState<TeamShort | null>(null)
+    const [deletingTeam, setDeletingTeam] = useState(false)
+    const [deleteTournamentOpen, setDeleteTournamentOpen] = useState(false)
+    const [deletingTournament, setDeletingTournament] = useState(false)
+    const [infoTeamId, setInfoTeamId] = useState<number | null>(null)
+
+    /* ---------- Details edit mode ---------- */
+    const [editingDetails, setEditingDetails] = useState(false)
+    const [editForm, setEditForm] = useState<EditForm | null>(null)
+    const [editPickedCoords, setEditPickedCoords] = useState<{ lat: number; lng: number } | null>(null)
+    const [savingDetails, setSavingDetails] = useState(false)
+
+    /* ---------- Poster edit state ---------- */
+    const [posterFile, setPosterFile] = useState<File | null>(null)
+    const [posterPreviewUrl, setPosterPreviewUrl] = useState<string | null>(null)
+    const [posterRemove, setPosterRemove] = useState(false)
+    const [posterUploadErr, setPosterUploadErr] = useState<string | null>(null)
+
+    function handlePosterPick(file: File) {
+        setPosterUploadErr(null)
+        if (!POSTER_ACCEPT.includes(file.type as any)) {
+            setPosterUploadErr("Dozvoljeno: JPG, PNG ili WEBP.")
+            return
+        }
+        if (file.size > POSTER_MAX_MB * 1024 * 1024) {
+            setPosterUploadErr(`Maksimalna veličina je ${POSTER_MAX_MB} MB.`)
+            return
+        }
+        if (posterPreviewUrl) URL.revokeObjectURL(posterPreviewUrl)
+        setPosterFile(file)
+        setPosterPreviewUrl(URL.createObjectURL(file))
+        setPosterRemove(false)
+    }
+    function clearPosterPick() {
+        if (posterPreviewUrl) URL.revokeObjectURL(posterPreviewUrl)
+        setPosterFile(null)
+        setPosterPreviewUrl(null)
+        setPosterUploadErr(null)
+    }
+    function markPosterForRemoval() {
+        clearPosterPick()
+        setPosterRemove(true)
+    }
+    // Clean up object URLs on unmount so we don't leak blob memory.
+    useEffect(() => {
+        return () => {
+            if (posterPreviewUrl) URL.revokeObjectURL(posterPreviewUrl)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    /* ---------- Team-requests ---------- */
+    const [teamRequests, setTeamRequests] = useState<TeamRequest[]>([])
+    const [teamRequestsCollapsed, setTeamRequestsCollapsed] = useState(false)
+
+    /* ---------- Self-register dialog ---------- */
+    const [selfRegOpen, setSelfRegOpen] = useState(false)
+    const [presets, setPresets] = useState<UserTeamPreset[]>([])
+    const [selfRegName, setSelfRegName] = useState("")
+    const [selfRegSubmitting, setSelfRegSubmitting] = useState(false)
+    const [selfRegError, setSelfRegError] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (!selfRegOpen || !user) return
+        listPresets()
+            .then((list) => setPresets(list))
+            .catch(() => setPresets([]))
+    }, [selfRegOpen, user])
+
+    /* ──────────────────────────────────────────────────────────────────────
+       SEO meta + JSON-LD
+       ────────────────────────────────────────────────────────────────────── */
+    const headTitle = t?.name
+        ? `${t.name}${t.location ? `, ${t.location}` : ""} — nogometni-turniri.com`
+        : "Turnir — nogometni-turniri.com"
+    const headDesc = (() => {
+        const raw = t?.details?.trim()
+        const start = t?.startAt ? new Date(t.startAt).toLocaleDateString("hr-HR") : null
+        if (raw) return raw.length > 160 ? raw.slice(0, 157) + "…" : raw
+        if (t?.name) {
+            const parts: string[] = [`Futsal turnir ${t.name}`]
+            if (t.location) parts.push(`u ${t.location}`)
+            if (start) parts.push(`— ${start}`)
+            return parts.join(" ")
+        }
+        return undefined
+    })()
+    const canonicalUrl = t?.slug
+        ? `https://nogometni-turniri.com/turniri/${t.slug}`
+        : uuid
+            ? `https://nogometni-turniri.com/turniri/${uuid}`
+            : undefined
+
+    const jsonLd = useMemo(() => {
+        if (!t || !canonicalUrl) return undefined
+        const items: object[] = []
+
+        const event: Record<string, unknown> = {
+            "@context": "https://schema.org",
+            "@type": "Event",
+            name: t.name,
+            url: canonicalUrl,
+            inLanguage: "hr",
+            eventStatus: "https://schema.org/EventScheduled",
+            eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+        }
+        if (headDesc) event.description = headDesc
+        if (t.startAt) {
+            event.startDate = t.startAt
+            const end = new Date(new Date(t.startAt).getTime() + 6 * 60 * 60 * 1000)
+            event.endDate = end.toISOString()
+        }
+        if (t.location) {
+            event.location = {
+                "@type": "Place",
+                name: t.location,
+                address: {
+                    "@type": "PostalAddress",
+                    addressLocality: t.location,
+                    addressCountry: "HR",
+                },
+            }
+        } else {
+            event.location = {
+                "@type": "Place",
+                name: "Hrvatska",
+                address: { "@type": "PostalAddress", addressCountry: "HR" },
+            }
+        }
+        if (t.bannerUrl) event.image = [t.bannerUrl]
+        if (t.createdByName) {
+            event.organizer = { "@type": "Person", name: t.createdByName }
+        }
+        const entryPrice = t.entryPrice ?? 0
+        const startInFuture = !t.startAt || new Date(t.startAt).getTime() > Date.now()
+        if (startInFuture && entryPrice > 0) {
+            event.offers = {
+                "@type": "Offer",
+                url: canonicalUrl,
+                price: String(entryPrice),
+                priceCurrency: "EUR",
+                availability: "https://schema.org/InStock",
+                validFrom: new Date().toISOString(),
+            }
+        }
+        items.push(event)
+
+        items.push({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+                {
+                    "@type": "ListItem",
+                    position: 1,
+                    name: "Turniri",
+                    item: "https://nogometni-turniri.com/turniri",
+                },
+                {
+                    "@type": "ListItem",
+                    position: 2,
+                    name: t.name,
+                    item: canonicalUrl,
+                },
+            ],
+        })
+
+        return items
+    }, [t, canonicalUrl, headDesc])
+
+    useDocumentHead({
+        title: headTitle,
+        description: headDesc,
+        ogTitle: t?.name ?? undefined,
+        ogDescription: headDesc,
+        // For finished tournaments we prefer the server-generated 1200x630
+        // share card (podium + status badge) over the user-uploaded banner
+        // — it composes better in WhatsApp / Discord previews and adds
+        // free context to the link. Falls back to the banner for live /
+        // draft tournaments where the podium card would be empty.
+        ogImage:
+            t?.status === "FINISHED" && t?.winnerName
+                ? `https://nogometni-turniri.com/api/tournaments/${t.slug ?? t.uuid}/share-image.png`
+                : t?.bannerUrl ?? undefined,
+        ogType: "article",
+        canonical: canonicalUrl,
+        jsonLd,
+    })
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Data loading
+       ────────────────────────────────────────────────────────────────────── */
+    async function refreshAll() {
+        if (!uuid) return
+        const [details, teamList, prList] = await Promise.all([
+            fetchTournamentDetails(uuid),
+            fetchTournamentTeams(uuid),
+            listTeamRequestsForTournament(uuid).catch(() => [] as TeamRequest[]),
+        ])
+        setT(details)
+        setTeams(teamList)
+        setTeamRequests(prList)
+    }
+
+    useEffect(() => {
+        if (authLoading) return
+        let cancelled = false
+        ;(async () => {
+            try {
+                setLoading(true)
+                setError(null)
+                if (!uuid) throw new Error("Missing tournament id")
+                await refreshAll()
+            } catch (e: any) {
+                if (!cancelled) setError(e?.message ?? "Failed to load tournament")
+            } finally {
+                if (!cancelled) setLoading(false)
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+    }, [uuid, authLoading, user?.uid])
+
+    // Keep the draw sub-tab valid for the tournament's format — a
+    // KNOCKOUT_ONLY tournament has no group stage, so it always shows
+    // the Eliminacija sub-tab.
+    useEffect(() => {
+        if (t && t.format !== "GROUPS_KNOCKOUT" && drawSub !== "eliminacija") {
+            setDrawSub("eliminacija")
+        }
+    }, [t, drawSub])
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Derived values
+       ────────────────────────────────────────────────────────────────────── */
+    const teamById = useMemo(() => {
+        const m = new Map<number, TeamShort>()
+        teams.forEach((p) => m.set(p.id, p))
+        return m
+    }, [teams])
+
+    // organizer = admin OR creator.
+    const canEdit = !!t && (isAdmin || (!!user?.uid && user.uid === t.createdByUid))
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Details edit handlers
+       ────────────────────────────────────────────────────────────────────── */
+    const editMissingRequired = useMemo(() => {
+        if (!editForm) return []
+        const missing: string[] = []
+        if (!editForm.name.trim()) missing.push("Ime")
+        if (!editForm.location.trim()) missing.push("Lokacija")
+        if (!editForm.startDate) missing.push("Datum")
+        if (!editForm.startTime) missing.push("Vrijeme")
+        if (
+            !editForm.rewardFirst.trim() ||
+            !editForm.rewardSecond.trim() ||
+            !editForm.rewardThird.trim()
+        ) {
+            missing.push("Nagrade")
+        }
+        return missing
+    }, [
+        editForm?.name,
+        editForm?.location,
+        editForm?.startDate,
+        editForm?.startTime,
+        editForm?.rewardFirst,
+        editForm?.rewardSecond,
+        editForm?.rewardThird,
+    ])
+
+    const editStartInPast = useMemo(() => {
+        if (!editForm?.startDate || !editForm?.startTime) return false
+        const iso = toLocalOffsetIso(editForm.startDate, editForm.startTime)
+        if (!iso) return false
+        return new Date(iso).getTime() < Date.now()
+    }, [editForm?.startDate, editForm?.startTime])
+
+    function enterDetailsEdit() {
+        if (!t) return
+        setEditForm(buildEditForm(t))
+        setEditPickedCoords(null)
+        setEditingDetails(true)
+    }
+    function cancelDetailsEdit() {
+        setEditForm(null)
+        setEditPickedCoords(null)
+        setEditingDetails(false)
+        clearPosterPick()
+        setPosterRemove(false)
+        setPosterUploadErr(null)
+    }
+    async function saveDetailsEdit() {
+        if (!uuid || !editForm) return
+        if (editMissingRequired.length > 0) {
+            showError(
+                "Nedostaju obavezna polja",
+                editMissingRequired.join(", "),
+            )
+            return
+        }
+        if (editStartInPast) {
+            showError(
+                "Neispravan datum",
+                "Datum i vrijeme turnira ne mogu biti u prošlosti.",
+            )
+            return
+        }
+        try {
+            setSavingDetails(true)
+            let updated = await updateTournament(uuid, editFormToPayload(editForm))
+            if (posterFile) {
+                updated = await uploadTournamentPoster(uuid, posterFile)
+            } else if (posterRemove) {
+                updated = await deleteTournamentPoster(uuid)
+            }
+            setT(updated)
+            setEditingDetails(false)
+            setEditForm(null)
+            clearPosterPick()
+            setPosterRemove(false)
+        } catch (e: any) {
+            showError(
+                "Greška pri spremanju",
+                String(e?.response?.data ?? e?.message ?? "Neuspješno spremanje izmjena."),
+            )
+        } finally {
+            setSavingDetails(false)
+        }
+    }
+    function patchEdit<K extends keyof EditForm>(key: K, value: EditForm[K]) {
+        setEditForm((f) => (f ? { ...f, [key]: value } : f))
+    }
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Teams: local editing
+       ────────────────────────────────────────────────────────────────────── */
+    function addTeam() {
+        const tempId = -Date.now()
+        setTeams((ps) => [
+            ...ps,
+            { id: tempId, name: "", isEliminated: false } as TeamShort,
+        ])
+    }
+    function changeTeamName(id: number, name: string) {
+        setTeams((ps) => ps.map((p) => (p.id === id ? { ...p, name } : p)))
+    }
+    function removeTeam(id: number) {
+        setTeams((ps) => ps.filter((p) => p.id !== id))
+    }
+
+    // Single-flight guard for the team-list bulk save.
+    const savingTeamsRef = useRef(false)
+
+    function buildTeamsPayload() {
+        return teams.map((p) => ({
+            id: p.id > 0 ? p.id : undefined,
+            name: p.name,
+            isEliminated: !!p.isEliminated,
+        }))
+    }
+
+    async function saveTeamsAll() {
+        if (!uuid) return
+        if (savingTeamsRef.current) return
+        if (teams.some((p) => !p.name || p.name.trim() === "")) {
+            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
+            return
+        }
+        savingTeamsRef.current = true
+        try {
+            const saved = await replaceTeams(uuid, buildTeamsPayload())
+            setTeams(saved)
+        } finally {
+            savingTeamsRef.current = false
+        }
+    }
+
+    function onTeamNameBlur(p: TeamShort) {
+        if (p.id > 0) return
+        if (!p.name.trim()) {
+            removeTeam(p.id)
+            return
+        }
+        if (savingTeamsRef.current) return
+        if (!uuid) return
+        if (teams.some((q) => !q.name || q.name.trim() === "")) {
+            return
+        }
+        savingTeamsRef.current = true
+        ;(async () => {
+            try {
+                const saved = await replaceTeams(uuid, buildTeamsPayload())
+                setTeams(saved)
+            } catch {
+                /* error toast already surfaced by axios interceptor */
+            } finally {
+                savingTeamsRef.current = false
+            }
+        })()
+    }
+
+    async function onApproveTeam(p: TeamShort) {
+        if (!uuid) return
+        try {
+            const updated = await approveTeam(uuid, p.id)
+            setTeams((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
+        } catch (err: any) {
+            showError(
+                "Greška",
+                String(err?.response?.data ?? err?.message ?? "Neuspjelo odobravanje ekipe."),
+            )
+        }
+    }
+
+    async function submitSelfRegister() {
+        if (!uuid) return
+        const name = selfRegName.trim()
+        if (!name) {
+            setSelfRegError("Unesi ime ekipe.")
+            return
+        }
+        try {
+            setSelfRegSubmitting(true)
+            setSelfRegError(null)
+            const created = await selfRegisterTeam(uuid, name)
+            setTeams((ps) => [...ps, created])
+            setSelfRegOpen(false)
+            setSelfRegName("")
+        } catch (e: any) {
+            const data = e?.response?.data
+            const code = typeof data === "string" ? data : ""
+            if (code === "TOURNAMENT_ALREADY_STARTED") {
+                setSelfRegError("Turnir je već započeo.")
+            } else if (code === "ALREADY_REGISTERED") {
+                setSelfRegError("Već si prijavio ekipu s tim imenom.")
+            } else {
+                setSelfRegError(data ?? e?.message ?? "Greška pri prijavi.")
+            }
+        } finally {
+            setSelfRegSubmitting(false)
+        }
+    }
+
+    function onSelfRegisterClick() {
+        if (!user) {
+            navigate("/prijava", {
+                state: { from: `${location.pathname}${location.search}` },
+            })
+            return
+        }
+        setSelfRegOpen(true)
+    }
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Render
+       ────────────────────────────────────────────────────────────────────── */
+    // Top-level section nav.
+    const sections: Array<{ key: SectionKey; label: string }> = [
+        { key: "details", label: "Detalji" },
+        { key: "teams", label: "Ekipe" },
+        { key: "bracket", label: "Ždrijeb" },
+        { key: "raspored", label: "Raspored" },
+        { key: "stats", label: "Statistika" },
+    ]
+
+    const shareUrl = typeof window !== "undefined" ? window.location.href : ""
+
+    if (loading) {
+        return (
+            <Flex direction="column" align="center" justify="center" gap="3" py="20">
+                <Spinner size="lg" color="pitch.500" />
+                <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
+            </Flex>
+        )
+    }
+
+    if (!t) {
+        return (
+            <VStack py="16" gap="4">
+                <Text color="accent.red">{error ?? "Turnir nije pronađen."}</Text>
+                <Button asChild size="sm" variant="outline">
+                    <RouterLink to="/turniri">Natrag na popis</RouterLink>
+                </Button>
+            </VStack>
+        )
+    }
+
+    const hasGroupStage = t.format === "GROUPS_KNOCKOUT"
+
+    // Map backend status to the Pitch StatusChip's discrete kinds. Live
+    // takes precedence over the underlying STARTED so a live match in
+    // progress reads as "UŽIVO" in the header.
+    //
+    // "Nacrt" (draft) is deliberately NOT surfaced as a chip — it added
+    // visual noise on every newly-created tournament and the header now
+    // carries the action buttons instead. We only show a chip for the
+    // meaningful live / finished / in-progress states.
+    const statusKind: StatusKind | null = t.liveMatch
+        ? "live"
+        : t.status === "FINISHED"
+            ? "finished"
+            : t.status === "STARTED" || t.status === "IN_PROGRESS"
+                ? "active"
+                : null
+    const statusLabel = t.liveMatch
+        ? "UŽIVO"
+        : t.status === "FINISHED"
+            ? "Završeno"
+            : t.status === "STARTED" || t.status === "IN_PROGRESS"
+                ? "U tijeku"
+                : null
+
+    /** Top-right header actions: back, edit, share, embed, fullscreen + bell. */
+    const headerActions = (
+        <HStack gap="2" wrap="wrap" justify="flex-end">
+            <HeaderAction
+                icon={<FiArrowLeft size={15} />}
+                label="Natrag"
+                onClick={() => navigate("/turniri")}
+            />
+            {canEdit && t.status !== "FINISHED" && !editingDetails && (
+                <HeaderAction
+                    icon={<FiEdit2 size={15} />}
+                    label="Uredi"
+                    onClick={enterDetailsEdit}
+                />
+            )}
+            <HeaderAction
+                icon={<FiShare2 size={15} />}
+                label="Podijeli"
+                onClick={async () => {
+                    if (typeof navigator !== "undefined" && (navigator as any).share) {
+                        try {
+                            await (navigator as any).share({ title: t.name, url: shareUrl })
+                        } catch {
+                            /* user cancelled */
+                        }
+                        return
+                    }
+                    try {
+                        await navigator.clipboard.writeText(shareUrl)
+                        showSuccess("Kopirano", "Link je u clipboardu.")
+                    } catch {
+                        window.prompt("Kopiraj link:", shareUrl)
+                    }
+                }}
+            />
+            <HeaderAction
+                icon={<FiCode size={15} />}
+                label="Ugradi"
+                onClick={() => {
+                    const snippet = `<iframe src="https://nogometni-turniri.com/embed/turnir/${t.uuid}" width="420" height="220" frameborder="0" style="border:0; max-width:100%"></iframe>`
+                    navigator.clipboard
+                        ?.writeText(snippet)
+                        .then(() =>
+                            showSuccess(
+                                "Kopirano",
+                                "iframe kod je u clipboardu — zalijepi ga u svoju web stranicu.",
+                            ),
+                        )
+                        .catch(() => window.prompt("Kopiraj ovaj kod:", snippet))
+                }}
+            />
+            <HeaderAction
+                icon={<FiMaximize2 size={15} />}
+                label="Fullscreen"
+                onClick={() =>
+                    window.open(`/turniri/${t.slug ?? t.uuid}/fullscreen`, "_blank", "noopener")
+                }
+            />
+            <TournamentNotificationBell uuid={t.uuid} />
+        </HStack>
+    )
+
+    const sectionLabels = sections.map((s) => s.label) as Array<typeof sections[number]["label"]>
+    const activeLabel = sections.find((s) => s.key === section)?.label ?? "Detalji"
+
+    return (
+        <VStack align="stretch" gap="4">
+            {/* Back is now an arrow button inside the header action cluster
+                (top-right), so the standalone "Natrag na popis" link is
+                gone — frees up the vertical space above the title. */}
+            <PageTitle
+                title={t.name}
+                status={statusKind ?? undefined}
+                statusLabel={statusLabel ?? undefined}
+                action={headerActions}
+            />
+
+            {/* ── Section nav — pill tab bar ──────────────────────────── */}
+            <PillTabBar
+                tabs={sectionLabels}
+                active={activeLabel}
+                onChange={(label) => {
+                    const next = sections.find((s) => s.label === label)
+                    if (next) setSection(next.key)
+                }}
+            />
+
+            {/* ===== ACTIVE SECTION ===== */}
+            <Box>
+                {section === "details" && (
+                    <OverviewSection
+                        t={t}
+                        canEdit={canEdit}
+                        isAdmin={isAdmin}
+                        shareUrl={shareUrl}
+                        teamCount={teams.length}
+                        editingDetails={editingDetails}
+                        editForm={editForm}
+                        enterEdit={enterDetailsEdit}
+                        cancelEdit={cancelDetailsEdit}
+                        saveEdit={saveDetailsEdit}
+                        savingDetails={savingDetails}
+                        patchEdit={patchEdit}
+                        editMissingRequired={editMissingRequired}
+                        editStartInPast={editStartInPast}
+                        onDeleteTournament={() => setDeleteTournamentOpen(true)}
+                        onToggleFeature={async () => {
+                            // Admin-only feature toggle. Backend roundtrip
+                            // either sets or clears `featured_at`; on success
+                            // we re-fetch the details so `t.featuredAt`
+                            // reflects the new state and the button label
+                            // flips on the next render.
+                            if (!uuid) return
+                            try {
+                                if (t.featuredAt) {
+                                    await unfeatureTournament(uuid)
+                                } else {
+                                    await featureTournament(uuid)
+                                }
+                                setT(await fetchTournamentDetails(uuid))
+                            } catch {
+                                // Error toasted by the http interceptor.
+                            }
+                        }}
+                        posterFile={posterFile}
+                        posterPreviewUrl={posterPreviewUrl}
+                        posterRemove={posterRemove}
+                        posterUploadErr={posterUploadErr}
+                        handlePosterPick={handlePosterPick}
+                        clearPosterPick={clearPosterPick}
+                        markPosterForRemoval={markPosterForRemoval}
+                        editPickedCoords={editPickedCoords}
+                        setEditPickedCoords={setEditPickedCoords}
+                    />
+                )}
+
+                {/* Individual awards — only on the Detalji tab, and only
+                    when the tournament is finished (or the organizer wants
+                    to fill them in). The component self-hides for visitors
+                    when nothing is set. */}
+                {section === "details" && !editingDetails && t.status === "FINISHED" && (
+                    <Box mt="4">
+                        <TournamentAwards
+                            t={t}
+                            canEdit={canEdit}
+                            onSaved={(updated) => setT(updated)}
+                        />
+                    </Box>
+                )}
+
+                {section === "teams" && (
+                    <TeamsSection
+                        t={t}
+                        uuid={uuid ?? ""}
+                        teams={teams}
+                        teamRequests={teamRequests}
+                        canEdit={canEdit}
+                        userUid={user?.uid}
+                        tournamentAlready={
+                            (t.status as string) === "STARTED" ||
+                            (t.status as string) === "IN_PROGRESS" ||
+                            t.status === "FINISHED"
+                        }
+                        teamRequestsCollapsed={teamRequestsCollapsed}
+                        setTeamRequestsCollapsed={setTeamRequestsCollapsed}
+                        addTeam={addTeam}
+                        changeTeamName={changeTeamName}
+                        onTeamNameBlur={onTeamNameBlur}
+                        saveTeamsAll={saveTeamsAll}
+                        removeTeam={removeTeam}
+                        requestDeleteTeam={setPendingDeleteTeam}
+                        onApproveTeam={onApproveTeam}
+                        openTeamInfo={setInfoTeamId}
+                        onSelfRegisterClick={onSelfRegisterClick}
+                        onPodiumUpdated={setT}
+                    />
+                )}
+
+                {section === "bracket" && (
+                    <VStack align="stretch" gap="4">
+                        {/* Ždrijeb sub-tabs — only shown when the format has a
+                            group stage. KNOCKOUT_ONLY jumps straight to the
+                            bracket with no sub-tab bar. */}
+                        {hasGroupStage && (
+                            <Box
+                                overflowX="auto"
+                                css={{
+                                    scrollbarWidth: "none",
+                                    "&::-webkit-scrollbar": { display: "none" },
+                                }}
+                            >
+                                <HStack
+                                    gap="2"
+                                    p="1"
+                                    bg="bg.muted"
+                                    borderWidth="1px"
+                                    borderColor="border"
+                                    rounded="lg"
+                                    w="max-content"
+                                    minW="full"
+                                >
+                                    {([
+                                        { key: "grupe" as DrawSubKey, label: "Grupe" },
+                                        { key: "eliminacija" as DrawSubKey, label: "Eliminacija" },
+                                    ]).map((s) => {
+                                        const active = drawSub === s.key
+                                        return (
+                                            <Button
+                                                key={s.key}
+                                                size="sm"
+                                                variant={active ? "solid" : "ghost"}
+                                                colorPalette={active ? "brand" : "gray"}
+                                                rounded="md"
+                                                flex="1"
+                                                onClick={() => setDrawSub(s.key)}
+                                            >
+                                                {s.label}
+                                            </Button>
+                                        )
+                                    })}
+                                </HStack>
+                            </Box>
+                        )}
+
+                        {(() => {
+                            // Once the tournament has started (status moved
+                            // past DRAFT), destructive draw/regenerate
+                            // actions inside Ždrijeb / Grupe get hidden —
+                            // re-running them would wipe live scores.
+                            const tournamentStarted =
+                                (t.status as string) === "STARTED" ||
+                                (t.status as string) === "IN_PROGRESS" ||
+                                t.status === "FINISHED"
+                            return hasGroupStage && drawSub === "grupe" ? (
+                                <GroupsTab
+                                    uuid={t.uuid}
+                                    advancePerGroup={t.advancePerGroup}
+                                    canEdit={canEdit}
+                                    tournamentStarted={tournamentStarted}
+                                />
+                            ) : (
+                                <BracketTab
+                                    uuid={t.uuid}
+                                    canEdit={canEdit}
+                                    tournamentStarted={tournamentStarted}
+                                    tournamentName={t.name}
+                                />
+                            )
+                        })()}
+                    </VStack>
+                )}
+
+                {section === "raspored" && (
+                    <ScheduleTab
+                        uuid={t.uuid}
+                        canEdit={canEdit}
+                        tournamentName={t.name}
+                        tournamentLocation={t.location}
+                        tournamentSlug={t.slug}
+                    />
+                )}
+
+                {section === "stats" && <StatsSection uuid={t.uuid} />}
+            </Box>
+
+            {/* ===== Dialogs ===== */}
+            <SelfRegisterDialog
+                open={selfRegOpen}
+                onClose={() => {
+                    setSelfRegOpen(false)
+                    setSelfRegError(null)
+                    setSelfRegName("")
+                }}
+                presets={presets}
+                teams={teams}
+                userUid={user?.uid}
+                name={selfRegName}
+                onNameChange={setSelfRegName}
+                error={selfRegError}
+                submitting={selfRegSubmitting}
+                onSubmit={submitSelfRegister}
+            />
+
+            <TeamInfoDialog
+                teamId={infoTeamId}
+                teams={teams}
+                rounds={[]}
+                teamById={teamById}
+                onClose={() => setInfoTeamId(null)}
+            />
+
+            <DeleteTournamentDialog
+                open={deleteTournamentOpen}
+                tournamentName={t.name}
+                deleting={deletingTournament}
+                onClose={() => setDeleteTournamentOpen(false)}
+                onConfirm={async () => {
+                    if (!uuid) return
+                    try {
+                        setDeletingTournament(true)
+                        await deleteTournament(uuid)
+                        navigate("/turniri", { replace: true })
+                    } catch (err: any) {
+                        showError(
+                            "Greška pri brisanju",
+                            String(err?.response?.data ?? err?.message ?? "Turnir nije obrisan."),
+                        )
+                    } finally {
+                        setDeletingTournament(false)
+                        setDeleteTournamentOpen(false)
+                    }
+                }}
+            />
+
+            <DeleteTeamDialog
+                team={pendingDeleteTeam}
+                deleting={deletingTeam}
+                onClose={() => setPendingDeleteTeam(null)}
+                onConfirm={async () => {
+                    if (!pendingDeleteTeam || !uuid) return
+                    try {
+                        setDeletingTeam(true)
+                        await deleteTeam(uuid, pendingDeleteTeam.id)
+                        setTeams((ps) => ps.filter((x) => x.id !== pendingDeleteTeam.id))
+                        setPendingDeleteTeam(null)
+                    } catch (err: any) {
+                        showError(
+                            "Greška pri brisanju",
+                            String(err?.response?.data ?? err?.message ?? "Ekipa nije obrisana."),
+                        )
+                    } finally {
+                        setDeletingTeam(false)
+                    }
+                }}
+            />
+        </VStack>
+    )
+}

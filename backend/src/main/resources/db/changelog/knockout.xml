@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!-- Phase E3: knockout bracket linkage on matches.
+         next_match_id / next_slot — where the winner advances.
+         penalties1 / penalties2   — shootout score for level knockout matches. -->
+    <changeSet id="2026-05-21-06-matches-knockout" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="next_match_id" type="bigint"/>
+            <column name="next_slot" type="int"/>
+            <column name="penalties1" type="int"/>
+            <column name="penalties2" type="int"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="next_match_id"
+                                 referencedTableName="matches" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_matches_next_match"/>
+    </changeSet>
+
+</databaseChangeLog>

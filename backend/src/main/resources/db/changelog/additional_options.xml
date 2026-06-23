@@ -1,0 +1,25 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-30-additional-options-seq" author="mrodek">
+        <createSequence sequenceName="seq_additional_options_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-31-additional-options" author="mrodek">
+        <createTable tableName="additional_options">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="hr_label" type="varchar(120)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="en_label" type="varchar(120)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

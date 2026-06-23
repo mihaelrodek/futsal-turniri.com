@@ -1,0 +1,46 @@
+/*
+ * Style overrides for react-datepicker so the input looks like a Chakra v3
+ * <Input>. The library ships its own stylesheet (imported in
+ * CreateTournamentPage.tsx) which handles the calendar popup; this file
+ * only restyles the trigger input + makes the popup respect the app's
+ * z-index stacking (it must beat the NavBar and Leaflet).
+ */
+
+.futsal-datepicker-input-wrap,
+.futsal-datepicker-input-wrap > div,
+.react-datepicker-wrapper {
+    width: 100%;
+}
+
+.futsal-datepicker-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--chakra-colors-border);
+    background: var(--chakra-colors-bg);
+    color: var(--chakra-colors-fg);
+    font-size: 14px;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.futsal-datepicker-input::placeholder {
+    color: var(--chakra-colors-fg-muted);
+}
+
+.futsal-datepicker-input:hover {
+    border-color: var(--chakra-colors-border-emphasized);
+}
+
+.futsal-datepicker-input:focus {
+    border-color: var(--chakra-colors-blue-solid);
+    box-shadow: 0 0 0 1px var(--chakra-colors-blue-solid);
+}
+
+/* Calendar popup must float above NavBar (z-index 1000) and any sticky
+   Card.Root toolbars on the page. */
+.react-datepicker-popper {
+    z-index: 1500 !important;
+}

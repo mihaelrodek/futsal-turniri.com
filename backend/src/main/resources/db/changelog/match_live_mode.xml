@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Live-match mode on matches. live_mode records how a match is run
+      while LIVE (a counting TIMER or a SIMPLE manual scoreboard);
+      live_started_at is the wall-clock instant the match went LIVE,
+      used by the frontend timer. Both are nullable — set on /start,
+      null for matches that were never started.
+    -->
+
+    <changeSet id="2026-05-23-30-matches-live-mode" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="live_mode" type="varchar(10)"/>
+            <column name="live_started_at" type="timestamptz"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

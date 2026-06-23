@@ -1,0 +1,27 @@
+# Repo-root .dockerignore (controls the frontend Dockerfile's build context,
+# which is the whole repo). Keeps unneeded files out of the daemon transfer.
+.git/
+.idea/
+.vscode/
+**/node_modules/
+**/target/
+**/dist/
+**/build/
+*.iml
+*.log
+
+# Secrets — never let these leak into an image even by accident.
+.env
+.env.*
+!.env.example
+!.env.prod.example
+!frontend/.env.example
+
+# Runtime artifacts
+backend/uploads/
+uploads/
+
+# Local-only docs
+README.md
+DEPLOY.md
+hosting-comparison.xlsx

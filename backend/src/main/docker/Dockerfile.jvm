@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.7
+#
+# Quarkus JVM-mode image for the nogometni-turniri.com backend.
+#
+# Two stages:
+#   1. `build` — Maven on Eclipse Temurin 21, downloads deps then packages
+#      the Quarkus fast-jar layout into target/quarkus-app/.
+#   2. runtime — Temurin 21 JRE only, copies the fast-jar layout, runs as
+#      non-root. ~200 MB final image.
+#
+# Build context: the `backend/` directory.
+#
+#   docker build -t futsal-backend -f src/main/docker/Dockerfile.jvm .
+#
+# (docker-compose.prod.yaml does this for you with `context: ./backend`.)
+
+# ─────────────────────────── Stage 1: build ───────────────────────────
+FROM maven:3.9-eclipse-temurin-21 AS build
+
+WORKDIR /workspace
+
+# Copy pom first so dependency download is cached as long as pom doesn't
+# change. This makes incremental builds fast — only the source changes
+# trigger a rebuild of the application layer.
+COPY pom.xml ./
+RUN mvn -B -e -ntp dependency:go-offline
+
+# Now copy the source and build. -DskipTests because the smoke test boots
+# Quarkus and we'd need a DB on the build host; run tests in CI instead.
+# -Dquarkus.package.jar.type=fast-jar forces the layered fast-jar output
+# at target/quarkus-app/ in case a global Quarkus config has changed it.
+COPY src/ src/
+RUN mvn -B -e -ntp -DskipTests -Dquarkus.package.jar.type=fast-jar package \
+ && echo "=== target/ contents ===" \
+ && ls -la target/ \
+ && echo "=== target/quarkus-app/ contents ===" \
+ && ls -la target/quarkus-app/
+
+# ─────────────────────────── Stage 2: runtime ───────────────────────────
+FROM eclipse-temurin:21-jre
+
+# Create a non-root user. We don't need a home dir; the app reads only
+# its baked-in resources and writes nothing to disk (uploads stream
+# straight to MinIO).
+RUN groupadd --system --gid 1001 quarkus \
+ && useradd  --system --uid 1001 --gid 1001 --no-create-home --shell /usr/sbin/nologin quarkus
+
+WORKDIR /deployments
+
+# Copy the entire Quarkus fast-jar layout in one go. This is more robust
+# than splitting into four separate COPYs (lib/, *.jar, app/, quarkus/) —
+# if any subdirectory is missing, a single COPY just copies what's there
+# rather than failing the whole build.
+COPY --from=build --chown=1001:1001 /workspace/target/quarkus-app/ ./
+
+USER 1001
+
+# Quarkus listens on the port set in application.properties (8085 in our
+# config). Document it for tooling; the actual binding is in the app.
+EXPOSE 8085
+
+ENV LANG=en_US.UTF-8 \
+    JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom"
+
+# `exec` so Java becomes PID 1 and receives signals directly (clean shutdown).
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar quarkus-run.jar"]

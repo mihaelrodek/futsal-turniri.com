@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Player rosters: each Team can carry a list of individual players
+      (name, optional jersey number, one captain). Editable at any time,
+      independent of tournament status. The FK to teams cascades on
+      delete so removing a team takes its roster with it.
+    -->
+
+    <changeSet id="2026-05-23-10-players-seq" author="mrodek">
+        <createSequence sequenceName="seq_players_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-05-23-11-players" author="mrodek">
+        <createTable tableName="players">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="team_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="number" type="int"/>
+
+            <column name="captain" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="sort_order" type="int"/>
+
+            <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="players" baseColumnNames="team_id"
+                                 referencedTableName="teams" referencedColumnNames="id"
+                                 onDelete="CASCADE" constraintName="fk_players_team"/>
+
+        <createIndex tableName="players" indexName="idx_players_team">
+            <column name="team_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

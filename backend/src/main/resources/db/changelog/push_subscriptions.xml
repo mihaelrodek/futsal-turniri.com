@@ -1,0 +1,59 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Web Push subscriptions — one row per (user, browser). A user may
+        have many: phone Chrome, desktop Edge, iPad Safari, etc. The
+        endpoint URL is opaque (each browser vendor has its own format)
+        and is itself the routing token — duplicates can't exist so we put
+        the unique constraint there.
+
+        p256dh + auth are the per-subscription crypto material that the
+        Web Push protocol uses to encrypt payloads end-to-end so the
+        push service can't read them.
+
+        ON DELETE CASCADE for the user-uid index would be ideal, but
+        Firebase UIDs aren't a FK to anything — we store them as plain
+        strings everywhere. Cleanup of dead subscriptions happens lazily
+        in PushService when a send returns 410 Gone.
+    -->
+    <changeSet id="2026-05-11-push-subscriptions" author="mrodek">
+        <createTable tableName="push_subscriptions">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_uid" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="endpoint" type="text">
+                <constraints nullable="false" unique="true"
+                             uniqueConstraintName="uq_push_subscriptions_endpoint"/>
+            </column>
+            <column name="p256dh" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="auth" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_agent" type="varchar(512)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_seen_at" type="timestamptz" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Fan-out lookups are always by user_uid (a user can have
+             multiple devices). Endpoint uniqueness is enforced by the
+             column constraint above; this index covers the typical
+             "find all of user X's subs" query. -->
+        <createIndex tableName="push_subscriptions" indexName="idx_push_subscriptions_user_uid">
+            <column name="user_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,42 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-80-standings-seq" author="mrodek">
+        <createSequence sequenceName="seq_standings_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-81-standings" author="mrodek">
+        <createTable tableName="standings">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rank" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="notes" type="text"/>
+            <column name="prize_amount" type="numeric(10,2)"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="standings" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_standings_tournament"/>
+        <addForeignKeyConstraint baseTableName="standings" baseColumnNames="team_id"
+                                 referencedTableName="teams" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_standings_team"/>
+
+        <addUniqueConstraint tableName="standings" columnNames="tournament_id,rank"
+                             constraintName="uq_standings_rank"/>
+        <addUniqueConstraint tableName="standings" columnNames="tournament_id,team_id"
+                             constraintName="uq_standings_team"/>
+    </changeSet>
+</databaseChangeLog>

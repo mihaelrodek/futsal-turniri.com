@@ -1,0 +1,92 @@
+package hr.mrodek.apps.futsal_turniri.model;
+
+import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import jakarta.persistence.*;
+import lombok.*;
+import java.util.UUID;
+
+@Entity @Table(name = "matches")
+@Getter @Setter @NoArgsConstructor
+public class Matches {
+
+    @Id
+    @SequenceGenerator(name = "matches_seq", sequenceName = "seq_matches_id", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "matches_seq")
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "tournament_id")
+    private Tournaments tournament;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "round_id", nullable = false)
+    private Rounds round;
+
+    /** Which stage this match belongs to — GROUP or a knockout round. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stage", length = 20, nullable = false)
+    private MatchStage stage = MatchStage.GROUP;
+
+    /** The group this match belongs to. Null for knockout matches. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "group_id")
+    private Groups group;
+
+    @Column(name = "table_no")
+    private Integer tableNo;
+
+    /** Scheduled kickoff time, assigned by the scheduling generator (Phase E4). */
+    @Column(name = "kickoff_at")
+    private java.time.OffsetDateTime kickoffAt;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "team1_id")
+    private Teams team1;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "team2_id")
+    private Teams team2;
+
+    private Integer score1;
+    private Integer score2;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "winner_team_id")
+    private Teams winnerTeam;
+
+    // --- Knockout bracket linkage (Phase E3) ---
+    /** The match the winner of this match advances into. Null for the final and group matches. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "next_match_id")
+    private Matches nextMatch;
+
+    /** Which slot (1 or 2) of {@link #nextMatch} the winner of this match fills. */
+    @Column(name = "next_slot")
+    private Integer nextSlot;
+
+    /** Penalty-shootout score — set only when a knockout match is level after regulation. */
+    @Column(name = "penalties1")
+    private Integer penalties1;
+
+    @Column(name = "penalties2")
+    private Integer penalties2;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20)
+    private MatchStatus status = MatchStatus.SCHEDULED;
+
+    /**
+     * How this match is run while LIVE — a counting {@code TIMER} or a
+     * {@code SIMPLE} manual scoreboard. Null until the match is started.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "live_mode", length = 10)
+    private MatchLiveMode liveMode;
+
+    /** Wall-clock instant the match went LIVE. Null until started. */
+    @Column(name = "live_started_at")
+    private java.time.OffsetDateTime liveStartedAt;
+
+    /** Wall-clock instant the 2nd half kicked off. Null until set. */
+    @Column(name = "second_half_started_at")
+    private java.time.OffsetDateTime secondHalfStartedAt;
+
+}

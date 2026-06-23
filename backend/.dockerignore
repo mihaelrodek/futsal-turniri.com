@@ -1,0 +1,13 @@
+# Don't COPY any of these into the backend build context — keeps the
+# image small and avoids busting the dependency cache when IDE files change.
+target/
+.idea/
+.git/
+*.iml
+*.log
+HELP.md
+README.md
+uploads/
+.quarkus/
+build-metrics.json
+dependency-reduced-pom.xml

@@ -1,0 +1,55 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-70-matches-seq" author="mrodek">
+        <createSequence sequenceName="seq_matches_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-71-matches" author="mrodek">
+        <createTable tableName="matches">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="round_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="table_no" type="int"/>
+            <column name="team1_id" type="bigint"/>
+            <column name="team2_id" type="bigint"/>
+            <column name="score1" type="int"/>
+            <column name="score2" type="int"/>
+            <column name="winner_team_id" type="bigint"/>
+            <column name="status" type="varchar(20)"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_matches_tournament"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="round_id"
+                                 referencedTableName="rounds" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_matches_round"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="team1_id"
+                                 referencedTableName="teams" referencedColumnNames="id" onDelete="SET NULL"
+                                 constraintName="fk_matches_team1"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="team2_id"
+                                 referencedTableName="teams" referencedColumnNames="id" onDelete="SET NULL"
+                                 constraintName="fk_matches_team2"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="winner_team_id"
+                                 referencedTableName="teams" referencedColumnNames="id" onDelete="SET NULL"
+                                 constraintName="fk_matches_winner"/>
+
+        <addUniqueConstraint tableName="matches" columnNames="round_id,table_no"
+                             constraintName="uq_table_per_round"/>
+
+        <createIndex tableName="matches" indexName="idx_matches_round">
+            <column name="round_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!-- Phase E2: group stage. A tournament_groups row per group; teams and
+         matches gain a group_id; matches gain a stage (GROUP | knockout). -->
+
+    <changeSet id="2026-05-21-02-groups-seq" author="mrodek">
+        <createSequence sequenceName="seq_groups_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-05-21-03-groups" author="mrodek">
+        <createTable tableName="tournament_groups">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ordinal" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="tournament_groups" baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id"
+                                 onDelete="CASCADE" constraintName="fk_groups_tournament"/>
+
+        <addUniqueConstraint tableName="tournament_groups" columnNames="tournament_id, ordinal"
+                             constraintName="uq_group_tournament_ordinal"/>
+
+        <createIndex tableName="tournament_groups" indexName="idx_groups_tournament">
+            <column name="tournament_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2026-05-21-04-teams-group" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="group_id" type="bigint"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="teams" baseColumnNames="group_id"
+                                 referencedTableName="tournament_groups" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_teams_group"/>
+    </changeSet>
+
+    <changeSet id="2026-05-21-05-matches-stage" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="stage" type="varchar(20)" defaultValue="GROUP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="group_id" type="bigint"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="group_id"
+                                 referencedTableName="tournament_groups" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_matches_group"/>
+    </changeSet>
+
+</databaseChangeLog>

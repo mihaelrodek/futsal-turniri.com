@@ -1,0 +1,23 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Public profiles need a stable slug + the user's display name so we can
+        render /profile/{slug} pages. display_name comes from the Firebase
+        profile on every login (POST /user/me/sync); slug is generated server
+        side and made unique with -2/-3 suffixes on collision.
+    -->
+    <changeSet id="2026-04-27-71-user-profiles-slug" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="display_name" type="varchar(200)"/>
+            <column name="slug" type="varchar(200)"/>
+        </addColumn>
+        <createIndex indexName="ux_user_profiles_slug" tableName="user_profiles" unique="true">
+            <column name="slug"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

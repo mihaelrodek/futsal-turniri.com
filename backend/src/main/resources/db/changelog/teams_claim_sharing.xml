@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Team sharing: a primary submitter can hand a co-ownership URL to a
+      partner so the team also shows up on the partner's profile. Schema:
+
+        claim_token         — opaque random string the URL embeds
+        co_submitted_by_uid — Firebase UID of the partner once they claim
+
+      The token is set when a team is self-registered. Existing rows get
+      backfilled so primaries can share retroactively. Using pgcrypto's
+      gen_random_uuid() (already loaded by the pgcrypto.xml changelog)
+      to seed the backfill — uniqueness is essentially guaranteed.
+    -->
+
+    <changeSet id="2026-05-13-teams-claim-sharing" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="claim_token" type="varchar(48)"/>
+            <column name="co_submitted_by_uid" type="varchar(64)"/>
+        </addColumn>
+
+        <!-- Backfill tokens for self-registered teams so existing rows
+             are immediately shareable. Organizer-added teams (with no
+             submitter UID) stay tokenless — there's nothing to share. -->
+        <sql>
+            UPDATE teams
+            SET claim_token = replace(gen_random_uuid()::text, '-', '')
+            WHERE claim_token IS NULL
+              AND submitted_by_uid IS NOT NULL;
+        </sql>
+
+        <createIndex
+                tableName="teams"
+                indexName="uq_teams_claim_token"
+                unique="true">
+            <column name="claim_token"/>
+        </createIndex>
+
+        <createIndex
+                tableName="teams"
+                indexName="idx_teams_co_submitted_by_uid">
+            <column name="co_submitted_by_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

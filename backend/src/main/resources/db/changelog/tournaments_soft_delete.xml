@@ -1,0 +1,23 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Soft-delete tournaments. Admins can mark a tournament as deleted; the
+        row stays in the DB (so historical match data isn't orphaned) but is
+        invisible to every read path via a Hibernate @Where filter.
+    -->
+    <changeSet id="2026-04-27-72-tournaments-is-deleted" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="is_deleted" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <createIndex indexName="idx_tournaments_is_deleted" tableName="tournaments">
+            <column name="is_deleted"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

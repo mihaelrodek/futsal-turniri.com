@@ -1,0 +1,25 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Per-Firebase-user profile data we don't get from the token —
+        right now only a phone number that auto-fills FindTeam requests.
+        Keyed by the Firebase UID; one row per user.
+    -->
+    <changeSet id="2026-04-26-70-user-profiles" author="mrodek">
+        <createTable tableName="user_profiles">
+            <column name="user_uid" type="varchar(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="phone_country" type="varchar(8)"/>
+            <column name="phone" type="varchar(50)"/>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

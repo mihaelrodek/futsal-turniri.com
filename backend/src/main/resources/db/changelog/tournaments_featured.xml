@@ -1,0 +1,32 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Admin-curated "tournament of the day" highlight.
+
+        `featured_at` is the timestamp at which an admin promoted a tournament
+        to the daily hero shown on /uzivo. The public lookup returns the row
+        with the highest featured_at that's still upcoming or in-progress, so
+        we don't need a separate "is_featured" flag — clearing the feature is
+        simply setting the column back to NULL.
+
+        Indexed DESC + WHERE NOT NULL so the "current featured" query is a
+        cheap index-only seek even as the table grows.
+    -->
+    <changeSet id="2026-05-27-tournaments-featured-at" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="featured_at" type="timestamp with time zone">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        <sql>
+            CREATE INDEX idx_tournaments_featured_at
+                ON tournaments (featured_at DESC)
+                WHERE featured_at IS NOT NULL;
+        </sql>
+    </changeSet>
+</databaseChangeLog>

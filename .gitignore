@@ -1,0 +1,63 @@
+# ──────────────────────────────────────────────────────────
+# Secrets & local config — NEVER commit these
+# ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.prod
+.env.staging
+*.env
+!.env.example
+!.env.prod.example
+# Firebase Admin SDK service-account key — full project access
+scripts/service-account.json
+scripts/node_modules/
+
+# ──────────────────────────────────────────────────────────
+# OS cruft
+# ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ──────────────────────────────────────────────────────────
+# IDEs / editors
+# .idea keeps its own nested .gitignore (JetBrains default)
+# so shared code-style lives in VCS while workspace files don't.
+# ──────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────────────────
+# Backend — Maven / Quarkus
+# ──────────────────────────────────────────────────────────
+backend/target/
+backend/.quarkus/
+backend/dependency-reduced-pom.xml
+backend/build-metrics.json
+backend/**/*.class
+backend/HELP.md
+
+# Spring-style MVN log, if anything ever writes one
+*.log
+log/
+
+# ──────────────────────────────────────────────────────────
+# Frontend — Node / Vite
+# (frontend/.gitignore already covers these; mirrored here as a safety net)
+# ──────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# ──────────────────────────────────────────────────────────
+# Runtime artefacts
+# RESTEasy Reactive writes temp uploads here (see application.properties)
+# ──────────────────────────────────────────────────────────
+uploads/
+backend/uploads/

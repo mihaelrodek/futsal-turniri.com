@@ -1,0 +1,97 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!-- Sequence -->
+    <changeSet id="2025-11-01-20-tournaments-seq" author="mrodek">
+        <createSequence sequenceName="seq_tournaments_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <!-- Table (banner_url removed; resource_id + uuid added) -->
+    <changeSet id="2025-11-01-21-tournaments" author="mrodek">
+        <createTable tableName="tournaments">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <!-- public-facing immutable UUID -->
+            <column name="uuid" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints nullable="false" unique="true"/>
+            </column>
+
+            <column name="name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="location" type="varchar(200)"/>
+            <column name="details" type="text"/>
+
+            <!-- schedule -->
+            <column name="start_at" type="timestamptz"/>
+
+            <!-- media (FK to resources) -->
+            <column name="resource_id" type="bigint"/>
+
+            <!-- status -->
+            <column name="status" type="varchar(20)" defaultValue="DRAFT">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- limits -->
+            <column name="max_teams" type="int" defaultValueNumeric="16">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- pricing -->
+            <column name="entry_price" type="numeric(10,2)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- contact -->
+            <column name="contact_name" type="varchar(120)"/>
+            <column name="contact_phone" type="varchar(60)"/>
+
+            <!-- rewards -->
+            <column name="reward_type" type="varchar(20)"/>  <!-- FIXED | PERCENTAGE -->
+            <column name="reward_first" type="numeric(10,2)"/>
+            <column name="reward_second" type="numeric(10,2)"/>
+            <column name="reward_third" type="numeric(10,2)"/>
+
+            <!-- audit -->
+            <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <createIndex tableName="tournaments" indexName="idx_tournaments_start_at">
+            <column name="start_at"/>
+        </createIndex>
+
+        <addForeignKeyConstraint baseTableName="tournaments"
+                                 baseColumnNames="resource_id"
+                                 referencedTableName="resources"
+                                 referencedColumnNames="id"
+                                 onDelete="SET NULL"
+                                 constraintName="fk_tournaments_resource"/>
+    </changeSet>
+
+    <changeSet id="2025-11-08-22-tournaments-winner-name" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="winner_name" type="varchar(200)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="tournaments" columnName="winner_name"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="2025-11-09-add-preserve-matchmaking" author="you">
+        <addColumn tableName="tournaments">
+            <column name="preserve_matchmaking" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

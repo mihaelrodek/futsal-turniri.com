@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+      Live-match timeline events: goals and cards recorded against a
+      match while it is being played. Goal events drive the match score
+      (recomputed in the service layer). The FK to matches cascades on
+      delete so resetting/removing a match takes its events with it.
+      The FKs to players use SET NULL guard via NO ACTION default — a
+      player is never deleted while referenced (rosters are edited, not
+      hard-deleted mid-tournament).
+    -->
+
+    <changeSet id="2026-05-23-20-match-events-seq" author="mrodek">
+        <createSequence sequenceName="seq_match_events_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-05-23-21-match-events" author="mrodek">
+        <createTable tableName="match_events">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="match_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="type" type="varchar(20)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="player_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="minute" type="int">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="assist_player_id" type="bigint"/>
+
+            <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="match_events" baseColumnNames="match_id"
+                                 referencedTableName="matches" referencedColumnNames="id"
+                                 onDelete="CASCADE" constraintName="fk_match_events_match"/>
+
+        <addForeignKeyConstraint baseTableName="match_events" baseColumnNames="player_id"
+                                 referencedTableName="players" referencedColumnNames="id"
+                                 constraintName="fk_match_events_player"/>
+
+        <addForeignKeyConstraint baseTableName="match_events" baseColumnNames="assist_player_id"
+                                 referencedTableName="players" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_match_events_assist_player"/>
+
+        <createIndex tableName="match_events" indexName="idx_match_events_match">
+            <column name="match_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

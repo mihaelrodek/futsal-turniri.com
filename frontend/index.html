@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo/mark-green.svg" />
+    <!-- Apple touch icon — 180x180 PNG with white padding so iOS doesn't
+         clip the suits when it rounds the corners on the home screen. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b6b3a" />
+
+    <!-- Pitch theme typography triad:
+           • Inter      — body/UI text
+           • Bricolage  — display headings, team names, big numerics
+           • JetBrains  — mono labels, scoreboards, clocks
+         All loaded from Google Fonts with display=swap so first paint
+         never blocks on the font; the theme falls back to the system
+         stack while it loads (and permanently, offline). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"
+    />
+
+    <!-- ── PWA / Add to Home Screen ─────────────────────────────────────
+         Installable web app metadata. With the manifest below, Chrome
+         (Android/desktop) shows an "Install app" option in the URL bar;
+         Safari (iOS) supports "Add to Home Screen" via the share menu.
+         The four apple-mobile-web-app-* meta tags are iOS-only, since
+         iOS Safari predates and ignores parts of the W3C manifest.
+
+         When launched from the home-screen icon the app runs in
+         "standalone" mode (no Safari/Chrome chrome around the page),
+         which is what makes it feel like a native app. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="application-name" content="Futsal Turniri" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Futsal Turniri" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="nogometni-turniri.com — organiziraj i prati Futsal turnire. Pretraži nadolazeće turnire, pridruži se paru i prati rezultate." />
+
+    <!-- Open Graph / link previews. og:image must be a raster format
+         (PNG/JPEG) — WhatsApp and Facebook crawlers silently drop SVG
+         and the share renders without a thumbnail. The 1200x1200 PNG
+         is rendered from futsal-turniri-symbol.svg at build time and
+         checked into public/. og:image:secure_url and the explicit
+         dimensions help platforms cache and lay out the card correctly.
+
+         Per-page overrides (poster art on tournament detail, avatar on
+         profile) are set client-side via useDocumentHead and take
+         precedence over these defaults. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Futsal turniri" />
+    <meta property="og:title" content="Futsal turniri" />
+    <meta property="og:description" content="Organiziraj i prati Futsal turnire. Pretraži nadolazeće turnire, pridruži se paru i prati rezultate." />
+    <!-- og:url is the canonical URL of this page. Facebook's scraper flags
+         it as a missing required property when absent. The static value
+         here is the root URL — useDocumentHead overrides it per-route
+         (tournament/profile pages) for JS-aware crawlers; the
+         /api/preview/* SSR fallback emits a route-specific og:url too. -->
+    <meta property="og:url" content="https://nogometni-turniri.com/" />
+    <!-- Branded 1200×630 landscape card (green mark + "Futsal Turniri" +
+         domain), rendered by the backend so the brand stays in one place.
+         Per-page overrides (tournament poster, profile avatar) are set
+         client-side via useDocumentHead and by the /api/preview/* SSR
+         fallback for non-JS crawlers. -->
+    <meta property="og:image" content="https://nogometni-turniri.com/api/og/default.png" />
+    <meta property="og:image:secure_url" content="https://nogometni-turniri.com/api/og/default.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Futsal Turniri — futsal-turniri.com" />
+    <meta property="og:locale" content="hr_HR" />
+    <!-- fb:app_id is "recommended" by Facebook but not strictly required
+         — its absence triggers a warning in the FB sharing debugger but
+         doesn't block previews from rendering. To silence the warning,
+         create a Facebook App at https://developers.facebook.com/apps
+         and replace YOUR_APP_ID below (then uncomment the line). An
+         empty Facebook App with just a name + contact email is enough.
+         <meta property="fb:app_id" content="YOUR_APP_ID" /> -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://nogometni-turniri.com/api/og/default.png" />
+
+    <title>Futsal Turniri — futsal-turniri.com</title>
+
+    <!-- ── schema.org JSON-LD ─────────────────────────────────────────────
+         Two records keyed off the site root, picked up by Googlebot on
+         every page (the SPA navigates client-side but these stay in the
+         document head). Reasons they're worth their weight in bytes:
+
+         • WebSite + potentialAction=SearchAction enables the sitelinks
+           search box for branded "futsal turniri" queries — a search input
+           rendered directly inside the Google result that targets our
+           /tournaments?q= endpoint. Google ignores this on small sites
+           it doesn't recognise yet, but the markup is the prerequisite
+           and costs us nothing.
+
+         • Organization gives Google's knowledge graph a canonical logo,
+           name, and homepage URL — used for the favicon/brand chip next
+           to results and for Google Business-style entity panels.
+
+         Per-route Event/Person JSON-LD is emitted from the backend SSR
+         preview controllers (for non-JS crawlers) and via useDocumentHead
+         (for Googlebot rendering the SPA). This block is only the
+         site-level scaffolding. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Futsal turniri",
+      "alternateName": "nogometni-turniri.com",
+      "url": "https://nogometni-turniri.com/",
+      "inLanguage": "hr",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://nogometni-turniri.com/turniri?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Futsal turniri",
+      "alternateName": "nogometni-turniri.com",
+      "url": "https://nogometni-turniri.com/",
+      "logo": "https://nogometni-turniri.com/futsal-turniri-symbol.png",
+      "sameAs": []
+    }
+    </script>
+
+    <!-- Reserve the vertical-scrollbar gutter unconditionally. Without this
+         rule a route swap from a short page (Kalendar — fits in viewport,
+         no scrollbar) to a tall page (Kreiraj turnir — scrollbar appears)
+         shifts every centred element ~17px left, which the user spots as a
+         jarring layout jump. `scrollbar-gutter: stable` keeps the gutter
+         present always, even when content fits, so the content area's
+         width is identical between routes. Falls back gracefully on older
+         browsers (no jump, just the original behaviour). -->
+    <style>
+      html { scrollbar-gutter: stable; }
+      /* Pitch theme — the live/now pulsing dot animation. Used by the
+         `PulseDot`, `StatusChip` (live variant), `FilterChip` (with
+         pulse=true), and the live navbar item. Defining it as a global
+         keyframe keeps it usable from inline `css={{ animation }}`
+         attributes without per-component <style> injection. */
+      @keyframes pitchPulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.4; }
+      }
+      /* Live-tournament map marker — expanding "radar ping" ring that
+         emanates from the pin head. Rendered inside the Leaflet DivIcon
+         HTML (see MapPage.makePinIcon) on tournaments with a live match
+         so they visibly stand out from upcoming/finished pins. */
+      @keyframes mapLivePing {
+        0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.7; }
+        70%  { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+        100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+      }
+      .map-live-ping {
+        position: absolute;
+        left: 16px;            /* pin head centre x (32px-wide icon) */
+        top: 12px;             /* pin head centre y */
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(220, 38, 38, 0.55);
+        animation: mapLivePing 1.6s ease-out infinite;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

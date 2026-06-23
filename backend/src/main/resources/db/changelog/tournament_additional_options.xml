@@ -1,0 +1,52 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2025-11-01-40-tao-seq" author="mrodek">
+        <createSequence sequenceName="seq_tournament_additional_options_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2025-11-01-41-tao" author="mrodek">
+        <createTable tableName="tournament_additional_options">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="additional_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- keep uniqueness of the relation -->
+        <addUniqueConstraint tableName="tournament_additional_options"
+                             columnNames="tournament_id,additional_id"
+                             constraintName="uq_ta_tournament_additional"/>
+
+        <addForeignKeyConstraint baseTableName="tournament_additional_options"
+                                 baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments"
+                                 referencedColumnNames="id"
+                                 onDelete="CASCADE"
+                                 constraintName="fk_ta_tournament"/>
+
+        <addForeignKeyConstraint baseTableName="tournament_additional_options"
+                                 baseColumnNames="additional_id"
+                                 referencedTableName="additional_options"
+                                 referencedColumnNames="id"
+                                 onDelete="CASCADE"
+                                 constraintName="fk_ta_additional"/>
+
+        <createIndex tableName="tournament_additional_options" indexName="idx_ta_tournament">
+            <column name="tournament_id"/>
+        </createIndex>
+        <createIndex tableName="tournament_additional_options" indexName="idx_ta_additional">
+            <column name="additional_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

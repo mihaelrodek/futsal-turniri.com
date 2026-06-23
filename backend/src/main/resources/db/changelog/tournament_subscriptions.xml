@@ -1,0 +1,60 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Per-tournament push subscriptions — one row per (user, tournament).
+        Lets a logged-in user opt into Web Push fan-outs for goals, second
+        halves and finished matches in a specific tournament without
+        subscribing them to every tournament on the platform.
+
+        The unique constraint on (user_uid, tournament_id) makes the
+        "subscribe" endpoint idempotent — POST /subscribe twice from the
+        same browser silently no-ops on the second call. CASCADE on the
+        tournament FK means deleting a tournament also drops every
+        subscription that pointed at it.
+
+        user_uid is the Firebase UID — same plain-string convention as
+        push_subscriptions, so no FK to anything.
+    -->
+    <changeSet id="2026-06-21-tournament-subscriptions" author="mrodek">
+        <createTable tableName="tournament_subscriptions">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_uid" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint
+                baseTableName="tournament_subscriptions"
+                baseColumnNames="tournament_id"
+                constraintName="fk_tournament_subscriptions_tournament"
+                referencedTableName="tournaments"
+                referencedColumnNames="id"
+                onDelete="CASCADE"/>
+
+        <!-- Idempotent (re)subscribe — one row per (user, tournament). -->
+        <addUniqueConstraint
+                tableName="tournament_subscriptions"
+                columnNames="user_uid, tournament_id"
+                constraintName="uq_tournament_subscriptions_user_tournament"/>
+
+        <!-- Fan-out lookup is always "every subscriber of tournament X". -->
+        <createIndex
+                tableName="tournament_subscriptions"
+                indexName="idx_tournament_subscriptions_tournament_id">
+            <column name="tournament_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>
