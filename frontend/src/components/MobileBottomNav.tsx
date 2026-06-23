@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Box, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath } from "react-router-dom"
 import { FiBarChart2, FiList, FiMap, FiPlus, FiRadio } from "react-icons/fi"
 import { fetchLiveMatches } from "../api/live"
+import { usePolling } from "../hooks/usePolling"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MobileBottomNav — v3 5-tab bottom navigation with a centred FAB.
@@ -172,25 +173,15 @@ function CreateFab() {
 export default function MobileBottomNav() {
     const [liveCount, setLiveCount] = useState(0)
 
-    // 30s polling — same cadence as LiveNavItem so the live dot stays in sync.
-    useEffect(() => {
-        let cancelled = false
-        const load = () => {
-            fetchLiveMatches()
-                .then((l) => {
-                    if (!cancelled) setLiveCount(l.length)
-                })
-                .catch(() => {
-                    /* offline — treat as nothing live */
-                })
-        }
-        load()
-        const id = setInterval(load, 30000)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [])
+    // 30s polling — same cadence as LiveNavItem so the live dot stays in
+    // sync. usePolling pauses while the tab is hidden.
+    usePolling(() => {
+        fetchLiveMatches()
+            .then((l) => setLiveCount(l.length))
+            .catch(() => {
+                /* offline — treat as nothing live */
+            })
+    }, 30000)
 
     // Split flanking items around the centre FAB: 2 on each side.
     const left = SIDE_ITEMS.slice(0, 2)

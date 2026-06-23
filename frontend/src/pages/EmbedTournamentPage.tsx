@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom"
 import { fetchTournamentDetails } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches } from "../api/live"
+import { usePolling } from "../hooks/usePolling"
 import type { TournamentDetails } from "../types/tournaments"
 import type { ScheduledMatch } from "../types/schedule"
 import type { LiveMatch } from "../api/live"
@@ -48,38 +49,30 @@ export default function EmbedTournamentPage() {
         }
     }, [])
 
+    // Tournament details only need fetching once.
     useEffect(() => {
         if (!uuid) return
         let cancelled = false
-        const loadOnce = async () => {
-            try {
-                const t = await fetchTournamentDetails(uuid)
-                if (!cancelled) setTournament(t)
-            } catch {
-                /* ignore */
-            }
-        }
-        const loadStream = async () => {
-            try {
-                const [sched, live] = await Promise.all([
-                    fetchSchedule(uuid).catch(() => null),
-                    fetchLiveMatches().catch(() => []),
-                ])
-                if (cancelled) return
+        fetchTournamentDetails(uuid)
+            .then((t) => { if (!cancelled) setTournament(t) })
+            .catch(() => { /* ignore */ })
+        return () => { cancelled = true }
+    }, [uuid])
+
+    // Live state (schedule + live matches) polled every POLL_MS, paused
+    // while the tab/iframe is hidden.
+    usePolling(() => {
+        if (!uuid) return
+        Promise.all([
+            fetchSchedule(uuid).catch(() => null),
+            fetchLiveMatches().catch(() => []),
+        ])
+            .then(([sched, live]) => {
                 if (sched) setMatches(sched.matches ?? [])
                 setLiveMatches(live.filter((m) => m.tournamentUuid === uuid))
-            } finally {
-                if (!cancelled) setLoading(false)
-            }
-        }
-        loadOnce()
-        loadStream()
-        const id = setInterval(loadStream, POLL_MS)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [uuid])
+            })
+            .finally(() => setLoading(false))
+    }, POLL_MS)
 
     const live = liveMatches[0] ?? null
 

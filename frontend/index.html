@@ -18,6 +18,22 @@
          stack while it loads (and permanently, offline). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Warm up the connections the app reaches for early: CARTO map tiles
+         (/karta), Firebase Auth + Google Identity (login). Saves the DNS +
+         TLS handshake when the user first hits those features. -->
+    <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
+    <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
+
+    <!-- Kick off the upcoming-tournaments request during HTML parse, before
+         the JS bundle has even downloaded. Combined with the short
+         Cache-Control the API sends, axios's later XHR for the same URL is
+         served straight from the browser cache → the list paints instantly.
+         Fire-and-forget; errors are irrelevant here (the app retries). -->
+    <script>
+      try { fetch("/api/tournaments?status=upcoming").catch(function(){}); } catch (e) {}
+    </script>
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"

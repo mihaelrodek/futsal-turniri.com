@@ -20,6 +20,7 @@ import {
     TournamentPoster,
 } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { usePolling } from "../hooks/usePolling"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
 import { FiChevronDown, FiChevronUp } from "react-icons/fi"
 
@@ -482,52 +483,25 @@ export default function LivePage() {
         canonical: "https://futsal-turniri.com/uzivo",
     })
 
-    useEffect(() => {
-        let cancelled = false
-        const load = () => {
-            fetchLiveMatches()
-                .then((l) => {
-                    if (!cancelled) {
-                        setMatches(l)
-                        setMatchesLoading(false)
-                    }
-                })
-                .catch(() => {
-                    if (!cancelled) setMatchesLoading(false)
-                })
-        }
-        load()
-        const id = setInterval(load, 30000)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [])
+    // Live + upcoming matches polled every 30s; usePolling pauses both while
+    // the tab is hidden and refreshes the moment the user returns.
+    usePolling(() => {
+        fetchLiveMatches()
+            .then((l) => {
+                setMatches(l)
+                setMatchesLoading(false)
+            })
+            .catch(() => setMatchesLoading(false))
+    }, 30000)
 
-    // Upcoming matches across all tournaments — polled on the same cadence
-    // as live matches so a match flips from "soon" to the live grid without
-    // a manual refresh.
-    useEffect(() => {
-        let cancelled = false
-        const load = () => {
-            fetchUpcomingMatches()
-                .then((u) => {
-                    if (!cancelled) setUpcomingMatches(u)
-                })
-                .catch(() => {
-                    /* network error — section just shows empty state */
-                })
-                .finally(() => {
-                    if (!cancelled) setUpcomingLoading(false)
-                })
-        }
-        load()
-        const id = setInterval(load, 30000)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [])
+    usePolling(() => {
+        fetchUpcomingMatches()
+            .then((u) => setUpcomingMatches(u))
+            .catch(() => {
+                /* network error — section just shows empty state */
+            })
+            .finally(() => setUpcomingLoading(false))
+    }, 30000)
 
     // Admin-curated daily highlight. Silent endpoint (204 when unset) —
     // failure / empty just leaves `featured` null and the hero block is

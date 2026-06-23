@@ -5,6 +5,7 @@ import { FiClock, FiX } from "react-icons/fi"
 import { fetchTournamentDetails } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches } from "../api/live"
+import { usePolling } from "../hooks/usePolling"
 import type { TournamentDetails } from "../types/tournaments"
 import type { ScheduledMatch } from "../types/schedule"
 import type { LiveMatch } from "../api/live"
@@ -65,42 +66,31 @@ export default function FullscreenTournamentPage() {
         return () => window.removeEventListener("keydown", onKey)
     }, [uuid, navigate])
 
-    // Initial fetch + 15s poll for live matches and schedule. Tournament
-    // details rarely change so we re-fetch them once at start.
+    // Tournament details rarely change — fetch once at start.
     useEffect(() => {
         if (!uuid) return
         let cancelled = false
-        const loadOnce = async () => {
-            try {
-                const t = await fetchTournamentDetails(uuid)
-                if (!cancelled) setTournament(t)
-            } catch {
-                /* surfaced via toast already */
-            }
-        }
-        const loadStream = async () => {
-            try {
-                const [sched, live] = await Promise.all([
-                    fetchSchedule(uuid).catch(() => null),
-                    fetchLiveMatches().catch(() => []),
-                ])
-                if (cancelled) return
+        fetchTournamentDetails(uuid)
+            .then((t) => { if (!cancelled) setTournament(t) })
+            .catch(() => { /* surfaced via toast already */ })
+        return () => { cancelled = true }
+    }, [uuid])
+
+    // Live matches + schedule polled every POLL_MS (15s), paused while the
+    // tab is hidden — a TV/projector tab that gets backgrounded stops
+    // hammering the API until it's foregrounded again.
+    usePolling(() => {
+        if (!uuid) return
+        Promise.all([
+            fetchSchedule(uuid).catch(() => null),
+            fetchLiveMatches().catch(() => []),
+        ])
+            .then(([sched, live]) => {
                 if (sched) setMatches(sched.matches ?? [])
                 setLiveMatches(live.filter((m) => m.tournamentUuid === uuid))
-            } catch {
-                /* network blip — keep what we had */
-            } finally {
-                if (!cancelled) setLoading(false)
-            }
-        }
-        loadOnce()
-        loadStream()
-        const id = setInterval(loadStream, POLL_MS)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [uuid])
+            })
+            .finally(() => setLoading(false))
+    }, POLL_MS)
 
     const live = liveMatches[0] ?? null
 

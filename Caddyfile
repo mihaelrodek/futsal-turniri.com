@@ -21,195 +21,208 @@
 # rewrite is internal (not a redirect), so the crawler indexes the
 # content under its original URL (e.g. /turniri/abc), not under
 # the preview URL.
-
 {
-    # Email Let's Encrypt uses for expiry warnings. Update if you switch.
-    email mihael.rodek1@gmail.com
+	# Email Let's Encrypt uses for expiry warnings. Update if you switch.
+	email mihael.rodek1@gmail.com
 }
 
 futsal-turniri.com, www.futsal-turniri.com {
-    encode zstd gzip
+	encode zstd gzip
 
-    # ─── 1. API — pass through to backend ─────────────────────────────
-    handle /api/* {
-        reverse_proxy backend:8085
-    }
+	# ─── 1. API — pass through to backend ─────────────────────────────
+	handle /api/* {
+		reverse_proxy backend:8085
+	}
 
-    # ─── 2. English → Croatian 301 redirects ──────────────────────────
-    # The site moved off English URL slugs in favour of Croatian ones,
-    # for two reasons:
-    #   - SEO: a HR-language site should match the keyword strings HR
-    #     users actually search for (a slug like /turniri/{event} is a
-    #     better hit for "futsal turniri zagreb" than /tournaments/{event}).
-    #   - UX: the rest of the UI is in HR, mixing English path segments
-    #     into the address bar was a small but visible inconsistency.
-    #
-    # 301 (permanent) so Google consolidates ranking signal under the
-    # Croatian URL. Anything that was already shared on WhatsApp/Slack
-    # using the English URL keeps working — one redirect hop, then the
-    # bot or browser lands on the canonical path.
-    #
-    # Specific paths come before regex catch-alls, because Caddy uses
-    # most-specific-match-wins ordering and putting them in this order
-    # also makes the intent obvious at a glance.
+	# ─── 2. English → Croatian 301 redirects ──────────────────────────
+	# The site moved off English URL slugs in favour of Croatian ones,
+	# for two reasons:
+	#   - SEO: a HR-language site should match the keyword strings HR
+	#     users actually search for (a slug like /turniri/{event} is a
+	#     better hit for "futsal turniri zagreb" than /tournaments/{event}).
+	#   - UX: the rest of the UI is in HR, mixing English path segments
+	#     into the address bar was a small but visible inconsistency.
+	#
+	# 301 (permanent) so Google consolidates ranking signal under the
+	# Croatian URL. Anything that was already shared on WhatsApp/Slack
+	# using the English URL keeps working — one redirect hop, then the
+	# bot or browser lands on the canonical path.
+	#
+	# Specific paths come before regex catch-alls, because Caddy uses
+	# most-specific-match-wins ordering and putting them in this order
+	# also makes the intent obvious at a glance.
 
-    # Specific paths first (so /tournaments/new isn't caught by the
-    # regex below, and so the exact /tournaments redirect wins over the
-    # /tournaments/{anything} pattern).
-    redir /tournaments /turniri permanent
-    redir /tournaments/new /turniri/novi permanent
-    redir /profile /profil permanent
-    redir /calendar /kalendar permanent
-    redir /map /karta permanent
-    redir /find-team /pronadi-ekipu permanent
-    redir /login /prijava permanent
-    redir /register /registracija permanent
+	# Specific paths first (so /tournaments/new isn't caught by the
+	# regex below, and so the exact /tournaments redirect wins over the
+	# /tournaments/{anything} pattern).
+	redir /tournaments /turniri permanent
+	redir /tournaments/new /turniri/novi permanent
+	redir /profile /profil permanent
+	redir /calendar /kalendar permanent
+	redir /map /karta permanent
+	redir /find-team /pronadi-ekipu permanent
+	redir /login /prijava permanent
+	redir /register /registracija permanent
 
-    # Slug-bearing redirects use captured path groups so the segment
-    # after the route name is preserved. {re.<name>.1} is Caddy's
-    # placeholder for the first regex capture.
-    @old_tournament_slug {
-        path_regexp old_t ^/tournaments/(.+)$
-        # Guard against the more-specific /tournaments/new which is
-        # already handled by an exact redir above.
-        not path /tournaments/new
-    }
-    redir @old_tournament_slug /turniri/{re.old_t.1} permanent
+	# Slug-bearing redirects use captured path groups so the segment
+	# after the route name is preserved. {re.<name>.1} is Caddy's
+	# placeholder for the first regex capture.
+	@old_tournament_slug {
+		path_regexp old_t ^/tournaments/(.+)$
+		# Guard against the more-specific /tournaments/new which is
+		# already handled by an exact redir above.
+		not path /tournaments/new
+	}
+	redir @old_tournament_slug /turniri/{re.old_t.1} permanent
 
-    @old_profile_slug path_regexp old_p ^/profile/(.+)$
-    redir @old_profile_slug /profil/{re.old_p.1} permanent
+	@old_profile_slug path_regexp old_p ^/profile/(.+)$
+	redir @old_profile_slug /profil/{re.old_p.1} permanent
 
-    @old_claim_team path_regexp old_cp ^/claim-team/(.+)$
-    redir @old_claim_team /preuzmi-ekipu/{re.old_cp.1} permanent
+	@old_claim_team path_regexp old_cp ^/claim-team/(.+)$
+	redir @old_claim_team /preuzmi-ekipu/{re.old_cp.1} permanent
 
-    @old_claim_name path_regexp old_cn ^/claim-name/(.+)$
-    redir @old_claim_name /preuzmi-ime/{re.old_cn.1} permanent
+	@old_claim_name path_regexp old_cn ^/claim-name/(.+)$
+	redir @old_claim_name /preuzmi-ime/{re.old_cn.1} permanent
 
-    # Crawler UA matchers — shared regex for the bots we want to serve
-    # pre-rendered HTML to. Two buckets:
-    #   - INDEXING bots (googlebot, bingbot, duckduckbot, applebot,
-    #     yandexbot) — we want these to read our preview HTML so the
-    #     SPA's empty index.html doesn't get indexed instead. These
-    #     are case-insensitive and matched against User-Agent.
-    #   - LINK-PREVIEW bots (facebookexternalhit, whatsapp, telegrambot,
-    #     slackbot, twitterbot, linkedinbot, discordbot, pinterest,
-    #     skypeuripreview) — these read <head> only for OG previews.
-    # We hit both with the same rewrite because the preview controllers
-    # serve content that's correct for either purpose: rich <head> for
-    # link-preview, full <body> for indexing.
-    #
-    # All matchers below target the Croatian canonical paths. English
-    # aliases have already been redirected upstream, so by the time a
-    # crawler reaches these matchers it's always on a /turniri/...
-    # or /profil/... URL.
+	# Crawler UA matchers — shared regex for the bots we want to serve
+	# pre-rendered HTML to. Two buckets:
+	#   - INDEXING bots (googlebot, bingbot, duckduckbot, applebot,
+	#     yandexbot) — we want these to read our preview HTML so the
+	#     SPA's empty index.html doesn't get indexed instead. These
+	#     are case-insensitive and matched against User-Agent.
+	#   - LINK-PREVIEW bots (facebookexternalhit, whatsapp, telegrambot,
+	#     slackbot, twitterbot, linkedinbot, discordbot, pinterest,
+	#     skypeuripreview) — these read <head> only for OG previews.
+	# We hit both with the same rewrite because the preview controllers
+	# serve content that's correct for either purpose: rich <head> for
+	# link-preview, full <body> for indexing.
+	#
+	# All matchers below target the Croatian canonical paths. English
+	# aliases have already been redirected upstream, so by the time a
+	# crawler reaches these matchers it's always on a /turniri/...
+	# or /profil/... URL.
 
-    # ─── 3. Homepage SSR preview for crawlers ─────────────────────────
-    # `/` is where most ranking searches like "futsal turniri" land. The
-    # SPA's index.html has no content for Googlebot to index until JS
-    # finishes rendering, which on a small/new domain can take days. This
-    # rewrite serves the homepage with real Croatian text and a list of
-    # upcoming tournaments to bots immediately.
-    @home_for_bot {
-        path /
-        header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
-    }
-    handle @home_for_bot {
-        rewrite * /api/preview/home
-        reverse_proxy backend:8085
-    }
+	# ─── 3. Homepage SSR preview for crawlers ─────────────────────────
+	# `/` is where most ranking searches like "futsal turniri" land. The
+	# SPA's index.html has no content for Googlebot to index until JS
+	# finishes rendering, which on a small/new domain can take days. This
+	# rewrite serves the homepage with real Croatian text and a list of
+	# upcoming tournaments to bots immediately.
+	@home_for_bot {
+		path /
+		header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
+	}
+	handle @home_for_bot {
+		rewrite * /api/preview/home
+		reverse_proxy backend:8085
+	}
 
-    # ─── 4. Tournament list SSR preview for crawlers ──────────────────
-    # `/turniri` is the second-highest-traffic SEO page. Same
-    # pre-rendering rationale as the homepage.
-    @tournaments_list_for_bot {
-        path /turniri
-        header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
-    }
-    handle @tournaments_list_for_bot {
-        rewrite * /api/preview/tournaments-list
-        reverse_proxy backend:8085
-    }
+	# ─── 4. Tournament list SSR preview for crawlers ──────────────────
+	# `/turniri` is the second-highest-traffic SEO page. Same
+	# pre-rendering rationale as the homepage.
+	@tournaments_list_for_bot {
+		path /turniri
+		header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
+	}
+	handle @tournaments_list_for_bot {
+		rewrite * /api/preview/tournaments-list
+		reverse_proxy backend:8085
+	}
 
-    # ─── 5. Tournament SSR preview for crawlers ────────────────────────
-    # Match must include BOTH a tournament-detail path AND a known
-    # crawler User-Agent. Real users fall through to the SPA below.
-    # The path segment can be either a UUID (legacy URLs) or the new
-    # human-readable slug (e.g. "1-futsal-open-22-04-2026"). The backend
-    # /api/preview/tournaments/{idOrSlug} endpoint accepts both.
-    #
-    # Caddy uses Go's RE2 regex engine, which does NOT support negative
-    # lookaheads — that's why `/turniri/novi` is excluded with a
-    # separate `not path` matcher rather than `(?!novi$)` inline.
-    @tournament_for_bot {
-        path_regexp tournament_slug ^/turniri/([a-z0-9][a-z0-9-]*)$
-        not path /turniri/novi
-        header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
-    }
-    handle @tournament_for_bot {
-        # Backend preview API still lives under /api/preview/tournaments/
-        # (English) — that's an internal contract URL, not user-facing,
-        # so we don't translate it. Just remap path here.
-        rewrite * /api/preview/tournaments/{re.tournament_slug.1}
-        reverse_proxy backend:8085
-    }
+	# ─── 5. Tournament SSR preview for crawlers ────────────────────────
+	# Match must include BOTH a tournament-detail path AND a known
+	# crawler User-Agent. Real users fall through to the SPA below.
+	# The path segment can be either a UUID (legacy URLs) or the new
+	# human-readable slug (e.g. "1-futsal-open-22-04-2026"). The backend
+	# /api/preview/tournaments/{idOrSlug} endpoint accepts both.
+	#
+	# Caddy uses Go's RE2 regex engine, which does NOT support negative
+	# lookaheads — that's why `/turniri/novi` is excluded with a
+	# separate `not path` matcher rather than `(?!novi$)` inline.
+	@tournament_for_bot {
+		path_regexp tournament_slug ^/turniri/([a-z0-9][a-z0-9-]*)$
+		not path /turniri/novi
+		header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
+	}
+	handle @tournament_for_bot {
+		# Backend preview API still lives under /api/preview/tournaments/
+		# (English) — that's an internal contract URL, not user-facing,
+		# so we don't translate it. Just remap path here.
+		rewrite * /api/preview/tournaments/{re.tournament_slug.1}
+		reverse_proxy backend:8085
+	}
 
-    # ─── 6. Profile SSR preview for crawlers ──────────────────────────
-    # SPA route is /profil/<slug> (singular); backend endpoint is
-    # /api/preview/profiles/<slug> (plural English) — see comment above
-    # about backend API paths staying English.
-    @profile_for_bot {
-        path_regexp profile ^/profil/([a-z0-9][a-z0-9-]*)$
-        header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
-    }
-    handle @profile_for_bot {
-        rewrite * /api/preview/profiles/{re.profile.1}
-        reverse_proxy backend:8085
-    }
+	# ─── 6. Profile SSR preview for crawlers ──────────────────────────
+	# SPA route is /profil/<slug> (singular); backend endpoint is
+	# /api/preview/profiles/<slug> (plural English) — see comment above
+	# about backend API paths staying English.
+	@profile_for_bot {
+		path_regexp profile ^/profil/([a-z0-9][a-z0-9-]*)$
+		header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
+	}
+	handle @profile_for_bot {
+		rewrite * /api/preview/profiles/{re.profile.1}
+		reverse_proxy backend:8085
+	}
 
-    # ─── 7. Embed widgets (iframe-able) ────────────────────────────────
-    # Public scoreboard widgets meant to be iframed into 3rd-party sites
-    # (club pages, sponsor portals). The global X-Frame-Options: DENY
-    # below blocks framing entirely; here we override with a CSP that
-    # allows framing from any origin, and strip the legacy header so it
-    # doesn't fight CSP. Path is matched before SPA fallback so the
-    # header override actually applies.
-    handle /embed/* {
-        header {
-            -X-Frame-Options
-            Content-Security-Policy "frame-ancestors *"
-        }
-        root * /srv
-        file_server
-        try_files {path} /index.html
-    }
+	# ─── 7. Embed widgets (iframe-able) ────────────────────────────────
+	# Public scoreboard widgets meant to be iframed into 3rd-party sites
+	# (club pages, sponsor portals). The global X-Frame-Options: DENY
+	# below blocks framing entirely; here we override with a CSP that
+	# allows framing from any origin, and strip the legacy header so it
+	# doesn't fight CSP. Path is matched before SPA fallback so the
+	# header override actually applies.
+	handle /embed/* {
+		header {
+			-X-Frame-Options
+			Content-Security-Policy "frame-ancestors *"
+		}
+		root * /srv
+		file_server
+		try_files {path} /index.html
+	}
 
-    # ─── 8. SPA fallback ───────────────────────────────────────────────
-    # Static files from /srv (baked in by frontend/Dockerfile). Any
-    # unknown path falls back to /index.html so React Router can take over.
-    handle {
-        root * /srv
-        file_server
-        try_files {path} /index.html
-    }
+	# ─── 8. SPA fallback ───────────────────────────────────────────────
+	# Static files from /srv (baked in by frontend/Dockerfile). Any
+	# unknown path falls back to /index.html so React Router can take over.
+	handle {
+		root * /srv
+		file_server
+		try_files {path} /index.html
+	}
 
-    # ─── Security headers (defense-in-depth) ───────────────────────────
-    # The backend has its own SecurityHeadersFilter; setting them here too
-    # covers static-asset responses where the backend filter never runs.
-    header {
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), interest-cohort=()"
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        # Don't advertise the server name.
-        -Server
-    }
+	# ─── Cache policy for static assets ────────────────────────────────
+	# Vite emits content-hashed files under /assets/ (e.g. index-AbC123.js).
+	# The hash changes whenever the content does, so these are safe to cache
+	# forever — the browser never has to re-validate them.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-    # Smaller-than-default access log to stderr; tweak when you wire up
-    # log aggregation.
-    log {
-        output stderr
-        format console
-        level INFO
-    }
+	# The HTML shell, service worker and manifest must NOT be cached, or a
+	# deploy wouldn't take effect until the old copies expire. `no-cache`
+	# means "revalidate every time" (cheap 304 when unchanged), so a fresh
+	# index.html always points at the latest hashed asset bundle.
+	@nostore path / /index.html /sw.js /manifest.webmanifest
+	header @nostore Cache-Control "no-cache"
+
+	# ─── Security headers (defense-in-depth) ───────────────────────────
+	# The backend has its own SecurityHeadersFilter; setting them here too
+	# covers static-asset responses where the backend filter never runs.
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), interest-cohort=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		# Don't advertise the server name.
+		-Server
+	}
+
+	# Smaller-than-default access log to stderr; tweak when you wire up
+	# log aggregation.
+	log {
+		output stderr
+		format console
+		level INFO
+	}
 }

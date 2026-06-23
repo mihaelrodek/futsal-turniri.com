@@ -1,4 +1,5 @@
-import { Box, Container, Flex, Text } from "@chakra-ui/react"
+import { Box, Container, Flex, HStack, Text } from "@chakra-ui/react"
+import { Link as RouterLink } from "react-router-dom"
 import { Logo } from "./Logo"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -40,16 +41,29 @@ export default function Footer() {
                     wrap="wrap"
                 >
                     <Logo size={26} variant="dark" showDomain={false} to="/turniri" />
-                    <Text
-                        fontFamily="mono"
-                        fontSize="11px"
-                        fontWeight={600}
-                        letterSpacing="0.04em"
-                        color="rgba(255,255,255,0.6)"
-                        whiteSpace="nowrap"
-                    >
-                        © 2026 Mihael Rodek · futsal-turniri.com
-                    </Text>
+                    <HStack gap="4" wrap="wrap" justify="flex-end">
+                        <Box
+                            asChild
+                            fontFamily="mono"
+                            fontSize="11px"
+                            fontWeight={600}
+                            letterSpacing="0.04em"
+                            color="rgba(255,255,255,0.7)"
+                            css={{ "&:hover": { color: "#fff" } }}
+                        >
+                            <RouterLink to="/privatnost">Privatnost</RouterLink>
+                        </Box>
+                        <Text
+                            fontFamily="mono"
+                            fontSize="11px"
+                            fontWeight={600}
+                            letterSpacing="0.04em"
+                            color="rgba(255,255,255,0.6)"
+                            whiteSpace="nowrap"
+                        >
+                            © 2026 Mihael Rodek · futsal-turniri.com
+                        </Text>
+                    </HStack>
                 </Flex>
             </Container>
         </Box>

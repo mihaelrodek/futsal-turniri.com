@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { Box, Container, Flex, Spinner, Text } from '@chakra-ui/react'
 import NavBar from './components/NavBar'
@@ -31,6 +31,7 @@ const FindTeamPage = lazy(() => import('./pages/FindTeamPage'))
 const LivePage = lazy(() => import('./pages/LivePage'))
 const MapPage = lazy(() => import('./pages/MapPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
 const ProfileRedirect = lazy(() => import('./pages/ProfileRedirect'))
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'))
 const ClaimTeamPage = lazy(() => import('./pages/ClaimTeamPage'))
@@ -88,6 +89,25 @@ export default function App() {
     // They're meant to be iframed into 3rd-party websites and inherit
     // the host page's background.
     const { pathname } = useLocation()
+
+    // Warm the heaviest "next click" chunk while the browser is idle. From
+    // the tournaments list the overwhelmingly common navigation is into a
+    // tournament's detail page, so we prefetch that lazy chunk after first
+    // paint — opening a tournament then feels instant. Skipped for embeds.
+    useEffect(() => {
+        if (pathname.startsWith("/embed/")) return
+        const prefetch = () => {
+            import("./pages/TournamentDetailsPage").catch(() => {})
+        }
+        const ric = (window as any).requestIdleCallback
+        const id = ric ? ric(prefetch, { timeout: 3000 }) : window.setTimeout(prefetch, 1500)
+        return () => {
+            const cic = (window as any).cancelIdleCallback
+            if (ric && cic) cic(id)
+            else clearTimeout(id)
+        }
+    }, [pathname])
+
     if (pathname.startsWith("/embed/")) {
         return (
             <Suspense fallback={<RouteLoading />}>
@@ -162,6 +182,7 @@ export default function App() {
                     <Route path="/statistika" element={<StatsPage />} />
                     {/* English alias for the stats page. */}
                     <Route path="/stats" element={<Navigate to="/statistika" replace />} />
+                    <Route path="/privatnost" element={<PrivacyPage />} />
                     <Route path="/pronadi-ekipu" element={<FindTeamPage />} />
                     {/* /profil bounces to /profil/{my-slug} once the backend
                         has synced. /profil/:slug is publicly visible per

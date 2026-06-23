@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Box, HStack } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath } from "react-router-dom"
 import { fetchLiveMatches } from "../api/live"
+import { usePolling } from "../hooks/usePolling"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Pitch-styled nav pill that flips identity based on live state.
@@ -23,24 +24,14 @@ export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
     const isActive = !!match
 
     // Poll the live-matches endpoint so the label stays in sync with reality.
-    useEffect(() => {
-        let cancelled = false
-        const load = () => {
-            fetchLiveMatches()
-                .then((l) => {
-                    if (!cancelled) setLiveCount(l.length)
-                })
-                .catch(() => {
-                    /* offline / endpoint down — treat as nothing live */
-                })
-        }
-        load()
-        const id = setInterval(load, 30000)
-        return () => {
-            cancelled = true
-            clearInterval(id)
-        }
-    }, [])
+    // usePolling pauses while the tab is hidden (and refreshes on return).
+    usePolling(() => {
+        fetchLiveMatches()
+            .then((l) => setLiveCount(l.length))
+            .catch(() => {
+                /* offline / endpoint down — treat as nothing live */
+            })
+    }, 30000)
 
     const isLive = liveCount > 0
 
