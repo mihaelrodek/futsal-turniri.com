@@ -30,8 +30,15 @@ futsal-turniri.com, www.futsal-turniri.com {
 	encode zstd gzip
 
 	# ─── 1. API — pass through to backend ─────────────────────────────
+	# lb_try_duration makes Caddy keep retrying the backend for a few
+	# seconds when it's briefly unreachable (cold start right after a
+	# deploy, or a container restart) instead of immediately returning 502
+	# to the SPA. Smooths the "first load after deploy fails" window.
 	handle /api/* {
-		reverse_proxy backend:8085
+		reverse_proxy backend:8085 {
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 
 	# ─── 2. English → Croatian 301 redirects ──────────────────────────

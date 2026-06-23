@@ -15,7 +15,7 @@
  * Revisit when there's a concrete offline use case.
  */
 
-const CACHE = "futsal-shell-v1";
+const CACHE = "futsal-shell-v2";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -44,37 +44,42 @@ self.addEventListener("fetch", (event) => {
     // Only intercept GETs — POST/PUT/PATCH/DELETE go straight to the network.
     if (req.method !== "GET") return;
 
-    // Don't touch API or auth traffic — those must always be live, and Cache
-    // Storage on cross-origin (Firebase) URLs would just confuse things.
     const url = new URL(req.url);
+    // Leave cross-origin (Firebase, fonts, map tiles) and ALL /api traffic to
+    // the browser. The SW only owns top-level navigations (so an offline /
+    // mid-deploy launch still boots the SPA shell). Hashed assets under
+    // /assets/* are already cached by the browser's HTTP cache (Caddy serves
+    // them `immutable`), so the SW doesn't need to touch them — and not
+    // touching them avoids the class of bug where a failed fetch + cache miss
+    // resolved to `undefined` and crashed the worker with
+    // "Failed to convert value to 'Response'".
     if (url.origin !== self.location.origin) return;
     if (url.pathname.startsWith("/api/")) return;
+    if (req.mode !== "navigate") return;
 
-    // SPA navigations: try network first, fall back to cached index.html so an
-    // offline app launch still boots the React shell.
-    if (req.mode === "navigate") {
-        event.respondWith(
-            fetch(req).catch(() => caches.match("/index.html"))
-        );
-        return;
-    }
-
-    // Static assets: stale-while-revalidate. Serve from cache if we have it,
-    // refresh in the background. Vite cache-busts every JS/CSS asset with a
-    // hash, so old bundles never overwrite new ones.
+    // SPA navigation: network-first, fall back to the cached shell, and as a
+    // last resort a tiny offline page. respondWith ALWAYS resolves to a real
+    // Response — never undefined — so a 502 / offline never breaks navigation.
     event.respondWith(
-        caches.match(req).then((cached) => {
-            const network = fetch(req)
-                .then((resp) => {
-                    if (resp && resp.status === 200 && resp.type === "basic") {
-                        const clone = resp.clone();
-                        caches.open(CACHE).then((c) => c.put(req, clone)).catch(() => {});
+        (async () => {
+            try {
+                return await fetch(req);
+            } catch (_) {
+                const shell =
+                    (await caches.match("/index.html")) ||
+                    (await caches.match("/"));
+                if (shell) return shell;
+                return new Response(
+                    "<!doctype html><meta charset='utf-8'><title>Offline</title>" +
+                        "<body style='font-family:sans-serif;padding:2rem'>" +
+                        "<p>Trenutno nema veze sa serverom. Pokušaj ponovno za koji trenutak.</p>",
+                    {
+                        status: 503,
+                        headers: { "Content-Type": "text/html; charset=utf-8" },
                     }
-                    return resp;
-                })
-                .catch(() => cached);
-            return cached || network;
-        })
+                );
+            }
+        })()
     );
 });
 
