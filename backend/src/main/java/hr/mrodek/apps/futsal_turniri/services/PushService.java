@@ -57,7 +57,7 @@ public class PushService {
     @ConfigProperty(name = "push.vapid.private-key", defaultValue = "")
     String vapidPrivateKey;
 
-    @ConfigProperty(name = "push.vapid.subject", defaultValue = "mailto:noreply@nogometni-turniri.com")
+    @ConfigProperty(name = "push.vapid.subject", defaultValue = "mailto:noreply@futsal-turniri.com")
     String vapidSubject;
 
     /** Lazily-built singleton — null until VAPID config is present. */

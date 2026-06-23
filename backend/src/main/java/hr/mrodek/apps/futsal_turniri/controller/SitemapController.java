@@ -38,7 +38,7 @@ public class SitemapController {
     @Inject TournamentsRepository tournamentsRepo;
     @Inject UserProfileRepository profileRepo;
 
-    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://nogometni-turniri.com")
+    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
     String publicBaseUrl;
 
     @GET

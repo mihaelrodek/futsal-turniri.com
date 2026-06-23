@@ -164,7 +164,7 @@ export default function EmbedTournamentPage() {
                 )}
 
                 <Link
-                    href={`https://nogometni-turniri.com/turniri/${uuid}`}
+                    href={`https://futsal-turniri.com/turniri/${uuid}`}
                     target="_blank"
                     rel="noopener"
                     textAlign="center"

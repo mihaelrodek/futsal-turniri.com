@@ -476,10 +476,10 @@ export default function LivePage() {
     const today = useMemo(() => new Date(), [])
 
     useDocumentHead({
-        title: "Uživo i raspored — nogometni-turniri.com",
+        title: "Uživo i raspored — futsal-turniri.com",
         description:
             "Prati futsal utakmice koje su trenutno u tijeku i pogledaj nadolazeće utakmice kroz sve turnire na jednom mjestu.",
-        canonical: "https://nogometni-turniri.com/uzivo",
+        canonical: "https://futsal-turniri.com/uzivo",
     })
 
     useEffect(() => {

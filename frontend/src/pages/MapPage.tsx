@@ -348,9 +348,9 @@ function MobileChip({
 
 export default function MapPage() {
     useDocumentHead({
-        title: "Karta turnira — nogometni-turniri.com",
+        title: "Karta turnira — futsal-turniri.com",
         description: "Pregled svih nadolazećih futsal turnira u Hrvatskoj na karti.",
-        canonical: "https://nogometni-turniri.com/karta",
+        canonical: "https://futsal-turniri.com/karta",
     })
 
     const [tournaments, setTournaments] = useState<TournamentCard[]>([])

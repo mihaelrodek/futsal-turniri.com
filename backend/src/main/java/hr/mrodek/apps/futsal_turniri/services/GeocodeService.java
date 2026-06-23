@@ -34,7 +34,7 @@ public class GeocodeService {
 
     private static final Logger LOG = Logger.getLogger(GeocodeService.class);
 
-    @ConfigProperty(name = "geocode.user-agent", defaultValue = "nogometni-turniri.com/1.0 (mihael.rodek1@gmail.com)")
+    @ConfigProperty(name = "geocode.user-agent", defaultValue = "futsal-turniri.com/1.0 (mihael.rodek1@gmail.com)")
     String userAgent;
 
     @ConfigProperty(name = "geocode.endpoint", defaultValue = "https://nominatim.openstreetmap.org/search")

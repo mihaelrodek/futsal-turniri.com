@@ -263,8 +263,8 @@ export default function TournamentDetailsPage() {
        SEO meta + JSON-LD
        ────────────────────────────────────────────────────────────────────── */
     const headTitle = t?.name
-        ? `${t.name}${t.location ? `, ${t.location}` : ""} — nogometni-turniri.com`
-        : "Turnir — nogometni-turniri.com"
+        ? `${t.name}${t.location ? `, ${t.location}` : ""} — futsal-turniri.com`
+        : "Turnir — futsal-turniri.com"
     const headDesc = (() => {
         const raw = t?.details?.trim()
         const start = t?.startAt ? new Date(t.startAt).toLocaleDateString("hr-HR") : null
@@ -278,9 +278,9 @@ export default function TournamentDetailsPage() {
         return undefined
     })()
     const canonicalUrl = t?.slug
-        ? `https://nogometni-turniri.com/turniri/${t.slug}`
+        ? `https://futsal-turniri.com/turniri/${t.slug}`
         : uuid
-            ? `https://nogometni-turniri.com/turniri/${uuid}`
+            ? `https://futsal-turniri.com/turniri/${uuid}`
             : undefined
 
     const jsonLd = useMemo(() => {
@@ -345,7 +345,7 @@ export default function TournamentDetailsPage() {
                     "@type": "ListItem",
                     position: 1,
                     name: "Turniri",
-                    item: "https://nogometni-turniri.com/turniri",
+                    item: "https://futsal-turniri.com/turniri",
                 },
                 {
                     "@type": "ListItem",
@@ -371,7 +371,7 @@ export default function TournamentDetailsPage() {
         // draft tournaments where the podium card would be empty.
         ogImage:
             t?.status === "FINISHED" && t?.winnerName
-                ? `https://nogometni-turniri.com/api/tournaments/${t.slug ?? t.uuid}/share-image.png`
+                ? `https://futsal-turniri.com/api/tournaments/${t.slug ?? t.uuid}/share-image.png`
                 : t?.bannerUrl ?? undefined,
         ogType: "article",
         canonical: canonicalUrl,
@@ -743,7 +743,7 @@ export default function TournamentDetailsPage() {
                 icon={<FiCode size={15} />}
                 label="Ugradi"
                 onClick={() => {
-                    const snippet = `<iframe src="https://nogometni-turniri.com/embed/turnir/${t.uuid}" width="420" height="220" frameborder="0" style="border:0; max-width:100%"></iframe>`
+                    const snippet = `<iframe src="https://futsal-turniri.com/embed/turnir/${t.uuid}" width="420" height="220" frameborder="0" style="border:0; max-width:100%"></iframe>`
                     navigator.clipboard
                         ?.writeText(snippet)
                         .then(() =>

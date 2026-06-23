@@ -989,14 +989,14 @@ function sortTournaments(
 
 export default function TournamentsPage() {
     useDocumentHead({
-        title: "Futsal turniri u Hrvatskoj — nogometni-turniri.com",
+        title: "Futsal turniri u Hrvatskoj — futsal-turniri.com",
         description:
             "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji. Pretraži po lokaciji, datumu i cijeni.",
         ogTitle: "Futsal turniri u Hrvatskoj",
         ogDescription:
             "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji.",
         ogType: "website",
-        canonical: "https://nogometni-turniri.com/turniri",
+        canonical: "https://futsal-turniri.com/turniri",
     })
 
     const [loading, setLoading] = useState(true)

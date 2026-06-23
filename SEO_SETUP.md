@@ -36,24 +36,24 @@ path):
 ```bash
 # Homepage — should return Futsal turniri H1 + list of upcoming tournaments
 curl -A "Googlebot/2.1 (+http://www.google.com/bot.html)" \
-     https://nogometni-turniri.com/ | head -100
+     https://futsal-turniri.com/ | head -100
 
 # Tournament list (Croatian canonical)
-curl -A "Googlebot/2.1" https://nogometni-turniri.com/turniri | head -100
+curl -A "Googlebot/2.1" https://futsal-turniri.com/turniri | head -100
 
 # Tournament detail (replace <slug> with a real one)
 curl -A "Googlebot/2.1" \
-     https://nogometni-turniri.com/turniri/<slug> | head -100
+     https://futsal-turniri.com/turniri/<slug> | head -100
 
 # Profile detail
 curl -A "Googlebot/2.1" \
-     https://nogometni-turniri.com/profil/<slug> | head -100
+     https://futsal-turniri.com/profil/<slug> | head -100
 
 # English aliases — should 301-redirect to Croatian. Add -i to see headers.
-curl -i -A "Googlebot/2.1" https://nogometni-turniri.com/tournaments | head -10
+curl -i -A "Googlebot/2.1" https://futsal-turniri.com/tournaments | head -10
 
 # And compare — a regular browser UA should still get the SPA's index.html
-curl -A "Mozilla/5.0" https://nogometni-turniri.com/ | head -20
+curl -A "Mozilla/5.0" https://futsal-turniri.com/ | head -20
 ```
 
 **What you want to see:**
@@ -77,25 +77,25 @@ request indexing.
    property long-term — adding additional users later is easy, changing
    the owner is annoying).
 3. Click "Add property". Pick **Domain** (not "URL prefix") — that
-   covers `nogometni-turniri.com`, `www.nogometni-turniri.com`, `http://`,
+   covers `futsal-turniri.com`, `www.futsal-turniri.com`, `http://`,
    `https://`, and all subdomains under one property.
-4. Enter `nogometni-turniri.com`.
+4. Enter `futsal-turniri.com`.
 5. Google will show you a TXT record to add to DNS. It looks like:
    ```
    google-site-verification=abc123def456ghi789...
    ```
-6. Add this as a **TXT record** on the **root** (`@`) of `nogometni-turniri.com`
+6. Add this as a **TXT record** on the **root** (`@`) of `futsal-turniri.com`
    in your DNS provider's control panel. Leave existing TXT records
    (SPF, DKIM) alone — TXT records can coexist.
 7. Wait 5–30 minutes for DNS propagation. You can check with:
    ```bash
-   dig TXT nogometni-turniri.com +short
+   dig TXT futsal-turniri.com +short
    ```
    The verification string should appear in the output.
 8. Click "Verify" in Search Console.
 
 If verification fails, the most common cause is the TXT record was
-added on the wrong host (e.g., `www.nogometni-turniri.com` instead of the
+added on the wrong host (e.g., `www.futsal-turniri.com` instead of the
 root). Double-check the host is `@` or blank.
 
 ---
@@ -109,7 +109,7 @@ Once the property is verified:
    ```
    api/sitemap.xml
    ```
-   (just the path — Search Console prepends `https://nogometni-turniri.com/`).
+   (just the path — Search Console prepends `https://futsal-turniri.com/`).
 3. Click "Submit".
 4. Status should turn to "Success" within a minute (Search Console
    fetches the sitemap to validate it).
@@ -125,17 +125,17 @@ For your 5-10 most important URLs, force-trigger an indexing request
 instead of waiting for the natural crawl:
 
 1. In Search Console, top search bar — paste a URL like
-   `https://nogometni-turniri.com/`.
+   `https://futsal-turniri.com/`.
 2. The "URL Inspection" report opens.
 3. Click "Request indexing".
 4. Google runs a live test, then queues the URL for indexing
    (usually 1-7 days).
 
 Do this for:
-- `https://nogometni-turniri.com/`
-- `https://nogometni-turniri.com/turniri`
-- `https://nogometni-turniri.com/kalendar`
-- `https://nogometni-turniri.com/karta`
+- `https://futsal-turniri.com/`
+- `https://futsal-turniri.com/turniri`
+- `https://futsal-turniri.com/kalendar`
+- `https://futsal-turniri.com/karta`
 - Each upcoming tournament page (high-traffic ones)
 - A few of your own profile + popular profiles
 
@@ -196,7 +196,7 @@ weekly:
   something's wrong (most often: thin content, or robots.txt blocking).
 - **Core Web Vitals**: LCP, INP, CLS scores. Anything red here is
   costing you ranking. Optimise with PageSpeed Insights:
-  <https://pagespeed.web.dev/analysis?url=https://nogometni-turniri.com/>.
+  <https://pagespeed.web.dev/analysis?url=https://futsal-turniri.com/>.
 
 ---
 

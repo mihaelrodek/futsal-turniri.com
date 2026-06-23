@@ -12,7 +12,7 @@
    ────────────────────────────────────────────────────────────────────── */
 
 export type IcsEvent = {
-    /** Stable UID for the event — typically `match-{id}@nogometni-turniri.com`.
+    /** Stable UID for the event — typically `match-{id}@futsal-turniri.com`.
      *  Calendar clients use this to dedupe re-imports of the same match. */
     uid: string
     /** Required. Localised free-text title — "Team A vs Team B". */
@@ -77,7 +77,7 @@ export function buildMatchIcs(evt: IcsEvent): string {
     const lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//nogometni-turniri.com//Match//EN",
+        "PRODID:-//futsal-turniri.com//Match//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",

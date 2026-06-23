@@ -1,4 +1,4 @@
-# Caddy reverse proxy + SPA host for nogometni-turniri.com.
+# Caddy reverse proxy + SPA host for futsal-turniri.com.
 #
 # Runs inside the `edge` container (see frontend/Dockerfile). Talks to the
 # `backend` service over the internal Docker network. Auto-fetches and
@@ -27,7 +27,7 @@
     email mihael.rodek1@gmail.com
 }
 
-nogometni-turniri.com, www.nogometni-turniri.com {
+futsal-turniri.com, www.futsal-turniri.com {
     encode zstd gzip
 
     # ─── 1. API — pass through to backend ─────────────────────────────

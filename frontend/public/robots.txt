@@ -1,4 +1,4 @@
-# nogometni-turniri.com — crawler instructions.
+# futsal-turniri.com — crawler instructions.
 # The sitemap is generated dynamically by the backend so it always reflects
 # the current set of tournaments and player profiles.
 
@@ -65,4 +65,4 @@ Disallow:
 User-agent: SkypeUriPreview
 Disallow:
 
-Sitemap: https://nogometni-turniri.com/api/sitemap.xml
+Sitemap: https://futsal-turniri.com/api/sitemap.xml

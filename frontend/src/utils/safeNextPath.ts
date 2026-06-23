@@ -4,7 +4,7 @@
    Used by `LoginPage` / `RegisterPage` / `RequireAuth` to decide whether
    the redirect-after-login target is safe to navigate to. An attacker
    who can craft a URL like
-       https://nogometni-turniri.com/prijava?next=//evil.tld/phish
+       https://futsal-turniri.com/prijava?next=//evil.tld/phish
    would, without this guard, get the user dumped onto attacker-controlled
    origin after a real login on our domain. React-router historically
    accepted `//host`, `\\host`, backslash variants, and even `javascript:`

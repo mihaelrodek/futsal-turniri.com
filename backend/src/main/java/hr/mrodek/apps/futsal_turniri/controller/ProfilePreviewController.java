@@ -42,7 +42,7 @@ public class ProfilePreviewController {
     @Inject UserTeamPresetRepository presetRepo;
     @Inject TeamsRepository teamRepo;
 
-    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://nogometni-turniri.com")
+    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
     String publicBaseUrl;
 
     // Optional<> rather than a defaulted String — Quarkus refuses to register
@@ -109,7 +109,7 @@ public class ProfilePreviewController {
     /* ───────────────────── helpers ───────────────────── */
 
     /**
-     * "{name} — {total} turnira, {wins} pobjeda na nogometni-turniri.com".
+     * "{name} — {total} turnira, {wins} pobjeda na futsal-turniri.com".
      * Uses Croatian noun-form rules for "turnir" / "pobjeda" so the
      * preview reads naturally for 1, 2-4, and 5+ counts.
      */
@@ -119,7 +119,7 @@ public class ProfilePreviewController {
                 + totalTournaments + " " + plurariseTurnir(totalTournaments)
                 + ", "
                 + wins + " " + plurarisePobjeda(wins)
-                + " na nogometni-turniri.com";
+                + " na futsal-turniri.com";
     }
 
     /** Croatian plural rule for "turnir": 1=turnir, 2-4=turnira, 5+=turnira (genitive plural). */
@@ -146,13 +146,13 @@ public class ProfilePreviewController {
         sb.append("<html lang=\"hr\">\n<head>\n");
         sb.append("<meta charset=\"UTF-8\">\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-        sb.append("<title>").append(escapeHtml(name)).append(" — nogometni-turniri.com</title>\n");
+        sb.append("<title>").append(escapeHtml(name)).append(" — futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
 
         sb.append("<meta property=\"og:type\" content=\"profile\">\n");
         sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
-        sb.append("<meta property=\"og:site_name\" content=\"nogometni-turniri.com\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");
         sb.append("<meta property=\"og:title\" content=\"").append(escapeAttr(name)).append("\">\n");
         sb.append("<meta property=\"og:description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<meta property=\"og:url\" content=\"").append(escapeAttr(spaUrl)).append("\">\n");
@@ -224,7 +224,7 @@ public class ProfilePreviewController {
         sb.append("</ul>\n</section>\n");
 
         sb.append("<hr>\n<p><a href=\"").append(escapeAttr(spaUrl))
-                .append("\">Otvori profil u aplikaciji nogometni-turniri.com</a></p>\n");
+                .append("\">Otvori profil u aplikaciji futsal-turniri.com</a></p>\n");
         sb.append("</article>\n");
     }
 
@@ -233,7 +233,7 @@ public class ProfilePreviewController {
                 <!doctype html>
                 <html lang="hr"><head>
                 <meta charset="UTF-8">
-                <title>Profil nije pronađen — nogometni-turniri.com</title>
+                <title>Profil nije pronađen — futsal-turniri.com</title>
                 <meta name="description" content="Traženi profil ne postoji.">
                 </head><body><p>Profil nije pronađen.</p></body></html>
                 """;

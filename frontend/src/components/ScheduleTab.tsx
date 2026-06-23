@@ -214,7 +214,7 @@ function MatchRow({
             ? `${window.location.origin}/turniri/${tournamentSlug}`
             : `${window.location.origin}/turniri/${tournamentUuid}`
         const ics = buildMatchIcs({
-            uid: `match-${match.matchId}@nogometni-turniri.com`,
+            uid: `match-${match.matchId}@futsal-turniri.com`,
             summary: `${t1} vs ${t2} — ${tournamentName}`,
             location: tournamentLocation ?? undefined,
             description: `${tournamentName}`,

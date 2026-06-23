@@ -49,7 +49,7 @@ git push origin main
 
 ```bash
 ssh deploy@<your-vps-ip>
-cd nogometni-turniri.com
+cd futsal-turniri.com
 git pull
 ```
 
@@ -89,7 +89,7 @@ docker image prune -f
 ## 4. Smoke tests (from your laptop)
 
 ```bash
-BASE=https://nogometni-turniri.com
+BASE=https://futsal-turniri.com
 
 # A. Featured-tournament endpoint exists
 curl -sI $BASE/api/tournaments/featured | head -1
@@ -135,7 +135,7 @@ If nothing arrives: SSH to VPS, `docker compose logs backend | grep -i "push\|no
 ## 7. Rollback (if something explodes)
 
 ```bash
-cd nogometni-turniri.com
+cd futsal-turniri.com
 git revert HEAD
 docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build backend
 ```

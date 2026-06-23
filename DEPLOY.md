@@ -1,4 +1,4 @@
-# Deploying nogometni-turniri.com
+# Deploying futsal-turniri.com
 
 Single-server prod deploy on a Hetzner Cloud CX22 (or any VPS with Docker).
 Stack: postgres + minio + Quarkus backend + Caddy edge (SPA + reverse proxy + TLS).
@@ -7,8 +7,8 @@ Stack: postgres + minio + Quarkus backend + Caddy edge (SPA + reverse proxy + TL
 
 - A VPS with Docker + Docker Compose v2 installed (see steps 1–6 in the setup
   notes — non-root `deploy` user, UFW open on 22/80/443).
-- A domain whose DNS A records point at the VPS (`nogometni-turniri.com` and
-  `www.nogometni-turniri.com` both pointing at the public IP).
+- A domain whose DNS A records point at the VPS (`futsal-turniri.com` and
+  `www.futsal-turniri.com` both pointing at the public IP).
 - Cloudflare (optional but recommended) set to **DNS-only** (gray cloud) for
   the first deploy so Caddy can complete the Let's Encrypt HTTP-01 challenge
   on its own. Switch the cloud to orange once HTTPS works.
@@ -19,8 +19,8 @@ On the VPS, as the `deploy` user:
 
 ```bash
 # 1. Pull the repo
-git clone https://github.com/<you>/nogometni-turniri.com.git
-cd nogometni-turniri.com
+git clone https://github.com/<you>/futsal-turniri.com.git
+cd futsal-turniri.com
 
 # 2. Create the prod env file
 cp .env.prod.example .env.prod
@@ -43,12 +43,12 @@ docker compose -f docker-compose.prod.yaml logs -f edge
 The backend should log a "Startup sanity check passed" line if the env vars
 look right; if anything is wrong, you'll see a loud warning block.
 
-Hit `https://nogometni-turniri.com` in a browser to confirm.
+Hit `https://futsal-turniri.com` in a browser to confirm.
 
 ## Updates
 
 ```bash
-cd nogometni-turniri.com
+cd futsal-turniri.com
 git pull
 docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build
 docker image prune -f       # reclaim disk from old images
@@ -69,8 +69,8 @@ cat > ~/pg-dump.sh <<'EOF'
 #!/bin/bash
 set -euo pipefail
 TS=$(date +%Y%m%d-%H%M%S)
-docker compose -f /home/deploy/nogometni-turniri.com/docker-compose.prod.yaml \
-    --env-file /home/deploy/nogometni-turniri.com/.env.prod \
+docker compose -f /home/deploy/futsal-turniri.com/docker-compose.prod.yaml \
+    --env-file /home/deploy/futsal-turniri.com/.env.prod \
     exec -T postgres \
     pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > /home/deploy/backups/pg-$TS.sql.gz
 # Keep last 14 days
@@ -93,7 +93,7 @@ backups don't help (e.g. you `rm -rf` the whole repo).
 ## Troubleshooting
 
 **Caddy can't get TLS certs.** Check that DNS actually resolves to the VPS
-(`dig nogometni-turniri.com +short` should return the public IP) and that ports
+(`dig futsal-turniri.com +short` should return the public IP) and that ports
 80 and 443 are open in UFW. If Cloudflare is in proxy mode (orange cloud),
 turn it off until certs are issued — Cloudflare's proxy intercepts the HTTP-01
 challenge.

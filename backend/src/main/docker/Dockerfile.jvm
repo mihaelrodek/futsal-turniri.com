@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Quarkus JVM-mode image for the nogometni-turniri.com backend.
+# Quarkus JVM-mode image for the futsal-turniri.com backend.
 #
 # Two stages:
 #   1. `build` — Maven on Eclipse Temurin 21, downloads deps then packages

@@ -31,11 +31,11 @@ function isSafeImageUrl(raw: string): boolean {
  *
  * Usage:
  *   useDocumentHead({
- *     title: "Zimska Futsal Liga, Zagreb — nogometni-turniri.com",
+ *     title: "Zimska Futsal Liga, Zagreb — futsal-turniri.com",
  *     description: "...",
  *     ogTitle: "Zimska Futsal Liga, Zagreb",
  *     ogImage: "https://...",
- *     canonical: "https://nogometni-turniri.com/turniri/abc",
+ *     canonical: "https://futsal-turniri.com/turniri/abc",
  *   })
  */
 export type DocumentHead = {

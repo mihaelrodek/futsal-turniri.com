@@ -126,7 +126,7 @@ export default function PublicProfilePage() {
     // there's no need to make it any more discoverable than it already is.
     const totalTournaments = profile?.tournaments?.length ?? 0
     const totalWins = (profile?.teams ?? []).reduce((sum, p) => sum + (p.wins ?? 0), 0)
-    const profileCanonical = slug ? `https://nogometni-turniri.com/profil/${slug}` : undefined
+    const profileCanonical = slug ? `https://futsal-turniri.com/profil/${slug}` : undefined
     const profileDescription = profile?.displayName
         ? `${profile.displayName} — povijest nastupa na Futsal turnirima. ${totalTournaments} turnira, ${totalWins} pobjeda.`
         : undefined
@@ -176,7 +176,7 @@ export default function PublicProfilePage() {
                     "@type": "ListItem",
                     position: 1,
                     name: "Igrači",
-                    item: "https://nogometni-turniri.com/",
+                    item: "https://futsal-turniri.com/",
                 },
                 {
                     "@type": "ListItem",
@@ -191,8 +191,8 @@ export default function PublicProfilePage() {
 
     useDocumentHead({
         title: profile?.displayName
-            ? `${profile.displayName} — Futsal igrač | nogometni-turniri.com`
-            : "Futsal igrač — nogometni-turniri.com",
+            ? `${profile.displayName} — Futsal igrač | futsal-turniri.com`
+            : "Futsal igrač — futsal-turniri.com",
         description: profileDescription,
         ogTitle: profile?.displayName ?? undefined,
         ogDescription: profile?.displayName

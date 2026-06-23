@@ -110,16 +110,16 @@ public class HomePreviewController {
     private String renderHome(List<Tournaments> upcoming) {
         StringBuilder sb = new StringBuilder(4096);
         appendHeadOpen(sb,
-                "Futsal turniri u Hrvatskoj — nogometni-turniri.com",
+                "Futsal turniri u Hrvatskoj — futsal-turniri.com",
                 "Futsal turniri u Hrvatskoj i regiji. Pretraži nadolazeće turnire, "
                         + "pridruži se paru, prati rezultate i statistike.",
-                "https://nogometni-turniri.com/");
+                "https://futsal-turniri.com/");
         // Site-wide WebSite + Organization JSON-LD is already in the static
         // index.html; we don't duplicate it here. The homepage doesn't need
         // a per-page JSON-LD object beyond what the global ones provide.
         sb.append("</head>\n<body>\n<article>\n");
         sb.append("<h1>Futsal turniri u Hrvatskoj</h1>\n");
-        sb.append("<p>nogometni-turniri.com je platforma za organizaciju i praćenje "
+        sb.append("<p>futsal-turniri.com je platforma za organizaciju i praćenje "
                 + "Futsal turnira u Hrvatskoj i regiji. Organizatori mogu kreirati "
                 + "turnire, prikupiti prijave parova i objaviti rezultate, a "
                 + "igrači prate raspored, povijest nastupa i pridružuju se "
@@ -144,13 +144,13 @@ public class HomePreviewController {
         // Site-wide nav so Googlebot can crawl secondary pages from here.
         // All URLs use Croatian slugs — they're the canonical paths now.
         sb.append("<section>\n<h2>Istraži</h2>\n<ul>\n");
-        sb.append("<li><a href=\"https://nogometni-turniri.com/turniri\">Svi turniri</a></li>\n");
-        sb.append("<li><a href=\"https://nogometni-turniri.com/kalendar\">Kalendar turnira</a></li>\n");
-        sb.append("<li><a href=\"https://nogometni-turniri.com/karta\">Karta turnira</a></li>\n");
+        sb.append("<li><a href=\"https://futsal-turniri.com/turniri\">Svi turniri</a></li>\n");
+        sb.append("<li><a href=\"https://futsal-turniri.com/kalendar\">Kalendar turnira</a></li>\n");
+        sb.append("<li><a href=\"https://futsal-turniri.com/karta\">Karta turnira</a></li>\n");
         sb.append("</ul>\n</section>\n");
 
-        sb.append("<hr>\n<p><a href=\"https://nogometni-turniri.com/\">"
-                + "Otvori aplikaciju nogometni-turniri.com</a></p>\n");
+        sb.append("<hr>\n<p><a href=\"https://futsal-turniri.com/\">"
+                + "Otvori aplikaciju futsal-turniri.com</a></p>\n");
         sb.append("</article>\n</body>\n</html>\n");
         return sb.toString();
     }
@@ -164,13 +164,13 @@ public class HomePreviewController {
     private String renderTournamentsList(List<Tournaments> upcoming, List<Tournaments> finished) {
         StringBuilder sb = new StringBuilder(8192);
         appendHeadOpen(sb,
-                "Futsal turniri u Hrvatskoj — popis turnira | nogometni-turniri.com",
+                "Futsal turniri u Hrvatskoj — popis turnira | futsal-turniri.com",
                 "Popis svih nadolazećih i odigranih Futsal turnira u Hrvatskoj. "
                         + "Pretraži po lokaciji, datumu i cijeni.",
-                "https://nogometni-turniri.com/turniri");
+                "https://futsal-turniri.com/turniri");
         sb.append("</head>\n<body>\n<article>\n");
         sb.append("<h1>Futsal turniri</h1>\n");
-        sb.append("<p>Popis svih turnira u bazi nogometni-turniri.com. "
+        sb.append("<p>Popis svih turnira u bazi futsal-turniri.com. "
                 + "Klikom na pojedini turnir otvarate stranicu sa svim detaljima, "
                 + "popisom prijavljenih parova i rasporedom kola.</p>\n");
 
@@ -186,7 +186,7 @@ public class HomePreviewController {
             sb.append("</ul>\n</section>\n");
         }
 
-        sb.append("<hr>\n<p><a href=\"https://nogometni-turniri.com/turniri\">"
+        sb.append("<hr>\n<p><a href=\"https://futsal-turniri.com/turniri\">"
                 + "Otvori popis turnira u aplikaciji</a></p>\n");
         sb.append("</article>\n</body>\n</html>\n");
         return sb.toString();
@@ -198,7 +198,7 @@ public class HomePreviewController {
      * the sitemap.
      */
     private void appendTournamentListItem(StringBuilder sb, Tournaments t) {
-        String href = "https://nogometni-turniri.com/turniri/"
+        String href = "https://futsal-turniri.com/turniri/"
                 + (t.getSlug() != null && !t.getSlug().isBlank()
                         ? t.getSlug() : t.getUuid().toString());
         sb.append("<li><a href=\"").append(escapeAttr(href)).append("\">");
@@ -237,7 +237,7 @@ public class HomePreviewController {
                 .append(escapeAttr(canonical)).append("\">\n");
         sb.append("<meta property=\"og:type\" content=\"website\">\n");
         sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
-        sb.append("<meta property=\"og:site_name\" content=\"nogometni-turniri.com\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");
         sb.append("<meta property=\"og:title\" content=\"")
                 .append(escapeAttr(title)).append("\">\n");
         sb.append("<meta property=\"og:description\" content=\"")

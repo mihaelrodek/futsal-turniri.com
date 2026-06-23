@@ -51,7 +51,7 @@ public class TournamentPreviewController {
     @Inject
     TeamsRepository teamsRepo;
 
-    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://nogometni-turniri.com")
+    @ConfigProperty(name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
     String publicBaseUrl;
 
     // Optional<> rather than a defaulted String — Quarkus refuses to register
@@ -115,7 +115,7 @@ public class TournamentPreviewController {
     /**
      * Compose the og:description as: "{location} • {datetime} • Kotizacija
      * {entry} € • Prijavi se i pogledaj sve detalje turnira na
-     * nogometni-turniri.com". Each segment is added only when its source
+     * futsal-turniri.com". Each segment is added only when its source
      * field is present so we don't ship dangling separators.
      */
     String buildDescription(Tournaments t) {
@@ -133,7 +133,7 @@ public class TournamentPreviewController {
         BigDecimal entry = t.getEntryPrice() != null ? t.getEntryPrice() : BigDecimal.ZERO;
         sb.append("Kotizacija ").append(formatEur(entry)).append(" €");
 
-        sb.append(" • Prijavi se i pogledaj sve detalje turnira na nogometni-turniri.com");
+        sb.append(" • Prijavi se i pogledaj sve detalje turnira na futsal-turniri.com");
         return sb.toString();
     }
 
@@ -159,14 +159,14 @@ public class TournamentPreviewController {
         sb.append("<html lang=\"hr\">\n<head>\n");
         sb.append("<meta charset=\"UTF-8\">\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-        sb.append("<title>").append(escapeHtml(name)).append(" — nogometni-turniri.com</title>\n");
+        sb.append("<title>").append(escapeHtml(name)).append(" — futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
 
         // OpenGraph
         sb.append("<meta property=\"og:type\" content=\"article\">\n");
         sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
-        sb.append("<meta property=\"og:site_name\" content=\"nogometni-turniri.com\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");
         sb.append("<meta property=\"og:title\" content=\"").append(escapeAttr(name)).append("\">\n");
         sb.append("<meta property=\"og:description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<meta property=\"og:url\" content=\"").append(escapeAttr(spaUrl)).append("\">\n");
@@ -345,7 +345,7 @@ public class TournamentPreviewController {
         // canonical destination if it crawls this URL outside the rewrite.
         sb.append("<hr>\n");
         sb.append("<p><a href=\"").append(escapeAttr(spaUrl))
-                .append("\">Otvori turnir u aplikaciji nogometni-turniri.com</a></p>\n");
+                .append("\">Otvori turnir u aplikaciji futsal-turniri.com</a></p>\n");
         sb.append("</article>\n");
     }
 
@@ -354,7 +354,7 @@ public class TournamentPreviewController {
                 <!doctype html>
                 <html lang="hr"><head>
                 <meta charset="UTF-8">
-                <title>Turnir nije pronađen — nogometni-turniri.com</title>
+                <title>Turnir nije pronađen — futsal-turniri.com</title>
                 <meta name="description" content="Traženi turnir ne postoji ili je uklonjen.">
                 </head><body><p>Turnir nije pronađen.</p></body></html>
                 """;

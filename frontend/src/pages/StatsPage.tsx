@@ -33,10 +33,10 @@ export default function StatsPage() {
     const [query, setQuery] = useState("")
 
     useDocumentHead({
-        title: "Vječna lista strijelaca — nogometni-turniri.com",
+        title: "Vječna lista strijelaca — futsal-turniri.com",
         description:
             "Vječna lista strijelaca — golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
-        canonical: "https://nogometni-turniri.com/statistika",
+        canonical: "https://futsal-turniri.com/statistika",
     })
 
     useEffect(() => {
