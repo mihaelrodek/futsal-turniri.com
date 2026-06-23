@@ -24,7 +24,11 @@ WORKDIR /app
 
 # Cache npm install — separate layer, only invalidates when package*.json change.
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# --legacy-peer-deps: @g-loot/react-tournament-brackets declares a React 18
+# peer but runs fine on React 19. The local install + lockfile were built
+# with this flag (see frontend/.npmrc); `npm ci` enforces strict peers by
+# default, so we set it explicitly here too or the image build fails.
+RUN npm ci --legacy-peer-deps
 
 # Copy the rest of the frontend source.
 COPY frontend/ ./
