@@ -26,10 +26,14 @@ import jakarta.ws.rs.NotFoundException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import hr.mrodek.apps.futsal_turniri.dtos.ManualBracketRequest;
 
 /**
  * Knockout-bracket engine (Phase E3).
@@ -66,13 +70,14 @@ public class KnockoutService {
             long groupTotal = matchesRepo.count(
                     "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
             if (groupTotal == 0) {
-                throw new BadRequestException("Draw the group stage first");
+                throw new BadRequestException("Generiraj raspored grupne faze prvo");
             }
             long unfinished = matchesRepo.count(
                     "tournament = ?1 and stage = ?2 and status <> ?3",
                     t, MatchStage.GROUP, MatchStatus.FINISHED);
             if (unfinished > 0) {
-                throw new BadRequestException("All group matches must be finished first");
+                throw new BadRequestException(
+                        "Sve utakmice grupne faze moraju imati upisan rezultat prije eliminacije");
             }
         }
 
@@ -164,6 +169,179 @@ public class KnockoutService {
         }
 
         return bracket(t.getId());
+    }
+
+    /**
+     * Build (or rebuild) the knockout bracket from organizer-supplied
+     * first-round pairings (the manual draw). Same tree construction as
+     * {@link #generateBracket}, but round one is seeded exactly as given
+     * instead of auto cross-seeding — no group/qualifier logic, no same-group
+     * repair (the organizer drew the pairs deliberately).
+     */
+    @Transactional
+    public BracketDto generateBracketManual(Tournaments t, ManualBracketRequest req) {
+        if (req == null || req.pairs() == null || req.pairs().isEmpty()) {
+            throw new BadRequestException("No pairings provided");
+        }
+        // A group-stage tournament can only start the knockout once every
+        // group match has a recorded result.
+        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+            long groupTotal = matchesRepo.count(
+                    "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
+            if (groupTotal == 0) {
+                throw new BadRequestException("Generiraj raspored grupne faze prvo");
+            }
+            long unfinished = matchesRepo.count(
+                    "tournament = ?1 and stage = ?2 and status <> ?3",
+                    t, MatchStage.GROUP, MatchStatus.FINISHED);
+            if (unfinished > 0) {
+                throw new BadRequestException(
+                        "Sve utakmice grupne faze moraju imati upisan rezultat prije eliminacije");
+            }
+        }
+        int p = req.pairs().size();
+        // p = number of first-round matches; must be a power of two for a
+        // balanced single-elimination tree (1, 2, 4, 8, 16).
+        if (Integer.bitCount(p) != 1) {
+            throw new BadRequestException(
+                    "Number of first-round matches must be a power of two (1, 2, 4, 8, …)");
+        }
+        int n = p * 2; // bracket size
+
+        // Resolve every supplied id to a team of THIS tournament; reject
+        // unknown ids and any team that appears in more than one slot.
+        Map<Long, Teams> byId = teamsRepo.list("tournament.id", t.getId())
+                .stream().collect(Collectors.toMap(Teams::getId, x -> x));
+        Set<Long> used = new HashSet<>();
+        List<Teams[]> roundOnePairs = new ArrayList<>();
+        int teamCount = 0;
+        for (ManualBracketRequest.Pairing mp : req.pairs()) {
+            Teams a = resolveManualTeam(mp.team1Id(), byId, used);
+            Teams b = resolveManualTeam(mp.team2Id(), byId, used);
+            if (a == null && b == null) {
+                throw new BadRequestException("Each match must have at least one team");
+            }
+            if (a != null) teamCount++;
+            if (b != null) teamCount++;
+            roundOnePairs.add(new Teams[]{a, b});
+        }
+        if (teamCount < 2) {
+            throw new BadRequestException("Need at least 2 teams for a knockout bracket");
+        }
+
+        // Wipe any prior knockout matches and their now-empty rounds.
+        matchesRepo.delete("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        matchesRepo.flush();
+        for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
+            if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
+        }
+
+        // One Round carries the whole knockout; stage distinguishes the rounds.
+        int baseNum = roundsRepo.findTopByTournamentOrderByNumberDesc(t)
+                .map(Rounds::getNumber).orElse(0);
+        Rounds koRound = new Rounds();
+        koRound.setTournament(t);
+        koRound.setNumber(baseNum + 1);
+        roundsRepo.persist(koRound);
+
+        // Empty match tree, round by round.
+        int totalRounds = Integer.numberOfTrailingZeros(n);
+        List<List<Matches>> byRound = new ArrayList<>();
+        int inRound = n / 2;
+        for (int r = 0; r < totalRounds; r++) {
+            MatchStage stage = stageFor(inRound);
+            List<Matches> rm = new ArrayList<>();
+            for (int i = 0; i < inRound; i++) {
+                Matches m = new Matches();
+                m.setTournament(t);
+                m.setRound(koRound);
+                m.setStage(stage);
+                m.setStatus(MatchStatus.SCHEDULED);
+                matchesRepo.persist(m);
+                rm.add(m);
+            }
+            byRound.add(rm);
+            inRound /= 2;
+        }
+        for (int r = 0; r < totalRounds - 1; r++) {
+            List<Matches> cur = byRound.get(r);
+            List<Matches> next = byRound.get(r + 1);
+            for (int i = 0; i < cur.size(); i++) {
+                cur.get(i).setNextMatch(next.get(i / 2));
+                cur.get(i).setNextSlot((i % 2) + 1);
+            }
+        }
+
+        // Seed round one straight from the supplied pairings.
+        List<Matches> round1 = byRound.get(0);
+        for (int i = 0; i < round1.size(); i++) {
+            round1.get(i).setTeam1(roundOnePairs.get(i)[0]);
+            round1.get(i).setTeam2(roundOnePairs.get(i)[1]);
+        }
+
+        // Third-place playoff — fed by the semi-final losers.
+        Matches third = new Matches();
+        third.setTournament(t);
+        third.setRound(koRound);
+        third.setStage(MatchStage.THIRD_PLACE);
+        third.setStatus(MatchStatus.SCHEDULED);
+        matchesRepo.persist(third);
+
+        // Resolve byes: a single-team round-one match auto-advances.
+        for (Matches m : round1) {
+            boolean has1 = m.getTeam1() != null;
+            boolean has2 = m.getTeam2() != null;
+            if (has1 ^ has2) {
+                Teams w = has1 ? m.getTeam1() : m.getTeam2();
+                m.setWinnerTeam(w);
+                m.setStatus(MatchStatus.FINISHED);
+                advanceWinner(m, w);
+            }
+        }
+
+        return bracket(t.getId());
+    }
+
+    private Teams resolveManualTeam(Long id, Map<Long, Teams> byId, Set<Long> used) {
+        if (id == null) return null;
+        Teams tm = byId.get(id);
+        if (tm == null) {
+            throw new BadRequestException("Unknown team id: " + id);
+        }
+        if (!used.add(id)) {
+            throw new BadRequestException(
+                    "Team appears in more than one match: " + tm.getName());
+        }
+        return tm;
+    }
+
+    /** Whether the group stage is fully played (all group matches FINISHED).
+     *  Always true for KNOCKOUT_ONLY (no group stage). */
+    public boolean isGroupStageComplete(Tournaments t) {
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return true;
+        long total = matchesRepo.count("tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
+        if (total == 0) return false; // fixtures not generated yet
+        long unfinished = matchesRepo.count(
+                "tournament = ?1 and stage = ?2 and status <> ?3",
+                t, MatchStage.GROUP, MatchStatus.FINISHED);
+        return unfinished == 0;
+    }
+
+    /**
+     * Teams the organizer may place into the manual bracket: the group
+     * qualifiers (ranked, top-seed first) for GROUPS_KNOCKOUT, or the full
+     * registered field for KNOCKOUT_ONLY. Empty until the group stage is
+     * complete so the manual draw can't offer not-yet-qualified teams.
+     */
+    public List<Teams> bracketCandidates(Tournaments t) {
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
+            // KNOCKOUT_ONLY — every registered team is a candidate (no random
+            // shuffle here; this is a picker, not the auto draw).
+            return teamsRepo.list(
+                    "tournament.id = ?1 and pendingApproval = false", t.getId());
+        }
+        if (!isGroupStageComplete(t)) return List.of();
+        return qualifiers(t);
     }
 
     /** Ranked list of teams that enter the bracket, best seed first. */
@@ -344,7 +522,12 @@ public class KnockoutService {
                 m.getStatus() != null ? m.getStatus().name() : null,
                 m.getLiveMode() != null ? m.getLiveMode().name() : null,
                 m.getLiveStartedAt(),
-                m.getSecondHalfStartedAt());
+                m.getSecondHalfStartedAt(),
+                m.getKickoffAt(),
+                m.getFouls1First(),
+                m.getFouls1Second(),
+                m.getFouls2First(),
+                m.getFouls2Second());
     }
 
     /* ──────────────────────────── helpers ────────────────────────────── */

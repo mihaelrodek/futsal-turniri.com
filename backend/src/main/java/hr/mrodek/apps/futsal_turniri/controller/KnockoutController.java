@@ -46,6 +46,7 @@ public class KnockoutController {
     @Inject KnockoutService knockoutService;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
+    @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
 
     /** Throws 403 if the current user is neither the tournament's creator
      *  nor an admin. */
@@ -70,6 +71,23 @@ public class KnockoutController {
         return knockoutService.bracket(t.getId());
     }
 
+    /** Teams eligible for the bracket (group qualifiers, or all teams for
+     *  KNOCKOUT_ONLY) + whether the group stage is complete. Drives the
+     *  manual-draw picker. Public read. */
+    @GET
+    @Path("/qualifiers")
+    public hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto qualifiers(
+            @PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid)
+                .orElseThrow(() -> new NotFoundException("Tournament not found"));
+        boolean complete = knockoutService.isGroupStageComplete(t);
+        var teams = knockoutService.bracketCandidates(t).stream()
+                .map(x -> new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto.Team(
+                        x.getId(), x.getName()))
+                .toList();
+        return new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto(complete, teams);
+    }
+
     /** Build (or rebuild) the knockout bracket from the qualifiers. */
     @POST
     @Path("/generate")
@@ -78,6 +96,19 @@ public class KnockoutController {
     public BracketDto generate(@PathParam("uuid") String uuid) {
         Tournaments t = assertCanEdit(uuid);
         return knockoutService.generateBracket(t);
+    }
+
+    /** Build (or rebuild) the bracket from organizer-supplied first-round
+     *  pairings (the manual draw). */
+    @POST
+    @Path("/generate-manual")
+    @Authenticated
+    @Transactional
+    public BracketDto generateManual(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.ManualBracketRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        return knockoutService.generateBracketManual(t, body);
     }
 
     /** Record a knockout match result (goals, plus penalties if level). */
@@ -91,6 +122,7 @@ public class KnockoutController {
             KnockoutResultRequest body) {
         Tournaments t = assertCanEdit(uuid);
         knockoutService.recordResult(matchId, body);
+        if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), matchId);
         return knockoutService.bracket(t.getId());
     }
 }

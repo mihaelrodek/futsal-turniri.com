@@ -69,6 +69,24 @@ public class Matches {
     @Column(name = "penalties2")
     private Integer penalties2;
 
+    /**
+     * Accumulated team fouls per half. Reset implicitly by reading the half's
+     * own column. From a team's 5th foul in a half the opponent earns a
+     * "deveterac" (10 m free kick); each further foul is another one. The kick
+     * isn't stored — only the running count, shown on the fullscreen display.
+     */
+    @Column(name = "fouls1_first")
+    private Integer fouls1First = 0;
+
+    @Column(name = "fouls1_second")
+    private Integer fouls1Second = 0;
+
+    @Column(name = "fouls2_first")
+    private Integer fouls2First = 0;
+
+    @Column(name = "fouls2_second")
+    private Integer fouls2Second = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20)
     private MatchStatus status = MatchStatus.SCHEDULED;

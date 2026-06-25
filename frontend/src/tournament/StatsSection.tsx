@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, Text, VStack } from "@chakra-ui/react"
-import { FiAward, FiClock, FiTarget } from "react-icons/fi"
+import { FiAward, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
 import { Loader } from "../ui/primitives"
 import {
@@ -159,7 +159,19 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         () => scorers.reduce((n, s) => n + s.goals, 0),
         [scorers],
     )
-    const topScorerGoals = scorers[0]?.goals ?? 0
+    // Team with the most goals at the tournament (sum of its players' goals).
+    const topTeam = useMemo(() => {
+        const byTeam = new Map<string, number>()
+        for (const s of scorers) {
+            if (!s.teamName) continue
+            byTeam.set(s.teamName, (byTeam.get(s.teamName) ?? 0) + s.goals)
+        }
+        let best: { name: string; goals: number } | null = null
+        for (const [name, goals] of byTeam) {
+            if (!best || goals > best.goals) best = { name, goals }
+        }
+        return best
+    }, [scorers])
 
     /* ── Loading ──────────────────────────────────────────────────────── */
     if (loading) {
@@ -207,19 +219,19 @@ export default function StatsSection({ uuid }: { uuid: string }) {
     /* ── Populated ────────────────────────────────────────────────────── */
     return (
         <VStack align="stretch" gap="5">
-            {/* 4-tile headline strip */}
-            <Grid templateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }} gap="3">
+            {/* 3-tile headline strip */}
+            <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap="3">
                 <AccentStat
                     accent="var(--chakra-colors-pitch-500)"
                     icon={<FiTarget size={12} />}
-                    label={<MonoLabel>STRIJELACA</MonoLabel>}
+                    label={<MonoLabel>Različiti strijelci</MonoLabel>}
                     value={scorers.length}
                     hint="aktivnih u turniru"
                 />
                 <AccentStat
                     accent="var(--chakra-colors-accent-goal)"
                     icon={<BallIcon size={12} color="var(--chakra-colors-accent-goal)" />}
-                    label={<MonoLabel>GOLOVA</MonoLabel>}
+                    label={<MonoLabel>ukupno golova</MonoLabel>}
                     value={totalGoals}
                     hint={
                         scorers.length > 0
@@ -228,17 +240,15 @@ export default function StatsSection({ uuid }: { uuid: string }) {
                     }
                 />
                 <AccentStat
-                    accent="var(--chakra-colors-accent-red)"
-                    icon={<FiAward size={12} />}
-                    label={<MonoLabel>NAJVIŠE</MonoLabel>}
-                    value={topScorerGoals}
-                    hint={scorers[0]?.playerName}
-                />
-                <AccentStat
                     accent="var(--chakra-colors-accent-amber)"
-                    icon={<FiClock size={12} />}
-                    label={<MonoLabel>VODEĆI TIM</MonoLabel>}
-                    value={scorers[0]?.teamName ?? "—"}
+                    icon={<FiAward size={12} />}
+                    label={<MonoLabel>najviše golova ekipa</MonoLabel>}
+                    value={topTeam?.name ?? "—"}
+                    hint={
+                        topTeam
+                            ? `${topTeam.goals} ${topTeam.goals === 1 ? "gol" : "golova"}`
+                            : undefined
+                    }
                 />
             </Grid>
 

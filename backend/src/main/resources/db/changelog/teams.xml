@@ -1,9 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="
           http://www.liquibase.org/xml/ns/dbchangelog
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Teams entered in a tournament. Full consolidated definition
+        (pre-launch baseline). Includes self-registration, co-ownership
+        sharing, and group-stage assignment. NOTE: requires tournament_groups
+        to exist first (group_id FK), so this file is ordered after it.
+    -->
 
     <changeSet id="2025-11-01-50-teams-seq" author="mrodek">
         <createSequence sequenceName="seq_teams_id" incrementBy="1" startValue="1"/>
@@ -39,6 +47,25 @@
                 <constraints nullable="false"/>
             </column>
 
+            <column name="paid" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- self-registration: a logged-in user submits their own team,
+                 pending_approval=true until the organizer confirms -->
+            <column name="submitted_by_uid" type="varchar(64)"/>
+            <column name="pending_approval" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- co-ownership sharing: claim_token embeds in a share URL,
+                 co_submitted_by_uid is the partner once they claim -->
+            <column name="claim_token" type="varchar(48)"/>
+            <column name="co_submitted_by_uid" type="varchar(64)"/>
+
+            <!-- group-stage assignment (FK to tournament_groups) -->
+            <column name="group_id" type="bigint"/>
+
             <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
             <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
         </createTable>
@@ -47,17 +74,22 @@
                                  referencedTableName="tournaments" referencedColumnNames="id"
                                  onDelete="CASCADE" constraintName="fk_teams_tournament"/>
 
+        <addForeignKeyConstraint baseTableName="teams" baseColumnNames="group_id"
+                                 referencedTableName="tournament_groups" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_teams_group"/>
+
         <createIndex tableName="teams" indexName="idx_teams_tournament">
             <column name="tournament_id"/>
         </createIndex>
-    </changeSet>
-
-    <changeSet id="2025-11-09-add-paid" author="extmrodek">
-        <addColumn tableName="teams">
-            <column name="paid" type="boolean" defaultValueBoolean="false">
-                <constraints nullable="false"/>
-            </column>
-        </addColumn>
+        <createIndex tableName="teams" indexName="idx_teams_submitted_by">
+            <column name="submitted_by_uid"/>
+        </createIndex>
+        <createIndex tableName="teams" indexName="uq_teams_claim_token" unique="true">
+            <column name="claim_token"/>
+        </createIndex>
+        <createIndex tableName="teams" indexName="idx_teams_co_submitted_by_uid">
+            <column name="co_submitted_by_uid"/>
+        </createIndex>
     </changeSet>
 
 </databaseChangeLog>

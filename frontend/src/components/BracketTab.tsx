@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react"
 import {
     Badge,
     Box,
@@ -7,38 +6,43 @@ import {
     Dialog,
     Flex,
     HStack,
-    IconButton,
     Input,
     NativeSelect,
     Portal,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiTrash2 } from "react-icons/fi"
 import {
     SingleEliminationBracket,
     createTheme,
     type MatchComponentProps,
     type MatchType,
 } from "@g-loot/react-tournament-brackets"
-import { fetchBracket, generateBracket, recordKnockoutResult } from "../api/bracket"
-import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
-import { fetchPlayers } from "../api/players"
-import type { PlayerDto } from "../types/players"
 import {
-    addMatchEvent,
+    fetchBracket,
+    fetchBracketQualifiers,
+    generateBracket,
+    generateBracketManual,
+    recordKnockoutResult,
+    type BracketCandidate,
+    type ManualBracketPairing,
+} from "../api/bracket"
+import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
+import { showError, toaster } from "../toaster"
+import {
     deleteMatchEvent,
     fetchMatchEvents,
-    finishMatch,
+    resetMatch,
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
-import type { MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
+import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
-import { GhostButton, SectionCard } from "../ui/pitch"
-import { LiveClock, StartLivePopover, matchPhase } from "./liveMatch"
-import { FiActivity, FiRefreshCw, FiShare2 } from "react-icons/fi"
+import { GhostButton } from "../ui/pitch"
+import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
+import { FiCrosshair, FiRefreshCw, FiShare2 } from "react-icons/fi"
+import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Library data-shape adapter.
@@ -168,6 +172,77 @@ function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
  */
 type EditForm = { s1: string; s2: string; p1: string; p2: string }
 
+/** First opaque background colour walking up from a node — used as the
+ *  backdrop for the shared bracket image so card gaps aren't transparent
+ *  (and it matches the current light/dark theme). */
+function resolveBackdrop(el: HTMLElement | null): string {
+    let node = el
+    while (node) {
+        const c = getComputedStyle(node).backgroundColor
+        if (c && c !== "transparent" && !c.startsWith("rgba(0, 0, 0, 0")) return c
+        node = node.parentElement
+    }
+    return "#ffffff"
+}
+
+/**
+ * Drag-to-pan for the bracket. Grab with the mouse (or pen) and drag to scroll
+ * the bracket in any direction; touch keeps the browser's native momentum
+ * scrolling, so we only hijack mouse/pen. A small move threshold tells a real
+ * pan apart from a click, and the click that ends a pan is swallowed so it
+ * doesn't open a match dialog.
+ */
+function useDragPan() {
+    const ref = useRef<HTMLDivElement>(null)
+    const drag = useRef({ down: false, x: 0, y: 0, left: 0, top: 0, moved: false })
+    const [dragging, setDragging] = useState(false)
+
+    const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+        if (e.pointerType === "touch") return // native scroll on touch
+        const el = ref.current
+        if (!el) return
+        drag.current = {
+            down: true,
+            x: e.clientX,
+            y: e.clientY,
+            left: el.scrollLeft,
+            top: el.scrollTop,
+            moved: false,
+        }
+        setDragging(true)
+    }
+    const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+        const d = drag.current
+        if (!d.down) return
+        const el = ref.current
+        if (!el) return
+        const dx = e.clientX - d.x
+        const dy = e.clientY - d.y
+        if (!d.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) d.moved = true
+        el.scrollLeft = d.left - dx
+        el.scrollTop = d.top - dy
+    }
+    const end = () => {
+        if (!drag.current.down) return
+        drag.current.down = false
+        setDragging(false)
+    }
+    // Swallow the click that ends a real drag so it doesn't open a match card.
+    const onClickCapture = (e: ReactMouseEvent) => {
+        if (drag.current.moved) {
+            e.preventDefault()
+            e.stopPropagation()
+            drag.current.moved = false
+        }
+    }
+
+    return {
+        ref,
+        dragging,
+        handlers: { onPointerDown, onPointerMove, onPointerUp: end, onPointerLeave: end, onClickCapture },
+    }
+}
+
 /** `canEdit` — true when the viewer is the tournament owner or an admin.
  *  Drives all mutating UI: regenerate bracket, enter result, start a live
  *  match. When false the tab is read-only and the toolbar is collapsed.
@@ -186,15 +261,12 @@ export default function BracketTab({
     uuid: string
     canEdit?: boolean
     tournamentStarted?: boolean
-    /** Surfaced in the navigator.share payload so the system share-
-     *  sheet preview reads "Ždrijeb — {tournamentName}". Optional —
-     *  when absent we fall back to a generic "Ždrijeb turnira" title. */
+    /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
 }) {
     const [bracket, setBracket] = useState<Bracket | null>(null)
     const [loading, setLoading] = useState(true)
     const [generating, setGenerating] = useState(false)
-    const [shareCopied, setShareCopied] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [form, setForm] = useState<EditForm>({ s1: "", s2: "", p1: "", p2: "" })
     const [saving, setSaving] = useState(false)
@@ -202,6 +274,20 @@ export default function BracketTab({
     const [startingId, setStartingId] = useState<number | null>(null)
     /** The match currently open in the live dialog, or null. */
     const [liveMatch, setLiveMatch] = useState<BracketMatch | null>(null)
+    /** Match whose read-only timeline modal is open (any viewer can open it). */
+    const [timelineMatch, setTimelineMatch] = useState<BracketMatch | null>(null)
+    // Half config (schedule) so inline row clocks count DOWN + stop at the
+    // end of a half, like the dialog clock — not a free-running timer.
+    const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
+    const [halfCount, setHalfCount] = useState<number | null>(null)
+    // Manual draw — organizer arranges teams into the bracket's first-round slots.
+    const [manualOpen, setManualOpen] = useState(false)
+    const [slots, setSlots] = useState<(number | null)[]>([])
+    const [generatingManual, setGeneratingManual] = useState(false)
+    // Eligible teams for the bracket (group qualifiers / all teams) + whether
+    // the group stage is finished — both come from the qualifiers endpoint.
+    const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
+    const [groupStageComplete, setGroupStageComplete] = useState(true)
 
     useEffect(() => {
         let cancelled = false
@@ -210,6 +296,20 @@ export default function BracketTab({
             .then((b) => { if (!cancelled) setBracket(b) })
             .catch(() => { if (!cancelled) setBracket(null) })
             .finally(() => { if (!cancelled) setLoading(false) })
+        fetchSchedule(uuid)
+            .then((s) => {
+                if (cancelled) return
+                setHalfLengthMin(s.halfLengthMin ?? null)
+                setHalfCount(s.halfCount ?? null)
+            })
+            .catch(() => { /* schedule may not be generated yet — clock free-runs */ })
+        fetchBracketQualifiers(uuid)
+            .then((q) => {
+                if (cancelled) return
+                setQualifiers(q.teams)
+                setGroupStageComplete(q.groupStageComplete)
+            })
+            .catch(() => { /* leave defaults — manual draw stays gated */ })
         return () => { cancelled = true }
     }, [uuid])
 
@@ -272,30 +372,44 @@ export default function BracketTab({
         }
     }
 
-    /** Web Share for the bracket URL — same pattern as the
-     *  ShareButton in tournament/parts.tsx. Mobile gets the OS
-     *  share sheet (WhatsApp, SMS, …); desktop browsers without
-     *  navigator.share fall back to clipboard + a "Kopirano!" pill. */
-    async function shareBracket() {
-        const url = typeof window !== "undefined" ? window.location.href : ""
-        const title = tournamentName
-            ? `Ždrijeb — ${tournamentName}`
-            : "Ždrijeb turnira"
-        if (typeof navigator !== "undefined" && (navigator as any).share) {
-            try {
-                await (navigator as any).share({ title, url })
-            } catch {
-                /* user cancelled the share sheet — no-op */
-            }
-            return
-        }
+    /** Save a level knockout result decided by the guided penalty shootout. */
+    async function saveResultWithPenalties(m: BracketMatch, pen1: number, pen2: number) {
+        const s1 = parseInt(form.s1, 10)
+        const s2 = parseInt(form.s2, 10)
+        if (!Number.isFinite(s1) || !Number.isFinite(s2)) return
+        setSaving(true)
         try {
-            await navigator.clipboard.writeText(url)
-            setShareCopied(true)
-            setTimeout(() => setShareCopied(false), 2000)
+            setBracket(
+                await recordKnockoutResult(uuid, m.matchId, {
+                    score1: s1,
+                    score2: s2,
+                    penalties1: pen1,
+                    penalties2: pen2,
+                }),
+            )
+            setEditingId(null)
         } catch {
-            window.prompt("Kopiraj link:", url)
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setSaving(false)
         }
+    }
+
+    /** Re-drawing wipes the existing bracket, so "Ponovno (auto)" asks for an
+     *  explicit confirmation via a toast action before running — same pattern
+     *  as the group draw. */
+    function confirmRegenerate() {
+        toaster.create({
+            type: "warning",
+            title: "Ponoviti ždrijeb?",
+            description: "Postojeća eliminacijska ljestvica bit će obrisana i izvučena ponovno.",
+            duration: 10000,
+            closable: true,
+            action: {
+                label: "Ponovi ždrijeb",
+                onClick: () => { void runGenerate() },
+            },
+        })
     }
 
     /** SCHEDULED -> LIVE, then open the live dialog and re-fetch. */
@@ -351,7 +465,36 @@ export default function BracketTab({
         }
         return null
     }, [safeRounds, bracket?.thirdPlace])
+
+    /* The match to jump to from the floating "Na redu" button: the LIVE match
+       if any, else the next SCHEDULED one by kickoff time (earliest first). */
+    const focusTargetId = useMemo(() => {
+        const all = [
+            ...safeRounds.flatMap((r) => r.matches),
+            ...(bracket?.thirdPlace ? [bracket.thirdPlace] : []),
+        ]
+        const live = all.find((m) => m.status === "LIVE")
+        if (live) return live.matchId
+        const next = all
+            .filter((m) => m.status === "SCHEDULED")
+            .sort((a, b) => {
+                const ka = a.kickoffAt ? new Date(a.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+                const kb = b.kickoffAt ? new Date(b.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+                return ka - kb
+            })[0]
+        return next?.matchId ?? null
+    }, [safeRounds, bracket?.thirdPlace])
+
     const liveRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+
+    /** Scroll the LIVE / next match into the centre of the bracket viewport. */
+    function focusMatch() {
+        if (focusTargetId == null) return
+        const el = liveRefs.current.get(focusTargetId)
+        if (el && typeof el.scrollIntoView === "function") {
+            el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+        }
+    }
     useEffect(() => {
         if (liveMatchId == null) return
         // Defer one tick so the library's foreignObject has mounted
@@ -369,6 +512,228 @@ export default function BracketTab({
         return () => clearTimeout(t)
     }, [liveMatchId])
 
+    // Grab-to-pan the bracket viewport (mouse/pen; touch scrolls natively).
+    const pan = useDragPan()
+
+    // Share the bracket as a PNG image (native share sheet → WhatsApp etc. on
+    // mobile; download fallback on desktop browsers without file sharing).
+    const [sharing, setSharing] = useState(false)
+    async function shareBracket() {
+        const node = contentRef.current
+        if (!node || sharing) return
+        setSharing(true)
+        try {
+            // Theme-aware backdrop so the gaps between cards aren't transparent.
+            const bg = resolveBackdrop(node.parentElement)
+            const dataUrl = await toPng(node, {
+                backgroundColor: bg,
+                pixelRatio: 2,
+                cacheBust: true,
+                // Drop interactive buttons (Start / edit) from the snapshot.
+                filter: (el) =>
+                    !(el instanceof HTMLElement && el.tagName === "BUTTON"),
+            })
+            const fileName = `bracket-${tournamentName ? tournamentName.replace(/\s+/g, "-").toLowerCase() : uuid}.png`
+            const blob = await (await fetch(dataUrl)).blob()
+            const file = new File([blob], fileName, { type: "image/png" })
+            const nav = navigator as any
+            if (nav.canShare && nav.canShare({ files: [file] })) {
+                try {
+                    await nav.share({
+                        files: [file],
+                        title: tournamentName ?? "Eliminacijska ljestvica",
+                    })
+                } catch {
+                    /* user cancelled the share sheet — no-op */
+                }
+            } else {
+                // No file-share support (most desktops) → download the image.
+                const a = document.createElement("a")
+                a.href = dataUrl
+                a.download = fileName
+                a.click()
+                toaster.create({
+                    type: "success",
+                    title: "Slika spremljena",
+                    description: "Bracket je spremljen kao slika koju možeš podijeliti.",
+                    duration: 4000,
+                })
+            }
+        } catch {
+            showError("Nije moguće izraditi sliku ljestvice.")
+        } finally {
+            setSharing(false)
+        }
+    }
+
+    // Place the 3rd-place card directly under the Finale. The library centres
+    // the final vertically, so we measure the final card's actual position
+    // (relative to the scroll content) and pin the 3rd-place card just below it
+    // — anchoring to the bracket bottom would drift far away on tall brackets.
+    const contentRef = useRef<HTMLDivElement>(null)
+    const finalCardRef = useRef<HTMLDivElement>(null)
+    const [thirdPos, setThirdPos] = useState<
+        { top: number; right: number; width: number } | null
+    >(null)
+    useLayoutEffect(() => {
+        if (!bracket?.thirdPlace) {
+            setThirdPos(null)
+            return
+        }
+        const compute = () => {
+            const content = contentRef.current
+            const fin = finalCardRef.current
+            if (!content || !fin) return
+            const c = content.getBoundingClientRect()
+            const f = fin.getBoundingClientRect()
+            if (f.width === 0) return
+            setThirdPos({
+                top: f.bottom - c.top + 16, // 16px below the final card
+                right: Math.max(0, c.right - f.right), // align right edges
+                width: f.width,
+            })
+        }
+        // Measure now (before paint) so it lands under the final without a
+        // visible jump; re-measure after the library's foreignObject layout
+        // settles (mirrors the auto-scroll defer) and on size/viewport changes.
+        compute()
+        const id = setTimeout(compute, 90)
+        const ro =
+            typeof ResizeObserver !== "undefined" ? new ResizeObserver(compute) : null
+        if (ro && contentRef.current) ro.observe(contentRef.current)
+        window.addEventListener("resize", compute)
+        return () => {
+            clearTimeout(id)
+            ro?.disconnect()
+            window.removeEventListener("resize", compute)
+        }
+    }, [bracket, editingId, startingId, liveMatch])
+
+    // ─── Manual draw — organizer arranges teams into first-round slots ───
+    const nextPow2 = (x: number) => {
+        let p = 2
+        while (p < x) p <<= 1
+        return p
+    }
+    // Pool = group qualifiers (or all teams for KNOCKOUT_ONLY) from the backend.
+    const pool = qualifiers
+    const bracketN = pool.length >= 2 ? nextPow2(pool.length) : 2
+    const matchCount = bracketN / 2
+
+    function openManualBracket() {
+        // Seed slots in qualifier (seed) order; trailing empties become byes.
+        const seed: (number | null)[] = []
+        for (let i = 0; i < bracketN; i++) seed.push(pool[i]?.id ?? null)
+        setSlots(seed)
+        setManualOpen(true)
+    }
+
+    function setSlot(idx: number, v: number | null) {
+        setSlots((s) => {
+            const c = [...s]
+            c[idx] = v
+            return c
+        })
+    }
+
+    async function submitManualBracket() {
+        const chosen = slots.filter((s): s is number => s != null)
+        if (new Set(chosen).size !== chosen.length) {
+            showError("Greška", "Ista ekipa je odabrana u više utakmica.")
+            return
+        }
+        if (chosen.length < 2) {
+            showError("Greška", "Potrebne su barem 2 ekipe za ljestvicu.")
+            return
+        }
+        const pairs: ManualBracketPairing[] = []
+        for (let i = 0; i < matchCount; i++) {
+            pairs.push({ team1Id: slots[2 * i] ?? null, team2Id: slots[2 * i + 1] ?? null })
+        }
+        try {
+            setGeneratingManual(true)
+            setBracket(await generateBracketManual(uuid, pairs))
+            setManualOpen(false)
+            setEditingId(null)
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setGeneratingManual(false)
+        }
+    }
+
+    const slotSelect = (idx: number) => (
+        <NativeSelect.Root size="sm" flex="1" minW="0">
+            <NativeSelect.Field
+                value={slots[idx] != null ? String(slots[idx]) : ""}
+                onChange={(e) =>
+                    setSlot(idx, e.target.value === "" ? null : Number(e.target.value))
+                }
+            >
+                <option value="">— prazno (prolaz) —</option>
+                {pool.map((tm) => (
+                    <option key={tm.id} value={tm.id}>
+                        {tm.name?.trim() || "Bez imena"}
+                    </option>
+                ))}
+            </NativeSelect.Field>
+        </NativeSelect.Root>
+    )
+
+    const manualBracketPanel = (
+        <Panel p={{ base: "4", md: "5" }}>
+            <VStack align="stretch" gap="3">
+                <HStack justify="space-between" align="center">
+                    <Text fontWeight="bold" fontSize="sm">
+                        Ručni ždrijeb — složi parove
+                    </Text>
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => setManualOpen(false)}
+                        disabled={generatingManual}
+                    >
+                        Odustani
+                    </Button>
+                </HStack>
+                <Text fontSize="xs" color="fg.muted">
+                    Ljestvica za {bracketN} ({matchCount} {matchCount === 1 ? "utakmica" : "utakmica"} 1.
+                    kola). Prazno mjesto = slobodan prolaz u sljedeće kolo.
+                </Text>
+                <VStack align="stretch" gap="2">
+                    {Array.from({ length: matchCount }, (_, i) => (
+                        <HStack
+                            key={i}
+                            gap="2"
+                            align="center"
+                            borderWidth="1px"
+                            borderColor="border"
+                            rounded="lg"
+                            px="3"
+                            py="2"
+                        >
+                            <Text fontSize="xs" color="fg.muted" w="22px" flexShrink={0}>
+                                {i + 1}.
+                            </Text>
+                            {slotSelect(2 * i)}
+                            <Text fontSize="xs" color="fg.muted" flexShrink={0}>
+                                vs
+                            </Text>
+                            {slotSelect(2 * i + 1)}
+                        </HStack>
+                    ))}
+                </VStack>
+                <Button
+                    colorPalette="brand"
+                    onClick={submitManualBracket}
+                    loading={generatingManual}
+                >
+                    Generiraj ljestvicu (ručno)
+                </Button>
+            </VStack>
+        </Panel>
+    )
+
     if (loading) {
         return <Loader label="Učitavanje ljestvice…" />
     }
@@ -376,25 +741,39 @@ export default function BracketTab({
     const hasBracket = bracket != null && bracket.rounds.length > 0
 
     if (!hasBracket) {
+        if (canEdit && manualOpen) return manualBracketPanel
         return (
             <Panel p="0">
                 <EmptyState
                     title="Eliminacijska ljestvica još nije generirana"
                     description={
-                        canEdit
-                            ? "Generiraj ljestvicu nakon završetka grupne faze (ili odmah, za turnir bez grupa)."
-                            : "Organizator još nije generirao eliminacijsku ljestvicu."
+                        !canEdit
+                            ? "Organizator još nije generirao eliminacijsku ljestvicu."
+                            : !groupStageComplete
+                                ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
+                                : "Generiraj automatski iz kvalifikanata ili ručno složi parove sam."
                     }
                     action={
                         canEdit ? (
-                            <Button
-                                colorPalette="brand"
-                                size="sm"
-                                onClick={runGenerate}
-                                loading={generating}
-                            >
-                                Generiraj eliminacijsku ljestvicu
-                            </Button>
+                            <HStack gap="2" wrap="wrap" justify="center">
+                                <Button
+                                    colorPalette="brand"
+                                    size="sm"
+                                    onClick={runGenerate}
+                                    loading={generating}
+                                    disabled={!groupStageComplete}
+                                >
+                                    Automatski
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={openManualBracket}
+                                    disabled={!groupStageComplete || pool.length < 2}
+                                >
+                                    Ručni ždrijeb
+                                </Button>
+                            </HStack>
                         ) : undefined
                     }
                 />
@@ -431,11 +810,14 @@ export default function BracketTab({
 
     const roundCount = bracket.rounds.length
 
-    // Total matches across all rounds — surfaced in the Pitch toolbar subtitle
-    // ("16 ekipa · 4 kola · 15 utakmica" style) to match the design.
-    const totalMatches = bracket.rounds.reduce((n, r) => n + r.matches.length, 0)
-    const firstRoundCount = bracket.rounds[0]?.matches.length ?? 0
-    const teamCount = firstRoundCount * 2
+    // Once any bracket match is LIVE / FINISHED the draw is locked — re-drawing
+    // would wipe real results — so the draw buttons disappear. Derived locally
+    // because the tournament's status field may not flip the instant a match
+    // goes live.
+    const started =
+        tournamentStarted ||
+        [...bracket.rounds.flatMap((r) => r.matches), ...(bracket.thirdPlace ? [bracket.thirdPlace] : [])]
+            .some((m) => m.status === "LIVE" || m.status === "FINISHED")
 
     // `libraryMatches` + `matchById` are computed above (before the
     // early returns) — re-aliasing here for readability only. Each
@@ -483,7 +865,7 @@ export default function BracketTab({
                     else liveRefs.current.delete(original.matchId)
                 }}
             >
-                <Box flex="1" minW="0">
+                <Box flex="1" minW="0" ref={isFinalCard ? finalCardRef : undefined}>
                     <MatchCard
                         match={original}
                         canEdit={canEdit}
@@ -493,12 +875,17 @@ export default function BracketTab({
                         showPenaltyRow={showPenaltyRow}
                         saving={saving}
                         starting={startingId === original.matchId}
+                        halfLengthMin={halfLengthMin}
+                        halfCount={halfCount}
                         onEdit={startEdit}
+                        uuid={uuid}
                         onSave={saveResult}
+                        onSavePenalties={saveResultWithPenalties}
                         onCancel={() => setEditingId(null)}
                         onFormChange={setForm}
                         onStartLive={handleStartLive}
                         onOpenLive={setLiveMatch}
+                        onOpenTimeline={setTimelineMatch}
                     />
                 </Box>
             </Box>
@@ -507,37 +894,32 @@ export default function BracketTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* ── Pitch toolbar card ────────────────────────────────────── */}
-            <SectionCard
-                icon={FiActivity}
-                title="Eliminacija"
-                subtitle={`${teamCount} ekipa · ${roundCount} ${roundCount === 1 ? "kolo" : "kola"} · ${totalMatches} ${totalMatches === 1 ? "utakmica" : "utakmica"}`}
-                action={
-                    <HStack gap="2">
-                        {/* Podijeli is safe for any viewer — just copies the
-                             public URL. Ponovno generiraj is destructive
-                             (wipes existing results) so it's owner/admin
-                             only AND only before the tournament starts —
-                             once any match is LIVE / FINISHED, wiping the
-                             bracket would destroy real results. */}
-                        <GhostButton
-                            icon={<FiShare2 size={14} />}
-                            onClick={shareBracket}
-                        >
-                            {shareCopied ? "Kopirano!" : "Podijeli ždrijeb"}
-                        </GhostButton>
-                        {canEdit && !tournamentStarted && (
-                            <GhostButton
-                                danger
-                                icon={<FiRefreshCw size={14} />}
-                                onClick={runGenerate}
-                            >
-                                Ponovno generiraj
-                            </GhostButton>
-                        )}
-                    </HStack>
-                }
-            />
+            {/* Owner draw controls — right-aligned. "Ponovno (auto)" wipes the
+                bracket so it asks for confirmation first. Both hidden once any
+                match is LIVE/FINISHED (re-drawing would destroy real results).
+                The "Podijeli bracket" button now floats at the bottom (below). */}
+            {canEdit && !started && (
+                <Flex justify="flex-end" gap="2" wrap="wrap">
+                    <GhostButton
+                        icon={<FiRefreshCw size={14} />}
+                        onClick={openManualBracket}
+                        disabled={generating || generatingManual}
+                    >
+                        Ručni ždrijeb
+                    </GhostButton>
+                    <GhostButton
+                        danger
+                        icon={<FiRefreshCw size={14} />}
+                        onClick={confirmRegenerate}
+                        disabled={generating}
+                    >
+                        {generating ? "Ždrijeb…" : "Ponovno (auto)"}
+                    </GhostButton>
+                </Flex>
+            )}
+
+            {/* Manual draw editor — shown above the bracket when opened. */}
+            {canEdit && !started && manualOpen && manualBracketPanel}
 
             {/* ── Podium banner ──────────────────────────────────────────── */}
             {champion && (
@@ -593,8 +975,21 @@ export default function BracketTab({
                  in its own Panel BELOW the bracket — keeping it out of
                  the matches[] array prevents the lib from drawing a
                  spurious connector to the Finale. */}
-            <Panel p="0" overflow="hidden">
-                <Box overflowX="auto" px={{ base: "3", md: "5" }} py="5">
+            <Panel p="0" overflow="hidden" position="relative">
+                <Box
+                    ref={pan.ref}
+                    overflow="auto"
+                    maxH={{ base: "70vh", md: "78vh" }}
+                    px={{ base: "3", md: "5" }}
+                    py="5"
+                    cursor={pan.dragging ? "grabbing" : "grab"}
+                    userSelect="none"
+                    {...pan.handlers}
+                >
+                    {/* inline-block shrink-wraps to the bracket SVG width so the
+                        3rd-place card can be absolutely placed under the Finale
+                        column even when the bracket is wider than the viewport. */}
+                    <Box ref={contentRef} display="inline-block" minW="100%" position="relative">
                     {(() => {
                         // SingleEliminationBracket's typings carry the
                         // older JSX.Element global that React 19 removed,
@@ -651,40 +1046,120 @@ export default function BracketTab({
                             />
                         )
                     })()}
-                </Box>
-            </Panel>
 
-            {/* ── 3rd-place playoff — separate panel below the bracket.
-                 Stays out of the lib's match chain so no connector is
-                 drawn to it; sits in its own short Panel with the gray
-                 "Za 3. mjesto" header pill above its MatchCard. */}
-            {bracket.thirdPlace && (
-                <Panel p="0" overflow="hidden">
-                    <Box px={{ base: "3", md: "5" }} py="5">
-                        <Flex justify="center" mb="3">
-                            <RoundLabel tone="gray">Za 3. mjesto</RoundLabel>
-                        </Flex>
-                        <Box maxW="280px" mx="auto">
-                            <MatchCard
-                                match={bracket.thirdPlace}
-                                canEdit={canEdit}
-                                isThirdPlace
-                                editing={editingId === bracket.thirdPlace.matchId}
-                                form={form}
-                                showPenaltyRow={showPenaltyRow}
-                                saving={saving}
-                                starting={startingId === bracket.thirdPlace.matchId}
-                                onEdit={startEdit}
-                                onSave={saveResult}
-                                onCancel={() => setEditingId(null)}
-                                onFormChange={setForm}
-                                onStartLive={handleStartLive}
-                                onOpenLive={setLiveMatch}
-                            />
+                    {/* 3rd-place playoff sits directly under the Finale —
+                        positioned from the measured final-card geometry
+                        (thirdPos). Until measured it falls back to the
+                        bottom-right corner. Kept out of the lib's match chain so
+                        no connector is drawn to it. */}
+                    {bracket.thirdPlace && (
+                        <Box
+                            position="absolute"
+                            ref={(el: HTMLDivElement | null) => {
+                                // Register so the "Na redu" focus button can
+                                // scroll to a live/next 3rd-place match too.
+                                const id = bracket.thirdPlace?.matchId
+                                if (id == null) return
+                                if (el) liveRefs.current.set(id, el)
+                                else liveRefs.current.delete(id)
+                            }}
+                            {...(thirdPos
+                                ? {
+                                      top: `${thirdPos.top}px`,
+                                      right: `${thirdPos.right}px`,
+                                      w: `${thirdPos.width}px`,
+                                  }
+                                : { bottom: "16px", right: "16px", w: "260px" })}
+                        >
+                            <Box>
+                                <Text
+                                    fontFamily="'JetBrains Mono', ui-monospace, monospace"
+                                    fontSize="11px"
+                                    fontWeight="bold"
+                                    letterSpacing="wide"
+                                    color="fg.muted"
+                                    h="32px"
+                                    mb="16px"
+                                    display="flex"
+                                    alignItems="center"
+                                >
+                                    Za 3. mjesto
+                                </Text>
+                                <MatchCard
+                                    match={bracket.thirdPlace}
+                                    canEdit={canEdit}
+                                    isThirdPlace
+                                    editing={editingId === bracket.thirdPlace.matchId}
+                                    form={form}
+                                    showPenaltyRow={showPenaltyRow}
+                                    saving={saving}
+                                    starting={startingId === bracket.thirdPlace.matchId}
+                                    halfLengthMin={halfLengthMin}
+                                    halfCount={halfCount}
+                                    onEdit={startEdit}
+                                    uuid={uuid}
+                                    onSave={saveResult}
+                                    onSavePenalties={saveResultWithPenalties}
+                                    onCancel={() => setEditingId(null)}
+                                    onFormChange={setForm}
+                                    onStartLive={handleStartLive}
+                                    onOpenLive={setLiveMatch}
+                                    onOpenTimeline={setTimelineMatch}
+                                />
+                            </Box>
                         </Box>
+                    )}
                     </Box>
-                </Panel>
-            )}
+                </Box>
+
+                {/* Floating action bar — anchored to the bottom-centre of the
+                    bracket panel itself (not the viewport), floating over the
+                    bracket. "Na redu" jumps to the LIVE (or next scheduled)
+                    match; "Podijeli" shares the bracket image. */}
+                <Flex
+                    position="absolute"
+                    bottom={{ base: "3", md: "4" }}
+                    left="50%"
+                    transform="translateX(-50%)"
+                    zIndex={2}
+                    align="center"
+                    gap="1"
+                    bg="bg.panel"
+                    borderWidth="1px"
+                    borderColor="border.emphasized"
+                    rounded="full"
+                    shadow="lg"
+                    px="2"
+                    py="1.5"
+                >
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        colorPalette="red"
+                        onClick={focusMatch}
+                        disabled={focusTargetId == null}
+                        title={
+                            liveMatchId != null
+                                ? "Idi na utakmicu koja se igra uživo"
+                                : "Idi na sljedeću utakmicu na rasporedu"
+                        }
+                    >
+                        <FiCrosshair size={15} />
+                        {liveMatchId != null ? "Uživo" : "Na redu"}
+                    </Button>
+                    <Box w="1px" alignSelf="stretch" my="1" bg="border" />
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={shareBracket}
+                        disabled={sharing}
+                        title="Podijeli sliku ljestvice"
+                    >
+                        <FiShare2 size={15} />
+                        {sharing ? "Pripremam…" : "Podijeli"}
+                    </Button>
+                </Flex>
+            </Panel>
 
             {/* ── Live-match dialog — goals, cards, finish. ──────────────── */}
             {liveMatch && (
@@ -695,39 +1170,17 @@ export default function BracketTab({
                     onChanged={reloadBracket}
                 />
             )}
-        </VStack>
-    )
-}
 
-/* ── RoundLabel ─────────────────────────────────────────────────────────────
-   A small pill heading for a bracket round column / section.
-   ────────────────────────────────────────────────────────────────────────── */
-function RoundLabel({
-    children,
-    tone = "brand",
-}: {
-    children: ReactNode
-    tone?: "brand" | "gray" | "yellow"
-}) {
-    return (
-        <Box
-            px="3"
-            py="1.5"
-            rounded="full"
-            bg={`${tone}.subtle`}
-            display="inline-flex"
-        >
-            <Text
-                fontSize="2xs"
-                fontWeight="bold"
-                letterSpacing="wider"
-                textTransform="uppercase"
-                color={`${tone}.fg`}
-                whiteSpace="nowrap"
-            >
-                {children}
-            </Text>
-        </Box>
+            {/* Read-only timeline modal — opens for anyone clicking a match. */}
+            {timelineMatch && (
+                <MatchTimelineModal
+                    uuid={uuid}
+                    match={timelineMatch}
+                    onClose={() => setTimelineMatch(null)}
+                />
+            )}
+
+        </VStack>
     )
 }
 
@@ -748,12 +1201,20 @@ type MatchCardProps = {
     starting: boolean
     isFinal?: boolean
     isThirdPlace?: boolean
+    /** Tournament half config — drives the inline TIMER clock countdown. */
+    halfLengthMin?: number | null
+    halfCount?: number | null
+    /** Tournament uuid — needed to persist the optional penalty shooter. */
+    uuid: string
     onEdit: (m: BracketMatch) => void
     onSave: (m: BracketMatch) => void
+    onSavePenalties: (m: BracketMatch, pen1: number, pen2: number) => void
     onCancel: () => void
     onFormChange: (updater: (prev: EditForm) => EditForm) => void
     onStartLive: (m: BracketMatch, mode: MatchLiveMode) => void
     onOpenLive: (m: BracketMatch) => void
+    /** Open the read-only timeline (tijek) — clicking the match result. */
+    onOpenTimeline: (m: BracketMatch) => void
 }
 
 function MatchCard({
@@ -766,12 +1227,17 @@ function MatchCard({
     starting,
     isFinal = false,
     isThirdPlace = false,
+    halfLengthMin = null,
+    halfCount = null,
+    uuid,
     onEdit,
     onSave,
+    onSavePenalties,
     onCancel,
     onFormChange,
     onStartLive,
     onOpenLive,
+    onOpenTimeline,
 }: MatchCardProps) {
     const editable = m.team1Id != null && m.team2Id != null
     const w1 = m.winnerTeamId != null && m.winnerTeamId === m.team1Id
@@ -836,7 +1302,13 @@ function MatchCard({
                         <HStack gap="2">
                             <LivePill />
                             {m.liveMode === "TIMER" && (
-                                <LiveClock liveStartedAt={m.liveStartedAt} />
+                                <LiveClock
+                                    liveStartedAt={m.liveStartedAt}
+                                    secondHalfStartedAt={m.secondHalfStartedAt}
+                                    halfLengthMin={halfLengthMin}
+                                    halfCount={halfCount}
+                                    showLabel
+                                />
                             )}
                         </HStack>
                     )}
@@ -845,74 +1317,67 @@ function MatchCard({
 
             {/* Two team rows */}
             <Box px="3" py="2.5">
-                <TeamRow name={m.team1Name} score={m.score1} pen={m.penalties1} winner={w1} loser={w2} />
-                <Box h="1px" bg="border" my="2" />
-                <TeamRow name={m.team2Name} score={m.score2} pen={m.penalties2} winner={w2} loser={w1} />
+                {/* Click the result → read-only match timeline (tijek). While
+                    entering a result the score is typed inline in each team row
+                    (where the "–" is), so the input click is swallowed. */}
+                <Box
+                    cursor={editing ? "default" : "pointer"}
+                    onClick={() => { if (!editing) onOpenTimeline(m) }}
+                >
+                    <TeamRow
+                        name={m.team1Name}
+                        score={m.score1}
+                        pen={m.penalties1}
+                        winner={w1}
+                        loser={w2}
+                        edit={editing
+                            ? { value: form.s1, onChange: (v) => onFormChange((f) => ({ ...f, s1: v })) }
+                            : undefined}
+                    />
+                    <Box h="1px" bg="border" my="2" />
+                    <TeamRow
+                        name={m.team2Name}
+                        score={m.score2}
+                        pen={m.penalties2}
+                        winner={w2}
+                        loser={w1}
+                        edit={editing
+                            ? { value: form.s2, onChange: (v) => onFormChange((f) => ({ ...f, s2: v })) }
+                            : undefined}
+                    />
+                </Box>
 
                 {editing ? (
                     <VStack align="stretch" gap="2" mt="3">
-                    {/* Score inputs */}
-                    <HStack gap="2">
-                        <Input
-                            size="xs"
-                            type="number"
-                            placeholder="Golovi 1"
-                            value={form.s1}
-                            onChange={(e) => onFormChange((f) => ({ ...f, s1: e.target.value }))}
-                            rounded="lg"
-                        />
-                        <Input
-                            size="xs"
-                            type="number"
-                            placeholder="Golovi 2"
-                            value={form.s2}
-                            onChange={(e) => onFormChange((f) => ({ ...f, s2: e.target.value }))}
-                            rounded="lg"
-                        />
-                    </HStack>
-
-                    {/* Penalty row — only when scores are equal */}
+                    {/* Neriješeno → guided penalty shootout (decides + saves). */}
                     {showPenaltyRow && (
-                        <VStack align="stretch" gap="1.5">
-                            <Text fontSize="2xs" color="fg.muted" fontWeight="medium">
-                                Neriješeno — unesi rezultat penala
-                            </Text>
-                            <HStack gap="2">
-                                <Input
-                                    size="xs"
-                                    type="number"
-                                    placeholder="Penali 1"
-                                    value={form.p1}
-                                    onChange={(e) =>
-                                        onFormChange((f) => ({ ...f, p1: e.target.value }))
-                                    }
-                                    rounded="lg"
-                                />
-                                <Input
-                                    size="xs"
-                                    type="number"
-                                    placeholder="Penali 2"
-                                    value={form.p2}
-                                    onChange={(e) =>
-                                        onFormChange((f) => ({ ...f, p2: e.target.value }))
-                                    }
-                                    rounded="lg"
-                                />
-                            </HStack>
-                        </VStack>
+                        <PenaltyShootout
+                            uuid={uuid}
+                            matchId={m.matchId}
+                            team1Id={m.team1Id}
+                            team1Name={m.team1Name}
+                            team2Id={m.team2Id}
+                            team2Name={m.team2Name}
+                            saving={saving}
+                            onConfirm={(p1, p2) => onSavePenalties(m, p1, p2)}
+                        />
                     )}
 
-                    {/* Action buttons */}
+                    {/* Action buttons — for a level score the shootout above
+                        does the saving, so only show "Spremi" for a decisive
+                        result. */}
                     <HStack gap="2">
-                        <Button
-                            size="xs"
-                            colorPalette="brand"
-                            loading={saving}
-                            onClick={() => onSave(m)}
-                            rounded="lg"
-                        >
-                            Spremi
-                        </Button>
+                        {!showPenaltyRow && (
+                            <Button
+                                size="xs"
+                                colorPalette="brand"
+                                loading={saving}
+                                onClick={() => onSave(m)}
+                                rounded="lg"
+                            >
+                                Spremi
+                            </Button>
+                        )}
                         <Button
                             size="xs"
                             variant="ghost"
@@ -930,12 +1395,30 @@ function MatchCard({
                 // "Pokreni" or live-management controls leak through.
                 canEdit && editable && (
                     <VStack align="stretch" gap="1.5" mt="2">
-                        {isScheduled && (
-                            <StartLivePopover
-                                loading={starting}
-                                onStart={(mode) => onStartLive(m, mode)}
-                            />
-                        )}
+                        {isScheduled &&
+                            (m.kickoffAt ? (
+                                <StartLivePopover
+                                    loading={starting}
+                                    onStart={(mode) => onStartLive(m, mode)}
+                                    onEnterResult={() => onEdit(m)}
+                                />
+                            ) : (
+                                // No kickoff yet → can't start. Nudge the
+                                // organizer to (re)confirm the schedule first.
+                                <Box
+                                    rounded="lg"
+                                    borderWidth="1px"
+                                    borderColor="border"
+                                    bg="bg.subtle"
+                                    px="2"
+                                    py="1.5"
+                                    textAlign="center"
+                                >
+                                    <Text fontSize="2xs" color="fg.muted" fontWeight={600} lineHeight="1.2">
+                                        Potvrdi raspored za pokretanje
+                                    </Text>
+                                </Box>
+                            ))}
                         {isLive && (
                             <Button
                                 size="xs"
@@ -950,22 +1433,11 @@ function MatchCard({
                             <Button
                                 size="xs"
                                 variant="ghost"
-                                colorPalette="gray"
+                                colorPalette="brand"
                                 rounded="lg"
                                 onClick={() => onOpenLive(m)}
                             >
-                                Tijek utakmice
-                            </Button>
-                        )}
-                        {!isLive && (
-                            <Button
-                                size="xs"
-                                variant="ghost"
-                                colorPalette="brand"
-                                rounded="lg"
-                                onClick={() => onEdit(m)}
-                            >
-                                {isFinished ? "Uredi rezultat" : "Unesi rezultat"}
+                                Uredi rezultat
                             </Button>
                         )}
                     </VStack>
@@ -986,12 +1458,16 @@ function TeamRow({
     pen,
     winner,
     loser,
+    edit,
 }: {
     name: string | null
     score: number | null
     pen: number | null
     winner: boolean
     loser: boolean
+    /** When set, the score slot becomes an input (entering a result) — so the
+     *  score is typed right where the "–" sits, not in a separate row. */
+    edit?: { value: string; onChange: (v: string) => void }
 }) {
     const nameColor = !name
         ? "fg.subtle"
@@ -1020,28 +1496,43 @@ function TeamRow({
             >
                 {name ?? "—"}
             </Text>
-            <HStack gap="1" flexShrink={0} align="baseline">
-                <Text
-                    fontSize="sm"
-                    fontWeight={winner ? "bold" : "semibold"}
-                    color={winner ? "brand.fg" : loser ? "fg.muted" : "fg"}
-                    fontVariantNumeric="tabular-nums"
-                    minW="5"
-                    textAlign="right"
-                >
-                    {score != null ? score : "–"}
-                </Text>
-                {pen != null && (
+            {edit ? (
+                <Input
+                    size="xs"
+                    type="number"
+                    min={0}
+                    maxW="12"
+                    rounded="md"
+                    textAlign="center"
+                    flexShrink={0}
+                    value={edit.value}
+                    onChange={(e) => edit.onChange(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                />
+            ) : (
+                <HStack gap="1" flexShrink={0} align="baseline">
                     <Text
-                        fontSize="2xs"
-                        fontWeight={winner ? "bold" : "medium"}
-                        color={winner ? "brand.fg" : "fg.muted"}
+                        fontSize="sm"
+                        fontWeight={winner ? "bold" : "semibold"}
+                        color={winner ? "brand.fg" : loser ? "fg.muted" : "fg"}
                         fontVariantNumeric="tabular-nums"
+                        minW="5"
+                        textAlign="right"
                     >
-                        ({pen})
+                        {score != null ? score : "–"}
                     </Text>
-                )}
-            </HStack>
+                    {pen != null && (
+                        <Text
+                            fontSize="2xs"
+                            fontWeight={winner ? "bold" : "medium"}
+                            color={winner ? "brand.fg" : "fg.muted"}
+                            fontVariantNumeric="tabular-nums"
+                        >
+                            ({pen})
+                        </Text>
+                    )}
+                </HStack>
+            )}
         </HStack>
     )
 }
@@ -1069,7 +1560,6 @@ function LivePill() {
    score, the chronological event log, controls to add goals/cards and a
    "Završi" button. For a FINISHED match it shows the same log read-only.
    ────────────────────────────────────────────────────────────────────────── */
-type LiveSide = "1" | "2"
 
 function LiveMatchDialog({
     uuid,
@@ -1085,15 +1575,36 @@ function LiveMatchDialog({
     const matchId = match.matchId
     const isFinished = match.status === "FINISHED"
     const isTimer = match.liveMode === "TIMER"
+    // A knockout match decided by penalties: the regulation flow (goals) is
+    // locked — the result lives in the penalty shootout. The organizer can
+    // re-do the penalties, or tick "penali se nisu igrali" to unlock the goal
+    // editing (e.g. the shootout was entered by mistake).
+    const decidedOnPenalties =
+        isFinished && match.penalties1 != null && match.penalties2 != null
+    // For a penalty-decided match the two parts are edited separately:
+    // "Uredi penale" (the shootout) and "Uredi utakmicu" (the goals/timeline).
+    const [editGoals, setEditGoals] = useState(false)
+    const lockGoals = decidedOnPenalties && !editGoals
 
     const [events, setEvents] = useState<MatchEventDto[] | null>(null)
+    // Players sent off (red card) — greyed out + locked in the entry roster.
+    const sentOffIds = useMemo(
+        () =>
+            new Set(
+                (events ?? [])
+                    .filter((e) => e.type === "RED_CARD" && e.playerId != null)
+                    .map((e) => e.playerId as number),
+            ),
+        [events],
+    )
     const [score, setScore] = useState<{ s1: number; s2: number }>({
         s1: match.score1 ?? 0,
         s2: match.score2 ?? 0,
     })
-
-    /** Rosters per team, lazily loaded when the dialog opens. */
-    const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
+    // Show the stored score until the organizer edits an event in this dialog
+    // (then recompute from the event log) — keeps a result-only match from
+    // flashing 0:0 when opened via "Uredi rezultat".
+    const [scoreDirty, setScoreDirty] = useState(false)
 
     /**
      * The half timing for this match. {@code secondHalfStartedAt} is tracked
@@ -1107,38 +1618,21 @@ function LiveMatchDialog({
     const [halfCount, setHalfCount] = useState<number | null>(null)
     const [startingHalf, setStartingHalf] = useState(false)
 
-    // Add-event form state.
-    const [side, setSide] = useState<LiveSide>("1")
-    const [kind, setKind] = useState<MatchEventType>("GOAL")
-    const [playerId, setPlayerId] = useState<string>("")
-    const [assistId, setAssistId] = useState<string>("")
-    const [minute, setMinute] = useState<string>("")
-    const [adding, setAdding] = useState(false)
     const [finishing, setFinishing] = useState(false)
+    /** True once the organizer hits "Završi" on a level knockout match —
+     *  shows the guided penalty shootout instead of finishing as a draw. */
+    const [shootout, setShootout] = useState(false)
     /** eventId currently being deleted. */
     const [deletingId, setDeletingId] = useState<number | null>(null)
 
-    // Load events + both rosters once.
+    // Load events once (rosters are owned by LiveGoalEntry).
     useEffect(() => {
         let cancelled = false
         fetchMatchEvents(uuid, matchId)
             .then((ev) => { if (!cancelled) setEvents(ev) })
             .catch(() => { if (!cancelled) setEvents([]) })
-        async function loadRoster(teamId: number | null) {
-            if (teamId == null) return
-            try {
-                const players = await fetchPlayers(uuid, teamId)
-                if (!cancelled) {
-                    setRosters((prev) => ({ ...prev, [teamId]: players }))
-                }
-            } catch {
-                /* error toast surfaced by the http interceptor */
-            }
-        }
-        void loadRoster(match.team1Id)
-        void loadRoster(match.team2Id)
         return () => { cancelled = true }
-    }, [uuid, matchId, match.team1Id, match.team2Id])
+    }, [uuid, matchId])
 
     // For TIMER matches, fetch the half config (length + count) once.
     useEffect(() => {
@@ -1183,6 +1677,17 @@ function LiveMatchDialog({
         }
     }
 
+    // Re-render every second while a TIMER match is running so `phase`
+    // (and the halftime / full-time prompts) flip the instant the clock
+    // reaches the end of a half — LiveClock ticks its own display, but the
+    // dialog needs its own tick to recompute `phase`.
+    const [, setClockTick] = useState(0)
+    useEffect(() => {
+        if (!isTimer || isFinished) return
+        const id = setInterval(() => setClockTick((n) => n + 1), 1000)
+        return () => clearInterval(id)
+    }, [isTimer, isFinished])
+
     const phase =
         isTimer && !isFinished
             ? matchPhase({
@@ -1194,21 +1699,17 @@ function LiveMatchDialog({
             : null
     const atHalftime = phase === "HALFTIME"
     const atFullTime = phase === "FULL_TIME"
-
-    const selectedTeamId = side === "1" ? match.team1Id : match.team2Id
-    const roster = selectedTeamId != null ? rosters[selectedTeamId] ?? [] : []
-    const minuteNum = parseInt(minute, 10)
-    const canAdd =
-        !!playerId &&
-        Number.isFinite(minuteNum) &&
-        minuteNum >= 0 &&
-        !adding
-
-    function resetForm() {
-        setPlayerId("")
-        setAssistId("")
-        setMinute("")
-    }
+    // App countdown running (TIMER + configured half length) → the match can
+    // only be finished at full time; otherwise the organizer may finish anytime.
+    const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
+    const mustWaitForFullTime = hasClock && !atFullTime
+    // Half label shown in the centre of the modal header (TIMER matches).
+    const halfLabel =
+        phase === "FIRST_HALF" ? "1. POLUVRIJEME"
+            : phase === "HALFTIME" ? "POLUVRIJEME"
+                : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
+                    : phase === "FULL_TIME" ? "KRAJ"
+                        : null
 
     /** Recompute the displayed score from the event log. */
     function scoreFromEvents(list: MatchEventDto[]): { s1: number; s2: number } {
@@ -1223,6 +1724,7 @@ function LiveMatchDialog({
     }
 
     async function refreshAfterMutation() {
+        setScoreDirty(true)
         try {
             const ev = await fetchMatchEvents(uuid, matchId)
             setEvents(ev)
@@ -1232,31 +1734,11 @@ function LiveMatchDialog({
         await onChanged()
     }
 
-    // Keep the score in sync with the event log.
+    // Keep the score in sync with the event log once events have been edited.
     useEffect(() => {
-        if (events) setScore(scoreFromEvents(events))
+        if (events && scoreDirty) setScore(scoreFromEvents(events))
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [events])
-
-    async function handleAdd() {
-        if (!canAdd) return
-        setAdding(true)
-        try {
-            await addMatchEvent(uuid, matchId, {
-                type: kind,
-                playerId: Number(playerId),
-                minute: minuteNum,
-                assistPlayerId:
-                    kind === "GOAL" && assistId ? Number(assistId) : null,
-            })
-            resetForm()
-            await refreshAfterMutation()
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setAdding(false)
-        }
-    }
+    }, [events, scoreDirty])
 
     async function handleDelete(eventId: number) {
         setDeletingId(eventId)
@@ -1271,9 +1753,64 @@ function LiveMatchDialog({
     }
 
     async function handleFinish() {
+        // Knockout matches can't end level — a draw goes to penalties. Record
+        // through recordKnockoutResult (not the generic finish) so the winner
+        // advances the bracket.
+        if (score.s1 === score.s2) {
+            setShootout(true)
+            return
+        }
         setFinishing(true)
         try {
-            await finishMatch(uuid, matchId)
+            await recordKnockoutResult(uuid, matchId, {
+                score1: score.s1,
+                score2: score.s2,
+            })
+            await onChanged()
+            onClose()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setFinishing(false)
+        }
+    }
+
+    const [resetting, setResetting] = useState(false)
+    async function doReset() {
+        setResetting(true)
+        try {
+            await resetMatch(uuid, matchId)
+            await onChanged()
+            onClose()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setResetting(false)
+        }
+    }
+    function confirmReset() {
+        toaster.create({
+            type: "warning",
+            title: "Resetirati utakmicu?",
+            description:
+                "Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje.",
+            duration: 8000,
+            closable: true,
+            action: { label: "Resetiraj", onClick: doReset },
+        })
+    }
+
+    /** Penalty shootout decided — persist the level score + penalty result
+     *  (the backend sets the winner and advances the bracket). */
+    async function confirmShootout(pen1: number, pen2: number) {
+        setFinishing(true)
+        try {
+            await recordKnockoutResult(uuid, matchId, {
+                score1: score.s1,
+                score2: score.s2,
+                penalties1: pen1,
+                penalties2: pen2,
+            })
             await onChanged()
             onClose()
         } catch {
@@ -1295,112 +1832,175 @@ function LiveMatchDialog({
                 <Dialog.Backdrop />
                 <Dialog.Positioner>
                     <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
-                        <Dialog.Header>
-                            <Dialog.Title>
-                                <HStack gap="2">
-                                    <Text>
-                                        {match.team1Name ?? "—"} – {match.team2Name ?? "—"}
-                                    </Text>
-                                    {!isFinished && <LivePill />}
-                                    {!isFinished && isTimer && (
-                                        <LiveClock
-                                            liveStartedAt={match.liveStartedAt}
-                                            secondHalfStartedAt={secondHalfStartedAt}
-                                            halfLengthMin={halfLengthMin}
-                                            halfCount={halfCount}
-                                            showLabel
-                                        />
+                        <Dialog.Header pb="2">
+                            <Dialog.Title flex="1">
+                                {/* Compact scoreboard header. Top strip mirrors the
+                                    match card: UŽIVO left, half centre, timer right. */}
+                                <VStack gap="1.5" align="stretch" w="full">
+                                    {!isFinished && (
+                                        <Box
+                                            display="grid"
+                                            gridTemplateColumns="1fr auto 1fr"
+                                            alignItems="center"
+                                            gap="2"
+                                            w="full"
+                                        >
+                                            <Box justifySelf="start">
+                                                <LivePill />
+                                            </Box>
+                                            <Box justifySelf="center" minW="0">
+                                                {halfLabel && (
+                                                    <Text
+                                                        fontFamily="mono"
+                                                        fontSize="2xs"
+                                                        fontWeight={800}
+                                                        letterSpacing="0.12em"
+                                                        textTransform="uppercase"
+                                                        color="fg.muted"
+                                                        whiteSpace="nowrap"
+                                                    >
+                                                        {halfLabel}
+                                                    </Text>
+                                                )}
+                                            </Box>
+                                            <Box justifySelf="end">
+                                                {isTimer && (
+                                                    <LiveClock
+                                                        liveStartedAt={match.liveStartedAt}
+                                                        secondHalfStartedAt={secondHalfStartedAt}
+                                                        halfLengthMin={halfLengthMin}
+                                                        halfCount={halfCount}
+                                                    />
+                                                )}
+                                            </Box>
+                                        </Box>
                                     )}
-                                </HStack>
+                                    <HStack justify="center" gap="3" align="center" w="full">
+                                        <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
+                                            {match.team1Name ?? "—"}
+                                        </Text>
+                                        <Text
+                                            fontFamily="mono"
+                                            fontSize="2xl"
+                                            fontWeight={800}
+                                            fontVariantNumeric="tabular-nums"
+                                            color={isFinished ? "fg.ink" : "red.fg"}
+                                            flexShrink={0}
+                                        >
+                                            {score.s1} : {score.s2}
+                                        </Text>
+                                        <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
+                                            {match.team2Name ?? "—"}
+                                        </Text>
+                                    </HStack>
+                                </VStack>
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body>
-                            <VStack align="stretch" gap="4">
-                                {/* Scoreboard */}
-                                <Box
-                                    textAlign="center"
-                                    py="3"
-                                    rounded="xl"
-                                    bg={isFinished ? "bg.subtle" : "red.subtle"}
-                                >
-                                    <Text
-                                        fontSize="3xl"
-                                        fontWeight="bold"
-                                        fontVariantNumeric="tabular-nums"
-                                        color={isFinished ? "fg" : "red.fg"}
-                                    >
-                                        {score.s1} : {score.s2}
-                                    </Text>
-                                </Box>
+                            <VStack align="stretch" gap="2.5">
+                                {/* Accumulated team fouls — compact counters
+                                    right below the scoreboard (deveterac). */}
+                                {!shootout && (
+                                    <FoulControls
+                                        uuid={uuid}
+                                        matchId={matchId}
+                                        half={secondHalfStartedAt ? 2 : 1}
+                                        fouls1First={match.fouls1First}
+                                        fouls1Second={match.fouls1Second}
+                                        fouls2First={match.fouls2First}
+                                        fouls2Second={match.fouls2Second}
+                                    />
+                                )}
 
-                                {/* Halftime — prompt to start the 2nd half. */}
-                                {atHalftime && (
-                                    <Box
-                                        textAlign="center"
-                                        py="3"
-                                        px="3"
-                                        rounded="xl"
-                                        bg="bg.subtle"
-                                        borderWidth="1px"
-                                        borderColor="border"
-                                    >
+                                {/* Penalty shootout — a level knockout match
+                                    is decided here (guided, alternating kicks). */}
+                                {shootout && (
+                                    <PenaltyShootout
+                                        uuid={uuid}
+                                        matchId={matchId}
+                                        team1Id={match.team1Id ?? null}
+                                        team1Name={match.team1Name ?? null}
+                                        team2Id={match.team2Id ?? null}
+                                        team2Name={match.team2Name ?? null}
+                                        saving={finishing}
+                                        onConfirm={confirmShootout}
+                                        onCancel={() => setShootout(false)}
+                                    />
+                                )}
+
+                                {/* Decided on penalties — the two parts of the
+                                    match are edited separately: "Uredi penale"
+                                    (the shootout) and "Uredi utakmicu" (goals). */}
+                                {decidedOnPenalties && !shootout && (
+                                    <Box borderWidth="1px" borderColor="border" rounded="lg" p="3">
                                         <Text
-                                            fontSize="sm"
+                                            fontSize="2xs"
                                             fontWeight="semibold"
-                                            color="fg"
+                                            letterSpacing="wider"
+                                            textTransform="uppercase"
+                                            color="fg.muted"
+                                            textAlign="center"
                                             mb="2"
                                         >
-                                            Poluvrijeme
+                                            Odlučeno penalima:{" "}
+                                            <Box as="span" fontFamily="mono" color="fg.ink">
+                                                {match.penalties1} : {match.penalties2}
+                                            </Box>
                                         </Text>
-                                        <Button
-                                            colorPalette="red"
-                                            loading={startingHalf}
-                                            onClick={handleStartSecondHalf}
-                                        >
-                                            Započni 2. poluvrijeme
-                                        </Button>
+                                        <HStack gap="2" justify="center" wrap="wrap">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                colorPalette="red"
+                                                onClick={() => setShootout(true)}
+                                            >
+                                                Uredi penale
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant={editGoals ? "solid" : "outline"}
+                                                colorPalette="brand"
+                                                onClick={() => setEditGoals((v) => !v)}
+                                            >
+                                                Uredi utakmicu
+                                            </Button>
+                                        </HStack>
                                     </Box>
                                 )}
 
-                                {/* Full time — clock ran out; organizer
-                                    confirms the end with "Završi". */}
-                                {atFullTime && (
-                                    <Box
-                                        textAlign="center"
-                                        py="3"
-                                        px="3"
-                                        rounded="xl"
-                                        bg="red.subtle"
-                                        borderWidth="1px"
-                                        borderColor="red.emphasized"
-                                    >
-                                        <Text
-                                            fontSize="sm"
-                                            fontWeight="semibold"
-                                            color="red.fg"
-                                            mb="2"
-                                        >
-                                            Vrijeme je isteklo
-                                        </Text>
-                                        <Button
-                                            colorPalette="red"
-                                            loading={finishing}
-                                            onClick={handleFinish}
-                                        >
-                                            Završi utakmicu
-                                        </Button>
-                                    </Box>
+                                {/* Add-event — fast one-tap entry. Shown for a
+                                    finished match too so "Uredi rezultat" can fix
+                                    a wrong scorer. Locked when the match was
+                                    decided on penalties (the regulation flow is
+                                    fixed) unless "penali se nisu igrali". */}
+                                {!shootout && !lockGoals && (
+                                    <LiveGoalEntry
+                                        uuid={uuid}
+                                        matchId={matchId}
+                                        team1Id={match.team1Id ?? null}
+                                        team1Name={match.team1Name ?? null}
+                                        team2Id={match.team2Id ?? null}
+                                        team2Name={match.team2Name ?? null}
+                                        liveMode={match.liveMode}
+                                        liveStartedAt={match.liveStartedAt}
+                                        secondHalfStartedAt={secondHalfStartedAt}
+                                        halfLengthMin={halfLengthMin}
+                                        halfCount={halfCount}
+                                        onAdded={refreshAfterMutation}
+                                        sentOffPlayerIds={sentOffIds}
+                                    />
                                 )}
 
-                                {/* Event log */}
-                                <Box>
+                                {/* Tijek utakmice — compact event log, centred,
+                                    at the bottom (score + entry sit above it). */}
+                                <Box textAlign="center">
                                     <Text
                                         fontSize="2xs"
                                         fontWeight="semibold"
                                         letterSpacing="wider"
                                         textTransform="uppercase"
                                         color="fg.muted"
-                                        mb="2"
+                                        mb="1.5"
                                     >
                                         Tijek utakmice
                                     </Text>
@@ -1409,16 +2009,19 @@ function LiveMatchDialog({
                                             Učitavanje…
                                         </Text>
                                     ) : events.length === 0 ? (
-                                        <Text fontSize="sm" color="fg.muted">
-                                            Još nema zabilježenih događaja.
-                                        </Text>
+                                        isFinished ? null : (
+                                            <Text fontSize="sm" color="fg.muted">
+                                                Još nema zabilježenih događaja.
+                                            </Text>
+                                        )
                                     ) : (
-                                        <VStack align="stretch" gap="1.5">
+                                        <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
                                             {events.map((ev) => (
-                                                <EventRow
+                                                <LiveEventRow
                                                     key={ev.id}
                                                     ev={ev}
-                                                    canDelete={!isFinished}
+                                                    team1Id={match.team1Id}
+                                                    canDelete={!lockGoals}
                                                     deleting={deletingId === ev.id}
                                                     onDelete={() => handleDelete(ev.id)}
                                                 />
@@ -1426,129 +2029,43 @@ function LiveMatchDialog({
                                         </VStack>
                                     )}
                                 </Box>
-
-                                {/* Add-event controls — only while LIVE */}
-                                {!isFinished && (
-                                    <Box borderWidth="1px" borderColor="border" rounded="xl" p="3">
-                                        <Text
-                                            fontSize="2xs"
-                                            fontWeight="semibold"
-                                            letterSpacing="wider"
-                                            textTransform="uppercase"
-                                            color="fg.muted"
-                                            mb="2"
-                                        >
-                                            Dodaj događaj
-                                        </Text>
-                                        <VStack align="stretch" gap="2">
-                                            <HStack gap="2" wrap="wrap">
-                                                <NativeSelect.Root size="sm" flex="1" minW="36">
-                                                    <NativeSelect.Field
-                                                        value={side}
-                                                        onChange={(e) => {
-                                                            setSide(e.target.value as LiveSide)
-                                                            setPlayerId("")
-                                                            setAssistId("")
-                                                        }}
-                                                    >
-                                                        <option value="1">
-                                                            {match.team1Name ?? "Ekipa 1"}
-                                                        </option>
-                                                        <option value="2">
-                                                            {match.team2Name ?? "Ekipa 2"}
-                                                        </option>
-                                                    </NativeSelect.Field>
-                                                    <NativeSelect.Indicator />
-                                                </NativeSelect.Root>
-                                                <NativeSelect.Root size="sm" flex="1" minW="36">
-                                                    <NativeSelect.Field
-                                                        value={kind}
-                                                        onChange={(e) => {
-                                                            setKind(e.target.value as MatchEventType)
-                                                            setAssistId("")
-                                                        }}
-                                                    >
-                                                        <option value="GOAL">⚽ Gol</option>
-                                                        <option value="YELLOW_CARD">🟨 Žuti karton</option>
-                                                        <option value="RED_CARD">🟥 Crveni karton</option>
-                                                    </NativeSelect.Field>
-                                                    <NativeSelect.Indicator />
-                                                </NativeSelect.Root>
-                                            </HStack>
-
-                                            <NativeSelect.Root size="sm">
-                                                <NativeSelect.Field
-                                                    value={playerId}
-                                                    onChange={(e) => setPlayerId(e.target.value)}
-                                                >
-                                                    <option value="">— odaberi igrača —</option>
-                                                    {roster.map((p) => (
-                                                        <option key={p.id} value={p.id}>
-                                                            {p.number != null ? `${p.number}. ` : ""}
-                                                            {p.name}
-                                                        </option>
-                                                    ))}
-                                                </NativeSelect.Field>
-                                                <NativeSelect.Indicator />
-                                            </NativeSelect.Root>
-
-                                            {kind === "GOAL" && (
-                                                <NativeSelect.Root size="sm">
-                                                    <NativeSelect.Field
-                                                        value={assistId}
-                                                        onChange={(e) => setAssistId(e.target.value)}
-                                                    >
-                                                        <option value="">
-                                                            — asistencija (neobavezno) —
-                                                        </option>
-                                                        {roster
-                                                            .filter((p) => String(p.id) !== playerId)
-                                                            .map((p) => (
-                                                                <option key={p.id} value={p.id}>
-                                                                    {p.number != null ? `${p.number}. ` : ""}
-                                                                    {p.name}
-                                                                </option>
-                                                            ))}
-                                                    </NativeSelect.Field>
-                                                    <NativeSelect.Indicator />
-                                                </NativeSelect.Root>
-                                            )}
-
-                                            <HStack gap="2">
-                                                <Input
-                                                    size="sm"
-                                                    type="number"
-                                                    min={0}
-                                                    placeholder="Minuta"
-                                                    value={minute}
-                                                    maxW="28"
-                                                    onChange={(e) => setMinute(e.target.value)}
-                                                />
-                                                <Button
-                                                    size="sm"
-                                                    colorPalette="brand"
-                                                    flex="1"
-                                                    loading={adding}
-                                                    disabled={!canAdd}
-                                                    onClick={handleAdd}
-                                                >
-                                                    Dodaj
-                                                </Button>
-                                            </HStack>
-                                        </VStack>
-                                    </Box>
-                                )}
                             </VStack>
                         </Dialog.Body>
-                        <Dialog.Footer>
-                            <HStack gap="2">
+                        <Dialog.Footer justifyContent="center">
+                            <HStack gap="2" justify="center" wrap="wrap">
                                 <Button variant="ghost" onClick={onClose}>
                                     Zatvori
                                 </Button>
-                                {!isFinished && (
+                                {!isFinished && !shootout && (
+                                    <Button
+                                        variant="outline"
+                                        colorPalette="red"
+                                        loading={resetting}
+                                        onClick={confirmReset}
+                                        title="Vrati utakmicu na zakazano (npr. ako mjerač ne radi dobro)"
+                                    >
+                                        Resetiraj
+                                    </Button>
+                                )}
+                                {!isFinished && !shootout && atHalftime && (
+                                    <Button
+                                        colorPalette="red"
+                                        loading={startingHalf}
+                                        onClick={handleStartSecondHalf}
+                                    >
+                                        Započni 2. poluvrijeme
+                                    </Button>
+                                )}
+                                {!isFinished && !shootout && (
                                     <Button
                                         colorPalette="red"
                                         loading={finishing}
+                                        disabled={mustWaitForFullTime}
+                                        title={
+                                            mustWaitForFullTime
+                                                ? "Utakmica se može završiti tek kad istekne vrijeme 2. poluvremena"
+                                                : undefined
+                                        }
                                         onClick={handleFinish}
                                     >
                                         Završi
@@ -1563,56 +2080,3 @@ function LiveMatchDialog({
     )
 }
 
-/* ── EventRow — one line in the live-match event log. ─────────────────────── */
-function EventRow({
-    ev,
-    canDelete,
-    deleting,
-    onDelete,
-}: {
-    ev: MatchEventDto
-    canDelete: boolean
-    deleting: boolean
-    onDelete: () => void
-}) {
-    const icon =
-        ev.type === "GOAL" ? "⚽" : ev.type === "YELLOW_CARD" ? "🟨" : "🟥"
-    return (
-        <HStack gap="2" px="2.5" py="1.5" rounded="lg" bg="bg.subtle" align="center">
-            <Text
-                fontSize="xs"
-                fontWeight="bold"
-                color="fg.muted"
-                fontVariantNumeric="tabular-nums"
-                minW="8"
-            >
-                {ev.minute}'
-            </Text>
-            <Text fontSize="sm" lineHeight="1">
-                {icon}
-            </Text>
-            <Box flex="1" minW="0">
-                <Text fontSize="sm" truncate>
-                    {ev.playerName}
-                </Text>
-                {ev.assistPlayerName && (
-                    <Text fontSize="2xs" color="fg.muted" truncate>
-                        asist. {ev.assistPlayerName}
-                    </Text>
-                )}
-            </Box>
-            {canDelete && (
-                <IconButton
-                    aria-label="Ukloni događaj"
-                    size="xs"
-                    variant="ghost"
-                    colorPalette="red"
-                    loading={deleting}
-                    onClick={onDelete}
-                >
-                    <FiTrash2 />
-                </IconButton>
-            )}
-        </HStack>
-    )
-}

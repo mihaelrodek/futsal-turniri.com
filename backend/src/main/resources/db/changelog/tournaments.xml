@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -5,12 +6,16 @@
           http://www.liquibase.org/xml/ns/dbchangelog
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
-    <!-- Sequence -->
+    <!--
+        Tournaments — the central entity. Full consolidated definition
+        (pre-launch baseline): every column lives here instead of being
+        layered on by a chain of addColumn migrations.
+    -->
+
     <changeSet id="2025-11-01-20-tournaments-seq" author="mrodek">
         <createSequence sequenceName="seq_tournaments_id" incrementBy="1" startValue="1"/>
     </changeSet>
 
-    <!-- Table (banner_url removed; resource_id + uuid added) -->
     <changeSet id="2025-11-01-21-tournaments" author="mrodek">
         <createTable tableName="tournaments">
             <column name="id" type="bigint">
@@ -28,6 +33,9 @@
 
             <column name="location" type="varchar(200)"/>
             <column name="details" type="text"/>
+
+            <!-- human-readable URL slug, e.g. "1-futsal-open-22-04-2026"; unique, nullable -->
+            <column name="slug" type="varchar(220)"/>
 
             <!-- schedule -->
             <column name="start_at" type="timestamptz"/>
@@ -54,20 +62,69 @@
             <column name="contact_name" type="varchar(120)"/>
             <column name="contact_phone" type="varchar(60)"/>
 
-            <!-- rewards -->
-            <column name="reward_type" type="varchar(20)"/>  <!-- FIXED | PERCENTAGE -->
+            <!-- rewards: each place is an amount + optional free-text note ("Ostalo").
+                 reward_type is legacy (always FIXED now); the percent/fixed toggle is gone. -->
+            <column name="reward_type" type="varchar(20)"/>
             <column name="reward_first" type="numeric(10,2)"/>
+            <column name="reward_first_note" type="varchar(200)"/>
             <column name="reward_second" type="numeric(10,2)"/>
+            <column name="reward_second_note" type="varchar(200)"/>
             <column name="reward_third" type="numeric(10,2)"/>
+            <column name="reward_third_note" type="varchar(200)"/>
+            <column name="reward_fourth" type="numeric(10,2)"/>
+            <column name="reward_fourth_note" type="varchar(200)"/>
+
+            <!-- final podium (set on finish) -->
+            <column name="winner_name" type="varchar(200)"/>
+            <column name="second_place_name" type="varchar(200)"/>
+            <column name="third_place_name" type="varchar(200)"/>
+
+            <!-- individual awards (uppercase player names) -->
+            <column name="best_goalkeeper_name" type="varchar(200)"/>
+            <column name="best_player_name" type="varchar(200)"/>
+            <column name="best_scorer_name" type="varchar(200)"/>
+
+            <!-- matchmaking -->
+            <column name="preserve_matchmaking" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- geocoding (map) -->
+            <column name="latitude" type="double precision"/>
+            <column name="longitude" type="double precision"/>
+            <column name="geocoded_at" type="timestamptz"/>
+
+            <!-- creator (Firebase UID/name; gates edits) -->
+            <column name="created_by_uid" type="varchar(64)"/>
+            <column name="created_by_name" type="varchar(200)"/>
+
+            <!-- soft delete (hidden from reads via Hibernate @Where) -->
+            <column name="is_deleted" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- format configuration -->
+            <column name="format" type="varchar(20)" defaultValue="GROUPS_KNOCKOUT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="group_count" type="int"/>
+            <column name="advance_per_group" type="int"/>
+            <column name="bracket_fill" type="varchar(20)"/>
+
+            <!-- match scheduling config -->
+            <column name="half_count" type="int" defaultValueNumeric="2"/>
+            <column name="half_length_min" type="int"/>
+            <column name="halftime_break_min" type="int"/>
+            <column name="break_between_matches_min" type="int"/>
+            <column name="buffer_min" type="int"/>
+
+            <!-- admin-curated "tournament of the day" highlight -->
+            <column name="featured_at" type="timestamptz"/>
 
             <!-- audit -->
             <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
             <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
         </createTable>
-
-        <createIndex tableName="tournaments" indexName="idx_tournaments_start_at">
-            <column name="start_at"/>
-        </createIndex>
 
         <addForeignKeyConstraint baseTableName="tournaments"
                                  baseColumnNames="resource_id"
@@ -75,23 +132,26 @@
                                  referencedColumnNames="id"
                                  onDelete="SET NULL"
                                  constraintName="fk_tournaments_resource"/>
-    </changeSet>
 
-    <changeSet id="2025-11-08-22-tournaments-winner-name" author="mrodek">
-        <addColumn tableName="tournaments">
-            <column name="winner_name" type="varchar(200)"/>
-        </addColumn>
-        <rollback>
-            <dropColumn tableName="tournaments" columnName="winner_name"/>
-        </rollback>
-    </changeSet>
+        <createIndex tableName="tournaments" indexName="idx_tournaments_start_at">
+            <column name="start_at"/>
+        </createIndex>
+        <createIndex tableName="tournaments" indexName="idx_tournaments_created_by_uid">
+            <column name="created_by_uid"/>
+        </createIndex>
+        <createIndex tableName="tournaments" indexName="idx_tournaments_is_deleted">
+            <column name="is_deleted"/>
+        </createIndex>
+        <createIndex tableName="tournaments" indexName="idx_tournaments_slug" unique="true">
+            <column name="slug"/>
+        </createIndex>
 
-    <changeSet id="2025-11-09-add-preserve-matchmaking" author="you">
-        <addColumn tableName="tournaments">
-            <column name="preserve_matchmaking" type="boolean" defaultValueBoolean="false">
-                <constraints nullable="false"/>
-            </column>
-        </addColumn>
+        <!-- partial index for the "current featured" seek (most rows are NULL) -->
+        <sql>
+            CREATE INDEX idx_tournaments_featured_at
+                ON tournaments (featured_at DESC)
+                WHERE featured_at IS NOT NULL;
+        </sql>
     </changeSet>
 
 </databaseChangeLog>

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, Heading, Text, VStack } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
-import { FiCalendar, FiChevronRight, FiClock, FiMapPin } from "react-icons/fi"
+import { FiCalendar, FiChevronRight, FiClock, FiMapPin, FiRadio } from "react-icons/fi"
 import {
     fetchLiveMatches,
     fetchUpcomingMatches,
+    matchPhaseLabel,
     pickFeaturedFirst,
     type LiveMatch,
     type UpcomingMatch,
@@ -21,7 +22,9 @@ import {
 } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { usePolling } from "../hooks/usePolling"
+import { useLiveSocket } from "../hooks/useLiveSocket"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
+import MatchNotificationBell from "../components/MatchNotificationBell"
 import { FiChevronDown, FiChevronUp } from "react-icons/fi"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -268,7 +271,15 @@ function FeaturedTournamentHero({
  *    - When the card is expanded, `GoalscorersPanel` polls events every
  *      15 s so a goal scored during the page session shows up without
  *      a manual refresh. */
-function LiveMatchCard({ match, onOpen }: { match: LiveMatch; onOpen: () => void }) {
+function LiveMatchCard({
+    match,
+    onOpen,
+    refreshSignal,
+}: {
+    match: LiveMatch
+    onOpen: () => void
+    refreshSignal?: number
+}) {
     const half = match.secondHalfStartedAt ? "2. POL." : "1. POL."
     const [expanded, setExpanded] = useState(false)
     return (
@@ -324,6 +335,8 @@ function LiveMatchCard({ match, onOpen }: { match: LiveMatch; onOpen: () => void
                         <LiveClock
                             liveStartedAt={match.liveStartedAt}
                             secondHalfStartedAt={match.secondHalfStartedAt ?? null}
+                            halfLengthMin={match.halfLengthMin}
+                            halfCount={match.halfCount}
                         />
                     )}
                     <MonoLabel color="fg.muted">{half}</MonoLabel>
@@ -412,7 +425,8 @@ function LiveMatchCard({ match, onOpen }: { match: LiveMatch; onOpen: () => void
                         matchId={match.matchId}
                         team1Id={null}
                         team2Id={null}
-                        pollMs={15000}
+                        pollMs={8000}
+                        refreshSignal={refreshSignal}
                     />
                 </Box>
             )}
@@ -472,9 +486,29 @@ export default function LivePage() {
     const [upcomingMatches, setUpcomingMatches] = useState<UpcomingMatch[]>([])
     const [upcomingLoading, setUpcomingLoading] = useState(true)
     const [featured, setFeatured] = useState<TournamentCard | null>(null)
+    // Bumped on every WebSocket live-update so expanded event timelines refetch
+    // instantly (see GoalscorersPanel refreshSignal).
+    const [liveTick, setLiveTick] = useState(0)
 
     const navigate = useNavigate()
     const today = useMemo(() => new Date(), [])
+
+    const loadLive = useCallback(() => {
+        fetchLiveMatches()
+            .then((l) => {
+                setMatches(l)
+                setMatchesLoading(false)
+            })
+            .catch(() => setMatchesLoading(false))
+    }, [])
+
+    // Realtime: the backend pushes a ping whenever any live match changes;
+    // refetch the live list immediately and nudge the open timelines. Polling
+    // below stays as a fallback if the socket can't connect.
+    useLiveSocket(() => {
+        loadLive()
+        setLiveTick((t) => t + 1)
+    })
 
     useDocumentHead({
         title: "Uživo i raspored — futsal-turniri.com",
@@ -483,16 +517,10 @@ export default function LivePage() {
         canonical: "https://futsal-turniri.com/uzivo",
     })
 
-    // Live + upcoming matches polled every 30s; usePolling pauses both while
-    // the tab is hidden and refreshes the moment the user returns.
-    usePolling(() => {
-        fetchLiveMatches()
-            .then((l) => {
-                setMatches(l)
-                setMatchesLoading(false)
-            })
-            .catch(() => setMatchesLoading(false))
-    }, 30000)
+    // Fallback poll (the WebSocket above is the instant path). Kept snappy so
+    // the page stays current even if the socket can't connect. usePolling pauses
+    // while the tab is hidden and refreshes on return.
+    usePolling(loadLive, 8000)
 
     usePolling(() => {
         fetchUpcomingMatches()
@@ -556,22 +584,26 @@ export default function LivePage() {
                 navigate(`/turniri/${featured.slug ?? featured.uuid}`)
             }} />}
 
-            {/* ── Header ──────────────────────────────────────────────── */}
-            <Flex justify="space-between" align="flex-end" gap="4" wrap="wrap">
-                <Box>
-                    <HStack
-                        gap="2"
-                        color="accent.red"
-                        fontFamily="mono"
-                        fontSize="11px"
-                        letterSpacing="0.2em"
-                        fontWeight={700}
-                    >
-                        <PulseDot color="accent.red" size={8} glow />
-                        UŽIVO SADA
-                    </HStack>
-                </Box>
-            </Flex>
+            {/* ── Header — the pulsing red "UŽIVO SADA" kicker only appears
+                 when something is actually live. Nothing live → no red,
+                 no pulse (it was misleading to pulse on an empty page). */}
+            {!matchesLoading && matches.length > 0 && (
+                <Flex justify="space-between" align="flex-end" gap="4" wrap="wrap">
+                    <Box>
+                        <HStack
+                            gap="2"
+                            color="accent.red"
+                            fontFamily="mono"
+                            fontSize="11px"
+                            letterSpacing="0.2em"
+                            fontWeight={700}
+                        >
+                            <PulseDot color="accent.red" size={8} glow />
+                            UŽIVO SADA · {matches.length}
+                        </HStack>
+                    </Box>
+                </Flex>
+            )}
 
             {/* ── Live matches grid ───────────────────────────────────── */}
             <Box>
@@ -580,32 +612,39 @@ export default function LivePage() {
                         <Text color="fg.muted">Učitavanje utakmica…</Text>
                     </SectionCard>
                 ) : matches.length === 0 ? (
-                    <SectionCard padding="0">
+                    // Calm, slim banner — no big empty card, no red pulse.
+                    // The page's focus shifts to "Nadolazeće utakmice" below.
+                    <Flex
+                        align="center"
+                        gap="3"
+                        px="4"
+                        py="3.5"
+                        rounded="xl"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                    >
                         <Flex
-                            direction="column"
+                            w="40px"
+                            h="40px"
+                            rounded="full"
                             align="center"
-                            py="12"
-                            px="6"
-                            gap="3"
-                            textAlign="center"
+                            justify="center"
+                            bg="bg.surfaceTint"
+                            color="fg.muted"
+                            flexShrink={0}
                         >
-                            <Flex
-                                w="56px"
-                                h="56px"
-                                rounded="full"
-                                align="center"
-                                justify="center"
-                                bg="bg.surfaceTint"
-                                color="pitch.500"
-                            >
-                                <FiCalendar size={22} />
-                            </Flex>
-                            <Heading size="md">Trenutno nema utakmica uživo</Heading>
-                            <Text fontSize="sm" color="fg.muted" maxW="md">
-                                Pogledaj raspored nadolazećih turnira ispod.
-                            </Text>
+                            <FiRadio size={18} />
                         </Flex>
-                    </SectionCard>
+                        <Box minW="0">
+                            <Text fontWeight={600} color="fg.ink">
+                                Trenutno nema utakmica uživo
+                            </Text>
+                            <Text fontSize="sm" color="fg.muted">
+                                Pogledaj nadolazeće utakmice ispod.
+                            </Text>
+                        </Box>
+                    </Flex>
                 ) : (() => {
                     // Promote the admin-featured tournament's live match
                     // into a full-width "izdvojena utakmica" slot above
@@ -646,6 +685,7 @@ export default function LivePage() {
                                     <LiveMatchCard
                                         match={featured}
                                         onOpen={() => goToMatch(featured)}
+                                        refreshSignal={liveTick}
                                     />
                                 </Box>
                             </Box>
@@ -667,6 +707,7 @@ export default function LivePage() {
                                                 key={m.matchId}
                                                 match={m}
                                                 onOpen={() => goToMatch(m)}
+                                                refreshSignal={liveTick}
                                             />
                                         ))}
                                     </Grid>
@@ -721,17 +762,25 @@ export default function LivePage() {
                                     </Text>
                                 </HStack>
                                 <VStack align="stretch" gap="1.5">
-                                    {g.matches.map((m) => (
-                                        <Box
-                                            key={m.matchId}
-                                            as="button"
-                                            textAlign="left"
-                                            onClick={() =>
-                                                navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}`)
-                                            }
-                                            w="full"
-                                        >
+                                    {g.matches.map((m) => {
+                                        const openMatch = () =>
+                                            navigate(
+                                                `/turniri/${m.tournamentSlug || m.tournamentUuid}` +
+                                                    `?tab=raspored&match=${m.matchId}`,
+                                            )
+                                        return (
                                             <Flex
+                                                key={m.matchId}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={openMatch}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" || e.key === " ") {
+                                                        e.preventDefault()
+                                                        openMatch()
+                                                    }
+                                                }}
+                                                cursor="pointer"
                                                 align="center"
                                                 gap="3"
                                                 px="3"
@@ -771,15 +820,22 @@ export default function LivePage() {
                                                     </Text>
                                                     <HStack gap="1" mt="0.5" color="fg.muted">
                                                         <FiCalendar size={11} />
-                                                        <Text fontSize="xs" truncate>{m.tournamentName}</Text>
+                                                        <Text fontSize="xs" truncate>
+                                                            {m.tournamentName}
+                                                            {matchPhaseLabel(m) ? ` · ${matchPhaseLabel(m)}` : ""}
+                                                        </Text>
                                                     </HStack>
                                                 </Box>
+                                                <MatchNotificationBell
+                                                    tournamentUuid={m.tournamentUuid}
+                                                    matchId={m.matchId}
+                                                />
                                                 <Box as="span" color="fg.muted" flexShrink={0}>
                                                     <FiChevronRight />
                                                 </Box>
                                             </Flex>
-                                        </Box>
-                                    ))}
+                                        )
+                                    })}
                                 </VStack>
                             </Box>
                         ))}

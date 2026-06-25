@@ -1,4 +1,4 @@
-import { Box, Container, Flex, HStack, Text } from "@chakra-ui/react"
+import { Box, Container, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { Logo } from "./Logo"
 
@@ -34,36 +34,36 @@ export default function Footer() {
             borderColor="rgba(255,255,255,0.08)"
         >
             <Container maxW="6xl" py={{ base: "2.5", md: "3" }}>
+                {/* Everything centred on one row (wraps on very narrow
+                    screens): logo · Privatnost · © line. */}
                 <Flex
                     align="center"
-                    justify="space-between"
-                    gap="3"
+                    justify="center"
+                    gap={{ base: "2", md: "4" }}
                     wrap="wrap"
                 >
-                    <Logo size={26} variant="dark" showDomain={false} to="/turniri" />
-                    <HStack gap="4" wrap="wrap" justify="flex-end">
-                        <Box
-                            asChild
-                            fontFamily="mono"
-                            fontSize="11px"
-                            fontWeight={600}
-                            letterSpacing="0.04em"
-                            color="rgba(255,255,255,0.7)"
-                            css={{ "&:hover": { color: "#fff" } }}
-                        >
-                            <RouterLink to="/privatnost">Privatnost</RouterLink>
-                        </Box>
-                        <Text
-                            fontFamily="mono"
-                            fontSize="11px"
-                            fontWeight={600}
-                            letterSpacing="0.04em"
-                            color="rgba(255,255,255,0.6)"
-                            whiteSpace="nowrap"
-                        >
-                            © 2026 Mihael Rodek · futsal-turniri.com
-                        </Text>
-                    </HStack>
+                    <Logo size={24} variant="dark" showDomain={false} to="/turniri" />
+                    <Box
+                        asChild
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.7)"
+                        css={{ "&:hover": { color: "#fff" } }}
+                    >
+                        <RouterLink to="/privatnost">Privatnost</RouterLink>
+                    </Box>
+                    <Text
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.6)"
+                        whiteSpace="nowrap"
+                    >
+                        © 2026 Mihael Rodek · futsal-turniri.com
+                    </Text>
                 </Flex>
             </Container>
         </Box>

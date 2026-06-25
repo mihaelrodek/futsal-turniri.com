@@ -6,8 +6,11 @@
           http://www.liquibase.org/xml/ns/dbchangelog
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
-    <!-- Phase E2: group stage. A tournament_groups row per group; teams and
-         matches gain a group_id; matches gain a stage (GROUP | knockout). -->
+    <!--
+        Group-stage groups (A, B, …) for a tournament. One row per group.
+        teams.group_id and matches.group_id reference this, so it is ordered
+        before teams + matches in the master changelog.
+    -->
 
     <changeSet id="2026-05-21-02-groups-seq" author="mrodek">
         <createSequence sequenceName="seq_groups_id" incrementBy="1" startValue="1"/>
@@ -39,27 +42,6 @@
         <createIndex tableName="tournament_groups" indexName="idx_groups_tournament">
             <column name="tournament_id"/>
         </createIndex>
-    </changeSet>
-
-    <changeSet id="2026-05-21-04-teams-group" author="mrodek">
-        <addColumn tableName="teams">
-            <column name="group_id" type="bigint"/>
-        </addColumn>
-        <addForeignKeyConstraint baseTableName="teams" baseColumnNames="group_id"
-                                 referencedTableName="tournament_groups" referencedColumnNames="id"
-                                 onDelete="SET NULL" constraintName="fk_teams_group"/>
-    </changeSet>
-
-    <changeSet id="2026-05-21-05-matches-stage" author="mrodek">
-        <addColumn tableName="matches">
-            <column name="stage" type="varchar(20)" defaultValue="GROUP">
-                <constraints nullable="false"/>
-            </column>
-            <column name="group_id" type="bigint"/>
-        </addColumn>
-        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="group_id"
-                                 referencedTableName="tournament_groups" referencedColumnNames="id"
-                                 onDelete="SET NULL" constraintName="fk_matches_group"/>
     </changeSet>
 
 </databaseChangeLog>

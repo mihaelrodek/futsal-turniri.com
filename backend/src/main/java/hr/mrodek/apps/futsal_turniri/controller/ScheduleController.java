@@ -81,6 +81,22 @@ public class ScheduleController {
         return schedulingService.schedule(t);
     }
 
+    /**
+     * Fill in kickoff times for matches that don't have one yet (e.g. knockout
+     * matches created after the group schedule), continuing after the last
+     * scheduled match — without disturbing existing times. Re-confirm the
+     * schedule once the knockout bracket is drawn.
+     */
+    @POST
+    @Path("/confirm")
+    @Authenticated
+    @Transactional
+    public ScheduleDto confirm(@PathParam("uuid") String uuid) {
+        Tournaments t = assertCanEdit(uuid);
+        schedulingService.confirmSchedule(t);
+        return schedulingService.schedule(t);
+    }
+
     /** Override the kickoff time of a single match. */
     @PATCH
     @Path("/matches/{matchId}")

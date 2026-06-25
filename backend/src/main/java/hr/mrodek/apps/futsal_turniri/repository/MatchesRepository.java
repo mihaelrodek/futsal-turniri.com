@@ -211,6 +211,7 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
                         join fetch m.tournament t
                         left join fetch m.team1
                         left join fetch m.team2
+                        left join fetch m.group
                         where m.status = hr.mrodek.apps.futsal_turniri.enums.MatchStatus.SCHEDULED
                           and m.kickoffAt is not null
                           and m.kickoffAt >= :from

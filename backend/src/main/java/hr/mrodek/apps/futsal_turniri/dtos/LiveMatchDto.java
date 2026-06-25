@@ -20,6 +20,18 @@ public record LiveMatchDto(
         String liveMode,
         OffsetDateTime liveStartedAt,
         OffsetDateTime secondHalfStartedAt,
+        /** Tournament half length (minutes) + half count — lets every live
+         *  widget run the scoreboard-semaphore countdown (stop at the end of
+         *  a half) instead of a free-running elapsed clock. Null until the
+         *  schedule is generated. */
+        Integer halfLengthMin,
+        Integer halfCount,
+        /** Accumulated team fouls per half — drives the fullscreen foul /
+         *  "deveterac" display under each team name. */
+        Integer fouls1First,
+        Integer fouls1Second,
+        Integer fouls2First,
+        Integer fouls2Second,
         /**
          * Mirror of {@code tournaments.featured_at}. When non-null, the
          * tournament owning this match is the admin-curated daily

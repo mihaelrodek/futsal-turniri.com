@@ -163,6 +163,13 @@ export default function TournamentDetailsPage() {
         const s = searchParams.get("sub")
         return (s && (DRAW_SUB_KEYS as string[]).includes(s)) ? (s as DrawSubKey) : "grupe"
     })()
+    // ?match=<id> — set when arriving from a "Nadolazeće utakmice" click on
+    // /uzivo so the Raspored tab can scroll to + highlight that match.
+    const focusMatchId = ((): number | null => {
+        const m = searchParams.get("match")
+        const n = m ? Number(m) : NaN
+        return Number.isFinite(n) ? n : null
+    })()
     const [section, setSection] = useState<SectionKey>(initialSection)
     const [drawSub, setDrawSub] = useState<DrawSubKey>(initialDrawSub)
 
@@ -528,12 +535,32 @@ export default function TournamentDetailsPage() {
     /* ──────────────────────────────────────────────────────────────────────
        Teams: local editing
        ────────────────────────────────────────────────────────────────────── */
-    function addTeam() {
-        const tempId = -Date.now()
-        setTeams((ps) => [
-            ...ps,
-            { id: tempId, name: "", isEliminated: false } as TeamShort,
-        ])
+    // Add a team and persist it immediately (PUT). No more "Spremi
+    // promjene" — the team lands on the backend with a sensible default
+    // name and is returned so the UI can open it straight into edit mode
+    // for renaming.
+    async function addTeam(): Promise<TeamShort | null> {
+        if (!uuid) return null
+        if (savingTeamsRef.current) return null
+        if (teams.some((p) => !p.name || p.name.trim() === "")) {
+            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
+            return null
+        }
+        const defaultName = `Ekipa ${teams.length + 1}`
+        savingTeamsRef.current = true
+        try {
+            const prevIds = new Set(teams.filter((p) => p.id > 0).map((p) => p.id))
+            const saved = await replaceTeams(uuid, [
+                ...buildTeamsPayload(),
+                { name: defaultName, isEliminated: false },
+            ])
+            setTeams(saved)
+            return saved.find((p) => !prevIds.has(p.id)) ?? saved[saved.length - 1] ?? null
+        } catch {
+            return null
+        } finally {
+            savingTeamsRef.current = false
+        }
     }
     function changeTeamName(id: number, name: string) {
         setTeams((ps) => ps.map((p) => (p.id === id ? { ...p, name } : p)))
@@ -553,26 +580,11 @@ export default function TournamentDetailsPage() {
         }))
     }
 
-    async function saveTeamsAll() {
-        if (!uuid) return
-        if (savingTeamsRef.current) return
-        if (teams.some((p) => !p.name || p.name.trim() === "")) {
-            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
-            return
-        }
-        savingTeamsRef.current = true
-        try {
-            const saved = await replaceTeams(uuid, buildTeamsPayload())
-            setTeams(saved)
-        } finally {
-            savingTeamsRef.current = false
-        }
-    }
-
     function onTeamNameBlur(p: TeamShort) {
-        if (p.id > 0) return
         if (!p.name.trim()) {
-            removeTeam(p.id)
+            // Empty name on a still-local row → drop it. On a persisted row
+            // → don't overwrite the saved name with an empty string.
+            if (p.id <= 0) removeTeam(p.id)
             return
         }
         if (savingTeamsRef.current) return
@@ -704,21 +716,24 @@ export default function TournamentDetailsPage() {
                 ? "U tijeku"
                 : null
 
-    /** Top-right header actions: back, edit, share, embed, fullscreen + bell. */
+    /** Top-right header actions: edit, back, share, embed, fullscreen + bell. */
     const headerActions = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
-            <HeaderAction
-                icon={<FiArrowLeft size={15} />}
-                label="Natrag"
-                onClick={() => navigate("/turniri")}
-            />
-            {canEdit && t.status !== "FINISHED" && !editingDetails && (
+            {/* "Uredi" only appears on the Detalji tab — otherwise it would
+                open the edit form (which lives in the details view) "in the
+                background" while another tab is showing. */}
+            {canEdit && t.status !== "FINISHED" && !editingDetails && section === "details" && (
                 <HeaderAction
                     icon={<FiEdit2 size={15} />}
                     label="Uredi"
                     onClick={enterDetailsEdit}
                 />
             )}
+            <HeaderAction
+                icon={<FiArrowLeft size={15} />}
+                label="Natrag"
+                onClick={() => navigate("/turniri")}
+            />
             <HeaderAction
                 icon={<FiShare2 size={15} />}
                 label="Podijeli"
@@ -800,6 +815,11 @@ export default function TournamentDetailsPage() {
                         isAdmin={isAdmin}
                         shareUrl={shareUrl}
                         teamCount={teams.length}
+                        tournamentStarted={
+                            (t.status as string) === "STARTED" ||
+                            (t.status as string) === "IN_PROGRESS" ||
+                            t.status === "FINISHED"
+                        }
                         editingDetails={editingDetails}
                         editForm={editForm}
                         enterEdit={enterDetailsEdit}
@@ -872,7 +892,6 @@ export default function TournamentDetailsPage() {
                         addTeam={addTeam}
                         changeTeamName={changeTeamName}
                         onTeamNameBlur={onTeamNameBlur}
-                        saveTeamsAll={saveTeamsAll}
                         removeTeam={removeTeam}
                         requestDeleteTeam={setPendingDeleteTeam}
                         onApproveTeam={onApproveTeam}
@@ -941,6 +960,8 @@ export default function TournamentDetailsPage() {
                                 <GroupsTab
                                     uuid={t.uuid}
                                     advancePerGroup={t.advancePerGroup}
+                                    groupCount={t.groupCount}
+                                    teams={teams}
                                     canEdit={canEdit}
                                     tournamentStarted={tournamentStarted}
                                 />
@@ -963,6 +984,7 @@ export default function TournamentDetailsPage() {
                         tournamentName={t.name}
                         tournamentLocation={t.location}
                         tournamentSlug={t.slug}
+                        focusMatchId={focusMatchId}
                     />
                 )}
 

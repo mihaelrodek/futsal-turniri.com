@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.dtos.DrawRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
+import hr.mrodek.apps.futsal_turniri.dtos.GroupReorderRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupResultRequest;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
@@ -48,6 +49,7 @@ public class GroupController {
     @Inject GroupStageService groupStageService;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
+    @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
 
     /** Throws 403 if the current user is neither the tournament's creator
      *  nor an admin. Mirrors {@link RoundController#assertCanEdit}. */
@@ -79,7 +81,7 @@ public class GroupController {
     @Transactional
     public List<GroupDto> draw(@PathParam("uuid") String uuid, DrawRequest body) {
         Tournaments t = assertCanEdit(uuid);
-        groupStageService.drawAndGenerate(t, body);
+        groupStageService.draw(t, body);
         return groupStageService.standings(t.getId());
     }
 
@@ -94,6 +96,21 @@ public class GroupController {
             GroupResultRequest body) {
         Tournaments t = assertCanEdit(uuid);
         groupStageService.recordGroupResult(matchId, body.score1(), body.score2());
+        if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), matchId);
+        return groupStageService.standings(t.getId());
+    }
+
+    /** Manually reorder a finished group's standings (tiebreaker override). */
+    @POST
+    @Path("/{groupId}/reorder")
+    @Authenticated
+    @Transactional
+    public List<GroupDto> reorder(
+            @PathParam("uuid") String uuid,
+            @PathParam("groupId") Long groupId,
+            GroupReorderRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        groupStageService.reorderGroup(groupId, body.teamIds());
         return groupStageService.standings(t.getId());
     }
 }

@@ -11,6 +11,8 @@ export type ScheduleConfig = {
 export type ScheduledMatch = {
     matchId: number
     stage: string
+    /** Group letter (A, B, …) for GROUP matches; null for knockout. */
+    groupName?: string | null
     roundNumber: number | null
     team1Id: number | null
     team1Name: string | null

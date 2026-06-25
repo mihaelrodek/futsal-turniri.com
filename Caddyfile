@@ -40,6 +40,13 @@ futsal-turniri.com, www.futsal-turniri.com {
 			lb_try_interval 250ms
 		}
 	}
+	# WebSocket - realtime live channel: instant live score/event push
+	# for /uzivo + the fullscreen TV display. Caddy auto-detects the
+	# Upgrade header and proxies the socket to the backend; served at
+	# /ws/live (independent of the backend's /api REST root-path).
+	handle /ws/* {
+		reverse_proxy backend:8085
+	}
 
 	# ─── 2. English → Croatian 301 redirects ──────────────────────────
 	# The site moved off English URL slugs in favour of Croatian ones,

@@ -51,8 +51,13 @@ export type TournamentDetails = {
 
     rewardType?: RewardType | null;
     rewardFirst?: number | null;
+    rewardFirstNote?: string | null;
     rewardSecond?: number | null;
+    rewardSecondNote?: string | null;
     rewardThird?: number | null;
+    rewardThirdNote?: string | null;
+    rewardFourth?: number | null;
+    rewardFourthNote?: string | null;
 
     additionalOptions?: string[];
     winnerName?: string | null;
@@ -105,11 +110,17 @@ export type CreateTournamentPayload = {
     contactName?: string | null;
     contactPhone?: string | null;
 
-    // rewards
+    // rewards — each place has an amount + optional free-text note ("Ostalo").
+    // rewardType is legacy; always "FIXED" now (percent/fixed toggle removed).
     rewardType?: RewardType | null;
     rewardFirst?: number | null;
+    rewardFirstNote?: string | null;
     rewardSecond?: number | null;
+    rewardSecondNote?: string | null;
     rewardThird?: number | null;
+    rewardThirdNote?: string | null;
+    rewardFourth?: number | null;
+    rewardFourthNote?: string | null;
 
     // media via resources table (optional linkage at create time)
     resourceId?: number | null;

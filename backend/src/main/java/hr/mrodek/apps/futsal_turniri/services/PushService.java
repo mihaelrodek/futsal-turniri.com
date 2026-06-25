@@ -46,6 +46,7 @@ public class PushService {
 
     @Inject PushSubscriptionRepository subRepo;
     @Inject TournamentSubscriptionRepository tournamentSubRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.MatchSubscriptionRepository matchSubRepo;
     @Inject ObjectMapper objectMapper;
 
     // defaultValue="" so SmallRye Config doesn't bail at startup when the
@@ -148,6 +149,39 @@ public class PushService {
                 LOG.warnf(outer,
                         "Push: tournament fan-out failed for uid=%s tournament=%d",
                         uid, tournamentId);
+            }
+        }
+    }
+
+    /**
+     * Fan-out for a single match's bell subscribers — fired when that match
+     * goes live. Same per-device resilience as {@link #sendToTournamentSubscribers}.
+     */
+    @Transactional
+    public void sendToMatchSubscribers(Long matchId, String title, String body, String url) {
+        if (matchId == null) return;
+        if (!isReady()) return;
+        var matchSubs = matchSubRepo.findByMatchId(matchId);
+        if (matchSubs.isEmpty()) return;
+
+        String json = serialize(new PushPayload(title, body, url));
+        for (var ms : matchSubs) {
+            String uid = ms.getUserUid();
+            if (uid == null || uid.isBlank()) continue;
+            try {
+                var deviceSubs = subRepo.findByUserUid(uid);
+                for (var deviceSub : deviceSubs) {
+                    try {
+                        sendOne(deviceSub, json);
+                    } catch (Exception inner) {
+                        LOG.warnf(inner,
+                                "Push: match fan-out failed for subscription %d (uid=%s)",
+                                deviceSub.getId(), uid);
+                    }
+                }
+            } catch (Exception outer) {
+                LOG.warnf(outer,
+                        "Push: match fan-out failed for uid=%s match=%d", uid, matchId);
             }
         }
     }

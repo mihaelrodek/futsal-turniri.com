@@ -22,5 +22,13 @@ public record BracketMatchDto(
         String status,
         String liveMode,
         OffsetDateTime liveStartedAt,
-        OffsetDateTime secondHalfStartedAt
+        OffsetDateTime secondHalfStartedAt,
+        /** Scheduled kickoff — null until the schedule is generated/confirmed.
+         *  A match can't be started live before it has one. */
+        OffsetDateTime kickoffAt,
+        /** Accumulated team fouls per half (for the live-entry foul controls). */
+        Integer fouls1First,
+        Integer fouls1Second,
+        Integer fouls2First,
+        Integer fouls2Second
 ) {}

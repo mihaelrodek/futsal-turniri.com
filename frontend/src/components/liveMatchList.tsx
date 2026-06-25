@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Box, chakra, Flex, Text } from "@chakra-ui/react"
 import { FiChevronDown, FiChevronRight, FiChevronUp } from "react-icons/fi"
 import type { LiveMatch } from "../api/live"
-import { GoalscorersPanel, LiveClock, elapsedMinutes } from "./liveMatch"
+import { GoalscorersPanel, LiveClock } from "./liveMatch"
 
 /* ──────────────────────────────────────────────────────────────────────────
    LiveMatchRow — SofaScore-style live-match row used by the /uzivo page.
@@ -62,40 +62,20 @@ export function LiveMatchRow({
                 _hover={{ bg: "bg.muted" }}
                 rounded="md"
             >
-                {/* TIMER mode: current minute above score, centered.
-                    Once the 2nd half is under way the clock counts from
-                    secondHalfStartedAt and is labelled "2. pol."; otherwise it
-                    shows the 1st-half clock. The half length is not fetched on
-                    this viewer page, so timing is best-effort (free-running). */}
+                {/* TIMER mode: scoreboard-semaphore clock — counts the
+                    running half DOWN, stops at 0:00, and labels the phase
+                    ("1. pol." / "Poluvrijeme" / "2. pol." / "Kraj"). Uses the
+                    tournament half config from the /live DTO; falls back to a
+                    free-running clock only if the schedule has no half length. */}
                 {match.liveMode === "TIMER" && (
                     <Flex justify="center" mb="1">
-                        <Flex
-                            align="center"
-                            gap="1"
-                            fontSize="xs"
-                            fontWeight="bold"
-                            color="red.fg"
-                            fontVariantNumeric="tabular-nums"
-                        >
-                            {match.secondHalfStartedAt ? (
-                                <>
-                                    <LiveClock liveStartedAt={match.secondHalfStartedAt} />
-                                    <Text as="span" color="fg.muted" fontWeight="medium">
-                                        2. pol.
-                                    </Text>
-                                </>
-                            ) : (
-                                <>
-                                    <Text as="span">
-                                        {elapsedMinutes(match.liveStartedAt)}&apos;
-                                    </Text>
-                                    <LiveClock liveStartedAt={match.liveStartedAt} />
-                                    <Text as="span" color="fg.muted" fontWeight="medium">
-                                        1. pol.
-                                    </Text>
-                                </>
-                            )}
-                        </Flex>
+                        <LiveClock
+                            liveStartedAt={match.liveStartedAt}
+                            secondHalfStartedAt={match.secondHalfStartedAt}
+                            halfLengthMin={match.halfLengthMin}
+                            halfCount={match.halfCount}
+                            showLabel
+                        />
                     </Flex>
                 )}
 

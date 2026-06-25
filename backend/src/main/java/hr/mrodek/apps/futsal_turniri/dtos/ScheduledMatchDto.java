@@ -6,6 +6,8 @@ import java.time.OffsetDateTime;
 public record ScheduledMatchDto(
         Long matchId,
         String stage,
+        /** Group letter (A, B, …) for GROUP-stage matches; null for knockout. */
+        String groupName,
         Integer roundNumber,
         Long team1Id,
         String team1Name,

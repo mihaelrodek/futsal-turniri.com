@@ -1,7 +1,9 @@
 import {
     Box,
+    Card,
     Flex,
     Heading,
+    HStack,
     Icon,
     Spinner,
     Text,
@@ -18,6 +20,47 @@ import type { ElementType, ReactNode } from "react"
    section header, stat tiles, empty states and loaders. Built on Chakra
    UI v3 and the `brand` palette defined in `system.ts`.
    ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * FormSectionCard — a bordered, titled section card used by the tournament
+ * create AND edit forms so both look 1:1. Blue inline icon + title in the
+ * header, tight body padding for dense forms. `icon` is a rendered node
+ * (e.g. {@code <FiInfo />}).
+ */
+export function FormSectionCard({
+    icon,
+    title,
+    description,
+    children,
+}: {
+    icon?: ReactNode
+    title: string
+    description?: string
+    children: ReactNode
+}) {
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Header pb="2" pt="4" px={{ base: "4", md: "5" }}>
+                <HStack gap="2.5" align="center">
+                    {icon && (
+                        <Box color="blue.500" display="flex" alignItems="center">
+                            {icon}
+                        </Box>
+                    )}
+                    <Card.Title fontSize="md">{title}</Card.Title>
+                </HStack>
+                {description && (
+                    <Card.Description fontSize="sm" color="fg.muted" mt="1">
+                        {description}
+                    </Card.Description>
+                )}
+            </Card.Header>
+            <Card.Body pt="3" pb="4" px={{ base: "4", md: "5" }}>
+                {children}
+            </Card.Body>
+        </Card.Root>
+    )
+}
 
 /** Panel — the standard content surface: a white card on the soft canvas. */
 export function Panel({ children, ...rest }: BoxProps) {

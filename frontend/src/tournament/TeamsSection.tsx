@@ -39,8 +39,7 @@ import {
 } from "../api/players"
 import PodiumEditor from "../components/PodiumEditor"
 import PlayerNameAutocomplete from "../components/PlayerNameAutocomplete"
-import { EmptyState, Panel, SectionHeader } from "../ui/primitives"
-import { AccentStat, MonoLabel } from "../ui/pitch"
+import { EmptyState, Panel } from "../ui/primitives"
 import { TeamAvatar } from "./parts"
 
 /* "Ekipe" section — team management as a master-detail.
@@ -61,10 +60,11 @@ type TeamsSectionProps = {
     tournamentAlready: boolean
     teamRequestsCollapsed: boolean
     setTeamRequestsCollapsed: (fn: (v: boolean) => boolean) => void
-    addTeam: () => void
+    /** Adds a team (persists immediately via PUT) and resolves to the
+     *  newly-created team so the list can open it straight into edit mode. */
+    addTeam: () => Promise<TeamShort | null>
     changeTeamName: (id: number, name: string) => void
     onTeamNameBlur: (p: TeamShort) => void
-    saveTeamsAll: () => void
     removeTeam: (id: number) => void
     requestDeleteTeam: (p: TeamShort) => void
     onApproveTeam: (p: TeamShort) => void
@@ -87,7 +87,6 @@ export default function TeamsSection(props: TeamsSectionProps) {
         addTeam,
         changeTeamName,
         onTeamNameBlur,
-        saveTeamsAll,
         removeTeam,
         requestDeleteTeam,
         onApproveTeam,
@@ -151,6 +150,16 @@ export default function TeamsSection(props: TeamsSectionProps) {
         () => teams.find((p) => p.id === selectedTeamId) ?? null,
         [teams, selectedTeamId],
     )
+
+    // "Dodaj ekipu" persists immediately and then opens the new team so it's
+    // ready to rename (RosterPanel mounts in edit mode before the tournament
+    // starts — see its `editMode` default).
+    const handleAddTeam = useCallback(async () => {
+        const created = await addTeam()
+        if (created && typeof created.id === "number" && created.id > 0) {
+            setSelectedTeamId(created.id)
+        }
+    }, [addTeam])
 
     const openRequests = teamRequests.filter((r) => r.status === "OPEN")
 
@@ -362,12 +371,6 @@ export default function TeamsSection(props: TeamsSectionProps) {
                     )}
 
                     <Box>
-                        <HStack mb="2" gap="2" align="center">
-                            <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase">
-                                Aktivni
-                            </Text>
-                            <Text fontSize="xs" color="fg.muted">({displayActiveTeams.length})</Text>
-                        </HStack>
                         <VStack align="stretch" gap="2">
                             {displayActiveTeams.map((p) => renderTeamRow(p, p.isEliminated))}
                         </VStack>
@@ -428,113 +431,57 @@ export default function TeamsSection(props: TeamsSectionProps) {
     return (
         <VStack align="stretch" gap="5">
             <Panel p={{ base: "4", md: "5" }}>
-                <VStack align="stretch" gap="4">
-                    <SectionHeader
-                        icon={FiUser}
-                        title="Ekipe"
-                        subtitle={
-                            tournamentLocked
-                                ? "Konačni poredak ekipa."
-                                : tournamentAlready
-                                    ? "Pregled ekipa i njihovih sastava."
-                                    : "Dodaj ekipe i upravljaj sastavom."
-                        }
-                        actions={
-                            <HStack gap="2" wrap="wrap">
-                                {showSelfRegisterButton && (
-                                    <Button
-                                        size="sm"
-                                        variant="solid"
-                                        colorPalette="brand"
-                                        onClick={onSelfRegisterClick}
-                                    >
-                                        <FiPlus />
-                                        {userAlreadyRegistered
-                                            ? "Prijavi još jednu ekipu"
-                                            : "Prijavi ekipu za turnir"}
-                                    </Button>
-                                )}
-                                {/* Once the tournament has started (any
-                                     match LIVE / FINISHED, or status moved
-                                     past DRAFT), team registration is
-                                     frozen — no Dodaj ekipu, no Spremi
-                                     promjene. Hidden entirely rather than
-                                     `disabled`-and-greyed because the
-                                     organiser can't unfreeze it from this
-                                     screen, so a dimmed button would just
-                                     be noise. */}
-                                {!tournamentLocked && !tournamentAlready && canEdit && (
-                                    <>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={addTeam}
-                                            disabled={atCapacity}
-                                            title={
-                                                atCapacity
-                                                    ? `Maksimalan broj ekipa (${capacity})`
-                                                    : "Dodaj novu ekipu"
-                                            }
-                                        >
-                                            <FiPlus /> Dodaj ekipu
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="solid"
-                                            colorPalette="brand"
-                                            onClick={saveTeamsAll}
-                                        >
-                                            Spremi promjene
-                                        </Button>
-                                    </>
-                                )}
-                            </HStack>
-                        }
-                    />
+                <HStack justify="space-between" align="center" gap="3" wrap="wrap">
+                    <HStack gap="2" align="baseline">
+                        <Text fontSize="sm" color="fg.muted" fontWeight="medium">
+                            Prijavljeno
+                        </Text>
+                        <Text fontSize="lg" fontWeight="bold" color="fg.ink">
+                            {capacity != null ? `${teams.length} / ${capacity}` : teams.length}
+                        </Text>
+                        {overCapacity && (
+                            <Badge variant="subtle" colorPalette="red">
+                                +{teams.length - capacity!} preko
+                            </Badge>
+                        )}
+                    </HStack>
 
-                    {/* Pitch design 4-tile stat strip — replaces the previous
-                         StatTile pair so the Ekipe header reads like the rest
-                         of the section dashboards. */}
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }}
-                        gap="3"
-                    >
-                        <AccentStat
-                            accent="var(--chakra-colors-pitch-500)"
-                            label={<MonoLabel>PRIJAVLJENE</MonoLabel>}
-                            value={capacity != null ? `${teams.length} / ${capacity}` : teams.length}
-                            hint={
-                                overCapacity
-                                    ? `+${teams.length - capacity!} preko kapaciteta`
-                                    : undefined
-                            }
-                        />
-                        <AccentStat
-                            accent="var(--chakra-colors-pitch-400)"
-                            label={<MonoLabel>POPUNJENO</MonoLabel>}
-                            value={
-                                capacity && capacity > 0
-                                    ? `${Math.round((teams.length / capacity) * 100)}%`
-                                    : "—"
-                            }
-                        />
-                        <AccentStat
-                            accent="var(--chakra-colors-accent-amber)"
-                            label={<MonoLabel>AKTIVNE</MonoLabel>}
-                            value={activeTeams.length}
-                        />
-                        <AccentStat
-                            accent="var(--chakra-colors-ink-mute)"
-                            label={<MonoLabel>SLOBODNO</MonoLabel>}
-                            value={
-                                capacity != null
-                                    ? Math.max(0, capacity - teams.length)
-                                    : "—"
-                            }
-                        />
-                    </Box>
-                </VStack>
+                    <HStack gap="2" wrap="wrap">
+                        {showSelfRegisterButton && (
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                colorPalette="brand"
+                                onClick={onSelfRegisterClick}
+                            >
+                                <FiPlus />
+                                {userAlreadyRegistered
+                                    ? "Prijavi još jednu ekipu"
+                                    : "Prijavi ekipu za turnir"}
+                            </Button>
+                        )}
+                        {/* Once the tournament has started, registration is
+                             frozen — the button is hidden entirely. Adding a
+                             team persists immediately (PUT) and opens it for
+                             renaming, so there's no separate "Spremi promjene". */}
+                        {!tournamentLocked && !tournamentAlready && canEdit && (
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                colorPalette="brand"
+                                onClick={handleAddTeam}
+                                disabled={atCapacity}
+                                title={
+                                    atCapacity
+                                        ? `Maksimalan broj ekipa (${capacity})`
+                                        : "Dodaj novu ekipu"
+                                }
+                            >
+                                <FiPlus /> Dodaj ekipu
+                            </Button>
+                        )}
+                    </HStack>
+                </HStack>
             </Panel>
 
             {!tournamentAlready && openRequests.length > 0 && (
@@ -683,7 +630,11 @@ function RosterPanel({
     //   2. Per-player edit/delete/captain — ONLY when the tournament
     //      has started. Before start these stay inline because rapid
     //      roster editing is normal during signup.
-    const [editMode, setEditMode] = useState(false)
+    // Before the tournament starts, a selected team opens straight into edit
+    // mode (rename + roster editing immediately available). Once it has
+    // started/finished, it opens read-only and the organiser presses "Uredi"
+    // to rename.
+    const [editMode, setEditMode] = useState(!tournamentStarted)
     // Whether per-player action icons should be visible right now.
     const showPlayerActions = canEdit && (!tournamentStarted || editMode)
     const [players, setPlayers] = useState<PlayerDto[]>([])

@@ -24,6 +24,17 @@ export type LiveMatch = {
     liveStartedAt: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
+    /** Tournament half length (min) + half count — drives the scoreboard
+     *  countdown so live widgets stop at the end of a half instead of
+     *  free-running. Null until the schedule is generated. */
+    halfLengthMin?: number | null
+    halfCount?: number | null
+    /** Accumulated team fouls per half — drives the fullscreen foul /
+     *  "deveterac" display under each team name. */
+    fouls1First?: number | null
+    fouls1Second?: number | null
+    fouls2First?: number | null
+    fouls2Second?: number | null
     /** Mirror of `tournaments.featured_at`. Non-null when this match's
      *  tournament is the admin-curated daily highlight — used to
      *  promote the right match into the home-page hero and the /uzivo
@@ -71,6 +82,30 @@ export type UpcomingMatch = {
     team2Name: string | null
     kickoffAt: string
     tableNo: number | null
+    /** Match stage (GROUP, ROUND_OF_32, …, FINAL) — shown next to the name. */
+    stage?: string | null
+    /** Group letter (A, B, …) for GROUP matches; null for knockout. */
+    groupName?: string | null
+}
+
+/** Croatian phase label appended after the tournament name on /uzivo
+ *  ("… · Skupina A", "… · Polufinale"). Returns null when there's nothing
+ *  meaningful to show. */
+export function matchPhaseLabel(m: {
+    stage?: string | null
+    groupName?: string | null
+}): string | null {
+    if (!m.stage) return null
+    if (m.stage === "GROUP") return m.groupName ? `Skupina ${m.groupName}` : "Grupa"
+    const KNOCKOUT: Record<string, string> = {
+        ROUND_OF_32: "1/16 finala",
+        ROUND_OF_16: "Osmina finala",
+        QUARTERFINAL: "Četvrtfinale",
+        SEMIFINAL: "Polufinale",
+        FINAL: "Finale",
+        THIRD_PLACE: "Za 3. mjesto",
+    }
+    return KNOCKOUT[m.stage] ?? null
 }
 
 /** Upcoming matches across every tournament, soonest-first (max 40). */

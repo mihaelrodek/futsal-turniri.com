@@ -1,9 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="
           http://www.liquibase.org/xml/ns/dbchangelog
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Saved team names ("parovi") a user reuses across tournaments. Full
+        consolidated definition (pre-launch baseline): includes the hidden
+        flag, co-ownership sharing, and the archive-request lifecycle.
+        user_uid is a plain Firebase UID string (no FK).
+    -->
 
     <changeSet id="2026-04-26-50-user-team-presets-seq" author="mrodek">
         <createSequence sequenceName="seq_user_team_presets_id" incrementBy="1" startValue="1"/>
@@ -23,6 +31,24 @@
             <column name="name" type="varchar(200)">
                 <constraints nullable="false"/>
             </column>
+
+            <!-- "don't display on my public profile to others" knob -->
+            <column name="hidden" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- co-ownership sharing: claim_token for /claim-name/{token},
+                 co_owner_uid is the partner once they claim -->
+            <column name="claim_token" type="varchar(48)"/>
+            <column name="co_owner_uid" type="varchar(64)"/>
+
+            <!-- archive-request lifecycle for co-owned presets -->
+            <column name="archive_request_by_uid" type="varchar(64)"/>
+            <column name="archived" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="archived_at" type="timestamptz"/>
+
             <column name="created_at" type="timestamptz" defaultValueComputed="now()">
                 <constraints nullable="false"/>
             </column>
@@ -33,6 +59,15 @@
 
         <createIndex tableName="user_team_presets" indexName="idx_user_team_presets_user_uid">
             <column name="user_uid"/>
+        </createIndex>
+        <createIndex tableName="user_team_presets" indexName="uq_user_team_presets_claim_token" unique="true">
+            <column name="claim_token"/>
+        </createIndex>
+        <createIndex tableName="user_team_presets" indexName="idx_user_team_presets_co_owner">
+            <column name="co_owner_uid"/>
+        </createIndex>
+        <createIndex tableName="user_team_presets" indexName="idx_user_team_presets_archive_req">
+            <column name="archive_request_by_uid"/>
         </createIndex>
     </changeSet>
 </databaseChangeLog>

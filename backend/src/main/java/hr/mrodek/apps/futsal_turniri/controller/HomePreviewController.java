@@ -110,9 +110,9 @@ public class HomePreviewController {
     private String renderHome(List<Tournaments> upcoming) {
         StringBuilder sb = new StringBuilder(4096);
         appendHeadOpen(sb,
-                "Futsal turniri u Hrvatskoj — futsal-turniri.com",
-                "Futsal turniri u Hrvatskoj i regiji. Pretraži nadolazeće turnire, "
-                        + "pridruži se paru, prati rezultate i statistike.",
+                "Futsal turniri",
+                "Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, "
+                        + "pogledaj raspored, rezultate uživo i statistiku strijelaca.",
                 "https://futsal-turniri.com/");
         // Site-wide WebSite + Organization JSON-LD is already in the static
         // index.html; we don't duplicate it here. The homepage doesn't need
@@ -121,7 +121,7 @@ public class HomePreviewController {
         sb.append("<h1>Futsal turniri u Hrvatskoj</h1>\n");
         sb.append("<p>futsal-turniri.com je platforma za organizaciju i praćenje "
                 + "Futsal turnira u Hrvatskoj i regiji. Organizatori mogu kreirati "
-                + "turnire, prikupiti prijave parova i objaviti rezultate, a "
+                + "turnire, prikupiti prijave ekipa i objaviti rezultate, a "
                 + "igrači prate raspored, povijest nastupa i pridružuju se "
                 + "novim turnirima.</p>\n");
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Manual group-standings order. After all of a group's matches are
+        finished the organizer may override the computed ranking (e.g. to
+        settle a tiebreaker by hand). When set, manual_rank is the team's
+        0-based position within its group and the standings sort by it
+        instead of the points/H2H computation. Null = use the computed order.
+    -->
+    <changeSet id="2026-06-23-teams-manual-rank" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="manual_rank" type="int"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

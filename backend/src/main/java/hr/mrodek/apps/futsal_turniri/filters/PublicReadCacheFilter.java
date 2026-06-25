@@ -34,10 +34,15 @@ public class PublicReadCacheFilter implements ContainerResponseFilter {
 
     private static final String CACHE_VALUE = "public, max-age=20, s-maxage=60";
 
-    /** Paths (relative to the {@code /api} root) that are safe to cache publicly. */
+    /** Paths (relative to the {@code /api} root) that are safe to cache publicly.
+     *
+     *  NOTE: {@code tournaments/live} is deliberately NOT here. It carries
+     *  real-time match scores polled every few seconds by the /uzivo page and
+     *  the fullscreen TV display; a 20s browser cache made a freshly-entered
+     *  goal invisible until the cache expired or the page was hard-refreshed.
+     *  Live data must always hit the backend. */
     private static final Set<String> CACHEABLE = Set.of(
             "tournaments",
-            "tournaments/live",
             "tournaments/featured",
             "tournaments/upcoming-matches",
             "tournaments/count",

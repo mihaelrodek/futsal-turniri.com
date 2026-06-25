@@ -60,8 +60,13 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "enumToName"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
+            @Mapping(target = "rewardFirstNote", source = "rewardFirstNote"),
             @Mapping(target = "rewardSecond", source = "rewardSecond"),
+            @Mapping(target = "rewardSecondNote", source = "rewardSecondNote"),
             @Mapping(target = "rewardThird", source = "rewardThird"),
+            @Mapping(target = "rewardThirdNote", source = "rewardThirdNote"),
+            @Mapping(target = "rewardFourth", source = "rewardFourth"),
+            @Mapping(target = "rewardFourthNote", source = "rewardFourthNote"),
             @Mapping(target = "additionalOptions", expression = "java(java.util.Collections.emptyList())"),
             @Mapping(target = "teams", expression = "java(java.util.Collections.emptyList())"),
             @Mapping(target = "winnerName", source = "winnerName"),
@@ -111,8 +116,13 @@ public interface TournamentMapper {
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
+            @Mapping(target = "rewardFirstNote", source = "rewardFirstNote"),
             @Mapping(target = "rewardSecond", source = "rewardSecond"),
+            @Mapping(target = "rewardSecondNote", source = "rewardSecondNote"),
             @Mapping(target = "rewardThird", source = "rewardThird"),
+            @Mapping(target = "rewardThirdNote", source = "rewardThirdNote"),
+            @Mapping(target = "rewardFourth", source = "rewardFourth"),
+            @Mapping(target = "rewardFourthNote", source = "rewardFourthNote"),
 
             // status may come from request later; default in @AfterMapping
             @Mapping(target = "status", ignore = true)
@@ -138,12 +148,13 @@ public interface TournamentMapper {
             @Mapping(target = "secondPlaceName", ignore = true),
             @Mapping(target = "thirdPlaceName", ignore = true),
             @Mapping(target = "resource", ignore = true),
-            // Format is fixed at creation; the generic update path must not
-            // touch it — SET_TO_NULL would otherwise wipe the group config.
-            @Mapping(target = "format", ignore = true),
-            @Mapping(target = "groupCount", ignore = true),
-            @Mapping(target = "advancePerGroup", ignore = true),
-            @Mapping(target = "bracketFill", ignore = true),
+            // Format IS editable now (organizer can change it on the detail
+            // page). The controller guards against desync: once fixtures
+            // exist it restores the previous format config after this mapping.
+            @Mapping(target = "format", source = "format"),
+            @Mapping(target = "groupCount", source = "groupCount"),
+            @Mapping(target = "advancePerGroup", source = "advancePerGroup"),
+            @Mapping(target = "bracketFill", source = "bracketFill"),
 
             @Mapping(target = "name", source = "name"),
             @Mapping(target = "location", source = "location"),
@@ -159,8 +170,13 @@ public interface TournamentMapper {
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
+            @Mapping(target = "rewardFirstNote", source = "rewardFirstNote"),
             @Mapping(target = "rewardSecond", source = "rewardSecond"),
+            @Mapping(target = "rewardSecondNote", source = "rewardSecondNote"),
             @Mapping(target = "rewardThird", source = "rewardThird"),
+            @Mapping(target = "rewardThirdNote", source = "rewardThirdNote"),
+            @Mapping(target = "rewardFourth", source = "rewardFourth"),
+            @Mapping(target = "rewardFourthNote", source = "rewardFourthNote"),
     })
     void applyUpdate(@MappingTarget Tournaments target, CreateTournamentRequest req);
 

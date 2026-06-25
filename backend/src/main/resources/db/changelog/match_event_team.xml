@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Allow a match event with no player. Penalty-shootout kicks may be
+        recorded without naming the shooter ("nepoznati izvođač") — they still
+        belong to a team and must show in the timeline as "(gol)"/"(promašaj)".
+        So player_id becomes nullable and a nullable team_id is added to carry
+        the side when the player is unknown. Goals/cards still require a player
+        (enforced in the controller); their team keeps deriving from the player.
+    -->
+    <changeSet id="2026-06-25-match-event-team" author="mrodek">
+        <dropNotNullConstraint tableName="match_events"
+                               columnName="player_id"
+                               columnDataType="bigint"/>
+        <addColumn tableName="match_events">
+            <column name="team_id" type="bigint"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="match_events"
+                                 baseColumnNames="team_id"
+                                 constraintName="fk_match_events_team"
+                                 referencedTableName="teams"
+                                 referencedColumnNames="id"/>
+    </changeSet>
+</databaseChangeLog>

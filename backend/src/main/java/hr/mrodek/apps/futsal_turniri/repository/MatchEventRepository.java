@@ -24,6 +24,13 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
         return list("match.id = ?1 and type = ?2", matchId, type);
     }
 
+    /** True if the player has already been sent off (red card) in this match —
+     *  a sent-off player can't score or otherwise affect the match. */
+    public boolean playerSentOff(Long matchId, Long playerId) {
+        return count("match.id = ?1 and player.id = ?2 and type = ?3",
+                matchId, playerId, MatchEventType.RED_CARD) > 0;
+    }
+
     public void deleteByMatch_Id(Long matchId) {
         delete("match.id", matchId);
     }

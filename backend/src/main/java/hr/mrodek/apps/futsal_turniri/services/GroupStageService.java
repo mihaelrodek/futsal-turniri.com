@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,12 +56,14 @@ public class GroupStageService {
     /* ───────────────────────── draw + fixtures ───────────────────────── */
 
     /**
-     * Draw the registered teams into groups and generate the round-robin
-     * fixtures. Re-runnable: it first wipes any existing groups, group-stage
-     * matches and matchday rounds, so the organizer can redo the draw.
+     * Draw the registered teams into groups — groups + team placement ONLY,
+     * no fixtures. The group matches are created later, when the organizer
+     * generates the schedule on the Raspored tab ({@link #generateFixtures}).
+     * Re-runnable: wipes any existing groups, group-stage matches and matchday
+     * rounds first, so the organizer can redo the draw.
      */
     @Transactional
-    public void drawAndGenerate(Tournaments t, DrawRequest req) {
+    public void draw(Tournaments t, DrawRequest req) {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
             throw new BadRequestException("Tournament format is not GROUPS_KNOCKOUT");
         }
@@ -95,7 +98,24 @@ public class GroupStageService {
         }
 
         assignTeams(teams, groups, req);
-        generateFixtures(t, groups);
+        // Fixtures are intentionally NOT generated here — see generateFixtures.
+    }
+
+    /**
+     * Generate the round-robin group fixtures for an already-drawn group
+     * stage. Called when the organizer generates the schedule. Idempotent and
+     * non-destructive: if group matches already exist it does nothing (so a
+     * re-generated schedule never wipes played results), and if no groups have
+     * been drawn it is a no-op.
+     */
+    @Transactional
+    public void generateFixtures(Tournaments t) {
+        long existing = matchesRepo.count(
+                "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
+        if (existing > 0) return; // already generated — keep results intact
+        List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(t.getId());
+        if (groups.isEmpty()) return; // not drawn yet (or KNOCKOUT_ONLY)
+        buildGroupFixtures(t, groups);
     }
 
     /** Places teams into groups — manual placement or a random auto draw. */
@@ -134,7 +154,7 @@ public class GroupStageService {
     }
 
     /** Builds the single round-robin fixtures for every group. */
-    private void generateFixtures(Tournaments t, List<Groups> groups) {
+    private void buildGroupFixtures(Tournaments t, List<Groups> groups) {
         // Round-robin schedule per group; track the longest so we know how
         // many shared matchday rounds to create.
         Map<Long, List<List<Teams[]>>> schedules = new HashMap<>();
@@ -233,6 +253,17 @@ public class GroupStageService {
             for (Teams tm : teams) rows.add(buildRow(tm, finished));
             rankRows(rows, finished);
 
+            // Manual override: once the organizer has reordered the group by hand
+            // (all teams carry a manual_rank), respect that order instead of the
+            // computed points/H2H ranking — used to settle tiebreakers.
+            boolean allManual = !teams.isEmpty()
+                    && teams.stream().allMatch(t -> t.getManualRank() != null);
+            if (allManual) {
+                Map<Long, Integer> manual = teams.stream()
+                        .collect(Collectors.toMap(Teams::getId, Teams::getManualRank));
+                rows.sort(Comparator.comparingInt(r -> manual.getOrDefault(r.teamId, 0)));
+            }
+
             List<GroupStandingRowDto> dto = new ArrayList<>();
             for (Row r : rows) dto.add(r.toDto());
 
@@ -248,7 +279,12 @@ public class GroupStageService {
                         m.getStatus() != null ? m.getStatus().name() : null,
                         m.getLiveMode() != null ? m.getLiveMode().name() : null,
                         m.getLiveStartedAt(),
-                        m.getSecondHalfStartedAt()));
+                        m.getSecondHalfStartedAt(),
+                        m.getKickoffAt(),
+                        m.getFouls1First(),
+                        m.getFouls1Second(),
+                        m.getFouls2First(),
+                        m.getFouls2Second()));
             }
             out.add(new GroupDto(g.getId(), g.getName(), g.getOrdinal(), dto, matchDtos));
         }
@@ -275,6 +311,42 @@ public class GroupStageService {
         else if (score2 > score1) m.setWinnerTeam(m.getTeam2());
         else m.setWinnerTeam(null); // draw
         m.setStatus(MatchStatus.FINISHED);
+    }
+
+    /**
+     * Manually reorder a group's standings. {@code orderedTeamIds} must list
+     * every team of the group exactly once, best team first; each team's
+     * {@code manualRank} is set to its 0-based position. Only allowed once all
+     * of the group's matches are finished (the override exists to settle a
+     * tiebreaker, which only makes sense on a complete group).
+     */
+    @Transactional
+    public void reorderGroup(Long groupId, List<Long> orderedTeamIds) {
+        Groups g = groupsRepo.findByIdOptional(groupId)
+                .orElseThrow(() -> new NotFoundException("Group not found"));
+        List<Teams> teams = teamsRepo.list("group.id", g.getId());
+
+        long unfinished = matchesRepo.count(
+                "group.id = ?1 and status != ?2", g.getId(), MatchStatus.FINISHED);
+        if (unfinished > 0) {
+            throw new BadRequestException(
+                    "Sve utakmice u skupini moraju biti odigrane prije ručne izmjene poretka");
+        }
+
+        Map<Long, Teams> byId = teams.stream()
+                .collect(Collectors.toMap(Teams::getId, x -> x));
+        if (orderedTeamIds == null || orderedTeamIds.size() != teams.size()) {
+            throw new BadRequestException("Poredak mora sadržavati sve ekipe skupine");
+        }
+        Set<Long> seen = new HashSet<>();
+        int rank = 0;
+        for (Long id : orderedTeamIds) {
+            Teams tm = byId.get(id);
+            if (tm == null || !seen.add(id)) {
+                throw new BadRequestException("Nevažeća ekipa u poretku skupine");
+            }
+            tm.setManualRank(rank++);
+        }
     }
 
     /** Accumulate a team's played/W-D-L/goals from the finished group matches. */

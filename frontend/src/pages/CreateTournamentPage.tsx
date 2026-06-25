@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom"
 import {
     Box,
     Button,
-    Card,
     chakra,
     Field,
     Flex,
@@ -32,10 +31,12 @@ import "../datepicker.css"
 import { createTournament } from "../api/createTournament"
 import { LocationAutocomplete } from "../components/LocationAutocomplete"
 import LocationMapPicker from "../components/LocationMapPicker"
+import { FormatSketch } from "../components/FormatSketch"
+import { FormSectionCard } from "../ui/primitives"
 import { getProfile } from "../api/userMe"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
-import type { BracketFill, CreateTournamentPayload, RewardType, TournamentFormat } from "../types/tournaments"
+import type { BracketFill, CreateTournamentPayload, TournamentFormat } from "../types/tournaments"
 
 // Register the Croatian locale once for the calendar UI (month/day names,
 // week-starts-Monday, etc.). The format itself is forced via the dateFormat
@@ -43,7 +44,9 @@ import type { BracketFill, CreateTournamentPayload, RewardType, TournamentFormat
 registerLocale("hr", hr)
 
 // ---------- UI-only types ----------
-type RewardsMode = "fixed" | "percentage"
+/** One prize row: amount (€) + optional free-text note ("Ostalo"). */
+type RewardRow = { amount: string; note: string }
+type RewardPlace = "first" | "second" | "third" | "fourth"
 
 type FormState = {
     name: string
@@ -58,9 +61,7 @@ type FormState = {
     groupCount: string
     advancePerGroup: string
     bracketFill: BracketFill
-    rewardsMode: RewardsMode
-    fixed: { first: string; second: string; third: string }
-    percent: { first: string; second: string; third: string }
+    rewards: Record<RewardPlace, RewardRow>
     contactName: string
     contactPhoneCountry: string
     contactPhone: string
@@ -128,10 +129,6 @@ function toLocalOffsetIso(dateStr: string, timeStr: string): string | null {
     )
 }
 
-// map UI enums → backend enums
-const mapRewardType = (v: RewardsMode): RewardType =>
-    v === "fixed" ? "FIXED" : "PERCENTAGE"
-
 // money "30" / "30.50" → number | null
 const toMoney = (s?: string) => {
     if (!s) return null
@@ -140,42 +137,6 @@ const toMoney = (s?: string) => {
 }
 
 // ---------- small UI primitives ----------
-
-/** A bordered, titled section card. Tight body padding for dense forms. */
-function SectionCard({
-                         icon,
-                         title,
-                         description,
-                         children,
-                     }: {
-    icon?: React.ReactNode
-    title: string
-    description?: string
-    children: React.ReactNode
-}) {
-    return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Header pb="2" pt="4" px={{ base: "4", md: "5" }}>
-                <HStack gap="2.5" align="center">
-                    {icon && (
-                        <Box color="blue.500" display="flex" alignItems="center">
-                            {icon}
-                        </Box>
-                    )}
-                    <Card.Title fontSize="md">{title}</Card.Title>
-                </HStack>
-                {description && (
-                    <Card.Description fontSize="sm" color="fg.muted" mt="1">
-                        {description}
-                    </Card.Description>
-                )}
-            </Card.Header>
-            <Card.Body pt="3" pb="4" px={{ base: "4", md: "5" }}>
-                {children}
-            </Card.Body>
-        </Card.Root>
-    )
-}
 
 /** Input with a fixed-width currency / unit suffix, looks like one field. */
 function SuffixInput({
@@ -225,116 +186,6 @@ function Muted({ children }: { children: React.ReactNode }) {
     )
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   FormatSketch — a lightweight SVG diagram of how the chosen competition
-   format flows, shown on the Format step so the organiser gets an at-a-
-   glance picture before filling in group/bracket numbers.
-
-   · GROUPS_KNOCKOUT: two group boxes feeding an arrow into a small bracket.
-   · KNOCKOUT_ONLY:   a single elimination bracket, no groups.
-   ────────────────────────────────────────────────────────────────────── */
-function FormatSketch({ format }: { format: TournamentFormat }) {
-    const stroke = "var(--chakra-colors-pitch-500)"
-    const faint = "var(--chakra-colors-border-emphasized)"
-    const ink = "var(--chakra-colors-fg-muted)"
-
-    return (
-        <Box
-            bg="bg.subtle"
-            borderWidth="1px"
-            borderColor="border"
-            rounded="lg"
-            p="4"
-        >
-            <Text
-                fontFamily="mono"
-                fontSize="10px"
-                fontWeight={800}
-                letterSpacing="0.15em"
-                color="fg.muted"
-                mb="3"
-            >
-                {format === "GROUPS_KNOCKOUT"
-                    ? "SKICA · GRUPE → ELIMINACIJA"
-                    : "SKICA · ELIMINACIJA"}
-            </Text>
-
-            {format === "GROUPS_KNOCKOUT" ? (
-                <chakra.svg
-                    viewBox="0 0 360 130"
-                    width="100%"
-                    height="auto"
-                    maxW="420px"
-                    css={{ display: "block" }}
-                >
-                    {/* Group A */}
-                    <rect x="2" y="6" width="92" height="50" rx="8" fill="none" stroke={faint} strokeWidth="1.5" />
-                    <text x="10" y="20" fontSize="9" fontWeight="700" fill={ink}>GRUPA A</text>
-                    <line x1="10" y1="30" x2="86" y2="30" stroke={faint} strokeWidth="1" />
-                    <line x1="10" y1="40" x2="86" y2="40" stroke={faint} strokeWidth="1" />
-                    <line x1="10" y1="50" x2="86" y2="50" stroke={faint} strokeWidth="1" />
-                    {/* Group B */}
-                    <rect x="2" y="72" width="92" height="50" rx="8" fill="none" stroke={faint} strokeWidth="1.5" />
-                    <text x="10" y="86" fontSize="9" fontWeight="700" fill={ink}>GRUPA B</text>
-                    <line x1="10" y1="96" x2="86" y2="96" stroke={faint} strokeWidth="1" />
-                    <line x1="10" y1="106" x2="86" y2="106" stroke={faint} strokeWidth="1" />
-                    <line x1="10" y1="116" x2="86" y2="116" stroke={faint} strokeWidth="1" />
-
-                    {/* Arrow → */}
-                    <line x1="100" y1="64" x2="132" y2="64" stroke={stroke} strokeWidth="2" />
-                    <path d="M132 64 l-7 -4 v8 z" fill={stroke} />
-                    <text x="100" y="56" fontSize="8" fontWeight="700" fill={stroke}>prolaze</text>
-
-                    {/* Bracket — semis → final */}
-                    {/* SF1 */}
-                    <rect x="146" y="20" width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
-                    {/* SF2 */}
-                    <rect x="146" y="86" width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
-                    {/* connectors to final */}
-                    <path d="M220 28 H240 V61 H260" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    <path d="M220 94 H240 V67 H260" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    {/* Final */}
-                    <rect x="260" y="54" width="84" height="20" rx="5" fill="none" stroke={stroke} strokeWidth="2" />
-                    <text x="302" y="68" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">FINALE</text>
-                </chakra.svg>
-            ) : (
-                <chakra.svg
-                    viewBox="0 0 360 130"
-                    width="100%"
-                    height="auto"
-                    maxW="420px"
-                    css={{ display: "block" }}
-                >
-                    {/* Quarterfinals (4) */}
-                    {[10, 38, 80, 108].map((y, i) => (
-                        <rect key={i} x="2" y={y} width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
-                    ))}
-                    {/* QF → SF connectors */}
-                    <path d="M76 18 H92 V40 H110" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    <path d="M76 46 H92 V40" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    <path d="M76 88 H92 V110 H110" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    <path d="M76 116 H92 V110" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    {/* Semifinals (2) */}
-                    <rect x="110" y="32" width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
-                    <rect x="110" y="102" width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
-                    {/* SF → final connectors */}
-                    <path d="M184 40 H206 V65 H228" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    <path d="M184 110 H206 V73 H228" fill="none" stroke={stroke} strokeWidth="1.5" />
-                    {/* Final */}
-                    <rect x="228" y="55" width="92" height="22" rx="5" fill="none" stroke={stroke} strokeWidth="2" />
-                    <text x="274" y="70" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">FINALE</text>
-                </chakra.svg>
-            )}
-
-            <Text fontSize="xs" color="fg.muted" mt="3">
-                {format === "GROUPS_KNOCKOUT"
-                    ? "Ekipe se prvo bore u grupama; najbolji iz svake grupe prolaze u eliminacijsku ljestvicu do finala."
-                    : "Sve ekipe idu izravno u eliminacijsku ljestvicu — poraz znači ispadanje, sve do finala."}
-            </Text>
-        </Box>
-    )
-}
-
 // ---------- page ----------
 export default function CreateTournamentPage() {
     const navigate = useNavigate()
@@ -352,9 +203,12 @@ export default function CreateTournamentPage() {
         groupCount: "4",
         advancePerGroup: "2",
         bracketFill: "BYES",
-        rewardsMode: "fixed",
-        fixed: { first: "", second: "", third: "" },
-        percent: { first: "", second: "", third: "" },
+        rewards: {
+            first: { amount: "", note: "" },
+            second: { amount: "", note: "" },
+            third: { amount: "", note: "" },
+            fourth: { amount: "", note: "" },
+        },
         contactName: "",
         contactPhoneCountry: "+385",
         contactPhone: "",
@@ -440,24 +294,20 @@ export default function CreateTournamentPage() {
             + `iz svake → ${qualifiers} ekipa u eliminaciji`
     }, [form.format, form.maxTeams, form.groupCount, form.advancePerGroup])
 
-    // required-field summary for the sticky bar
+    // required-field summary for the sticky bar. Rewards are optional now —
+    // a tournament can have no prize fund (or only trophies).
     const missingRequired = useMemo(() => {
         const missing: string[] = []
         if (!form.name.trim()) missing.push("Ime")
         if (!form.location.trim()) missing.push("Lokacija")
         if (!form.startDate) missing.push("Datum")
         if (!form.startTime) missing.push("Vrijeme")
-        const r = form.rewardsMode === "fixed" ? form.fixed : form.percent
-        if (!r.first.trim() || !r.second.trim() || !r.third.trim()) missing.push("Nagrade")
         return missing
     }, [
         form.name,
         form.location,
         form.startDate,
         form.startTime,
-        form.rewardsMode,
-        form.fixed,
-        form.percent,
     ])
 
     /**
@@ -475,9 +325,12 @@ export default function CreateTournamentPage() {
 
     const onChange = <K extends keyof FormState>(key: K, value: FormState[K]) =>
         setForm((f) => ({ ...f, [key]: value }))
-    const onNested =
-        <P extends "fixed" | "percent", K extends keyof FormState[P]>(part: P, key: K, value: string) =>
-            setForm((f) => ({ ...f, [part]: { ...f[part], [key]: value } }))
+    /** Update one field (amount | note) of one prize place. */
+    const setReward = (place: RewardPlace, field: keyof RewardRow, value: string) =>
+        setForm((f) => ({
+            ...f,
+            rewards: { ...f.rewards, [place]: { ...f.rewards[place], [field]: value } },
+        }))
 
     const handleMoneyChange = (key: "entryPrice", value: string) =>
         onChange(key, sanitizeMoneyInput(value) as any)
@@ -583,19 +436,17 @@ export default function CreateTournamentPage() {
                 ? `${form.contactPhoneCountry} ${form.contactPhone.trim()}`
                 : null,
 
-            rewardType: mapRewardType(form.rewardsMode),
-            rewardFirst:
-                form.rewardsMode === "fixed"
-                    ? toMoney(form.fixed.first)
-                    : toMoney(form.percent.first),
-            rewardSecond:
-                form.rewardsMode === "fixed"
-                    ? toMoney(form.fixed.second)
-                    : toMoney(form.percent.second),
-            rewardThird:
-                form.rewardsMode === "fixed"
-                    ? toMoney(form.fixed.third)
-                    : toMoney(form.percent.third),
+            // Percent/fixed toggle removed — always FIXED amounts, each with
+            // an optional free-text note ("Ostalo": Pehar, Utješna nagrada…).
+            rewardType: "FIXED",
+            rewardFirst: toMoney(form.rewards.first.amount),
+            rewardFirstNote: form.rewards.first.note.trim() || null,
+            rewardSecond: toMoney(form.rewards.second.amount),
+            rewardSecondNote: form.rewards.second.note.trim() || null,
+            rewardThird: toMoney(form.rewards.third.amount),
+            rewardThirdNote: form.rewards.third.note.trim() || null,
+            rewardFourth: toMoney(form.rewards.fourth.amount),
+            rewardFourthNote: form.rewards.fourth.note.trim() || null,
 
             status: "DRAFT",
         } as CreateTournamentPayload
@@ -717,7 +568,7 @@ export default function CreateTournamentPage() {
             <VStack align="stretch" gap="4">
                 {/* ===================== Card 1: Basic info + poster ===================== */}
                 {step === 1 && (
-                <SectionCard
+                <FormSectionCard
                     icon={<FiInfo />}
                     title="Osnovne informacije"
                 >
@@ -810,7 +661,7 @@ export default function CreateTournamentPage() {
                                 <SuffixInput
                                     value={form.entryPrice}
                                     onChange={(v) => handleMoneyChange("entryPrice", v)}
-                                    placeholder="30"
+                                    placeholder="100"
                                     suffix="€"
                                 />
                             </Field.Root>
@@ -1028,12 +879,12 @@ export default function CreateTournamentPage() {
                             </VStack>
                         </Box>
                     </VStack>
-                </SectionCard>
+                </FormSectionCard>
 
                 )}
                 {/* ===================== Card 2: Format ===================== */}
                 {step === 2 && (
-                <SectionCard
+                <FormSectionCard
                     icon={<FiGrid />}
                     title="Format natjecanja"
                     description="Odaberi kako je turnir strukturiran."
@@ -1156,7 +1007,7 @@ export default function CreateTournamentPage() {
                             </Box>
                         )}
                     </VStack>
-                </SectionCard>
+                </FormSectionCard>
                 )}
                 {/* Kotizacija was a separate card on step 2 — it's now an
                     inline field in the basic-info row on step 1 so the user
@@ -1166,104 +1017,79 @@ export default function CreateTournamentPage() {
                     the field is empty or set to 0). */}
                 {/* ===================== Card 4: Rewards ===================== */}
                 {step === 3 && (
-                <SectionCard
+                <FormSectionCard
                     icon={<FiGift />}
-                    title="Nagrade"
+                    title="Nagradni fond"
+                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Sve je neobavezno."
                 >
-                    <VStack align="stretch" gap="4">
-                        <RadioGroup.Root
-                            value={form.rewardsMode}
-                            onValueChange={(v) =>
-                                onChange("rewardsMode", (typeof v === "string" ? v : (v as any)?.value) as RewardsMode)
-                            }
+                    <VStack align="stretch" gap="3">
+                        {/* Column header — mirrors the Mjesto / Iznos / Ostalo
+                            table shown on the tournament detail page. */}
+                        <Box
+                            display={{ base: "none", md: "grid" }}
+                            gridTemplateColumns="60px 140px 1fr"
+                            gap="3"
+                            px="1"
+                            fontFamily="mono"
+                            fontSize="10px"
+                            fontWeight={800}
+                            letterSpacing="0.12em"
+                            color="fg.muted"
                         >
-                            <HStack gap="6" wrap="wrap" rowGap="2">
-                                <RadioGroup.Item value="fixed">
-                                    <RadioGroup.ItemHiddenInput />
-                                    <RadioGroup.ItemIndicator />
-                                    <RadioGroup.ItemText>Fixne nagrade (€)</RadioGroup.ItemText>
-                                </RadioGroup.Item>
-                                <RadioGroup.Item value="percentage">
-                                    <RadioGroup.ItemHiddenInput />
-                                    <RadioGroup.ItemIndicator />
-                                    <RadioGroup.ItemText>Postotak fonda (%)</RadioGroup.ItemText>
-                                </RadioGroup.Item>
-                            </HStack>
-                        </RadioGroup.Root>
+                            <Box>MJESTO</Box>
+                            <Box>IZNOS</Box>
+                            <Box>OSTALO</Box>
+                        </Box>
 
-                        {form.rewardsMode === "fixed" ? (
+                        {([
+                            { place: "first" as const, label: "1." },
+                            { place: "second" as const, label: "2." },
+                            { place: "third" as const, label: "3." },
+                            { place: "fourth" as const, label: "4." },
+                        ]).map(({ place, label }) => (
                             <Box
+                                key={place}
                                 display="grid"
-                                gridTemplateColumns={{ base: "1fr", md: "1fr 1fr 1fr" }}
-                                gap="4"
+                                gridTemplateColumns={{ base: "1fr", md: "60px 140px 1fr" }}
+                                gap="3"
+                                alignItems="center"
                             >
-                                <Field.Root required>
-                                    <Field.Label>1. mjesto <Field.RequiredIndicator /></Field.Label>
-                                    <SuffixInput
-                                        value={form.fixed.first}
-                                        onChange={(v) => onNested("fixed", "first", sanitizeMoneyInput(v))}
-                                        placeholder="npr. 200"
-                                        suffix="€"
-                                    />
-                                </Field.Root>
-                                <Field.Root required>
-                                    <Field.Label>2. mjesto <Field.RequiredIndicator /></Field.Label>
-                                    <SuffixInput
-                                        value={form.fixed.second}
-                                        onChange={(v) => onNested("fixed", "second", sanitizeMoneyInput(v))}
-                                        placeholder="npr. 120"
-                                        suffix="€"
-                                    />
-                                </Field.Root>
-                                <Field.Root required>
-                                    <Field.Label>3. mjesto <Field.RequiredIndicator /></Field.Label>
-                                    <SuffixInput
-                                        value={form.fixed.third}
-                                        onChange={(v) => onNested("fixed", "third", sanitizeMoneyInput(v))}
-                                        placeholder="npr. 60"
-                                        suffix="€"
-                                    />
-                                </Field.Root>
+                                <HStack gap="2" minW="0">
+                                    <Flex
+                                        w="28px"
+                                        h="28px"
+                                        rounded="full"
+                                        align="center"
+                                        justify="center"
+                                        bg="pitch.50"
+                                        color="pitch.600"
+                                        fontFamily="heading"
+                                        fontWeight={800}
+                                        fontSize="13px"
+                                        flexShrink={0}
+                                    >
+                                        {label}
+                                    </Flex>
+                                    <Box display={{ base: "block", md: "none" }} fontSize="sm" color="fg.muted">
+                                        mjesto
+                                    </Box>
+                                </HStack>
+                                <SuffixInput
+                                    value={form.rewards[place].amount}
+                                    onChange={(v) => setReward(place, "amount", sanitizeMoneyInput(v))}
+                                    placeholder="0"
+                                    suffix="€"
+                                />
+                                <Input
+                                    value={form.rewards[place].note}
+                                    onChange={(e) => setReward(place, "note", e.target.value)}
+                                    placeholder="npr. Pehar, Prijelazni pehar, Utješna nagrada…"
+                                    maxLength={200}
+                                />
                             </Box>
-                        ) : (
-                            <>
-                                <Box
-                                    display="grid"
-                                    gridTemplateColumns={{ base: "1fr", md: "1fr 1fr 1fr" }}
-                                    gap="4"
-                                >
-                                    <Field.Root required>
-                                        <Field.Label>1. mjesto <Field.RequiredIndicator /></Field.Label>
-                                        <SuffixInput
-                                            value={form.percent.first}
-                                            onChange={(v) => onNested("percent", "first", sanitizeMoneyInput(v))}
-                                            placeholder="npr. 50"
-                                            suffix="%"
-                                        />
-                                    </Field.Root>
-                                    <Field.Root required>
-                                        <Field.Label>2. mjesto <Field.RequiredIndicator /></Field.Label>
-                                        <SuffixInput
-                                            value={form.percent.second}
-                                            onChange={(v) => onNested("percent", "second", sanitizeMoneyInput(v))}
-                                            placeholder="npr. 30"
-                                            suffix="%"
-                                        />
-                                    </Field.Root>
-                                    <Field.Root required>
-                                        <Field.Label>3. mjesto <Field.RequiredIndicator /></Field.Label>
-                                        <SuffixInput
-                                            value={form.percent.third}
-                                            onChange={(v) => onNested("percent", "third", sanitizeMoneyInput(v))}
-                                            placeholder="npr. 20"
-                                            suffix="%"
-                                        />
-                                    </Field.Root>
-                                </Box>
-                            </>
-                        )}
+                        ))}
                     </VStack>
-                </SectionCard>
+                </FormSectionCard>
                 )}
 
                 {/* ===================== Step 4 — Pregled =====================
@@ -1278,12 +1104,27 @@ export default function CreateTournamentPage() {
                         const n = toNumber(s)
                         return n != null && n > 0 ? `${formatMoney(n)} €` : "Besplatno"
                     }
-                    const rewards = form.rewardsMode === "fixed" ? form.fixed : form.percent
-                    const rewardSuffix = form.rewardsMode === "fixed" ? "€" : "%"
-                    const fmtReward = (s: string) => {
-                        const n = toNumber(s)
-                        return n != null && n > 0 ? `${n} ${rewardSuffix}` : "—"
-                    }
+                    // Summarise the prize fund: "1. 2000 € (Pehar) · 2. 1000 € …"
+                    // skipping places with neither an amount nor a note.
+                    const rewardSummary = (() => {
+                        const rows: string[] = []
+                        const labels: Record<RewardPlace, string> = {
+                            first: "1.", second: "2.", third: "3.", fourth: "4.",
+                        }
+                        ;(["first", "second", "third", "fourth"] as RewardPlace[]).forEach((p) => {
+                            const r = form.rewards[p]
+                            const amt = toNumber(r.amount)
+                            const hasAmt = Number.isFinite(amt) && (amt as number) > 0
+                            const note = r.note.trim()
+                            if (!hasAmt && !note) return
+                            const parts = [
+                                hasAmt ? `${formatMoney(amt as number)} €` : null,
+                                note ? `(${note})` : null,
+                            ].filter(Boolean)
+                            rows.push(`${labels[p]} ${parts.join(" ")}`)
+                        })
+                        return rows
+                    })()
                     const dateStr = form.startDate
                         ? `${form.startDate} · ${form.startTime || "00:00"}`
                         : null
@@ -1303,7 +1144,9 @@ export default function CreateTournamentPage() {
                         { label: "Kotizacija", value: fmtPrice(form.entryPrice) },
                         {
                             label: "Nagrade",
-                            value: `${fmtReward(rewards.first)} / ${fmtReward(rewards.second)} / ${fmtReward(rewards.third)}`,
+                            value: rewardSummary.length > 0
+                                ? rewardSummary.join(" · ")
+                                : <Muted>Nema nagradnog fonda</Muted>,
                         },
                         {
                             label: "Kontakt",

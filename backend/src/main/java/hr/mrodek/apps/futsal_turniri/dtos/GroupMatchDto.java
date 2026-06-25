@@ -14,5 +14,12 @@ public record GroupMatchDto(
         String status,
         String liveMode,
         OffsetDateTime liveStartedAt,
-        OffsetDateTime secondHalfStartedAt
+        OffsetDateTime secondHalfStartedAt,
+        /** Scheduled kickoff (set when the schedule is generated); null before. */
+        OffsetDateTime kickoffAt,
+        /** Accumulated team fouls per half (for the live-entry foul controls). */
+        Integer fouls1First,
+        Integer fouls1Second,
+        Integer fouls2First,
+        Integer fouls2Second
 ) {}

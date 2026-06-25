@@ -51,16 +51,29 @@ public record CreateTournamentRequest(
         @Size(max = 50, message = "contactPhone must be at most 50 characters")
         String contactPhone,
 
+        // Legacy — the percent/fixed toggle was removed; always FIXED now.
         RewardType rewardType,                 // FIXED | PERCENTAGE
 
+        // Each place: amount + optional free-text note ("Ostalo").
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardFirst cannot be negative")
         BigDecimal rewardFirst,
+        @Size(max = 200, message = "rewardFirstNote must be at most 200 characters")
+        String rewardFirstNote,
 
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardSecond cannot be negative")
         BigDecimal rewardSecond,
+        @Size(max = 200, message = "rewardSecondNote must be at most 200 characters")
+        String rewardSecondNote,
 
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardThird cannot be negative")
         BigDecimal rewardThird,
+        @Size(max = 200, message = "rewardThirdNote must be at most 200 characters")
+        String rewardThirdNote,
+
+        @DecimalMin(value = "0.0", inclusive = true, message = "rewardFourth cannot be negative")
+        BigDecimal rewardFourth,
+        @Size(max = 200, message = "rewardFourthNote must be at most 200 characters")
+        String rewardFourthNote,
 
         TournamentStatus status                // DRAFT | STARTED | FINISHED (default DRAFT if null)
 ) {}

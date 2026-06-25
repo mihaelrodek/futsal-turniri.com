@@ -12,6 +12,9 @@
 # Firebase Admin SDK service-account key — full project access
 scripts/service-account.json
 scripts/node_modules/
+# Seed-script Firebase ID token (short-lived, but still a credential)
+scripts/seed-token.txt
+scripts/seed_token.txt
 
 # ──────────────────────────────────────────────────────────
 # OS cruft

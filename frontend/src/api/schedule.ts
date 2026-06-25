@@ -20,6 +20,18 @@ export async function generateSchedule(
     return data
 }
 
+/** Fill in kickoff times for matches that don't have one yet (e.g. knockout
+ *  matches drawn after the group schedule), continuing after the last
+ *  scheduled match. Existing times are left untouched. */
+export async function confirmSchedule(tournamentUuid: string): Promise<Schedule> {
+    const { data } = await http.post<Schedule>(
+        `/tournaments/${tournamentUuid}/schedule/confirm`,
+        undefined,
+        { successMessage: "Raspored je potvrđen." } as any,
+    )
+    return data
+}
+
 /** Override a single match's kickoff time (ISO string). */
 export async function updateKickoff(
     tournamentUuid: string,

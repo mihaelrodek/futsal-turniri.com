@@ -34,10 +34,16 @@ public record TournamentDetailsResponse(
         String contactName,
         String contactPhone,
 
-        String rewardType,           // "FIXED" | "PERCENTAGE"
+        String rewardType,           // legacy "FIXED" | "PERCENTAGE"
+        // Each place: amount + optional free-text note ("Ostalo").
         BigDecimal rewardFirst,
+        String rewardFirstNote,
         BigDecimal rewardSecond,
+        String rewardSecondNote,
         BigDecimal rewardThird,
+        String rewardThirdNote,
+        BigDecimal rewardFourth,
+        String rewardFourthNote,
 
         List<String> additionalOptions, // if/when you join them; null/empty for now
         List<TeamShortDto> teams,       // empty until teams are implemented

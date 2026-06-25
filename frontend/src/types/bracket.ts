@@ -21,6 +21,14 @@ export type BracketMatch = {
     liveStartedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
+    /** Scheduled kickoff; null until the schedule is generated/confirmed. A
+     *  match can't be started live before it has one. */
+    kickoffAt?: string | null
+    /** Accumulated team fouls per half (futsal "deveterac" tracking). */
+    fouls1First?: number | null
+    fouls1Second?: number | null
+    fouls2First?: number | null
+    fouls2Second?: number | null
 }
 
 export type BracketRound = {

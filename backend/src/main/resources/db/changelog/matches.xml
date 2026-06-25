@@ -1,9 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="
           http://www.liquibase.org/xml/ns/dbchangelog
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Matches. Full consolidated definition (pre-launch baseline): includes
+        group/knockout staging, bracket linkage, scheduling kickoff, and the
+        live-scoreboard timer columns. Ordered after teams + tournament_groups
+        (FKs to both).
+    -->
 
     <changeSet id="2025-11-01-70-matches-seq" author="mrodek">
         <createSequence sequenceName="seq_matches_id" incrementBy="1" startValue="1"/>
@@ -27,6 +35,26 @@
             <column name="score2" type="int"/>
             <column name="winner_team_id" type="bigint"/>
             <column name="status" type="varchar(20)"/>
+
+            <!-- group stage: GROUP | knockout; group_id set for GROUP matches -->
+            <column name="stage" type="varchar(20)" defaultValue="GROUP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="group_id" type="bigint"/>
+
+            <!-- knockout bracket linkage + shootout score -->
+            <column name="next_match_id" type="bigint"/>
+            <column name="next_slot" type="int"/>
+            <column name="penalties1" type="int"/>
+            <column name="penalties2" type="int"/>
+
+            <!-- scheduling: single-court sequential kickoff -->
+            <column name="kickoff_at" type="timestamptz"/>
+
+            <!-- live scoreboard: TIMER | SIMPLE, and half kickoff instants -->
+            <column name="live_mode" type="varchar(10)"/>
+            <column name="live_started_at" type="timestamptz"/>
+            <column name="second_half_started_at" type="timestamptz"/>
         </createTable>
 
         <addForeignKeyConstraint baseTableName="matches" baseColumnNames="tournament_id"
@@ -44,6 +72,12 @@
         <addForeignKeyConstraint baseTableName="matches" baseColumnNames="winner_team_id"
                                  referencedTableName="teams" referencedColumnNames="id" onDelete="SET NULL"
                                  constraintName="fk_matches_winner"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="group_id"
+                                 referencedTableName="tournament_groups" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_matches_group"/>
+        <addForeignKeyConstraint baseTableName="matches" baseColumnNames="next_match_id"
+                                 referencedTableName="matches" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_matches_next_match"/>
 
         <addUniqueConstraint tableName="matches" columnNames="round_id,table_no"
                              constraintName="uq_table_per_round"/>
@@ -52,4 +86,5 @@
             <column name="round_id"/>
         </createIndex>
     </changeSet>
+
 </databaseChangeLog>

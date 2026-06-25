@@ -2,7 +2,12 @@ import React from "react"
 import { Badge, Box, Button, HStack, Input, Text, chakra, Field } from "@chakra-ui/react"
 import { FiCheck, FiShare2 } from "react-icons/fi"
 
-import type { TournamentDetails, RewardType, CreateTournamentPayload } from "../types/tournaments"
+import type {
+    TournamentDetails,
+    CreateTournamentPayload,
+    TournamentFormat,
+    BracketFill,
+} from "../types/tournaments"
 import type { RoundDto, MatchDto } from "../types/round"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -442,10 +447,21 @@ export type EditForm = {
     contactName: string
     contactPhoneCountry: string
     contactPhone: string
+    // Format (editable while no fixtures exist yet).
+    format: TournamentFormat
+    groupCount: string
+    advancePerGroup: string
+    bracketFill: BracketFill
+    // Percent/fixed toggle removed — always FIXED. Each place: amount + note.
     rewardType: "FIXED" | "PERCENTAGE"
     rewardFirst: string
+    rewardFirstNote: string
     rewardSecond: string
+    rewardSecondNote: string
     rewardThird: string
+    rewardThirdNote: string
+    rewardFourth: string
+    rewardFourthNote: string
 }
 
 export function buildEditForm(t: TournamentDetails): EditForm {
@@ -461,10 +477,20 @@ export function buildEditForm(t: TournamentDetails): EditForm {
         contactName: t.contactName ?? "",
         contactPhoneCountry: phone.country,
         contactPhone: phone.rest,
-        rewardType: (t.rewardType as RewardType) ?? "FIXED",
+        format: t.format ?? "GROUPS_KNOCKOUT",
+        groupCount: typeof t.groupCount === "number" ? String(t.groupCount) : "4",
+        advancePerGroup:
+            typeof t.advancePerGroup === "number" ? String(t.advancePerGroup) : "2",
+        bracketFill: t.bracketFill ?? "BYES",
+        rewardType: "FIXED",
         rewardFirst: numberToMoneyStr(t.rewardFirst),
+        rewardFirstNote: t.rewardFirstNote ?? "",
         rewardSecond: numberToMoneyStr(t.rewardSecond),
+        rewardSecondNote: t.rewardSecondNote ?? "",
         rewardThird: numberToMoneyStr(t.rewardThird),
+        rewardThirdNote: t.rewardThirdNote ?? "",
+        rewardFourth: numberToMoneyStr(t.rewardFourth),
+        rewardFourthNote: t.rewardFourthNote ?? "",
     }
 }
 
@@ -476,20 +502,30 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
         Number.isFinite(maxTeams) && maxTeams >= 2 ? maxTeams : null
     const entry = moneyToNumber(f.entryPrice) ?? 0
 
+    const isGroups = f.format === "GROUPS_KNOCKOUT"
     return {
         name: f.name.trim(),
         location: f.location.trim() || null,
         details: f.details.trim() || null,
         startAt: toLocalOffsetIso(f.startDate, f.startTime),
         maxTeams: maxTeamsSafe,
+        format: f.format,
+        groupCount: isGroups ? (parseInt(f.groupCount || "0", 10) || null) : null,
+        advancePerGroup: isGroups ? (parseInt(f.advancePerGroup || "0", 10) || null) : null,
+        bracketFill: isGroups ? f.bracketFill : null,
         entryPrice: entry,
         contactName: f.contactName.trim() || null,
         contactPhone: f.contactPhone.trim()
             ? `${f.contactPhoneCountry} ${f.contactPhone.trim()}`
             : null,
-        rewardType: f.rewardType,
+        rewardType: "FIXED",
         rewardFirst: moneyToNumber(f.rewardFirst),
+        rewardFirstNote: f.rewardFirstNote.trim() || null,
         rewardSecond: moneyToNumber(f.rewardSecond),
+        rewardSecondNote: f.rewardSecondNote.trim() || null,
         rewardThird: moneyToNumber(f.rewardThird),
+        rewardThirdNote: f.rewardThirdNote.trim() || null,
+        rewardFourth: moneyToNumber(f.rewardFourth),
+        rewardFourthNote: f.rewardFourthNote.trim() || null,
     } as CreateTournamentPayload
 }

@@ -46,6 +46,21 @@ export async function finishMatch(
 }
 
 /**
+ * Reset a match back to SCHEDULED — wipes live state, score, fouls and all
+ * events so it can be started again cleanly (e.g. after a timer mishap).
+ */
+export async function resetMatch(
+    tournamentUuid: string,
+    matchId: number,
+): Promise<void> {
+    await http.post(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/reset`,
+        undefined,
+        { successMessage: "Utakmica je resetirana." } as any,
+    )
+}
+
+/**
  * Start the 2nd half of a LIVE match.
  *
  * Sets {@code secondHalfStartedAt} to now on the backend so the TIMER clock
@@ -75,28 +90,80 @@ export async function fetchMatchEvents(
     return data
 }
 
-/** Record a new event (goal or card). Adding a GOAL recomputes the score. */
+/** Record a new event (goal or card). Adding a GOAL recomputes the score.
+ *  Pass `{ silent: true }` to skip the success toast — used when recording a
+ *  batch of penalty-shootout kicks so the screen isn't flooded with toasts. */
 export async function addMatchEvent(
     tournamentUuid: string,
     matchId: number,
     payload: CreateMatchEventRequest,
+    opts?: { silent?: boolean },
 ): Promise<MatchEventDto> {
     const { data } = await http.post<MatchEventDto>(
         `/tournaments/${tournamentUuid}/matches/${matchId}/events`,
         payload,
-        { successMessage: "Događaj je dodan." } as any,
+        (opts?.silent
+            ? { silent: true }
+            : { successMessage: "Događaj je dodan." }) as any,
     )
     return data
 }
 
-/** Remove a previously recorded event. Removing a GOAL recomputes the score. */
+/** A match's accumulated team fouls, per team and half. */
+export type MatchFouls = {
+    fouls1First: number
+    fouls1Second: number
+    fouls2First: number
+    fouls2Second: number
+}
+
+/**
+ * Adjust a team's accumulated foul count for one half. `delta` is +1 / -1.
+ * Silent (no toast) since it's tapped repeatedly during a match. Returns the
+ * updated tallies.
+ */
+export async function adjustMatchFouls(
+    tournamentUuid: string,
+    matchId: number,
+    team: 1 | 2,
+    half: 1 | 2,
+    delta: number,
+): Promise<MatchFouls> {
+    const { data } = await http.post<MatchFouls>(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/fouls`,
+        { team, half, delta },
+        { silent: true } as any,
+    )
+    return data
+}
+
+/** Reset both teams' accumulated fouls for one half back to 0. */
+export async function resetMatchFouls(
+    tournamentUuid: string,
+    matchId: number,
+    half: 1 | 2,
+): Promise<MatchFouls> {
+    const { data } = await http.post<MatchFouls>(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/fouls/reset?half=${half}`,
+        undefined,
+        { silent: true } as any,
+    )
+    return data
+}
+
+/** Remove a previously recorded event. Removing a GOAL recomputes the score.
+ *  Pass `{ silent: true }` to skip the toast — used when clearing a batch of
+ *  old penalty-shootout kicks before re-recording the edited ones. */
 export async function deleteMatchEvent(
     tournamentUuid: string,
     matchId: number,
     eventId: number,
+    opts?: { silent?: boolean },
 ): Promise<void> {
     await http.delete(
         `/tournaments/${tournamentUuid}/matches/${matchId}/events/${eventId}`,
-        { successMessage: "Događaj je uklonjen." } as any,
+        (opts?.silent
+            ? { silent: true }
+            : { successMessage: "Događaj je uklonjen." }) as any,
     )
 }

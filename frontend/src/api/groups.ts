@@ -20,6 +20,23 @@ export async function drawGroups(
     return data
 }
 
+/**
+ * Manually reorder a finished group's standings (tiebreaker override).
+ * `teamIds` lists every team of the group, best first. Returns updated groups.
+ */
+export async function reorderGroup(
+    tournamentUuid: string,
+    groupId: number,
+    teamIds: number[],
+): Promise<Group[]> {
+    const { data } = await http.post<Group[]>(
+        `/tournaments/${tournamentUuid}/groups/${groupId}/reorder`,
+        { teamIds },
+        { successMessage: "Poredak skupine je spremljen." } as any,
+    )
+    return data
+}
+
 /** Record a group-match result (a draw is allowed). Returns the updated groups. */
 export async function recordGroupResult(
     tournamentUuid: string,

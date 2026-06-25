@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Per-match push opt-in — one row per (user, match). Mirrors
+        tournament_subscriptions but scoped to a single match, so a viewer can
+        ask to be notified when THAT match goes live (push fired on /start).
+        user_uid is the Firebase UID (plain string, no FK). Cascade-deleted
+        with the match.
+    -->
+    <changeSet id="2026-06-23-match-subscriptions" author="mrodek">
+        <createTable tableName="match_subscriptions">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_uid" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="match_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint
+                baseTableName="match_subscriptions"
+                baseColumnNames="match_id"
+                constraintName="fk_match_subscriptions_match"
+                referencedTableName="matches"
+                referencedColumnNames="id"
+                onDelete="CASCADE"/>
+
+        <!-- Idempotent (re)subscribe — one row per (user, match). -->
+        <addUniqueConstraint
+                tableName="match_subscriptions"
+                columnNames="user_uid, match_id"
+                constraintName="uq_match_subscriptions_user_match"/>
+
+        <!-- Fan-out lookup is always "every subscriber of match X". -->
+        <createIndex tableName="match_subscriptions" indexName="idx_match_subscriptions_match_id">
+            <column name="match_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

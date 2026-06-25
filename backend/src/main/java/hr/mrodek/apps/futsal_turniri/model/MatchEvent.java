@@ -10,9 +10,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.OffsetDateTime;
 
 /**
- * A single timeline event of a live match — a goal or a card. Goals
- * (optionally with an assist) drive the match score; cards are purely
- * disciplinary records. Rows cascade-delete with their parent match.
+ * A single timeline event of a live match — a goal, a card, or a knockout
+ * penalty-shootout kick (PENALTY_GOAL / PENALTY_MISSED). Goals (optionally with
+ * an assist) drive the match score; cards are disciplinary records; penalty
+ * kicks never affect the score (the shootout total lives on the match). Rows
+ * cascade-delete with their parent match.
  */
 @Entity
 @Table(name = "match_events")
@@ -32,10 +34,24 @@ public class MatchEvent {
     @Column(name = "type", length = 20, nullable = false)
     private MatchEventType type;
 
-    /** The scorer (for a goal) or the carded player. Never null. */
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "player_id", nullable = false)
+    /**
+     * The scorer (for a goal), the carded player, or the penalty taker.
+     * Required for goals/cards (enforced in the controller); may be null for
+     * a penalty-shootout kick whose taker wasn't named — then {@link #team}
+     * carries the side instead.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "player_id")
     private Player player;
+
+    /**
+     * The event's team. Only set (and only needed) when {@link #player} is
+     * null — an unattributed penalty kick. When a player is present the team
+     * is derived from the player, so this stays null.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_id")
+    private Teams team;
 
     @Column(name = "minute", nullable = false)
     private Integer minute;

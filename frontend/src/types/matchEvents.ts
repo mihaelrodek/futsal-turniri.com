@@ -18,15 +18,25 @@ export type MatchStatus = "SCHEDULED" | "LIVE" | "FINISHED"
  */
 export type MatchLiveMode = "TIMER" | "SIMPLE"
 
-/** The kind of thing that happened during a live match. */
-export type MatchEventType = "GOAL" | "YELLOW_CARD" | "RED_CARD"
+/** The kind of thing that happened during a live match. PENALTY_GOAL /
+ *  PENALTY_MISSED record an individual knockout penalty-shootout kick (who
+ *  shot + whether it scored); they never affect the match score or scorer
+ *  stats — the shootout total lives in the match's penalties1/2. */
+export type MatchEventType =
+    | "GOAL"
+    | "YELLOW_CARD"
+    | "RED_CARD"
+    | "PENALTY_GOAL"
+    | "PENALTY_MISSED"
 
 /** A single recorded event in a live (or finished) match. */
 export type MatchEventDto = {
     id: number
     type: MatchEventType
-    playerId: number
-    playerName: string
+    /** Null for an unattributed penalty kick (taker not named). */
+    playerId: number | null
+    /** Null for an unattributed penalty kick (taker not named). */
+    playerName: string | null
     teamId: number
     minute: number
     /** Set only for GOAL events that had an assist; null otherwise. */
@@ -37,7 +47,11 @@ export type MatchEventDto = {
 /** Request body for creating a new match event. */
 export type CreateMatchEventRequest = {
     type: MatchEventType
-    playerId: number
+    /** Required for goals/cards; may be null for an unattributed penalty kick. */
+    playerId: number | null
+    /** Required (instead of playerId) when recording a penalty kick with no
+     *  named taker — names the side. Ignored when playerId is set. */
+    teamId?: number | null
     minute: number
     /** Optional — only meaningful for GOAL events. */
     assistPlayerId?: number | null

@@ -37,6 +37,13 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- ZXing — QR code generation for tournament share links. -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <!-- MinIO Java SDK -->
         <dependency>
             <groupId>io.minio</groupId>
@@ -60,6 +67,11 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-resteasy-reactive</artifactId>
+        </dependency>
+        <!-- WebSockets (real-time live-score / event push to /uzivo + fullscreen) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-websockets-next</artifactId>
         </dependency>
         <!-- Hibernate ORM + Panache (Quarkus-native repository API) -->
         <dependency>

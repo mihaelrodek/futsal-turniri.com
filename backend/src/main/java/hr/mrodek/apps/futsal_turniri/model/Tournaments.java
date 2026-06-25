@@ -117,18 +117,33 @@ public class Tournaments {
     private String contactPhone;
 
     // rewards
+    // rewardType is legacy (FIXED | PERCENTAGE). The percent/fixed toggle was
+    // dropped — every prize is now a plain amount + an optional free-text
+    // note ("Ostalo": Pehar, Prijelazni pehar, Utješna nagrada, …). The
+    // column stays for back-compat; new tournaments are always FIXED.
     @Enumerated(EnumType.STRING)
     @Column(name = "reward_type", length = 20)
     private RewardType rewardType;
 
     @Column(name = "reward_first", precision = 10, scale = 2)
     private BigDecimal rewardFirst;
+    @Column(name = "reward_first_note", length = 200)
+    private String rewardFirstNote;
 
     @Column(name = "reward_second", precision = 10, scale = 2)
     private BigDecimal rewardSecond;
+    @Column(name = "reward_second_note", length = 200)
+    private String rewardSecondNote;
 
     @Column(name = "reward_third", precision = 10, scale = 2)
     private BigDecimal rewardThird;
+    @Column(name = "reward_third_note", length = 200)
+    private String rewardThirdNote;
+
+    @Column(name = "reward_fourth", precision = 10, scale = 2)
+    private BigDecimal rewardFourth;
+    @Column(name = "reward_fourth_note", length = 200)
+    private String rewardFourthNote;
 
     // media
     @ManyToOne(fetch = FetchType.LAZY)

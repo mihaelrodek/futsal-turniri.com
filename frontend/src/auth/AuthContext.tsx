@@ -1,15 +1,35 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
 import {
     createUserWithEmailAndPassword,
+    getRedirectResult,
     onAuthStateChanged,
     signInWithEmailAndPassword,
     signInWithPopup,
+    signInWithRedirect,
     signOut as fbSignOut,
     updateProfile,
     type User as FirebaseUser,
 } from "firebase/auth"
 import { auth, googleProvider } from "../firebase"
 import { syncProfile } from "../api/userMe"
+
+/**
+ * Whether to use the full-page redirect flow instead of a popup for Google
+ * sign-in. On mobile (and installed PWAs / in-app browsers) a "popup" is
+ * really a new browser tab that, thanks to Cross-Origin-Opener-Policy, can't
+ * close itself afterwards — so the user gets stranded on the Google tab
+ * instead of returning to the app. signInWithRedirect navigates the same tab
+ * to Google and back, which behaves correctly everywhere on mobile.
+ */
+function prefersRedirect(): boolean {
+    if (typeof navigator === "undefined" || typeof window === "undefined") return false
+    const ua = navigator.userAgent || ""
+    const mobileUA = /Android|iPhone|iPad|iPod|Mobi|Windows Phone/i.test(ua)
+    const standalone =
+        window.matchMedia?.("(display-mode: standalone)").matches === true ||
+        (navigator as any).standalone === true // iOS home-screen PWA
+    return mobileUA || standalone
+}
 
 type AuthValue = {
     /** Currently signed-in Firebase user (null when signed out, undefined while loading). */
@@ -41,6 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [mySlug, setMySlug] = useState<string | null>(null)
 
     useEffect(() => {
+        // Complete any pending signInWithRedirect (mobile Google flow). The
+        // success path also fires onAuthStateChanged below, so this is mainly
+        // to consume the result and not silently swallow a redirect error.
+        getRedirectResult(auth).catch(() => { /* surfaced on next attempt */ })
+
         // Fires once with the persisted user on load, then again on every change.
         // For each user we also pull the parsed token, so we know their role.
         const unsub = onAuthStateChanged(auth, async (u) => {
@@ -87,7 +112,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             },
             async signInWithGoogle() {
-                await signInWithPopup(auth, googleProvider)
+                // Mobile / PWA → full-page redirect (popup tabs can't close
+                // themselves there and strand the user on the Google tab).
+                if (prefersRedirect()) {
+                    await signInWithRedirect(auth, googleProvider)
+                    return // page navigates away; onAuthStateChanged finishes on return
+                }
+                // Desktop → popup. If the browser blocks/cancels it (or the
+                // environment doesn't support popups), fall back to redirect.
+                try {
+                    await signInWithPopup(auth, googleProvider)
+                } catch (e: any) {
+                    const code = e?.code ?? ""
+                    if (
+                        code === "auth/popup-blocked" ||
+                        code === "auth/popup-closed-by-user" ||
+                        code === "auth/cancelled-popup-request" ||
+                        code === "auth/operation-not-supported-in-this-environment"
+                    ) {
+                        await signInWithRedirect(auth, googleProvider)
+                        return
+                    }
+                    throw e
+                }
             },
             async signOut() {
                 await fbSignOut(auth)

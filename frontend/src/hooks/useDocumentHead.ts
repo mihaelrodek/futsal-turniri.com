@@ -76,7 +76,7 @@ export type DocumentHead = {
 // snippets and WhatsApp/Slack link previews.
 const STATIC_TITLE = "Futsal turniri"
 const DEFAULT_DESCRIPTION =
-    "Futsal turniri — organiziraj i prati Futsal turnire. Pretraži nadolazeće turnire, pridruži se ekipi i prati rezultate."
+    "Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca."
 
 export function useDocumentHead(head: DocumentHead) {
     useEffect(() => {

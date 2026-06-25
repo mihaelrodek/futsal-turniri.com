@@ -78,6 +78,16 @@ public class TournamentController {
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
 
+    /** Pushes "live data changed" pings over WebSocket so /uzivo + fullscreen
+     *  refetch instantly instead of waiting for their poll. */
+    @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
+
+    /** Public base URL (e.g. https://futsal-turniri.com) — used to build the
+     *  tournament link the QR code encodes. */
+    @org.eclipse.microprofile.config.inject.ConfigProperty(
+            name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
+    String publicBaseUrl;
+
     /**
      * Best-effort display name from the verified ID token. Prefers the
      * Firebase {@code name} claim, falls back to {@code email}, otherwise
@@ -285,7 +295,25 @@ public class TournamentController {
         String previousLocation = t.getLocation();
         String previousName = t.getName();
         OffsetDateTime previousStartAt = t.getStartAt();
+
+        // Format is editable, but only while no fixtures exist yet. Once the
+        // draw / schedule has produced matches, changing the format would
+        // desync the generated groups / bracket — so snapshot the current
+        // format config and restore it after the mapping if matches exist.
+        boolean hasFixtures = matchesRepo.count("tournament.id = ?1", t.getId()) > 0;
+        var prevFormat = t.getFormat();
+        var prevGroupCount = t.getGroupCount();
+        var prevAdvancePerGroup = t.getAdvancePerGroup();
+        var prevBracketFill = t.getBracketFill();
+
         tournamentMapper.applyUpdate(t, req);
+
+        if (hasFixtures) {
+            t.setFormat(prevFormat);
+            t.setGroupCount(prevGroupCount);
+            t.setAdvancePerGroup(prevAdvancePerGroup);
+            t.setBracketFill(prevBracketFill);
+        }
         t.setUpdatedAt(OffsetDateTime.now());
 
         // Re-geocode only when the location actually changed — saves Nominatim hits.
@@ -743,6 +771,63 @@ public class TournamentController {
      * ===================================================================== */
 
     @Inject hr.mrodek.apps.futsal_turniri.repository.TournamentSubscriptionRepository subRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.MatchSubscriptionRepository matchSubRepo;
+
+    /* ── Per-match push subscriptions ──────────────────────────────────────
+     * Same shape as the per-tournament bell, but scoped to a single match so
+     * a viewer can be notified the moment THAT match goes live. The push is
+     * fired from the /start endpoint via pushService.sendToMatchSubscribers.
+     * Lives here (not a separate resource) for the same single-owner reason
+     * as the tournament subscription endpoints above. */
+
+    @GET
+    @Path("/{uuid}/matches/{matchId}/subscription")
+    @io.quarkus.security.Authenticated
+    public Response getMatchSubscription(
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        String myUid = jwt != null ? jwt.getSubject() : null;
+        if (myUid == null || myUid.isBlank()) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        boolean subscribed = matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isPresent();
+        return Response.ok(java.util.Map.of("subscribed", subscribed)).build();
+    }
+
+    @POST
+    @Path("/{uuid}/matches/{matchId}/subscribe")
+    @io.quarkus.security.Authenticated
+    @Transactional
+    public Response subscribeMatch(
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        String myUid = jwt != null ? jwt.getSubject() : null;
+        if (myUid == null || myUid.isBlank()) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        if (matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isEmpty()) {
+            var s = new hr.mrodek.apps.futsal_turniri.model.MatchSubscription();
+            s.setUserUid(myUid);
+            s.setMatch(match);
+            matchSubRepo.persist(s);
+        }
+        return Response.status(Response.Status.CREATED).build();
+    }
+
+    @DELETE
+    @Path("/{uuid}/matches/{matchId}/subscribe")
+    @io.quarkus.security.Authenticated
+    @Transactional
+    public Response unsubscribeMatch(
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        String myUid = jwt != null ? jwt.getSubject() : null;
+        if (myUid == null || myUid.isBlank()) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        matchSubRepo.deleteByUserUidAndMatchId(myUid, match.getId());
+        return Response.noContent().build();
+    }
 
     @GET
     @Path("/{uuid}/subscription")
@@ -806,6 +891,32 @@ public class TournamentController {
                     // fetch. Organizer edits invalidate via the SPA route,
                     // not via this image URL.
                     .header("Cache-Control", "public, max-age=300, s-maxage=300")
+                    .build();
+        } catch (Exception e) {
+            return Response.serverError().build();
+        }
+    }
+
+    /**
+     * Branded QR code (PNG) that encodes this tournament's public page URL.
+     * Scanning it opens the tournament. Generated on the fly from the slug —
+     * nothing is persisted — and cached for a day since it only changes if
+     * the slug changes. Public; used on the detail page (display + download).
+     */
+    @GET
+    @Path("/{uuid}/qr.png")
+    @Produces("image/png")
+    public Response qrCode(@PathParam("uuid") String idOrSlug) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        String base = publicBaseUrl.replaceAll("/+$", "");
+        String ref = (t.getSlug() != null && !t.getSlug().isBlank())
+                ? t.getSlug() : t.getUuid().toString();
+        String url = base + "/turniri/" + ref;
+        try {
+            byte[] png = hr.mrodek.apps.futsal_turniri.services.QrCodeRenderer.render(url, 512);
+            return Response.ok(png)
+                    .header("Cache-Control", "public, max-age=86400, s-maxage=86400")
                     .build();
         } catch (Exception e) {
             return Response.serverError().build();
@@ -1295,6 +1406,12 @@ public class TournamentController {
                             m.getLiveMode() != null ? m.getLiveMode().name() : null,
                             m.getLiveStartedAt(),
                             m.getSecondHalfStartedAt(),
+                            t != null ? t.getHalfLengthMin() : null,
+                            t != null ? t.getHalfCount() : null,
+                            m.getFouls1First(),
+                            m.getFouls1Second(),
+                            m.getFouls2First(),
+                            m.getFouls2Second(),
                             t != null ? t.getFeaturedAt() : null
                     );
                 })
@@ -1322,7 +1439,9 @@ public class TournamentController {
                             m.getTeam1() != null ? m.getTeam1().getName() : null,
                             m.getTeam2() != null ? m.getTeam2().getName() : null,
                             m.getKickoffAt(),
-                            m.getTableNo()
+                            m.getTableNo(),
+                            m.getStage() != null ? m.getStage().name() : null,
+                            m.getGroup() != null ? m.getGroup().getName() : null
                     );
                 })
                 .collect(Collectors.toList());
@@ -1435,12 +1554,32 @@ public class TournamentController {
         match.setStatus(MatchStatus.LIVE);
         match.setLiveMode(mode);
         match.setLiveStartedAt(java.time.OffsetDateTime.now());
+
+        // Notify everyone who tapped the bell on this specific match that it
+        // just kicked off. Fire-and-forget — a flaky push must not abort the
+        // start.
+        Tournaments t = match.getTournament();
+        if (t != null) {
+            try {
+                pushService.sendToMatchSubscribers(
+                        match.getId(),
+                        "▶️ Utakmica počinje — " + t.getName(),
+                        matchVersusLine(match),
+                        tournamentScheduleUrl(t));
+            } catch (Exception ignored) {
+                // swallowed — the match is already LIVE; push is best-effort.
+            }
+        }
+
+        notifyLive(match);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
     /**
      * Mark a match as finished (status FINISHED). Organizer-or-admin only.
-     * The score is left as last recomputed from the goal events.
+     * The score is the running total from the goal events; a match started
+     * and finished with no goals registers as 0:0 (rather than a blank/null
+     * score that wouldn't count in the group standings).
      */
     @POST
     @Path("/{uuid}/matches/{matchId}/finish")
@@ -1454,6 +1593,14 @@ public class TournamentController {
         assertCanEdit(match.getTournament());
 
         match.setStatus(MatchStatus.FINISHED);
+        // No goals recorded → an explicit 0:0 so the result counts everywhere.
+        if (match.getScore1() == null) match.setScore1(0);
+        if (match.getScore2() == null) match.setScore2(0);
+        // Set the winner (or null for a draw) from the final score.
+        Integer fs1 = match.getScore1(), fs2 = match.getScore2();
+        if (fs1 > fs2) match.setWinnerTeam(match.getTeam1());
+        else if (fs2 > fs1) match.setWinnerTeam(match.getTeam2());
+        else match.setWinnerTeam(null);
 
         // Notify bell subscribers of the final score.
         Tournaments t = match.getTournament();
@@ -1466,7 +1613,118 @@ public class TournamentController {
             );
         }
 
+        notifyLive(match);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * Reset a match back to SCHEDULED. Organizer-or-admin only. Wipes the live
+     * state (mode, kickoff instants), the score/penalties/winner, the
+     * accumulated fouls, and every recorded event — used when a match was
+     * started by mistake or with a misbehaving timer and needs a clean restart.
+     * The scheduled kickoff time is preserved so it can simply be started again.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/reset")
+    @Authenticated
+    @Transactional
+    public Response resetMatch(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+
+        matchEventRepo.deleteByMatch_Id(match.getId());
+
+        match.setStatus(MatchStatus.SCHEDULED);
+        match.setLiveMode(null);
+        match.setLiveStartedAt(null);
+        match.setSecondHalfStartedAt(null);
+        match.setScore1(null);
+        match.setScore2(null);
+        match.setPenalties1(null);
+        match.setPenalties2(null);
+        match.setWinnerTeam(null);
+        match.setFouls1First(0);
+        match.setFouls1Second(0);
+        match.setFouls2First(0);
+        match.setFouls2Second(0);
+
+        notifyLive(match);
+        return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * Adjust a team's accumulated foul count for one half. Organizer/admin only.
+     * {@code delta} is reduced to ±1 (a single foul step) and the count is
+     * clamped at 0. Returns the match's updated foul tallies.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/fouls")
+    @Authenticated
+    @Transactional
+    public Response adjustFouls(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId,
+            MatchFoulRequest body
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+        if (body == null
+                || (body.team() != 1 && body.team() != 2)
+                || (body.half() != 1 && body.half() != 2)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("team and half must be 1 or 2").build();
+        }
+        int step = Integer.signum(body.delta());
+        if (body.team() == 1) {
+            if (body.half() == 1) match.setFouls1First(clampFoul(match.getFouls1First(), step));
+            else match.setFouls1Second(clampFoul(match.getFouls1Second(), step));
+        } else {
+            if (body.half() == 1) match.setFouls2First(clampFoul(match.getFouls2First(), step));
+            else match.setFouls2Second(clampFoul(match.getFouls2Second(), step));
+        }
+        notifyLive(match);
+        return Response.ok(new MatchFoulsDto(
+                match.getFouls1First(), match.getFouls1Second(),
+                match.getFouls2First(), match.getFouls2Second())).build();
+    }
+
+    private static int clampFoul(Integer current, int step) {
+        return Math.max(0, (current == null ? 0 : current) + step);
+    }
+
+    /**
+     * Reset both teams' accumulated fouls for one half back to 0. Organizer/
+     * admin only — used at half-time / after a wrong entry.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/fouls/reset")
+    @Authenticated
+    @Transactional
+    public Response resetFouls(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId,
+            @QueryParam("half") Integer half
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+        int h = half == null ? 1 : half;
+        if (h != 1 && h != 2) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("half must be 1 or 2").build();
+        }
+        if (h == 1) {
+            match.setFouls1First(0);
+            match.setFouls2First(0);
+        } else {
+            match.setFouls1Second(0);
+            match.setFouls2Second(0);
+        }
+        notifyLive(match);
+        return Response.ok(new MatchFoulsDto(
+                match.getFouls1First(), match.getFouls1Second(),
+                match.getFouls2First(), match.getFouls2Second())).build();
     }
 
     /**
@@ -1502,6 +1760,7 @@ public class TournamentController {
             );
         }
 
+        notifyLive(match);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -1551,17 +1810,40 @@ public class TournamentController {
         } catch (IllegalArgumentException ex) {
             return Response.status(Response.Status.BAD_REQUEST).entity("INVALID_EVENT_TYPE").build();
         }
-        if (body.playerId() == null) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("playerId is required").build();
-        }
         if (body.minute() == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity("minute is required").build();
         }
 
-        Player player = playerRepo.findByIdOptional(body.playerId()).orElse(null);
-        if (player == null || player.getTeam() == null
-                || !playerBelongsToMatch(player, match)) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("PLAYER_NOT_IN_MATCH").build();
+        boolean isPenalty = type == MatchEventType.PENALTY_GOAL
+                || type == MatchEventType.PENALTY_MISSED;
+
+        // A penalty kick may be recorded without naming the taker; then the
+        // side comes from teamId. Goals/cards always require a player.
+        Player player = null;
+        Teams eventTeam = null;
+        if (body.playerId() == null) {
+            if (!isPenalty) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("playerId is required").build();
+            }
+            if (body.teamId() == null) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("teamId is required").build();
+            }
+            eventTeam = teamRepo.findByIdOptional(body.teamId()).orElse(null);
+            if (eventTeam == null || !teamBelongsToMatch(eventTeam, match)) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("TEAM_NOT_IN_MATCH").build();
+            }
+        } else {
+            player = playerRepo.findByIdOptional(body.playerId()).orElse(null);
+            if (player == null || player.getTeam() == null
+                    || !playerBelongsToMatch(player, match)) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("PLAYER_NOT_IN_MATCH").build();
+            }
+            // A sent-off player (red card) can no longer affect the match — no
+            // further goals or cards. The first red card itself is still allowed
+            // (the player has no prior red at that point).
+            if (matchEventRepo.playerSentOff(match.getId(), player.getId())) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("PLAYER_SENT_OFF").build();
+            }
         }
 
         Player assist = null;
@@ -1582,6 +1864,8 @@ public class TournamentController {
         event.setMatch(match);
         event.setType(type);
         event.setPlayer(player);
+        // Team only stored for an unattributed kick; otherwise derived from the player.
+        event.setTeam(player == null ? eventTeam : null);
         event.setMinute(body.minute());
         event.setAssistPlayer(assist);
         matchEventRepo.persist(event);
@@ -1605,6 +1889,7 @@ public class TournamentController {
             }
         }
 
+        notifyLive(match);
         return Response.status(Response.Status.CREATED)
                 .entity(matchEventMapper.toDto(event))
                 .build();
@@ -1640,12 +1925,30 @@ public class TournamentController {
             recomputeScoreFromGoals(match);
         }
 
+        notifyLive(match);
         return Response.noContent().build();
+    }
+
+    /** Push a realtime "live data changed" ping for a match, keyed on the
+     *  tournament's canonical UUID (NOT the request path param, which may be a
+     *  slug — clients filter on the real uuid). */
+    private void notifyLive(Matches match) {
+        if (match == null || match.getTournament() == null) return;
+        var t = match.getTournament();
+        if (t.getUuid() == null) return;
+        liveBroadcaster.liveUpdate(t.getUuid().toString(), match.getId());
     }
 
     /** True if the player's team is one of the two teams in the match. */
     private static boolean playerBelongsToMatch(Player player, Matches match) {
         Long teamId = player.getTeam().getId();
+        Long t1 = match.getTeam1() != null ? match.getTeam1().getId() : null;
+        Long t2 = match.getTeam2() != null ? match.getTeam2().getId() : null;
+        return Objects.equals(teamId, t1) || Objects.equals(teamId, t2);
+    }
+
+    private static boolean teamBelongsToMatch(Teams team, Matches match) {
+        Long teamId = team.getId();
         Long t1 = match.getTeam1() != null ? match.getTeam1().getId() : null;
         Long t2 = match.getTeam2() != null ? match.getTeam2().getId() : null;
         return Objects.equals(teamId, t1) || Objects.equals(teamId, t2);

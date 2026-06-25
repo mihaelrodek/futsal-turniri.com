@@ -31,6 +31,14 @@ public class Teams {
     @JoinColumn(name = "group_id")
     private Groups group;
 
+    /**
+     * Manual group-standings position (0-based within the group). Null = use
+     * the computed ranking; set when the organizer overrides the order by
+     * hand (e.g. to settle a tiebreaker) after the group is finished.
+     */
+    @Column(name = "manual_rank")
+    private Integer manualRank;
+
     @Column(name = "name", length = 200, nullable = false)
     private String name;
 

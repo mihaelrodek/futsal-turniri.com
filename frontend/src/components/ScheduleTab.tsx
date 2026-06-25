@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react"
 import {
     Box,
+    Button,
     chakra,
     Field,
     Flex,
     HStack,
     Input,
+    NativeSelect,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronUp, FiClock } from "react-icons/fi"
+import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiFilter } from "react-icons/fi"
 import { LuCalendarClock, LuCalendarX2, LuSettings2 } from "react-icons/lu"
-import { fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
+import { confirmSchedule, fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
@@ -42,25 +44,15 @@ const STAGE_LABEL: Record<string, string> = {
     THIRD_PLACE: "Za 3. mjesto",
 }
 
-/**
- * Sort bucket for a schedule row. Lower number = higher in the list.
- *
- * Rationale: a viewer wants the actionable bits at the top of the page.
- *   0 — LIVE              : right now, eyeballs glued.
- *   1 — FINISHED          : final scores, what just happened.
- *   2 — SCHEDULED w/ time : the next thing, kickoff known.
- *   3 — SCHEDULED no time : "TBD" filler, pushed to the bottom so it
- *                           doesn't fragment the timeline above.
- */
-function statusOrder(m: ScheduledMatch): number {
-    if (m.status === "LIVE") return 0
-    if (m.status === "FINISHED") return 1
-    if (m.kickoffAt) return 2
-    return 3
+/** Kickoff time in ms for sorting; matches without a time sort to the end. */
+function kickoffMs(m: ScheduledMatch): number {
+    return m.kickoffAt ? new Date(m.kickoffAt).getTime() : Number.POSITIVE_INFINITY
 }
 
+// Half count is fixed at 2 (a futsal match is always two halves) — no config.
+const HALF_COUNT = 2
+
 type Cfg = {
-    halfCount: string
     halfLengthMin: string
     halftimeBreakMin: string
     breakBetweenMatchesMin: string
@@ -83,9 +75,15 @@ function numVal(v: string): number {
 }
 
 /* -- Stage badge --------------------------------------------------------- */
-function StageBadge({ stage }: { stage: string }) {
-    const label = STAGE_LABEL[stage] ?? stage
+function StageBadge({ stage, groupName }: { stage: string; groupName?: string | null }) {
     const isGroup = stage === "GROUP"
+    // For group matches show which group ("Grupa A"); knockout keeps its
+    // phase label ("Polufinale", "Finale", …).
+    const label = isGroup
+        ? groupName
+            ? `Grupa ${groupName}`
+            : "Grupa"
+        : STAGE_LABEL[stage] ?? stage
     return (
         <Box
             as="span"
@@ -164,6 +162,34 @@ function CfgField({
     )
 }
 
+/* -- Read-only format-setting tile (label + value) ----------------------- */
+function SettingStat({ label, value }: { label: string; value: string }) {
+    return (
+        <Box bg="bg.surfaceTint" rounded="md" px="3" py="2.5" textAlign="center">
+            <Text
+                fontFamily="mono"
+                fontSize="9px"
+                fontWeight={800}
+                letterSpacing="0.1em"
+                color="fg.muted"
+                textTransform="uppercase"
+                mb="1"
+            >
+                {label}
+            </Text>
+            <Text
+                fontFamily="heading"
+                fontSize="18px"
+                fontWeight={800}
+                color="fg.ink"
+                letterSpacing="-0.02em"
+            >
+                {value}
+            </Text>
+        </Box>
+    )
+}
+
 const RowButton = chakra("button")
 
 /* -- Match row ----------------------------------------------------------- */
@@ -176,6 +202,7 @@ function MatchRow({
     slotMinutes,
     onTimeChange,
     canEdit,
+    isNext = false,
 }: {
     match: ScheduledMatch
     tournamentUuid: string
@@ -193,12 +220,15 @@ function MatchRow({
     onTimeChange: (m: ScheduledMatch, localValue: string) => void
     /** Owner / admin only — kickoff time editor goes read-only when false. */
     canEdit: boolean
+    /** True for the single next-to-start (earliest scheduled) match — gets a
+     *  red border so the organizer sees what's on deck. */
+    isNext?: boolean
 }) {
     const [expanded, setExpanded] = useState(false)
     const hasScore = match.score1 != null && match.score2 != null
     const isLive = match.status === "LIVE"
     const isFinished = match.status === "FINISHED"
-    const canExpand = isLive || isFinished
+    const canExpand = true // any match expands to show its timeline (tijek)
     // Scoreboard layout (team-left / score / team-right) for both LIVE
     // and FINISHED — mirrors the LivePage card design so the user has
     // one consistent mental model across the two screens.
@@ -229,22 +259,98 @@ function MatchRow({
     return (
         <Panel
             px="4"
-            py="3"
-            borderColor={isLive ? "red.emphasized" : "border"}
-            borderWidth={isLive ? "2px" : "1px"}
+            py="2"
+            borderColor={isLive || isNext ? "red.emphasized" : "border"}
+            borderWidth={isLive || isNext ? "2px" : "1px"}
         >
-            <VStack align="stretch" gap={{ base: "2", sm: "2.5" }}>
-                {/* Meta header — stage + (live) badges on the left, the
-                    kickoff control on the right. Kept on its own line so it
-                    can never push the teams/score grid below out of column
-                    alignment between rows (the old layout drifted the score
-                    whenever a UŽIVO badge widened the left cluster). */}
-                <Flex align="center" justify="space-between" gap="2" wrap="wrap">
-                    <HStack gap="2" minW="0" wrap="wrap">
-                        <StageBadge stage={match.stage} />
+            <VStack align="stretch" gap="1">
+                {/* Meta header — one compact row: stage badge (+live) on the
+                    left, kickoff time/editor centred, "Dodaj u kalendar" on
+                    the right. Equal flex on the two side clusters keeps the
+                    time visually centred regardless of badge width. */}
+                <Flex align="center" gap="2" wrap="wrap">
+                    {/* Left: stage + live/next badges */}
+                    <HStack gap="2" minW="0" flex="1" wrap="wrap">
+                        <StageBadge stage={match.stage} groupName={match.groupName} />
                         {isLive && <LiveBadge />}
+                        {/* "Na redu" tag for the next match to start. */}
+                        {isNext && !isLive && (
+                            <Box
+                                as="span"
+                                px="2"
+                                py="0.5"
+                                rounded="full"
+                                bg="red.subtle"
+                                color="red.fg"
+                                fontFamily="mono"
+                                fontSize="9px"
+                                fontWeight={800}
+                                letterSpacing="0.1em"
+                                textTransform="uppercase"
+                                flexShrink={0}
+                                whiteSpace="nowrap"
+                            >
+                                Na redu
+                            </Box>
+                        )}
                     </HStack>
-                    <HStack gap="2" flexShrink={0}>
+
+                    {/* Center: kickoff time / editor */}
+                    <Box flexShrink={0}>
+                        {canEdit ? (
+                            <chakra.input
+                                type="datetime-local"
+                                value={isoToLocal(match.kickoffAt)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    onTimeChange(match, e.target.value)
+                                }
+                                css={{
+                                    border: "1px solid var(--chakra-colors-border)",
+                                    borderRadius: "var(--chakra-radii-md)",
+                                    padding: "3px 8px",
+                                    fontSize: "0.8rem",
+                                    fontFamily: "inherit",
+                                    color: "var(--chakra-colors-fg)",
+                                    background: "var(--chakra-colors-bg-panel)",
+                                    outline: "none",
+                                    cursor: "pointer",
+                                    minWidth: 0,
+                                    maxWidth: "100%",
+                                    _focus: {
+                                        boxShadow: "0 0 0 2px var(--chakra-colors-brand-focusRing)",
+                                        borderColor: "var(--chakra-colors-brand-solid)",
+                                    },
+                                }}
+                            />
+                        ) : match.kickoffAt ? (
+                            <HStack
+                                gap="1.5"
+                                fontSize="sm"
+                                fontWeight="600"
+                                color="fg.muted"
+                                fontFamily="mono"
+                            >
+                                <FiClock size={12} />
+                                <Box>
+                                    {(() => {
+                                        const v = isoToLocal(match.kickoffAt)
+                                        if (!v) return "—"
+                                        // YYYY-MM-DDTHH:MM → "DD.MM.YYYY HH:MM"
+                                        const [d, t] = v.split("T")
+                                        const [y, m, day] = d.split("-")
+                                        return `${day}.${m}.${y} ${t}`
+                                    })()}
+                                </Box>
+                            </HStack>
+                        ) : (
+                            <Text fontSize="xs" color="fg.subtle">
+                                Termin nije određen
+                            </Text>
+                        )}
+                    </Box>
+
+                    {/* Right: add to calendar (scheduled matches only) */}
+                    <Flex flex="1" justify="flex-end" minW="0">
                         {!scoreboard && match.kickoffAt && (
                             <RowButton
                                 type="button"
@@ -267,63 +373,13 @@ function MatchRow({
                                     addToCalendar()
                                 }}
                                 aria-label="Dodaj u kalendar"
+                                flexShrink={0}
                             >
                                 <FiCalendar size={12} />
-                                Kalendar
+                                Dodaj u kalendar
                             </RowButton>
                         )}
-                        {canEdit ? (
-                            <chakra.input
-                                type="datetime-local"
-                                value={isoToLocal(match.kickoffAt)}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    onTimeChange(match, e.target.value)
-                                }
-                                css={{
-                                    border: "1px solid var(--chakra-colors-border)",
-                                    borderRadius: "var(--chakra-radii-md)",
-                                    padding: "3px 8px",
-                                    fontSize: "0.75rem",
-                                    fontFamily: "inherit",
-                                    color: "var(--chakra-colors-fg)",
-                                    background: "var(--chakra-colors-bg-panel)",
-                                    outline: "none",
-                                    cursor: "pointer",
-                                    flexShrink: 0,
-                                    minWidth: 0,
-                                    maxWidth: "100%",
-                                    _focus: {
-                                        boxShadow: "0 0 0 2px var(--chakra-colors-brand-focusRing)",
-                                        borderColor: "var(--chakra-colors-brand-solid)",
-                                    },
-                                }}
-                            />
-                        ) : match.kickoffAt ? (
-                            <HStack
-                                gap="1"
-                                fontSize="xs"
-                                fontWeight="600"
-                                color="fg.muted"
-                                fontFamily="mono"
-                            >
-                                <FiClock size={11} />
-                                <Box>
-                                    {(() => {
-                                        const v = isoToLocal(match.kickoffAt)
-                                        if (!v) return "—"
-                                        // YYYY-MM-DDTHH:MM → "DD.MM. HH:MM"
-                                        const [d, t] = v.split("T")
-                                        const [y, m, day] = d.split("-")
-                                        return `${day}.${m}. ${t} ${y === new Date().getFullYear().toString() ? "" : y}`.trim()
-                                    })()}
-                                </Box>
-                            </HStack>
-                        ) : (
-                            <Text fontSize="xs" color="fg.subtle">
-                                Termin nije određen
-                            </Text>
-                        )}
-                    </HStack>
+                    </Flex>
                 </Flex>
 
                 {/* Teams + score — one fixed 3-column grid used for EVERY
@@ -336,6 +392,8 @@ function MatchRow({
                     gridTemplateColumns="1fr auto 1fr"
                     alignItems="center"
                     gap={{ base: "2", sm: "4" }}
+                    cursor="pointer"
+                    onClick={() => setExpanded((v) => !v)}
                 >
                     <Text
                         fontSize="sm"
@@ -410,6 +468,7 @@ function MatchRow({
                         matchId={match.matchId}
                         team1Id={match.team1Id ?? null}
                         team2Id={match.team2Id ?? null}
+                        hideEmpty={!isLive}
                     />
                 </Box>
             )}
@@ -427,6 +486,7 @@ export default function ScheduleTab({
     tournamentName,
     tournamentLocation,
     tournamentSlug,
+    focusMatchId = null,
 }: {
     uuid: string
     canEdit?: boolean
@@ -437,12 +497,17 @@ export default function ScheduleTab({
     tournamentName?: string
     tournamentLocation?: string | null
     tournamentSlug?: string | null
+    /** When set (arriving from a /uzivo upcoming-match click), that match's
+     *  row is scrolled into view + briefly highlighted. */
+    focusMatchId?: number | null
 }) {
     const [schedule, setSchedule] = useState<Schedule | null>(null)
     const [loading, setLoading] = useState(true)
     const [generating, setGenerating] = useState(false)
+    const [confirming, setConfirming] = useState(false)
+    /** Team id (as string) to filter the schedule by; "" = all teams. */
+    const [teamFilter, setTeamFilter] = useState<string>("")
     const [cfg, setCfg] = useState<Cfg>({
-        halfCount: "2",
         halfLengthMin: "10",
         halftimeBreakMin: "5",
         breakBetweenMatchesMin: "5",
@@ -457,7 +522,6 @@ export default function ScheduleTab({
                 if (cancelled) return
                 setSchedule(s)
                 setCfg({
-                    halfCount: s.halfCount != null ? String(s.halfCount) : "2",
                     halfLengthMin: s.halfLengthMin != null ? String(s.halfLengthMin) : "10",
                     halftimeBreakMin:
                         s.halftimeBreakMin != null ? String(s.halftimeBreakMin) : "5",
@@ -479,8 +543,16 @@ export default function ScheduleTab({
         }
     }, [uuid])
 
+    // Scroll to + highlight the match the user tapped on /uzivo. Runs once
+    // the schedule has loaded so the target row exists in the DOM.
+    useEffect(() => {
+        if (focusMatchId == null || loading) return
+        const el = document.getElementById(`sched-match-${focusMatchId}`)
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, [focusMatchId, loading, schedule])
+
     const slot =
-        numVal(cfg.halfCount) * numVal(cfg.halfLengthMin) +
+        HALF_COUNT * numVal(cfg.halfLengthMin) +
         numVal(cfg.halftimeBreakMin) +
         numVal(cfg.breakBetweenMatchesMin) +
         numVal(cfg.bufferMin)
@@ -489,7 +561,7 @@ export default function ScheduleTab({
         setGenerating(true)
         try {
             const s = await generateSchedule(uuid, {
-                halfCount: numVal(cfg.halfCount),
+                halfCount: HALF_COUNT,
                 halfLengthMin: numVal(cfg.halfLengthMin),
                 halftimeBreakMin: numVal(cfg.halftimeBreakMin),
                 breakBetweenMatchesMin: numVal(cfg.breakBetweenMatchesMin),
@@ -500,6 +572,17 @@ export default function ScheduleTab({
             /* error toast surfaced by the http interceptor */
         } finally {
             setGenerating(false)
+        }
+    }
+
+    async function runConfirm() {
+        setConfirming(true)
+        try {
+            setSchedule(await confirmSchedule(uuid))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setConfirming(false)
         }
     }
 
@@ -519,35 +602,156 @@ export default function ScheduleTab({
 
     const rawMatches = schedule?.matches ?? []
 
-    // Sort: LIVE first, SCHEDULED second, FINISHED last.
-    // Array.sort is stable in V8/modern engines — kickoff order preserved within groups.
-    // Bucket sort by status, then within each bucket preserve the
-    // backend's original kickoff order so a tournament's chronology
-    // stays intact above the TBD tail.
-    const matches = [...rawMatches]
+    // Sort strictly by kickoff time (play order) — matches without a time go
+    // to the bottom. Array.sort is stable, so equal/no-time rows keep the
+    // backend's original order.
+    const byKickoff = [...rawMatches]
         .map((m, i) => ({ m, i }))
         .sort((a, b) => {
-            const oa = statusOrder(a.m)
-            const ob = statusOrder(b.m)
-            if (oa !== ob) return oa - ob
+            const ka = kickoffMs(a.m)
+            const kb = kickoffMs(b.m)
+            if (ka !== kb) return ka - kb
             return a.i - b.i
         })
         .map((x) => x.m)
+
+    // Distinct teams across the schedule, for the "filter by team" dropdown.
+    const teamOptions = (() => {
+        const map = new Map<number, string>()
+        for (const m of rawMatches) {
+            if (m.team1Id != null) map.set(m.team1Id, m.team1Name ?? `#${m.team1Id}`)
+            if (m.team2Id != null) map.set(m.team2Id, m.team2Name ?? `#${m.team2Id}`)
+        }
+        return [...map.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, "hr"))
+    })()
+
+    // Apply the team filter (only that team's matches when one is picked).
+    const visibleMatches = teamFilter
+        ? byKickoff.filter(
+              (m) =>
+                  String(m.team1Id) === teamFilter || String(m.team2Id) === teamFilter,
+          )
+        : byKickoff
+
+    // Two sections: upcoming/live first (the schedule), finished at the bottom.
+    const upcomingMatches = visibleMatches.filter((m) => m.status !== "FINISHED")
+    const finishedMatches = visibleMatches.filter((m) => m.status === "FINISHED")
+
+    // The next match to start: the earliest-kickoff SCHEDULED match (computed
+    // from the full list so the highlight is the globally-next game). Gets a red
+    // border so the organizer immediately sees which game is on deck.
+    const nextMatchId = byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
+
+    const renderRow = (m: ScheduledMatch) => (
+        <Box
+            key={m.matchId}
+            id={`sched-match-${m.matchId}`}
+            rounded="xl"
+            css={
+                focusMatchId === m.matchId
+                    ? {
+                          outline: "2px solid var(--chakra-colors-brand-solid)",
+                          outlineOffset: "2px",
+                      }
+                    : undefined
+            }
+        >
+            <MatchRow
+                match={m}
+                tournamentUuid={uuid}
+                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentLocation={tournamentLocation}
+                tournamentSlug={tournamentSlug}
+                slotMinutes={slot}
+                onTimeChange={onTimeChange}
+                canEdit={canEdit}
+                isNext={m.matchId === nextMatchId}
+            />
+        </Box>
+    )
 
     // Tournament has started if any match is LIVE or FINISHED.
     const tournamentStarted = rawMatches.some(
         (m) => m.status === "LIVE" || m.status === "FINISHED",
     )
 
+    // The schedule has a stored format once it's been generated.
+    const scheduleHasConfig = schedule != null && schedule.halfLengthMin != null
+    // Matches without a kickoff (e.g. knockout drawn after the group schedule).
+    const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
+    // The organizer sees the editable config card (only before the start); the
+    // read-only summary is for everyone else — and for organizers after start.
+    const showEditableConfig = canEdit && !tournamentStarted
+
     return (
         <VStack align="stretch" gap="5" py="2">
+            {/* Read-only format summary — visible to everyone once the schedule
+                is generated, so all viewers see how long halves/breaks are. */}
+            {scheduleHasConfig && !showEditableConfig && (
+                <SectionCard
+                    icon={LuSettings2}
+                    title="Postavke rasporeda"
+                    subtitle="Format utakmice — vrijedi za sve utakmice"
+                    padding="4"
+                >
+                    <Box
+                        display="grid"
+                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
+                        gap="3"
+                    >
+                        <SettingStat label="Min / poluvrijeme" value={`${schedule.halfLengthMin}`} />
+                        <SettingStat label="Poluvremena" value={`${schedule.halfCount ?? 2}`} />
+                        <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
+                        <SettingStat label="Pauza između" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
+                        <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
+                    </Box>
+                </SectionCard>
+            )}
+
+            {/* Some matches have no kickoff (typically the knockout drawn after
+                the group schedule). Let the organizer re-confirm so they get a
+                slot — useful for day-split tournaments. */}
+            {canEdit && unscheduledCount > 0 && (
+                <Flex
+                    align="center"
+                    justify="space-between"
+                    gap="3"
+                    wrap="wrap"
+                    bg="brand.subtle"
+                    borderWidth="1px"
+                    borderColor="brand.emphasized"
+                    rounded="xl"
+                    px="4"
+                    py="3"
+                >
+                    <HStack gap="2" minW="0">
+                        <FiClock size={16} />
+                        <Text fontSize="sm" color="fg.ink" fontWeight={500}>
+                            {unscheduledCount === 1
+                                ? "1 utakmica nema raspored"
+                                : `${unscheduledCount} utakmica nema raspored`}{" "}
+                            (npr. eliminacija). Potvrdi raspored da im se dodijeli termin.
+                        </Text>
+                    </HStack>
+                    <PrimaryButton
+                        onClick={runConfirm}
+                        disabled={confirming}
+                        icon={<LuCalendarClock size={14} />}
+                    >
+                        {confirming ? "Potvrđivanje…" : "Potvrdi raspored"}
+                    </PrimaryButton>
+                </Flex>
+            )}
+
             {/* ── Format utakmice — Pitch SectionCard ─────────────────────
                  5-col grid of mini-stat inputs + computed slot footer +
                  Generiraj raspored CTA in the card header. Hidden once
                  the tournament has started (any match LIVE/FINISHED), and
                  also hidden for non-organizers — schedule generation is a
                  destructive owner-only action. */}
-            {canEdit && !tournamentStarted && (
+            {showEditableConfig && (
                 <SectionCard
                     icon={LuSettings2}
                     title="Format utakmice"
@@ -564,14 +768,9 @@ export default function ScheduleTab({
                 >
                     <Box
                         display="grid"
-                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
+                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }}
                         gap="3"
                     >
-                        <CfgField
-                            label="Poluvremena"
-                            value={cfg.halfCount}
-                            onChange={(v) => setCfg((c) => ({ ...c, halfCount: v }))}
-                        />
                         <CfgField
                             label="Min / poluvrijeme"
                             value={cfg.halfLengthMin}
@@ -624,8 +823,70 @@ export default function ScheduleTab({
                 </SectionCard>
             )}
 
-            {/* Match list */}
-            {matches.length === 0 ? (
+            {/* Filter the schedule down to a single team's matches — centred,
+                in a noticeable box that lights up when a filter is active. */}
+            {teamOptions.length > 1 && (
+                <Flex justify="center">
+                    <Flex
+                        align="center"
+                        justify="center"
+                        gap="2.5"
+                        wrap="wrap"
+                        borderWidth="1px"
+                        borderColor={teamFilter ? "brand.emphasized" : "border.emphasized"}
+                        bg={teamFilter ? "brand.subtle" : "bg.surfaceTint"}
+                        rounded="xl"
+                        px="5"
+                        py="3"
+                        shadow="xs"
+                        transition="background-color 0.15s, border-color 0.15s"
+                    >
+                        <HStack
+                            gap="1.5"
+                            color={teamFilter ? "brand.fg" : "fg.ink"}
+                            flexShrink={0}
+                        >
+                            <FiFilter size={15} />
+                            <Text fontSize="sm" fontWeight={600} whiteSpace="nowrap">
+                                Filtriraj po ekipi:
+                            </Text>
+                        </HStack>
+                        <NativeSelect.Root size="sm" w="auto" minW="200px" maxW="280px">
+                            <NativeSelect.Field
+                                value={teamFilter}
+                                onChange={(e) => setTeamFilter(e.target.value)}
+                                fontWeight={600}
+                            >
+                                <option value="">Sve ekipe</option>
+                                {teamOptions.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                        {t.name}
+                                    </option>
+                                ))}
+                            </NativeSelect.Field>
+                            <NativeSelect.Indicator />
+                        </NativeSelect.Root>
+                        {/* Always rendered (just hidden when inactive) so the
+                            box keeps the same size and the layout doesn't shift
+                            when a team is picked. */}
+                        <Button
+                            size="xs"
+                            variant="ghost"
+                            colorPalette="brand"
+                            onClick={() => setTeamFilter("")}
+                            visibility={teamFilter ? "visible" : "hidden"}
+                            aria-hidden={!teamFilter}
+                            tabIndex={teamFilter ? 0 : -1}
+                            flexShrink={0}
+                        >
+                            Poništi filter
+                        </Button>
+                    </Flex>
+                </Flex>
+            )}
+
+            {/* Match list — upcoming (the schedule) first, finished at the bottom. */}
+            {rawMatches.length === 0 ? (
                 <Panel>
                     <EmptyState
                         icon={LuCalendarX2}
@@ -633,29 +894,39 @@ export default function ScheduleTab({
                         description="Još nema utakmica. Izvuci grupe ili generiraj eliminacijsku ljestvicu, pa generiraj raspored."
                     />
                 </Panel>
+            ) : visibleMatches.length === 0 ? (
+                <Panel>
+                    <EmptyState
+                        icon={LuCalendarX2}
+                        title="Nema utakmica"
+                        description="Odabrana ekipa nema utakmica u rasporedu."
+                    />
+                </Panel>
             ) : (
-                <SectionCard
-                    icon={LuCalendarClock}
-                    title="Raspored utakmica"
-                    subtitle={`${matches.length} ${matches.length === 1 ? "utakmica" : "utakmica"}`}
-                    padding="4"
-                >
-                    <VStack align="stretch" gap="2">
-                        {matches.map((m) => (
-                            <MatchRow
-                                key={m.matchId}
-                                match={m}
-                                tournamentUuid={uuid}
-                                tournamentName={tournamentName ?? "Futsal turnir"}
-                                tournamentLocation={tournamentLocation}
-                                tournamentSlug={tournamentSlug}
-                                slotMinutes={slot}
-                                onTimeChange={onTimeChange}
-                                canEdit={canEdit}
-                            />
-                        ))}
-                    </VStack>
-                </SectionCard>
+                <>
+                    {upcomingMatches.length > 0 && (
+                        <SectionCard
+                            icon={LuCalendarClock}
+                            title="Nadolazeće utakmice"
+                            padding="4"
+                        >
+                            <VStack align="stretch" gap="2">
+                                {upcomingMatches.map(renderRow)}
+                            </VStack>
+                        </SectionCard>
+                    )}
+                    {finishedMatches.length > 0 && (
+                        <SectionCard
+                            icon={LuCalendarClock}
+                            title="Završene utakmice"
+                            padding="4"
+                        >
+                            <VStack align="stretch" gap="2">
+                                {finishedMatches.map(renderRow)}
+                            </VStack>
+                        </SectionCard>
+                    )}
+                </>
             )}
         </VStack>
     )
