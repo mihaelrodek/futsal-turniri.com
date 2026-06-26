@@ -25,6 +25,7 @@ import type { TeamShort } from "../types/teams"
 
 import {
     fetchTournamentDetails,
+    fetchRosterLocked,
     fetchTournamentTeams,
     replaceTeams,
     updateTournament,
@@ -56,6 +57,7 @@ import type { EditForm, SectionKey } from "../tournament/parts"
 import OverviewSection from "../tournament/OverviewSection"
 import { POSTER_ACCEPT, POSTER_MAX_MB } from "../tournament/OverviewSection"
 import TeamsSection from "../tournament/TeamsSection"
+import LiveControlTab from "../components/LiveControlTab"
 import StatsSection from "../tournament/StatsSection"
 import {
     DeleteTeamDialog,
@@ -138,6 +140,10 @@ export default function TournamentDetailsPage() {
     const [error, setError] = useState<string | null>(null)
     const [t, setT] = useState<TournamentDetails | null>(null)
     const [teams, setTeams] = useState<TeamShort[]>([])
+    // True once the draw (groups / bracket) has been generated — locks the
+    // roster so teams can no longer be added or removed. Refetched on the
+    // Ekipe tab so a fresh draw on another tab is reflected immediately.
+    const [rosterLocked, setRosterLocked] = useState(false)
 
     /* ---------- Active-tab persistence ----------
      * Mirror `section` + `drawSub` into the URL query string so a hard
@@ -153,7 +159,7 @@ export default function TournamentDetailsPage() {
      * stack history entries — clicking tabs feels like a panel switch,
      * not a navigation. */
     const [searchParams, setSearchParams] = useSearchParams()
-    const SECTION_KEYS: SectionKey[] = ["details", "teams", "bracket", "raspored", "stats"]
+    const SECTION_KEYS: SectionKey[] = ["details", "live", "teams", "bracket", "raspored", "stats"]
     const DRAW_SUB_KEYS: DrawSubKey[] = ["grupe", "eliminacija"]
     const initialSection = ((): SectionKey => {
         const t = searchParams.get("tab")
@@ -195,6 +201,19 @@ export default function TournamentDetailsPage() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [section, drawSub])
+
+    // Keep the roster-lock flag current: fetch on mount and whenever the user
+    // opens the Ekipe tab, so a draw generated on the Ždrijeb tab immediately
+    // disables adding/removing teams.
+    useEffect(() => {
+        if (!uuid) return
+        if (section !== "teams") return
+        let cancelled = false
+        fetchRosterLocked(uuid)
+            .then((locked) => { if (!cancelled) setRosterLocked(locked) })
+            .catch(() => { /* leave previous value on transient failure */ })
+        return () => { cancelled = true }
+    }, [uuid, section])
 
     /* ---------- Dialog / confirm state ---------- */
     const [pendingDeleteTeam, setPendingDeleteTeam] = useState<TeamShort | null>(null)
@@ -663,6 +682,8 @@ export default function TournamentDetailsPage() {
     // Top-level section nav.
     const sections: Array<{ key: SectionKey; label: string }> = [
         { key: "details", label: "Detalji" },
+        // "Zapisnik" — organizer/admin only: run whatever match is on now.
+        ...(canEdit ? [{ key: "live" as SectionKey, label: "Zapisnik" }] : []),
         { key: "teams", label: "Ekipe" },
         { key: "bracket", label: "Ždrijeb" },
         { key: "raspored", label: "Raspored" },
@@ -874,6 +895,8 @@ export default function TournamentDetailsPage() {
                     </Box>
                 )}
 
+                {section === "live" && canEdit && <LiveControlTab uuid={t.uuid} />}
+
                 {section === "teams" && (
                     <TeamsSection
                         t={t}
@@ -887,6 +910,7 @@ export default function TournamentDetailsPage() {
                             (t.status as string) === "IN_PROGRESS" ||
                             t.status === "FINISHED"
                         }
+                        drawGenerated={rosterLocked}
                         teamRequestsCollapsed={teamRequestsCollapsed}
                         setTeamRequestsCollapsed={setTeamRequestsCollapsed}
                         addTeam={addTeam}
@@ -971,6 +995,7 @@ export default function TournamentDetailsPage() {
                                     canEdit={canEdit}
                                     tournamentStarted={tournamentStarted}
                                     tournamentName={t.name}
+                                    format={t.format}
                                 />
                             )
                         })()}
@@ -985,6 +1010,7 @@ export default function TournamentDetailsPage() {
                         tournamentLocation={t.location}
                         tournamentSlug={t.slug}
                         focusMatchId={focusMatchId}
+                        format={t.format}
                     />
                 )}
 

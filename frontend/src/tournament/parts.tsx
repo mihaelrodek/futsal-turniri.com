@@ -32,6 +32,7 @@ export type RoundLocal = Omit<RoundDto, "matches"> & {
 /** Section keys for the top-level section navigation. */
 export type SectionKey =
     | "details"
+    | "live"
     | "teams"
     | "bracket"
     | "raspored"

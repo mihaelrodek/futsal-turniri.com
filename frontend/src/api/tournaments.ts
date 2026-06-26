@@ -70,6 +70,16 @@ export async function fetchTournamentDetails(uuid: string): Promise<TournamentDe
     return data;
 }
 
+/** Whether the roster is locked (the draw has been generated) — once true,
+ *  teams can no longer be added or removed. */
+export async function fetchRosterLocked(uuid: string): Promise<boolean> {
+    const { data } = await http.get<{ locked: boolean }>(
+        `/tournaments/${uuid}/roster-locked`,
+        { silent: true } as any,
+    );
+    return !!data?.locked;
+}
+
 export async function updateTournament(
     uuid: string,
     payload: CreateTournamentPayload,

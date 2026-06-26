@@ -735,6 +735,29 @@ public class TournamentController {
                 .orElseGet(() -> Response.noContent().build());
     }
 
+    /**
+     * Whether the roster is locked — i.e. the draw has been generated, so
+     * teams may no longer be added or removed. True once any fixtures exist
+     * (KNOCKOUT_ONLY bracket / generated schedule) OR any team has been placed
+     * into a group (GROUPS_KNOCKOUT draw, even before fixtures). Removing a team
+     * past this point would corrupt the groups / bracket, so the team-removal
+     * endpoints enforce it too (not just the UI).
+     */
+    private boolean isRosterLocked(Tournaments t) {
+        return matchesRepo.count("tournament.id = ?1", t.getId()) > 0
+                || teamRepo.findByTournament_Id(t.getId()).stream()
+                        .anyMatch(tm -> tm.getGroup() != null);
+    }
+
+    /** Public read of the roster-lock flag — drives the UI's add/remove gating. */
+    @GET
+    @Path("/{uuid}/roster-locked")
+    public Response rosterLocked(@PathParam("uuid") String idOrSlug) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        return Response.ok(java.util.Map.of("locked", isRosterLocked(t))).build();
+    }
+
     @GET
     @Path("/{uuid}")
     public Response getById(@PathParam("uuid") String idOrSlug) {
@@ -1007,6 +1030,19 @@ public class TournamentController {
                 .map(Integer::longValue)
                 .collect(Collectors.toSet());
 
+        // Once the draw exists, teams can no longer be removed — reject a save
+        // that drops any existing team (the UI disables this; this is the
+        // server-side guard against a stale client or direct API call).
+        if (isRosterLocked(tournament)) {
+            boolean removingTeam = existing.stream()
+                    .anyMatch(e -> e.getId() != null && !payloadIds.contains(e.getId()));
+            if (removingTeam) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("Ždrijeb je već generiran — ekipe se više ne mogu uklanjati.")
+                        .build();
+            }
+        }
+
         // 1) delete removed rows first
         for (var e : existing) {
             if (e.getId() != null && !payloadIds.contains(e.getId())) {
@@ -1214,6 +1250,13 @@ public class TournamentController {
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         assertCanEdit(t);
 
+        // Once the draw exists (groups drawn / bracket / schedule generated), a
+        // team can no longer be removed — it would corrupt the structure.
+        if (isRosterLocked(t)) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Ždrijeb je već generiran — ekipe se više ne mogu uklanjati.")
+                    .build();
+        }
         if (t.getStatus() == TournamentStatus.STARTED || t.getStatus() == TournamentStatus.FINISHED) {
             return Response.status(Response.Status.CONFLICT).entity("TOURNAMENT_ALREADY_STARTED").build();
         }

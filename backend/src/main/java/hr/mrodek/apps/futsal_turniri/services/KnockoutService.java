@@ -24,7 +24,6 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -57,6 +56,17 @@ public class KnockoutService {
             Comparator.comparingInt(GroupStandingRowDto::points).reversed()
                     .thenComparing(Comparator.comparingInt(GroupStandingRowDto::goalDiff).reversed())
                     .thenComparing(Comparator.comparingInt(GroupStandingRowDto::goalsFor).reversed());
+
+    /**
+     * Deterministic seed order for KNOCKOUT_ONLY tournaments. Organizer-set
+     * manual seeds (manualRank) come first, in that order; teams without a seed
+     * fall back to registration order (id). Same teams → same bracket, always —
+     * just like Challonge. No randomness.
+     */
+    private static final Comparator<Teams> SEED_ORDER =
+            Comparator.comparing(Teams::getManualRank,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(Teams::getId);
 
     /* ─────────────────────────── generation ──────────────────────────── */
 
@@ -169,6 +179,21 @@ public class KnockoutService {
         }
 
         return bracket(t.getId());
+    }
+
+    /**
+     * Wipe the knockout bracket — deletes every non-group match (all knockout
+     * rounds + the third-place playoff) and removes the now-empty knockout
+     * round. Group-stage matches and standings are left untouched. Backs the
+     * "Resetiraj" action so the organizer can clear and redo the elimination.
+     */
+    @Transactional
+    public void resetBracket(Tournaments t) {
+        matchesRepo.delete("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        matchesRepo.flush();
+        for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
+            if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
+        }
     }
 
     /**
@@ -335,10 +360,12 @@ public class KnockoutService {
      */
     public List<Teams> bracketCandidates(Tournaments t) {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
-            // KNOCKOUT_ONLY — every registered team is a candidate (no random
-            // shuffle here; this is a picker, not the auto draw).
-            return teamsRepo.list(
+            // KNOCKOUT_ONLY — every registered team is a candidate, returned in
+            // the deterministic seed order (manual seeds first, then by id).
+            List<Teams> all = teamsRepo.list(
                     "tournament.id = ?1 and pendingApproval = false", t.getId());
+            all.sort(SEED_ORDER);
+            return all;
         }
         if (!isGroupStageComplete(t)) return List.of();
         return qualifiers(t);
@@ -347,9 +374,12 @@ public class KnockoutService {
     /** Ranked list of teams that enter the bracket, best seed first. */
     private List<Teams> qualifiers(Tournaments t) {
         if (t.getFormat() == TournamentFormat.KNOCKOUT_ONLY) {
+            // Deterministic: manual seeds first, then registration order. The
+            // standard bracket layout (seedSlots) then yields the same pairings
+            // every time for the same seed order.
             List<Teams> all = teamsRepo.list(
                     "tournament.id = ?1 and pendingApproval = false", t.getId());
-            Collections.shuffle(all); // no groups → random seeding for the auto draw
+            all.sort(SEED_ORDER);
             return all;
         }
 
@@ -396,6 +426,27 @@ public class KnockoutService {
             }
         }
         return qualified;
+    }
+
+    /**
+     * Persist the organizer's manual seed order for a KNOCKOUT_ONLY tournament.
+     * {@code orderedTeamIds} lists every team best-seed first; each team's
+     * {@code manualRank} is set to its 0-based position so the auto draw becomes
+     * deterministic. Unknown/duplicate ids are skipped. Only meaningful before
+     * the bracket is generated.
+     */
+    @Transactional
+    public void setSeeds(Tournaments t, List<Long> orderedTeamIds) {
+        if (orderedTeamIds == null || orderedTeamIds.isEmpty()) return;
+        Map<Long, Teams> byId = teamsRepo.list("tournament.id", t.getId())
+                .stream().collect(Collectors.toMap(Teams::getId, x -> x));
+        int rank = 0;
+        Set<Long> seen = new HashSet<>();
+        for (Long id : orderedTeamIds) {
+            Teams tm = byId.get(id);
+            if (tm == null || !seen.add(id)) continue;
+            tm.setManualRank(rank++);
+        }
     }
 
     /* ──────────────────────────── results ────────────────────────────── */

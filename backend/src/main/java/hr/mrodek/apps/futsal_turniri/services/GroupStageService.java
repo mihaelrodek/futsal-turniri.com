@@ -102,6 +102,26 @@ public class GroupStageService {
     }
 
     /**
+     * Undo the group draw — deletes every group-stage match, removes the
+     * now-empty matchday rounds, clears each team's group assignment and
+     * deletes the groups. The knockout bracket (if already generated) is left
+     * untouched. Backs the "Resetiraj" action on the Grupe tab.
+     */
+    @Transactional
+    public void resetGroups(Tournaments t) {
+        matchesRepo.delete("tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
+        matchesRepo.flush();
+        for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
+            if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
+        }
+        for (Teams tm : teamsRepo.list("tournament.id = ?1", t.getId())) {
+            tm.setGroup(null);
+        }
+        groupsRepo.deleteByTournamentId(t.getId());
+        groupsRepo.flush();
+    }
+
+    /**
      * Generate the round-robin group fixtures for an already-drawn group
      * stage. Called when the organizer generates the schedule. Idempotent and
      * non-destructive: if group matches already exist it does nothing (so a
@@ -246,8 +266,10 @@ public class GroupStageService {
         List<GroupDto> out = new ArrayList<>();
         for (Groups g : groups) {
             List<Teams> teams = teamsRepo.list("group.id", g.getId());
+            // Ordered by id ≈ matchday/play order so the per-team "Last 5"
+            // form ends up chronological.
             List<Matches> finished = matchesRepo.list(
-                    "group.id = ?1 and status = ?2", g.getId(), MatchStatus.FINISHED);
+                    "group.id = ?1 and status = ?2 order by id", g.getId(), MatchStatus.FINISHED);
 
             List<Row> rows = new ArrayList<>();
             for (Teams tm : teams) rows.add(buildRow(tm, finished));
@@ -349,7 +371,9 @@ public class GroupStageService {
         }
     }
 
-    /** Accumulate a team's played/W-D-L/goals from the finished group matches. */
+    /** Accumulate a team's played/W-D-L/goals from the finished group matches.
+     *  `finished` is in chronological (id) order, so the collected results
+     *  give the team's form oldest-first; the last 5 become the "Last 5". */
     private Row buildRow(Teams tm, List<Matches> finished) {
         Row r = new Row(tm.getId(), tm.getName());
         for (Matches m : finished) {
@@ -363,9 +387,9 @@ public class GroupStageService {
             r.played++;
             r.goalsFor += gf;
             r.goalsAgainst += ga;
-            if (gf > ga) r.won++;
-            else if (gf < ga) r.lost++;
-            else r.drawn++;
+            if (gf > ga) { r.won++; r.results.add("W"); }
+            else if (gf < ga) { r.lost++; r.results.add("L"); }
+            else { r.drawn++; r.results.add("D"); }
         }
         return r;
     }
@@ -430,6 +454,8 @@ public class GroupStageService {
         final Long teamId;
         final String teamName;
         int played, won, drawn, lost, goalsFor, goalsAgainst;
+        /** Chronological per-match results ("W"/"D"/"L"); last 5 → the form. */
+        final List<String> results = new ArrayList<>();
 
         Row(Long teamId, String teamName) {
             this.teamId = teamId;
@@ -440,9 +466,11 @@ public class GroupStageService {
         int goalDiff() { return goalsFor - goalsAgainst; }
 
         GroupStandingRowDto toDto() {
+            List<String> form = results.subList(Math.max(0, results.size() - 5), results.size());
             return new GroupStandingRowDto(
                     teamId, teamName, played, won, drawn, lost,
-                    goalsFor, goalsAgainst, goalDiff(), points());
+                    goalsFor, goalsAgainst, goalDiff(), points(),
+                    List.copyOf(form));
         }
     }
 }

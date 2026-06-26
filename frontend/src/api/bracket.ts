@@ -17,6 +17,16 @@ export async function generateBracket(tournamentUuid: string): Promise<Bracket> 
     return data
 }
 
+/** Wipe the knockout bracket (delete all elimination matches). */
+export async function resetBracket(tournamentUuid: string): Promise<Bracket> {
+    const { data } = await http.post<Bracket>(
+        `/tournaments/${tournamentUuid}/bracket/reset`,
+        undefined,
+        { successMessage: "Eliminacijska ljestvica je resetirana." } as any,
+    )
+    return data
+}
+
 /** A team eligible for the bracket (qualifier / all-teams picker). */
 export type BracketCandidate = { id: number; name: string }
 
@@ -34,6 +44,21 @@ export async function fetchBracketQualifiers(
     const { data } = await http.get<BracketQualifiers>(
         `/tournaments/${tournamentUuid}/bracket/qualifiers`,
         { silent: true } as any,
+    )
+    return data
+}
+
+/** Persist the organizer's manual seed order (nositelji) for a KNOCKOUT_ONLY
+ *  bracket — `teamIds` best seed first. Returns the re-ordered candidates. The
+ *  auto draw then yields the same bracket every time (deterministic). */
+export async function setBracketSeeds(
+    tournamentUuid: string,
+    teamIds: number[],
+): Promise<BracketQualifiers> {
+    const { data } = await http.post<BracketQualifiers>(
+        `/tournaments/${tournamentUuid}/bracket/seeds`,
+        { teamIds },
+        { successMessage: "Redoslijed nosilaca je spremljen." } as any,
     )
     return data
 }

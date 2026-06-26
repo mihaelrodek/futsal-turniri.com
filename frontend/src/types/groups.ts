@@ -13,6 +13,8 @@ export type GroupStandingRow = {
     goalsAgainst: number
     goalDiff: number
     points: number
+    /** Up to the last 5 finished results, chronological — "W" | "D" | "L". */
+    form?: string[]
 }
 
 export type GroupMatch = {

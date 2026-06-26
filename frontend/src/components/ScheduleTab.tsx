@@ -14,6 +14,7 @@ import {
 import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiFilter } from "react-icons/fi"
 import { LuCalendarClock, LuCalendarX2, LuSettings2 } from "react-icons/lu"
 import { confirmSchedule, fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
+import { fetchGroups } from "../api/groups"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
@@ -487,9 +488,15 @@ export default function ScheduleTab({
     tournamentLocation,
     tournamentSlug,
     focusMatchId = null,
+    format,
 }: {
     uuid: string
     canEdit?: boolean
+    /** Tournament format. For GROUPS_KNOCKOUT the group draw places teams into
+     *  groups but does NOT create fixtures (those are built when the schedule
+     *  is generated), so "draw done" must be detected from the groups, not the
+     *  match list. */
+    format?: string | null
     /** Surfaced into the per-match ICS export. The tournament name lands
      *  in the SUMMARY ("Team A vs Team B — Open Split 2026"), the
      *  location in LOCATION, and the slug in URL so the calendar entry
@@ -505,6 +512,9 @@ export default function ScheduleTab({
     const [loading, setLoading] = useState(true)
     const [generating, setGenerating] = useState(false)
     const [confirming, setConfirming] = useState(false)
+    /** GROUPS_KNOCKOUT only — true once groups have been drawn (so the schedule
+     *  can be generated even before any fixtures exist). */
+    const [groupsDrawn, setGroupsDrawn] = useState(false)
     /** Team id (as string) to filter the schedule by; "" = all teams. */
     const [teamFilter, setTeamFilter] = useState<string>("")
     const [cfg, setCfg] = useState<Cfg>({
@@ -538,10 +548,21 @@ export default function ScheduleTab({
             .finally(() => {
                 if (!cancelled) setLoading(false)
             })
+        // For GROUPS_KNOCKOUT, fixtures are created only when the schedule is
+        // generated — so right after the group draw there are 0 matches. Detect
+        // "draw done" from the groups instead, so "Generiraj raspored" unlocks
+        // as soon as the groups are drawn.
+        if (format === "GROUPS_KNOCKOUT") {
+            fetchGroups(uuid)
+                .then((gs) => { if (!cancelled) setGroupsDrawn(gs.length > 0) })
+                .catch(() => { /* leave default — stays gated */ })
+        } else {
+            setGroupsDrawn(false)
+        }
         return () => {
             cancelled = true
         }
-    }, [uuid])
+    }, [uuid, format])
 
     // Scroll to + highlight the match the user tapped on /uzivo. Runs once
     // the schedule has loaded so the target row exists in the DOM.
@@ -684,6 +705,11 @@ export default function ScheduleTab({
     // The organizer sees the editable config card (only before the start); the
     // read-only summary is for everyone else — and for organizers after start.
     const showEditableConfig = canEdit && !tournamentStarted
+    // A schedule can be generated once the draw is done. For KNOCKOUT_ONLY that
+    // means the bracket exists (→ matches exist); for GROUPS_KNOCKOUT the group
+    // draw is enough, since generating the schedule is what builds the group
+    // fixtures (so there are no matches yet at that point).
+    const drawGenerated = rawMatches.length > 0 || groupsDrawn
 
     return (
         <VStack align="stretch" gap="5" py="2">
@@ -755,11 +781,15 @@ export default function ScheduleTab({
                 <SectionCard
                     icon={LuSettings2}
                     title="Format utakmice"
-                    subtitle="Trajanje, poluvremena i pauze između utakmica"
+                    subtitle={
+                        drawGenerated
+                            ? "Trajanje, poluvremena i pauze između utakmica"
+                            : "Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored"
+                    }
                     action={
                         <PrimaryButton
                             onClick={runGenerate}
-                            disabled={generating}
+                            disabled={generating || !drawGenerated}
                             icon={<LuCalendarClock size={14} />}
                         >
                             {generating ? "Generiranje…" : "Generiraj raspored"}

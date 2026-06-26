@@ -729,6 +729,7 @@ export default function CreateTournamentPage() {
                                     <Field.Label>Detalji</Field.Label>
                                     <Textarea
                                         rows={3}
+                                        resize="none"
                                         placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
                                         value={form.details}
                                         onChange={(e) => onChange("details", e.target.value)}
@@ -1245,18 +1246,22 @@ export default function CreateTournamentPage() {
                                         position="relative"
                                         flexShrink={0}
                                         display="grid"
-                                        css={{
-                                            placeItems: "center",
-                                            ...(posterSrc
-                                                ? {
-                                                      backgroundImage: `url(${posterSrc})`,
-                                                      backgroundSize: "cover",
-                                                      backgroundPosition: "center",
-                                                  }
-                                                : {}),
-                                        }}
+                                        overflow="hidden"
+                                        css={{ placeItems: "center" }}
                                     >
-                                        {!posterSrc && (
+                                        {posterSrc ? (
+                                            <img
+                                                src={posterSrc}
+                                                alt=""
+                                                style={{
+                                                    position: "absolute",
+                                                    inset: 0,
+                                                    width: "100%",
+                                                    height: "100%",
+                                                    objectFit: "cover",
+                                                }}
+                                            />
+                                        ) : (
                                             <Box color="fg.muted" fontSize="xs">
                                                 Bez plakata
                                             </Box>

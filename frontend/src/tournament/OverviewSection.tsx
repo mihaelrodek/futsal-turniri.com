@@ -267,6 +267,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     <Field.Label>Detalji</Field.Label>
                                     <Textarea
                                         rows={3}
+                                        resize="none"
                                         placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
                                         value={editForm.details}
                                         onChange={(e) => patchEdit("details", e.target.value)}
@@ -953,6 +954,38 @@ function DetailsReadView({
                                 <Box />
                             )}
                         </Grid>
+                        {/* Sistem igre + Web stranica — between Ekipe/Kotizacija and Lokacija. */}
+                        {t.gameSystem && (
+                            <AccentStat
+                                accent="var(--chakra-colors-pitch-500)"
+                                icon={<FiGrid size={12} />}
+                                label="SISTEM IGRE"
+                                value={t.gameSystem}
+                            />
+                        )}
+                        {t.websiteUrl && (
+                            <chakra.a
+                                href={/^https?:\/\//i.test(t.websiteUrl) ? t.websiteUrl : `https://${t.websiteUrl}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                display="flex"
+                                alignItems="center"
+                                gap="2"
+                                bg="bg.panel"
+                                borderWidth="1px"
+                                borderColor="border"
+                                rounded="xl"
+                                px="4"
+                                py="3"
+                                color="pitch.500"
+                                fontSize="14px"
+                                fontWeight={600}
+                                textDecoration="none"
+                                _hover={{ bg: "bg.surfaceTint", textDecoration: "none" }}
+                            >
+                                <FiExternalLink /> Web stranica organizatora
+                            </chakra.a>
+                        )}
                         {t.location && (
                             <Box
                                 bg="bg.panel"
@@ -1014,7 +1047,7 @@ function DetailsReadView({
                     </VStack>
 
                     {/* Right: Detalji — opisni tekst iznad strukture formata */}
-                    {(t.details || t.format || t.gameSystem || t.websiteUrl || (t.additionalOptions?.length ?? 0) > 0) ? (
+                    {(t.details || t.format || (t.additionalOptions?.length ?? 0) > 0) ? (
                         <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
                             <HStack color="fg.muted" gap="1.5" mb="3">
                                 <FiInfo size={13} />
@@ -1025,14 +1058,6 @@ function DetailsReadView({
                                     {t.details}
                                 </Text>
                             )}
-                            {t.gameSystem && (
-                                <HStack gap="2" mb="3" fontSize="14px">
-                                    <Text fontWeight={700} color="fg.ink">Sistem igre:</Text>
-                                    <Badge variant="subtle" colorPalette="pitch" size="sm">
-                                        {t.gameSystem}
-                                    </Badge>
-                                </HStack>
-                            )}
                             {t.format && <FormatSketch format={t.format} />}
                             {t.additionalOptions && t.additionalOptions.length > 0 && (
                                 <HStack wrap="wrap" gap="1.5" mt="3">
@@ -1042,29 +1067,6 @@ function DetailsReadView({
                                         </Badge>
                                     ))}
                                 </HStack>
-                            )}
-                            {t.websiteUrl && (
-                                <chakra.a
-                                    href={/^https?:\/\//i.test(t.websiteUrl) ? t.websiteUrl : `https://${t.websiteUrl}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    display="inline-flex"
-                                    alignItems="center"
-                                    gap="1.5"
-                                    bg="bg.surfaceTint"
-                                    color="pitch.500"
-                                    px="3.5"
-                                    py="2.5"
-                                    rounded="full"
-                                    fontSize="13px"
-                                    fontWeight={600}
-                                    textDecoration="none"
-                                    mt="3"
-                                    w="fit-content"
-                                    _hover={{ bg: "pitch.100", textDecoration: "none" }}
-                                >
-                                    <FiExternalLink /> Web stranica organizatora
-                                </chakra.a>
                             )}
                         </Box>
                     ) : (

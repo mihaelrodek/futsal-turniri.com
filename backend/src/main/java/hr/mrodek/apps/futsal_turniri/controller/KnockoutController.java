@@ -88,6 +88,26 @@ public class KnockoutController {
         return new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto(complete, teams);
     }
 
+    /** Persist the organizer's manual seed order (nositelji) for a
+     *  KNOCKOUT_ONLY tournament, then echo back the re-ordered candidates so
+     *  the auto draw is deterministic. Owner/admin. */
+    @POST
+    @Path("/seeds")
+    @Authenticated
+    @Transactional
+    public hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto seeds(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.BracketSeedsRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        knockoutService.setSeeds(t, body == null ? null : body.teamIds());
+        boolean complete = knockoutService.isGroupStageComplete(t);
+        var teams = knockoutService.bracketCandidates(t).stream()
+                .map(x -> new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto.Team(
+                        x.getId(), x.getName()))
+                .toList();
+        return new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto(complete, teams);
+    }
+
     /** Build (or rebuild) the knockout bracket from the qualifiers. */
     @POST
     @Path("/generate")
@@ -96,6 +116,17 @@ public class KnockoutController {
     public BracketDto generate(@PathParam("uuid") String uuid) {
         Tournaments t = assertCanEdit(uuid);
         return knockoutService.generateBracket(t);
+    }
+
+    /** Wipe the knockout bracket (all elimination matches). Owner/admin. */
+    @POST
+    @Path("/reset")
+    @Authenticated
+    @Transactional
+    public BracketDto reset(@PathParam("uuid") String uuid) {
+        Tournaments t = assertCanEdit(uuid);
+        knockoutService.resetBracket(t);
+        return knockoutService.bracket(t.getId());
     }
 
     /** Build (or rebuild) the bracket from organizer-supplied first-round

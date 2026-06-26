@@ -85,6 +85,17 @@ public class GroupController {
         return groupStageService.standings(t.getId());
     }
 
+    /** Wipe the group stage (all group matches + the draw). Owner/admin. */
+    @POST
+    @Path("/reset")
+    @Authenticated
+    @Transactional
+    public List<GroupDto> reset(@PathParam("uuid") String uuid) {
+        Tournaments t = assertCanEdit(uuid);
+        groupStageService.resetGroups(t);
+        return groupStageService.standings(t.getId());
+    }
+
     /** Record a group-match result (a draw is allowed). */
     @POST
     @Path("/matches/{matchId}/result")

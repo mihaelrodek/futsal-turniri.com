@@ -51,7 +51,18 @@ export function showSuccess(title: string, description?: string) {
 }
 
 export function showError(title: string, description?: string) {
+    // Dedupe identical errors into a single toast. On a page that fires
+    // several requests at once (e.g. /turniri: list + live + upcoming), a
+    // backend outage would otherwise stack N copies of "Greška na
+    // poslužitelju". A stable id keyed on the message collapses them — if one
+    // is already on screen we just refresh it instead of adding another.
+    const id = `err:${title}:${description ?? ""}`
+    if (toaster.isVisible(id)) {
+        toaster.update(id, { type: "error", title, description, duration: 5500 })
+        return
+    }
     toaster.create({
+        id,
         type: "error",
         title,
         description,

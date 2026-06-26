@@ -440,6 +440,7 @@ export function GoalscorersPanel({
     team2Id,
     pollMs,
     hideEmpty = false,
+    emptyNote,
     refreshSignal,
 }: {
     tournamentUuid: string
@@ -454,6 +455,10 @@ export function GoalscorersPanel({
      *  events — used for finished matches (e.g. a 0:0) where the hint reads
      *  as a mistake rather than "events still to come". */
     hideEmpty?: boolean
+    /** Optional message shown when there are no events at all — overrides both
+     *  `hideEmpty` and the default "Još nema događaja." Used for a finished
+     *  match where the organizer entered only the final score, no scorers. */
+    emptyNote?: string
     /** Bump this (from a WebSocket live-update) to refetch immediately — the
      *  instant path; polling above is the fallback. */
     refreshSignal?: number
@@ -548,6 +553,13 @@ export function GoalscorersPanel({
         )
 
         if (events.length === 0) {
+            if (emptyNote) {
+                return (
+                    <Text fontSize="xs" color="fg.muted" textAlign="center">
+                        {emptyNote}
+                    </Text>
+                )
+            }
             if (hideEmpty) return null
             return (
                 <Text fontSize="xs" color="fg.muted">
@@ -1567,6 +1579,11 @@ export function MatchTimelineModal({
                                 team2Id={match.team2Id ?? null}
                                 pollMs={isLive ? 6000 : undefined}
                                 hideEmpty={!isLive}
+                                emptyNote={
+                                    match.status === "FINISHED"
+                                        ? "Prikazan samo krajnji rezultat bez strijelca."
+                                        : undefined
+                                }
                             />
                         </Dialog.Body>
                         <Dialog.Footer>

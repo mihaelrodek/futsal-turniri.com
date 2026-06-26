@@ -6,6 +6,7 @@ import {
     Dialog,
     Flex,
     HStack,
+    IconButton,
     Input,
     NativeSelect,
     Portal,
@@ -23,6 +24,8 @@ import {
     fetchBracketQualifiers,
     generateBracket,
     generateBracketManual,
+    resetBracket,
+    setBracketSeeds,
     recordKnockoutResult,
     type BracketCandidate,
     type ManualBracketPairing,
@@ -41,7 +44,7 @@ import { fetchSchedule } from "../api/schedule"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
-import { FiCrosshair, FiRefreshCw, FiShare2 } from "react-icons/fi"
+import { FiArrowDown, FiArrowUp, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -272,12 +275,17 @@ export default function BracketTab({
     canEdit = false,
     tournamentStarted = false,
     tournamentName,
+    format,
 }: {
     uuid: string
     canEdit?: boolean
     tournamentStarted?: boolean
     /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
+    /** Tournament format — the manual-seed (nositelji) ordering UI is only
+     *  shown for KNOCKOUT_ONLY, where the bracket is seeded directly from the
+     *  team list instead of group standings. */
+    format?: string | null
 }) {
     const [bracket, setBracket] = useState<Bracket | null>(null)
     const [loading, setLoading] = useState(true)
@@ -299,6 +307,12 @@ export default function BracketTab({
     const [manualOpen, setManualOpen] = useState(false)
     const [slots, setSlots] = useState<(number | null)[]>([])
     const [generatingManual, setGeneratingManual] = useState(false)
+    const [resetting, setResetting] = useState(false)
+    // Manual seeds (nositelji) — KNOCKOUT_ONLY only. The organizer orders the
+    // teams; the auto draw then produces the same bracket every time.
+    const [seedsOpen, setSeedsOpen] = useState(false)
+    const [seedOrder, setSeedOrder] = useState<BracketCandidate[]>([])
+    const [savingSeeds, setSavingSeeds] = useState(false)
     // Eligible teams for the bracket (group qualifiers / all teams) + whether
     // the group stage is finished — both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
@@ -423,6 +437,34 @@ export default function BracketTab({
             action: {
                 label: "Ponovi ždrijeb",
                 onClick: () => { void runGenerate() },
+            },
+        })
+    }
+
+    async function runResetBracket() {
+        setResetting(true)
+        try {
+            setBracket(await resetBracket(uuid))
+            setEditingId(null)
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setResetting(false)
+        }
+    }
+
+    /** "Resetiraj" wipes every elimination match — ask for an explicit
+     *  confirmation via a toast action before running. */
+    function confirmResetBracket() {
+        toaster.create({
+            type: "warning",
+            title: "Resetirati eliminaciju?",
+            description: "Sve utakmice eliminacijske faze bit će obrisane.",
+            duration: 10000,
+            closable: true,
+            action: {
+                label: "Resetiraj",
+                onClick: () => { void runResetBracket() },
             },
         })
     }
@@ -749,6 +791,113 @@ export default function BracketTab({
         </Panel>
     )
 
+    // ─── Manual seeds (nositelji) — KNOCKOUT_ONLY deterministic ordering ───
+    const isKnockoutOnly = format === "KNOCKOUT_ONLY"
+
+    function openSeeds() {
+        setSeedOrder([...qualifiers])
+        setSeedsOpen(true)
+    }
+
+    function moveSeed(idx: number, dir: -1 | 1) {
+        setSeedOrder((s) => {
+            const j = idx + dir
+            if (j < 0 || j >= s.length) return s
+            const c = [...s]
+            ;[c[idx], c[j]] = [c[j], c[idx]]
+            return c
+        })
+    }
+
+    async function saveSeeds() {
+        try {
+            setSavingSeeds(true)
+            const q = await setBracketSeeds(uuid, seedOrder.map((t) => t.id))
+            setQualifiers(q.teams)
+            setGroupStageComplete(q.groupStageComplete)
+            setSeedsOpen(false)
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setSavingSeeds(false)
+        }
+    }
+
+    const seedsPanel = (
+        <Panel p={{ base: "4", md: "5" }}>
+            <VStack align="stretch" gap="3">
+                <HStack justify="space-between" align="center">
+                    <Text fontWeight="bold" fontSize="sm">
+                        Nosioci — posloži redoslijed
+                    </Text>
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => setSeedsOpen(false)}
+                        disabled={savingSeeds}
+                    >
+                        Odustani
+                    </Button>
+                </HStack>
+                <Text fontSize="xs" color="fg.muted">
+                    Redoslijed određuje parove (1. protiv zadnjeg, itd.). Isti redoslijed
+                    uvijek daje istu ljestvicu — kao na Challongeu.
+                </Text>
+                <VStack align="stretch" gap="1.5">
+                    {seedOrder.map((tm, idx) => (
+                        <HStack
+                            key={tm.id}
+                            gap="2"
+                            align="center"
+                            borderWidth="1px"
+                            borderColor="border"
+                            rounded="lg"
+                            px="3"
+                            py="2"
+                        >
+                            <Text
+                                fontFamily="mono"
+                                fontSize="13px"
+                                fontWeight={800}
+                                color="fg.muted"
+                                minW="5"
+                                textAlign="center"
+                            >
+                                {idx + 1}
+                            </Text>
+                            <Text fontSize="sm" fontWeight={600} flex="1" minW="0" truncate>
+                                {tm.name?.trim() || "Bez imena"}
+                            </Text>
+                            <HStack gap="0.5" flexShrink={0}>
+                                <IconButton
+                                    aria-label="Pomakni gore"
+                                    size="xs"
+                                    variant="ghost"
+                                    disabled={idx === 0 || savingSeeds}
+                                    onClick={() => moveSeed(idx, -1)}
+                                >
+                                    <FiArrowUp />
+                                </IconButton>
+                                <IconButton
+                                    aria-label="Pomakni dolje"
+                                    size="xs"
+                                    variant="ghost"
+                                    disabled={idx === seedOrder.length - 1 || savingSeeds}
+                                    onClick={() => moveSeed(idx, 1)}
+                                >
+                                    <FiArrowDown />
+                                </IconButton>
+                            </HStack>
+                        </HStack>
+                    ))}
+                </VStack>
+                <Button colorPalette="brand" onClick={saveSeeds} loading={savingSeeds}>
+                    Spremi nosioce
+                </Button>
+            </VStack>
+        </Panel>
+    )
+
     if (loading) {
         return <Loader label="Učitavanje ljestvice…" />
     }
@@ -756,6 +905,7 @@ export default function BracketTab({
     const hasBracket = bracket != null && bracket.rounds.length > 0
 
     if (!hasBracket) {
+        if (canEdit && seedsOpen) return seedsPanel
         if (canEdit && manualOpen) return manualBracketPanel
         return (
             <Panel p="0">
@@ -766,7 +916,9 @@ export default function BracketTab({
                             ? "Organizator još nije generirao eliminacijsku ljestvicu."
                             : !groupStageComplete
                                 ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
-                                : "Generiraj automatski iz kvalifikanata ili ručno složi parove sam."
+                                : isKnockoutOnly
+                                    ? "Posloži nosioce pa generiraj — ista ljestvica svaki put. Ili ručno složi parove."
+                                    : "Generiraj automatski iz kvalifikanata ili ručno složi parove sam."
                     }
                     action={
                         canEdit ? (
@@ -780,6 +932,16 @@ export default function BracketTab({
                                 >
                                     Automatski
                                 </Button>
+                                {isKnockoutOnly && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={openSeeds}
+                                        disabled={pool.length < 2}
+                                    >
+                                        Nosioci
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -929,6 +1091,14 @@ export default function BracketTab({
                         disabled={generating}
                     >
                         {generating ? "Ždrijeb…" : "Ponovno (auto)"}
+                    </GhostButton>
+                    <GhostButton
+                        danger
+                        icon={<FiTrash2 size={14} />}
+                        onClick={confirmResetBracket}
+                        disabled={generating || generatingManual || resetting}
+                    >
+                        {resetting ? "Resetiranje…" : "Resetiraj"}
                     </GhostButton>
                 </Flex>
             )}
@@ -1178,7 +1348,7 @@ export default function BracketTab({
 
             {/* ── Live-match dialog — goals, cards, finish. ──────────────── */}
             {liveMatch && (
-                <LiveMatchDialog
+                <BracketLiveMatchDialog
                     uuid={uuid}
                     match={liveMatch}
                     onClose={() => setLiveMatch(null)}
@@ -1576,7 +1746,7 @@ function LivePill() {
    "Završi" button. For a FINISHED match it shows the same log read-only.
    ────────────────────────────────────────────────────────────────────────── */
 
-function LiveMatchDialog({
+export function BracketLiveMatchDialog({
     uuid,
     match,
     onClose,
@@ -2024,7 +2194,11 @@ function LiveMatchDialog({
                                             Učitavanje…
                                         </Text>
                                     ) : events.length === 0 ? (
-                                        isFinished ? null : (
+                                        isFinished ? (
+                                            <Text fontSize="sm" color="fg.muted">
+                                                Prikazan samo krajnji rezultat bez strijelca.
+                                            </Text>
+                                        ) : (
                                             <Text fontSize="sm" color="fg.muted">
                                                 Još nema zabilježenih događaja.
                                             </Text>

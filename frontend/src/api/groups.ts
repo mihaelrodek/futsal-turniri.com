@@ -20,6 +20,16 @@ export async function drawGroups(
     return data
 }
 
+/** Wipe the group stage (delete all group matches + the draw). */
+export async function resetGroups(tournamentUuid: string): Promise<Group[]> {
+    const { data } = await http.post<Group[]>(
+        `/tournaments/${tournamentUuid}/groups/reset`,
+        undefined,
+        { successMessage: "Grupna faza je resetirana." } as any,
+    )
+    return data
+}
+
 /**
  * Manually reorder a finished group's standings (tiebreaker override).
  * `teamIds` lists every team of the group, best first. Returns updated groups.

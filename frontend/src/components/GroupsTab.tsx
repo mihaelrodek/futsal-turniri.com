@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
     Badge,
     Box,
@@ -15,7 +15,7 @@ import {
 } from "@chakra-ui/react"
 import { LuShuffle } from "react-icons/lu"
 import { FiEdit2, FiArrowUp, FiArrowDown, FiClock } from "react-icons/fi"
-import { fetchGroups, drawGroups, recordGroupResult, reorderGroup } from "../api/groups"
+import { fetchGroups, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
 import type { Group, GroupMatch } from "../types/groups"
 import type { TeamShort } from "../types/teams"
 import {
@@ -34,7 +34,7 @@ import { fetchSchedule } from "../api/schedule"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { toaster } from "../toaster"
-import { FiRefreshCw } from "react-icons/fi"
+import { FiRefreshCw, FiTrash2 } from "react-icons/fi"
 import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, StartLivePopover, matchPhase } from "./liveMatch"
 
 /**
@@ -53,6 +53,49 @@ import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModa
  * Firebase auth is temporarily disabled project-wide.
  */
 type EditForm = { s1: string; s2: string }
+
+/** Mono header cell for the SofaScore-style standings grid. */
+function StHead({ label, mdOnly = false }: { label: string; mdOnly?: boolean }) {
+    return (
+        <Text
+            display={mdOnly ? { base: "none", md: "block" } : undefined}
+            fontFamily="mono"
+            fontSize="9px"
+            color="fg.muted"
+            letterSpacing="0.08em"
+            fontWeight={700}
+            textAlign="center"
+        >
+            {label}
+        </Text>
+    )
+}
+
+/** Mono number cell for the standings grid. */
+function StNum({
+    value,
+    mdOnly = false,
+    color = "fg.soft",
+    weight = 400,
+}: {
+    value: ReactNode
+    mdOnly?: boolean
+    color?: string
+    weight?: number
+}) {
+    return (
+        <Text
+            display={mdOnly ? { base: "none", md: "block" } : undefined}
+            fontFamily="mono"
+            fontSize="13px"
+            fontWeight={weight}
+            color={color}
+            textAlign="center"
+        >
+            {value}
+        </Text>
+    )
+}
 
 export default function GroupsTab({
     uuid,
@@ -99,6 +142,7 @@ export default function GroupsTab({
     const [manualOpen, setManualOpen] = useState(false)
     const [assign, setAssign] = useState<Record<number, number>>({})
     const [drawingManual, setDrawingManual] = useState(false)
+    const [resetting, setResetting] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -165,6 +209,34 @@ export default function GroupsTab({
             action: {
                 label: "Ponovi ždrijeb",
                 onClick: () => { void runAutoDraw() },
+            },
+        })
+    }
+
+    async function runResetGroups() {
+        setResetting(true)
+        try {
+            setGroups(await resetGroups(uuid))
+            setEditingId(null)
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setResetting(false)
+        }
+    }
+
+    /** "Resetiraj" wipes every group match + the draw — ask for an explicit
+     *  confirmation via a toast action before running. */
+    function confirmResetGroups() {
+        toaster.create({
+            type: "warning",
+            title: "Resetirati grupnu fazu?",
+            description: "Sve utakmice grupne faze i podjela u grupe bit će obrisane.",
+            duration: 10000,
+            closable: true,
+            action: {
+                label: "Resetiraj",
+                onClick: () => { void runResetGroups() },
             },
         })
     }
@@ -380,9 +452,9 @@ export default function GroupsTab({
                 key={m.matchId}
                 borderWidth={isLive || isNext ? "2px" : "1px"}
                 borderColor={isLive || isNext ? "red.emphasized" : "border"}
-                rounded="xl"
-                px={{ base: "3", md: "4" }}
-                py="2"
+                rounded="lg"
+                px={{ base: "2.5", md: "3" }}
+                py="1.5"
                 bg="bg.panel"
                 cursor="pointer"
                 onClick={() => {
@@ -397,7 +469,7 @@ export default function GroupsTab({
                     }
                 }}
             >
-                <VStack align="stretch" gap="1">
+                <VStack align="stretch" gap="0.5">
                     {/* Meta row — UŽIVO badge (+clock) top-left, kickoff time
                         centred, organizer control (Pokreni / Uživo / Rezultat /
                         Uredi) top-right. Equal flex on the side clusters keeps
@@ -432,12 +504,12 @@ export default function GroupsTab({
                             {m.kickoffAt && (
                                 <HStack
                                     gap="1.5"
-                                    fontSize="xs"
+                                    fontSize="2xs"
                                     fontWeight="600"
                                     color="fg.muted"
                                     fontFamily="mono"
                                 >
-                                    <FiClock size={12} />
+                                    <FiClock size={11} />
                                     <Box>
                                         {(() => {
                                             const d = new Date(m.kickoffAt)
@@ -476,7 +548,7 @@ export default function GroupsTab({
                                     )}
                                     {isFinished && (
                                         <Button
-                                            size="sm"
+                                            size="xs"
                                             variant="ghost"
                                             colorPalette="gray"
                                             onClick={() => setLiveMatch(m)}
@@ -534,15 +606,15 @@ export default function GroupsTab({
                         ) : (
                             <Box
                                 fontFamily="mono"
-                                fontSize={scoreboard ? "lg" : "sm"}
+                                fontSize={scoreboard ? "md" : "sm"}
                                 fontWeight={scoreboard ? 800 : 600}
                                 letterSpacing="-0.02em"
                                 color={isLive ? "red.fg" : scoreboard ? "fg.ink" : "fg.muted"}
                                 bg={isLive ? "red.subtle" : scoreboard ? "bg.surfaceTint" : "transparent"}
-                                px="3"
-                                py="1"
+                                px="2.5"
+                                py="0.5"
                                 rounded="lg"
-                                minW="72px"
+                                minW="56px"
                                 textAlign="center"
                                 fontVariantNumeric="tabular-nums"
                             >
@@ -615,6 +687,14 @@ export default function GroupsTab({
                         disabled={drawing}
                     >
                         {drawing ? "Ždrijeb…" : "Ponovi ždrijeb (auto)"}
+                    </GhostButton>
+                    <GhostButton
+                        danger
+                        icon={<FiTrash2 size={14} />}
+                        onClick={confirmResetGroups}
+                        disabled={drawing || drawingManual || resetting}
+                    >
+                        {resetting ? "Resetiranje…" : "Resetiraj"}
                     </GhostButton>
                 </Flex>
             )}
@@ -730,70 +810,41 @@ export default function GroupsTab({
                          Mobile drops UT column for room. Advancing rows
                          get green-tint bg + 3px green left border. */}
                     <Box>
-                        {/* Column header */}
+                        {/* Column header — SofaScore-style: each stat its own
+                            column, all on one row (no stacking under the name).
+                            Mobile keeps the core P·N·I + BOD; md adds UT/GR/GOL/
+                            Zadnjih 5. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "24px 1fr 44px 36px",
-                                md: "26px 1fr 34px 50px 40px",
+                                base: "22px 1fr 22px 22px 22px 32px",
+                                md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                             }}
-                            gap="2"
+                            gap="1.5"
                             px={{ base: "3", md: "4" }}
                             py="2"
                             bg="bg.surfaceTint2"
                             borderBottomWidth="1px"
                             borderColor="border"
                         >
+                            <StHead label="#" />
                             <Text
                                 fontFamily="mono"
                                 fontSize="9px"
                                 color="fg.muted"
-                                letterSpacing="0.1em"
-                                fontWeight={700}
-                                textAlign="center"
-                            >
-                                #
-                            </Text>
-                            <Text
-                                fontFamily="mono"
-                                fontSize="9px"
-                                color="fg.muted"
-                                letterSpacing="0.1em"
+                                letterSpacing="0.08em"
                                 fontWeight={700}
                             >
-                                EKIPA · P·N·I | GOL
+                                EKIPA
                             </Text>
-                            <Text
-                                display={{ base: "none", md: "block" }}
-                                fontFamily="mono"
-                                fontSize="9px"
-                                color="fg.muted"
-                                letterSpacing="0.1em"
-                                fontWeight={700}
-                                textAlign="center"
-                            >
-                                UT
-                            </Text>
-                            <Text
-                                fontFamily="mono"
-                                fontSize="9px"
-                                color="fg.muted"
-                                letterSpacing="0.1em"
-                                fontWeight={700}
-                                textAlign="center"
-                            >
-                                GR
-                            </Text>
-                            <Text
-                                fontFamily="mono"
-                                fontSize="9px"
-                                color="fg.muted"
-                                letterSpacing="0.1em"
-                                fontWeight={700}
-                                textAlign="center"
-                            >
-                                BOD
-                            </Text>
+                            <StHead label="UT" mdOnly />
+                            <StHead label="P" />
+                            <StHead label="N" />
+                            <StHead label="I" />
+                            <StHead label="GR" mdOnly />
+                            <StHead label="GOL" mdOnly />
+                            <StHead label="ZADNJIH 5" mdOnly />
+                            <StHead label="BOD" />
                         </Box>
 
                         {/* Standings rows */}
@@ -805,10 +856,10 @@ export default function GroupsTab({
                                     key={row.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "24px 1fr 44px 36px",
-                                        md: "26px 1fr 34px 50px 40px",
+                                        base: "22px 1fr 22px 22px 22px 32px",
+                                        md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                                     }}
-                                    gap="2"
+                                    gap="1.5"
                                     alignItems="center"
                                     px={{ base: "3", md: "4" }}
                                     py="2.5"
@@ -818,7 +869,7 @@ export default function GroupsTab({
                                     borderTopWidth={idx === 0 ? "0" : "1px"}
                                     borderTopColor="border"
                                 >
-                                    {/* Position */}
+                                    {/* # */}
                                     <Text
                                         fontFamily="mono"
                                         fontSize="13px"
@@ -828,57 +879,21 @@ export default function GroupsTab({
                                     >
                                         {idx + 1}
                                     </Text>
-                                    {/* Team + micro W·D·L | gf:ga */}
-                                    <Box minW="0">
-                                        <Text
-                                            fontSize="14px"
-                                            fontWeight={700}
-                                            color="fg.ink"
-                                            truncate
-                                        >
-                                            {row.teamName}
-                                        </Text>
-                                        <Text
-                                            fontFamily="mono"
-                                            fontSize="10px"
-                                            color="fg.muted"
-                                            letterSpacing="0.03em"
-                                            mt="0.5"
-                                        >
-                                            <Box as="span" color="pitch.500">
-                                                {row.won}
-                                            </Box>
-                                            ·
-                                            <Box as="span">{row.drawn}</Box>
-                                            ·
-                                            <Box
-                                                as="span"
-                                                color={row.lost > 0 ? "accent.red" : "fg.muted"}
-                                            >
-                                                {row.lost}
-                                            </Box>
-                                            <Box as="span" color="border" mx="1.5">
-                                                |
-                                            </Box>
-                                            {row.goalsFor}:{row.goalsAgainst}
-                                        </Text>
-                                    </Box>
-                                    {/* Played — hidden on mobile */}
-                                    <Text
-                                        display={{ base: "none", md: "block" }}
-                                        fontFamily="mono"
-                                        fontSize="13px"
-                                        color="fg.soft"
-                                        textAlign="center"
-                                    >
-                                        {row.played}
+                                    {/* Team name only — stats live in their own columns now */}
+                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" truncate minW="0">
+                                        {row.teamName}
                                     </Text>
-                                    {/* Goal diff */}
-                                    <Text
-                                        fontFamily="mono"
-                                        fontSize="13px"
-                                        fontWeight={600}
-                                        textAlign="center"
+                                    {/* UT (odigrano) — md only */}
+                                    <StNum value={row.played} mdOnly />
+                                    {/* P · N · I */}
+                                    <StNum value={row.won} />
+                                    <StNum value={row.drawn} />
+                                    <StNum value={row.lost} />
+                                    {/* GR (gol-razlika) — md only */}
+                                    <StNum
+                                        mdOnly
+                                        weight={600}
+                                        value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                                         color={
                                             row.goalDiff > 0
                                                 ? "pitch.500"
@@ -886,10 +901,39 @@ export default function GroupsTab({
                                                 ? "accent.red"
                                                 : "fg.muted"
                                         }
+                                    />
+                                    {/* GOL (dani:primljeni) — md only */}
+                                    <StNum value={`${row.goalsFor}:${row.goalsAgainst}`} mdOnly />
+                                    {/* Zadnjih 5 — md only */}
+                                    <HStack
+                                        display={{ base: "none", md: "flex" }}
+                                        gap="1"
+                                        justify="center"
                                     >
-                                        {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
-                                    </Text>
-                                    {/* Points */}
+                                        {(row.form ?? []).map((res, i) => {
+                                            const isW = res === "W"
+                                            const isL = res === "L"
+                                            return (
+                                                <Flex
+                                                    key={i}
+                                                    w="16px"
+                                                    h="16px"
+                                                    rounded="sm"
+                                                    align="center"
+                                                    justify="center"
+                                                    fontFamily="mono"
+                                                    fontSize="9px"
+                                                    fontWeight={800}
+                                                    color="white"
+                                                    bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
+                                                    title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
+                                                >
+                                                    {isW ? "P" : isL ? "I" : "N"}
+                                                </Flex>
+                                            )
+                                        })}
+                                    </HStack>
+                                    {/* BOD (bodovi) */}
                                     <Text
                                         fontFamily="heading"
                                         fontSize="18px"
@@ -908,23 +952,13 @@ export default function GroupsTab({
                     {/* Fixtures section */}
                     {g.matches.length > 0 && (
                         <Box
-                            px={{ base: "3", md: "4" }}
-                            py="3"
+                            px={{ base: "2.5", md: "3" }}
+                            py="2.5"
                             borderTopWidth="1px"
                             borderColor="border"
                             bg="bg.subtle"
                         >
-                            <Text
-                                fontFamily="mono"
-                                fontSize="10px"
-                                fontWeight={700}
-                                letterSpacing="0.1em"
-                                color="fg.muted"
-                                mb="2"
-                            >
-                                UTAKMICE ({g.matches.length})
-                            </Text>
-                            <VStack align="stretch" gap="2">
+                            <VStack align="stretch" gap="1.5">
                                 {g.matches.map(renderFixture)}
                             </VStack>
                         </Box>
@@ -935,7 +969,7 @@ export default function GroupsTab({
 
             {/* Live-match dialog — goals, cards, finish (organizer only). */}
             {liveMatch && (
-                <LiveMatchDialog
+                <GroupLiveMatchDialog
                     uuid={uuid}
                     match={liveMatch}
                     onClose={() => setLiveMatch(null)}
@@ -1137,7 +1171,7 @@ function LivePill() {
    score, the chronological event log, controls to add goals/cards and a
    "Završi" button. For a FINISHED match it shows the same log read-only.
    ────────────────────────────────────────────────────────────────────────── */
-function LiveMatchDialog({
+export function GroupLiveMatchDialog({
     uuid,
     match,
     onClose,
@@ -1489,10 +1523,14 @@ function LiveMatchDialog({
                                             Učitavanje…
                                         </Text>
                                     ) : events.length === 0 ? (
-                                        // A finished match with no events (e.g. a
-                                        // 0:0) shows nothing — the "no events yet"
-                                        // hint only makes sense while still live.
-                                        isFinished ? null : (
+                                        // A finished match with no events means the
+                                        // organizer entered just the final score
+                                        // without attributing scorers.
+                                        isFinished ? (
+                                            <Text fontSize="sm" color="fg.muted">
+                                                Prikazan samo krajnji rezultat bez strijelca.
+                                            </Text>
+                                        ) : (
                                             <Text fontSize="sm" color="fg.muted">
                                                 Još nema zabilježenih događaja.
                                             </Text>

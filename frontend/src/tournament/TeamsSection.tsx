@@ -58,6 +58,9 @@ type TeamsSectionProps = {
     canEdit: boolean
     userUid: string | null | undefined
     tournamentAlready: boolean
+    /** True once the draw (groups / bracket) is generated — locks the roster
+     *  so teams can no longer be added or removed. */
+    drawGenerated: boolean
     teamRequestsCollapsed: boolean
     setTeamRequestsCollapsed: (fn: (v: boolean) => boolean) => void
     /** Adds a team (persists immediately via PUT) and resolves to the
@@ -82,6 +85,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
         canEdit,
         userUid,
         tournamentAlready,
+        drawGenerated,
         teamRequestsCollapsed,
         setTeamRequestsCollapsed,
         addTeam,
@@ -406,7 +410,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                flips we keep the panel read-only for those two
                actions even inside edit mode. */
             canEditTeamName={canEdit && !tournamentAlready && !tournamentLocked}
-            tournamentStarted={tournamentAlready || tournamentLocked}
+            tournamentStarted={tournamentAlready || tournamentLocked || drawGenerated}
             onBack={() => setSelectedTeamId(null)}
             onRenameTeam={(next) => changeTeamName(selectedTeam.id, next)}
             onCommitRename={() => onTeamNameBlur(selectedTeam)}
@@ -464,7 +468,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                              frozen — the button is hidden entirely. Adding a
                              team persists immediately (PUT) and opens it for
                              renaming, so there's no separate "Spremi promjene". */}
-                        {!tournamentLocked && !tournamentAlready && canEdit && (
+                        {!tournamentLocked && !tournamentAlready && !drawGenerated && canEdit && (
                             <Button
                                 size="sm"
                                 variant="solid"
