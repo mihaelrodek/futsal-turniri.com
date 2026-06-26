@@ -1412,7 +1412,8 @@ public class TournamentController {
                             m.getFouls1Second(),
                             m.getFouls2First(),
                             m.getFouls2Second(),
-                            t != null ? t.getFeaturedAt() : null
+                            t != null ? t.getFeaturedAt() : null,
+                            m.getStage() != null ? m.getStage().name() : null
                     );
                 })
                 .collect(Collectors.toList());

@@ -65,6 +65,8 @@ type FormState = {
     contactName: string
     contactPhoneCountry: string
     contactPhone: string
+    gameSystem: string
+    websiteUrl: string
     selectedOptions: string[]
 }
 
@@ -212,6 +214,8 @@ export default function CreateTournamentPage() {
         contactName: "",
         contactPhoneCountry: "+385",
         contactPhone: "",
+        gameSystem: "",
+        websiteUrl: "",
         selectedOptions: [],
     })
 
@@ -435,6 +439,9 @@ export default function CreateTournamentPage() {
             contactPhone: form.contactPhone.trim()
                 ? `${form.contactPhoneCountry} ${form.contactPhone.trim()}`
                 : null,
+
+            gameSystem: form.gameSystem.trim() || null,
+            websiteUrl: form.websiteUrl.trim() || null,
 
             // Percent/fixed toggle removed — always FIXED amounts, each with
             // an optional free-text note ("Ostalo": Pehar, Utješna nagrada…).
@@ -725,6 +732,47 @@ export default function CreateTournamentPage() {
                                         placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
                                         value={form.details}
                                         onChange={(e) => onChange("details", e.target.value)}
+                                    />
+                                </Field.Root>
+
+                                {/* Sistem igre — quick presets + free text. */}
+                                <Field.Root>
+                                    <Field.Label>Sistem igre</Field.Label>
+                                    <HStack gap="1.5" wrap="wrap" align="center">
+                                        {["3vs3", "4+1", "5+1"].map((sys) => (
+                                            <Button
+                                                key={sys}
+                                                type="button"
+                                                size="sm"
+                                                flexShrink={0}
+                                                variant={form.gameSystem === sys ? "solid" : "outline"}
+                                                colorPalette="pitch"
+                                                onClick={() => onChange("gameSystem", sys)}
+                                            >
+                                                {sys}
+                                            </Button>
+                                        ))}
+                                        <Input
+                                            flex="1"
+                                            minW="120px"
+                                            placeholder="ili upiši ručno"
+                                            value={form.gameSystem}
+                                            onChange={(e) => onChange("gameSystem", e.target.value)}
+                                            maxLength={40}
+                                        />
+                                    </HStack>
+                                </Field.Root>
+
+                                {/* Web stranica organizatora — external link. */}
+                                <Field.Root>
+                                    <Field.Label>Web stranica organizatora</Field.Label>
+                                    <Input
+                                        type="url"
+                                        inputMode="url"
+                                        placeholder="npr. https://facebook.com/events/..."
+                                        value={form.websiteUrl}
+                                        onChange={(e) => onChange("websiteUrl", e.target.value)}
+                                        maxLength={500}
                                     />
                                 </Field.Root>
 

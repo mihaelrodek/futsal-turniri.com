@@ -324,7 +324,15 @@ function LiveHero({ match }: { match: LiveMatch }) {
                     rounded="md"
                     _hover={{ bg: "#e8aa15" }}
                 >
-                    <RouterLink to={match.tournamentUuid ? `/turniri/${match.tournamentSlug ?? match.tournamentUuid}` : "/uzivo"}>
+                    <RouterLink
+                        to={
+                            match.tournamentUuid
+                                ? `/turniri/${match.tournamentSlug ?? match.tournamentUuid}?tab=bracket` +
+                                  // GROUP match → groups draw; any knockout stage → bracket.
+                                  (match.stage && match.stage !== "GROUP" ? "&sub=eliminacija" : "")
+                                : "/uzivo"
+                        }
+                    >
                         Prati uživo →
                     </RouterLink>
                 </Button>

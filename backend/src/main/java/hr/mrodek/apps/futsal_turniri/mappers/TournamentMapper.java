@@ -58,6 +58,8 @@ public interface TournamentMapper {
             @Mapping(target = "status", source = "status", qualifiedByName = "enumToName"), // <-- NEW
             @Mapping(target = "contactName", source = "contactName"),
             @Mapping(target = "contactPhone", source = "contactPhone"),
+            @Mapping(target = "gameSystem", source = "gameSystem"),
+            @Mapping(target = "websiteUrl", source = "websiteUrl"),
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "enumToName"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
             @Mapping(target = "rewardFirstNote", source = "rewardFirstNote"),
@@ -113,6 +115,8 @@ public interface TournamentMapper {
 
             @Mapping(target = "contactName", source = "contactName"),
             @Mapping(target = "contactPhone", source = "contactPhone"),
+            @Mapping(target = "gameSystem", source = "gameSystem"),
+            @Mapping(target = "websiteUrl", source = "websiteUrl"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
@@ -167,6 +171,8 @@ public interface TournamentMapper {
 
             @Mapping(target = "contactName", source = "contactName"),
             @Mapping(target = "contactPhone", source = "contactPhone"),
+            @Mapping(target = "gameSystem", source = "gameSystem"),
+            @Mapping(target = "websiteUrl", source = "websiteUrl"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),

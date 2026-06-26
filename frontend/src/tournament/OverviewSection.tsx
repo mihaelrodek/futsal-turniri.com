@@ -273,6 +273,47 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     />
                                 </Field.Root>
 
+                                {/* Sistem igre — quick presets + free text. */}
+                                <Field.Root>
+                                    <Field.Label>Sistem igre</Field.Label>
+                                    <HStack gap="1.5" wrap="wrap" align="center">
+                                        {["3vs3", "4+1", "5+1"].map((sys) => (
+                                            <Button
+                                                key={sys}
+                                                type="button"
+                                                size="sm"
+                                                flexShrink={0}
+                                                variant={editForm.gameSystem === sys ? "solid" : "outline"}
+                                                colorPalette="brand"
+                                                onClick={() => patchEdit("gameSystem", sys)}
+                                            >
+                                                {sys}
+                                            </Button>
+                                        ))}
+                                        <Input
+                                            flex="1"
+                                            minW="120px"
+                                            placeholder="ili upiši ručno"
+                                            value={editForm.gameSystem}
+                                            onChange={(e) => patchEdit("gameSystem", e.target.value)}
+                                            maxLength={40}
+                                        />
+                                    </HStack>
+                                </Field.Root>
+
+                                {/* Web stranica organizatora — external link. */}
+                                <Field.Root>
+                                    <Field.Label>Web stranica organizatora</Field.Label>
+                                    <Input
+                                        type="url"
+                                        inputMode="url"
+                                        placeholder="npr. https://facebook.com/events/..."
+                                        value={editForm.websiteUrl}
+                                        onChange={(e) => patchEdit("websiteUrl", e.target.value)}
+                                        maxLength={500}
+                                    />
+                                </Field.Root>
+
                                 {/* Kontakt — ime + telefon on one row (create style). */}
                                 <Box>
                                     <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
@@ -973,7 +1014,7 @@ function DetailsReadView({
                     </VStack>
 
                     {/* Right: Detalji — opisni tekst iznad strukture formata */}
-                    {(t.details || t.format || (t.additionalOptions?.length ?? 0) > 0) ? (
+                    {(t.details || t.format || t.gameSystem || t.websiteUrl || (t.additionalOptions?.length ?? 0) > 0) ? (
                         <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
                             <HStack color="fg.muted" gap="1.5" mb="3">
                                 <FiInfo size={13} />
@@ -984,6 +1025,14 @@ function DetailsReadView({
                                     {t.details}
                                 </Text>
                             )}
+                            {t.gameSystem && (
+                                <HStack gap="2" mb="3" fontSize="14px">
+                                    <Text fontWeight={700} color="fg.ink">Sistem igre:</Text>
+                                    <Badge variant="subtle" colorPalette="pitch" size="sm">
+                                        {t.gameSystem}
+                                    </Badge>
+                                </HStack>
+                            )}
                             {t.format && <FormatSketch format={t.format} />}
                             {t.additionalOptions && t.additionalOptions.length > 0 && (
                                 <HStack wrap="wrap" gap="1.5" mt="3">
@@ -993,6 +1042,29 @@ function DetailsReadView({
                                         </Badge>
                                     ))}
                                 </HStack>
+                            )}
+                            {t.websiteUrl && (
+                                <chakra.a
+                                    href={/^https?:\/\//i.test(t.websiteUrl) ? t.websiteUrl : `https://${t.websiteUrl}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    display="inline-flex"
+                                    alignItems="center"
+                                    gap="1.5"
+                                    bg="bg.surfaceTint"
+                                    color="pitch.500"
+                                    px="3.5"
+                                    py="2.5"
+                                    rounded="full"
+                                    fontSize="13px"
+                                    fontWeight={600}
+                                    textDecoration="none"
+                                    mt="3"
+                                    w="fit-content"
+                                    _hover={{ bg: "pitch.100", textDecoration: "none" }}
+                                >
+                                    <FiExternalLink /> Web stranica organizatora
+                                </chakra.a>
                             )}
                         </Box>
                     ) : (

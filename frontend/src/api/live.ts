@@ -35,6 +35,9 @@ export type LiveMatch = {
     fouls1Second?: number | null
     fouls2First?: number | null
     fouls2Second?: number | null
+    /** Match stage (GROUP, ROUND_OF_32, …, FINAL, THIRD_PLACE) — drives which
+     *  tournament tab the "Prati uživo" link opens (groups vs bracket). */
+    stage?: string | null
     /** Mirror of `tournaments.featured_at`. Non-null when this match's
      *  tournament is the admin-curated daily highlight — used to
      *  promote the right match into the home-page hero and the /uzivo

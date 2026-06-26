@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Two optional organizer-set fields:
+        - game_system: futsal play system, e.g. "4+1", "5+1", "3vs3", or a
+          free-text custom value the organizer types in.
+        - website_url: external link (Facebook event, club page, …) shown as a
+          clickable link on the tournament detail page.
+    -->
+    <changeSet id="2026-06-26-tournament-game-system-website" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="game_system" type="varchar(40)"/>
+            <column name="website_url" type="varchar(500)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

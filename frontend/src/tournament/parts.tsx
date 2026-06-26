@@ -447,6 +447,8 @@ export type EditForm = {
     contactName: string
     contactPhoneCountry: string
     contactPhone: string
+    gameSystem: string
+    websiteUrl: string
     // Format (editable while no fixtures exist yet).
     format: TournamentFormat
     groupCount: string
@@ -477,6 +479,8 @@ export function buildEditForm(t: TournamentDetails): EditForm {
         contactName: t.contactName ?? "",
         contactPhoneCountry: phone.country,
         contactPhone: phone.rest,
+        gameSystem: t.gameSystem ?? "",
+        websiteUrl: t.websiteUrl ?? "",
         format: t.format ?? "GROUPS_KNOCKOUT",
         groupCount: typeof t.groupCount === "number" ? String(t.groupCount) : "4",
         advancePerGroup:
@@ -518,6 +522,8 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
         contactPhone: f.contactPhone.trim()
             ? `${f.contactPhoneCountry} ${f.contactPhone.trim()}`
             : null,
+        gameSystem: f.gameSystem.trim() || null,
+        websiteUrl: f.websiteUrl.trim() || null,
         rewardType: "FIXED",
         rewardFirst: moneyToNumber(f.rewardFirst),
         rewardFirstNote: f.rewardFirstNote.trim() || null,

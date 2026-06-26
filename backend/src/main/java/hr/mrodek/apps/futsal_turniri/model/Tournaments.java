@@ -116,6 +116,15 @@ public class Tournaments {
     @Column(name = "contact_phone", length = 60)
     private String contactPhone;
 
+    // Futsal play system, e.g. "4+1", "5+1", "3vs3", or a free-text custom value.
+    @Column(name = "game_system", length = 40)
+    private String gameSystem;
+
+    // External organizer link (Facebook event, club page, …). Shown as a
+    // clickable link on the tournament detail page.
+    @Column(name = "website_url", length = 500)
+    private String websiteUrl;
+
     // rewards
     // rewardType is legacy (FIXED | PERCENTAGE). The percent/fixed toggle was
     // dropped — every prize is now a plain amount + an optional free-text

@@ -33,4 +33,5 @@
     <include file="db/changelog/teams_manual_rank.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_fouls.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_event_team.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_game_system_website.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

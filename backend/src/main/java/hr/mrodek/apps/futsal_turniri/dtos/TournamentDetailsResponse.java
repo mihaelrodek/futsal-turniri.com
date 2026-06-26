@@ -34,6 +34,11 @@ public record TournamentDetailsResponse(
         String contactName,
         String contactPhone,
 
+        // Futsal play system ("4+1" | "5+1" | "3vs3" | custom) and an external
+        // organizer link — both optional, shown on the detail page.
+        String gameSystem,
+        String websiteUrl,
+
         String rewardType,           // legacy "FIXED" | "PERCENTAGE"
         // Each place: amount + optional free-text note ("Ostalo").
         BigDecimal rewardFirst,

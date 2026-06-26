@@ -39,5 +39,9 @@ public record LiveMatchDto(
          * featured tournament's live game wins precedence on the home
          * page hero and the /uzivo stream header.
          */
-        OffsetDateTime tournamentFeaturedAt
+        OffsetDateTime tournamentFeaturedAt,
+        /** Match stage (GROUP, ROUND_OF_32, …, FINAL, THIRD_PLACE). Lets the
+         *  home-page "Prati uživo" link jump to the right tab — the groups
+         *  draw for a GROUP match, the bracket for a knockout match. */
+        String stage
 ) {}

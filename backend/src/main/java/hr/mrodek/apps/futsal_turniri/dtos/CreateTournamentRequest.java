@@ -51,6 +51,14 @@ public record CreateTournamentRequest(
         @Size(max = 50, message = "contactPhone must be at most 50 characters")
         String contactPhone,
 
+        // Futsal play system: "4+1" | "5+1" | "3vs3" | free-text custom.
+        @Size(max = 40, message = "gameSystem must be at most 40 characters")
+        String gameSystem,
+
+        // External organizer link (Facebook event, club page, …).
+        @Size(max = 500, message = "websiteUrl must be at most 500 characters")
+        String websiteUrl,
+
         // Legacy — the percent/fixed toggle was removed; always FIXED now.
         RewardType rewardType,                 // FIXED | PERCENTAGE
 

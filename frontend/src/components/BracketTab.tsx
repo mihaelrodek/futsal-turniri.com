@@ -199,6 +199,21 @@ function useDragPan() {
 
     const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
         if (e.pointerType === "touch") return // native scroll on touch
+        // Clear any stale "moved" from a previous drag that didn't end in a
+        // click, so it can't wrongly swallow this press's click.
+        drag.current.moved = false
+        // Don't start a pan when pressing an interactive control (Start menu,
+        // result inputs, edit buttons, links…) — otherwise the swallow-click
+        // logic below eats their click and e.g. the "Start" menu never opens.
+        // Pan only from the empty bracket background / non-interactive areas.
+        const target = e.target as HTMLElement | null
+        if (
+            target?.closest(
+                'button, a, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [data-scope="menu"]',
+            )
+        ) {
+            return
+        }
         const el = ref.current
         if (!el) return
         drag.current = {

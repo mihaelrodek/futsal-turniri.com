@@ -49,6 +49,11 @@ export type TournamentDetails = {
     contactName?: string | null;
     contactPhone?: string | null;
 
+    /** Futsal play system: "4+1" | "5+1" | "3vs3" | free-text custom. */
+    gameSystem?: string | null;
+    /** External organizer link (Facebook event, club page, …). */
+    websiteUrl?: string | null;
+
     rewardType?: RewardType | null;
     rewardFirst?: number | null;
     rewardFirstNote?: string | null;
@@ -109,6 +114,10 @@ export type CreateTournamentPayload = {
     // contact
     contactName?: string | null;
     contactPhone?: string | null;
+
+    // Futsal play system + external organizer link (both optional).
+    gameSystem?: string | null;
+    websiteUrl?: string | null;
 
     // rewards — each place has an amount + optional free-text note ("Ostalo").
     // rewardType is legacy; always "FIXED" now (percent/fixed toggle removed).
