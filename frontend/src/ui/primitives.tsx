@@ -1,16 +1,71 @@
 import {
     Box,
+    Button,
     Card,
+    Dialog,
     Flex,
     Heading,
     HStack,
     Icon,
+    Portal,
     Spinner,
     Text,
     type BoxProps,
     type FlexProps,
 } from "@chakra-ui/react"
 import type { ElementType, ReactNode } from "react"
+
+/* -- Confirm dialog (popup modal) ---------------------------------------- */
+/** A small yes/no confirmation modal — more visible than a toast for
+ *  destructive actions (reset / regenerate / clear). */
+export function ConfirmDialog({
+    open,
+    title,
+    description,
+    confirmLabel,
+    danger = false,
+    busy = false,
+    onClose,
+    onConfirm,
+}: {
+    open: boolean
+    title: string
+    description: ReactNode
+    confirmLabel: string
+    danger?: boolean
+    busy?: boolean
+    onClose: () => void
+    onConfirm: () => void
+}) {
+    return (
+        <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open && !busy) onClose() }} placement="center">
+            <Portal>
+                <Dialog.Backdrop />
+                <Dialog.Positioner>
+                    <Dialog.Content maxW="sm">
+                        <Dialog.Header>{title}</Dialog.Header>
+                        <Dialog.Body>
+                            <Text>{description}</Text>
+                        </Dialog.Body>
+                        <Dialog.Footer>
+                            <Button variant="ghost" onClick={onClose} disabled={busy}>
+                                Odustani
+                            </Button>
+                            <Button
+                                variant="solid"
+                                colorPalette={danger ? "red" : "brand"}
+                                loading={busy}
+                                onClick={onConfirm}
+                            >
+                                {confirmLabel}
+                            </Button>
+                        </Dialog.Footer>
+                    </Dialog.Content>
+                </Dialog.Positioner>
+            </Portal>
+        </Dialog.Root>
+    )
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    Shared UI primitives — Nogometni-turniri.com redesign.

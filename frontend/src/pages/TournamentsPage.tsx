@@ -1137,7 +1137,11 @@ export default function TournamentsPage() {
             }
             return true
         })
-        return sortTournaments(filtered, sortMode)
+        const sorted = sortTournaments(filtered, sortMode)
+        // A featured tournament always comes first, then live ones, then the
+        // rest — preserving the chosen sort within each group (stable sort).
+        const rank = (t: TournamentCardWithUuid) => (t.featuredAt ? 2 : t.liveMatch ? 1 : 0)
+        return [...sorted].sort((a, b) => rank(b) - rank(a))
     }, [upcoming, search, locationFilter, priceMin, priceMax, userPos, radiusKm, sortMode])
 
     const isFiltering = search.trim().length > 0 || activeFilterCount > 0

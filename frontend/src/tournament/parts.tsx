@@ -6,7 +6,6 @@ import type {
     TournamentDetails,
     CreateTournamentPayload,
     TournamentFormat,
-    BracketFill,
 } from "../types/tournaments"
 import type { RoundDto, MatchDto } from "../types/round"
 
@@ -450,11 +449,9 @@ export type EditForm = {
     contactPhone: string
     gameSystem: string
     websiteUrl: string
-    // Format (editable while no fixtures exist yet).
+    // Format (editable while no fixtures exist yet). Group count / advancement
+    // are chosen at draw time, not here.
     format: TournamentFormat
-    groupCount: string
-    advancePerGroup: string
-    bracketFill: BracketFill
     // Percent/fixed toggle removed — always FIXED. Each place: amount + note.
     rewardType: "FIXED" | "PERCENTAGE"
     rewardFirst: string
@@ -483,10 +480,6 @@ export function buildEditForm(t: TournamentDetails): EditForm {
         gameSystem: t.gameSystem ?? "",
         websiteUrl: t.websiteUrl ?? "",
         format: t.format ?? "GROUPS_KNOCKOUT",
-        groupCount: typeof t.groupCount === "number" ? String(t.groupCount) : "4",
-        advancePerGroup:
-            typeof t.advancePerGroup === "number" ? String(t.advancePerGroup) : "2",
-        bracketFill: t.bracketFill ?? "BYES",
         rewardType: "FIXED",
         rewardFirst: numberToMoneyStr(t.rewardFirst),
         rewardFirstNote: t.rewardFirstNote ?? "",
@@ -507,7 +500,6 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
         Number.isFinite(maxTeams) && maxTeams >= 2 ? maxTeams : null
     const entry = moneyToNumber(f.entryPrice) ?? 0
 
-    const isGroups = f.format === "GROUPS_KNOCKOUT"
     return {
         name: f.name.trim(),
         location: f.location.trim() || null,
@@ -515,9 +507,11 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
         startAt: toLocalOffsetIso(f.startDate, f.startTime),
         maxTeams: maxTeamsSafe,
         format: f.format,
-        groupCount: isGroups ? (parseInt(f.groupCount || "0", 10) || null) : null,
-        advancePerGroup: isGroups ? (parseInt(f.advancePerGroup || "0", 10) || null) : null,
-        bracketFill: isGroups ? f.bracketFill : null,
+        // Group count / advance / bracket fill are draw-time config; the
+        // backend ignores these on update, so null here is a no-op.
+        groupCount: null,
+        advancePerGroup: null,
+        bracketFill: null,
         entryPrice: entry,
         contactName: f.contactName.trim() || null,
         contactPhone: f.contactPhone.trim()

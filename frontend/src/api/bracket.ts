@@ -7,11 +7,22 @@ export async function fetchBracket(tournamentUuid: string): Promise<Bracket> {
     return data
 }
 
-/** Build (or rebuild) the knockout bracket from the qualifiers. */
-export async function generateBracket(tournamentUuid: string): Promise<Bracket> {
+/** Build (or rebuild) the knockout bracket from the qualifiers. `byeTeamIds`
+ *  (optional) chooses who advances directly (round-one bye) when the qualifier
+ *  count isn't a power of two; omit for automatic (best seeds get the byes). */
+export async function generateBracket(
+    tournamentUuid: string,
+    byeTeamIds?: number[],
+    shuffleRest?: boolean,
+): Promise<Bracket> {
+    const hasByes = !!byeTeamIds && byeTeamIds.length > 0
+    const body =
+        hasByes || shuffleRest
+            ? { byeTeamIds: hasByes ? byeTeamIds : undefined, shuffleRest: !!shuffleRest }
+            : undefined
     const { data } = await http.post<Bracket>(
         `/tournaments/${tournamentUuid}/bracket/generate`,
-        undefined,
+        body,
         { successMessage: "Eliminacijska ljestvica je generirana." } as any,
     )
     return data

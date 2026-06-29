@@ -21,6 +21,9 @@ export type TournamentCard = {
     registeredTeams?: number | null;
     /** True when this tournament currently has a match in progress. */
     liveMatch?: boolean;
+    /** Set when an admin featured this tournament; null otherwise. The home
+     *  list sorts featured tournaments first (before live ones). */
+    featuredAt?: string | null;
 };
 
 export type TournamentDetails = {

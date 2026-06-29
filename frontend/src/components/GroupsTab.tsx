@@ -31,9 +31,8 @@ import type {
     MatchLiveMode,
 } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
-import { EmptyState, Loader, Panel } from "../ui/primitives"
+import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
-import { toaster } from "../toaster"
 import { FiRefreshCw, FiTrash2 } from "react-icons/fi"
 import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, StartLivePopover, matchPhase } from "./liveMatch"
 
@@ -104,6 +103,7 @@ export default function GroupsTab({
     teams,
     canEdit = false,
     tournamentStarted = false,
+    onGoToSchedule,
 }: {
     uuid: string
     advancePerGroup?: number | null
@@ -119,6 +119,9 @@ export default function GroupsTab({
      *  ždrijeb" is hidden because re-drawing groups mid-tournament
      *  would wipe real played results. */
     tournamentStarted?: boolean
+    /** Switch the tournament page to the Raspored tab (for the "Idi na
+     *  raspored" shortcut shown once groups are drawn). */
+    onGoToSchedule?: () => void
 }) {
     const [groups, setGroups] = useState<Group[] | null>(null)
     const [loading, setLoading] = useState(true)
@@ -138,10 +141,16 @@ export default function GroupsTab({
     // the end of a half, just like the dialog clock — not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
-    // Manual draw — organizer assigns each registered team to a group by hand.
-    const [manualOpen, setManualOpen] = useState(false)
+    // Group draw — group count + advance-per-group are chosen here, then the
+    // organizer previews an auto-shuffle (or assigns by hand) and confirms it
+    // before it's persisted.
+    const [drawOpen, setDrawOpen] = useState(false)
+    const [drawMode, setDrawMode] = useState<"auto" | "manual">("auto")
+    const [cfgGroups, setCfgGroups] = useState("4")
+    const [cfgAdvance, setCfgAdvance] = useState("2")
     const [assign, setAssign] = useState<Record<number, number>>({})
-    const [drawingManual, setDrawingManual] = useState(false)
+    /** advance-per-group just drawn (the page's prop is stale until refetch). */
+    const [advanceOverride, setAdvanceOverride] = useState<number | null>(null)
     const [resetting, setResetting] = useState(false)
 
     useEffect(() => {
@@ -185,34 +194,6 @@ export default function GroupsTab({
         }
     }
 
-    async function runAutoDraw() {
-        setDrawing(true)
-        try {
-            setGroups(await drawGroups(uuid, { mode: "AUTO" }))
-            setEditingId(null)
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setDrawing(false)
-        }
-    }
-
-    /** Re-drawing wipes the existing group split, so "Ponovi ždrijeb (auto)"
-     *  asks for an explicit confirmation via a toast action before running. */
-    function confirmAutoDraw() {
-        toaster.create({
-            type: "warning",
-            title: "Ponoviti ždrijeb?",
-            description: "Postojeća podjela u grupe bit će obrisana i izvučena ponovno.",
-            duration: 10000,
-            closable: true,
-            action: {
-                label: "Ponovi ždrijeb",
-                onClick: () => { void runAutoDraw() },
-            },
-        })
-    }
-
     async function runResetGroups() {
         setResetting(true)
         try {
@@ -225,20 +206,10 @@ export default function GroupsTab({
         }
     }
 
-    /** "Resetiraj" wipes every group match + the draw — ask for an explicit
-     *  confirmation via a toast action before running. */
+    /** "Resetiraj" wipes every group match + the draw — confirm in a popup modal. */
+    const [confirmResetGroupsOpen, setConfirmResetGroupsOpen] = useState(false)
     function confirmResetGroups() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati grupnu fazu?",
-            description: "Sve utakmice grupne faze i podjela u grupe bit će obrisane.",
-            duration: 10000,
-            closable: true,
-            action: {
-                label: "Resetiraj",
-                onClick: () => { void runResetGroups() },
-            },
-        })
+        setConfirmResetGroupsOpen(true)
     }
 
     function startEdit(m: GroupMatch) {
@@ -287,102 +258,169 @@ export default function GroupsTab({
     // Registered teams (pending self-registrations excluded — same rule the
     // backend draw uses) and the configured group count.
     const registeredTeams = (teams ?? []).filter((tm) => !tm.pendingApproval)
-    const gc = groupCount && groupCount >= 2 ? groupCount : 2
     const grpLabel = (i: number) => String.fromCharCode(65 + i)
 
-    function openManual() {
-        // Seed with a balanced round-robin spread so the editor starts valid
-        // (every team assigned); the organizer just tweaks from there.
-        const seed: Record<number, number> = {}
-        registeredTeams.forEach((tm, i) => {
-            seed[tm.id] = i % gc
-        })
-        setAssign(seed)
-        setManualOpen(true)
+    // Draw config (clamped) + derived preview.
+    const maxGroups = Math.max(2, registeredTeams.length)
+    const gcNum = Math.min(maxGroups, Math.max(2, parseInt(cfgGroups || "0", 10) || 0))
+    const advNum = Math.max(1, parseInt(cfgAdvance || "0", 10) || 0)
+    const enoughTeams = registeredTeams.length >= gcNum
+    const effectiveAdvance = advanceOverride ?? advancePerGroup
+    const grpOf = (id: number) => Math.min(gcNum - 1, assign[id] ?? 0)
+
+    function shuffledTeams(): TeamShort[] {
+        const arr = [...registeredTeams]
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+        return arr
+    }
+    /** Spread teams round-robin (optionally shuffled) across `count` groups. */
+    function buildAssign(count: number, shuffle: boolean): Record<number, number> {
+        const order = shuffle ? shuffledTeams() : registeredTeams
+        const next: Record<number, number> = {}
+        order.forEach((tm, i) => { next[tm.id] = i % Math.max(1, count) })
+        return next
     }
 
-    async function submitManual() {
-        if (registeredTeams.length < gc) return
+    function openDraw() {
+        const cur = groups?.length || (groupCount && groupCount >= 2 ? groupCount : 0)
+        const def = Math.min(maxGroups, cur >= 2 ? cur : 4)
+        setCfgGroups(String(def))
+        setCfgAdvance(String(effectiveAdvance && effectiveAdvance >= 1 ? effectiveAdvance : 2))
+        setDrawMode("auto")
+        setAssign(buildAssign(def, true))
+        setDrawOpen(true)
+    }
+    function changeGroupCount(v: string) {
+        const s = v.replace(/[^\d]/g, "")
+        setCfgGroups(s)
+        const c = Math.min(maxGroups, Math.max(2, parseInt(s || "0", 10) || 0))
+        setAssign(buildAssign(c, drawMode === "auto"))
+    }
+    function chooseMode(m: "auto" | "manual") {
+        setDrawMode(m)
+        if (m === "auto") setAssign(buildAssign(gcNum, true))
+    }
+
+    async function submitDraw() {
+        if (!enoughTeams) return
         const assignments = registeredTeams.map((tm) => ({
             teamId: tm.id,
-            groupOrdinal: assign[tm.id] ?? 0,
+            groupOrdinal: grpOf(tm.id),
         }))
         try {
-            setDrawingManual(true)
-            setGroups(await drawGroups(uuid, { mode: "MANUAL", assignments }))
-            setManualOpen(false)
+            setDrawing(true)
+            setGroups(await drawGroups(uuid, {
+                mode: "MANUAL",
+                groupCount: gcNum,
+                advancePerGroup: advNum,
+                assignments,
+            }))
+            setAdvanceOverride(advNum)
+            setDrawOpen(false)
             setEditingId(null)
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
-            setDrawingManual(false)
+            setDrawing(false)
         }
     }
 
-    const manualDrawPanel = (
+    const drawPanel = (
         <Panel p={{ base: "4", md: "5" }}>
-            <VStack align="stretch" gap="3">
+            <VStack align="stretch" gap="4">
                 <HStack justify="space-between" align="center">
-                    <Text fontWeight="bold" fontSize="sm">
-                        Ručni ždrijeb — rasporedi ekipe u grupe
-                    </Text>
-                    <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => setManualOpen(false)}
-                        disabled={drawingManual}
-                    >
+                    <Text fontWeight="bold" fontSize="sm">Ždrijeb grupa</Text>
+                    <Button size="xs" variant="ghost" onClick={() => setDrawOpen(false)} disabled={drawing}>
                         Odustani
                     </Button>
                 </HStack>
-                <Text fontSize="xs" color="fg.muted">
-                    {gc} {gc === 1 ? "grupa" : "grupe"}. Svaka ekipa mora biti dodijeljena grupi.
-                </Text>
-                <VStack align="stretch" gap="1.5">
-                    {registeredTeams.map((tm) => (
-                        <HStack
-                            key={tm.id}
-                            gap="3"
-                            justify="space-between"
-                            borderWidth="1px"
-                            borderColor="border"
-                            rounded="lg"
-                            px="3"
-                            py="2"
-                        >
-                            <Text fontSize="sm" flex="1" minW="0" truncate>
-                                {tm.name?.trim() || "Bez imena"}
-                            </Text>
-                            <NativeSelect.Root size="sm" w="140px" flexShrink={0}>
-                                <NativeSelect.Field
-                                    value={String(assign[tm.id] ?? 0)}
-                                    onChange={(e) =>
-                                        setAssign((a) => ({ ...a, [tm.id]: Number(e.target.value) }))
-                                    }
-                                >
-                                    {Array.from({ length: gc }, (_, i) => (
-                                        <option key={i} value={i}>
-                                            Grupa {grpLabel(i)}
-                                        </option>
-                                    ))}
-                                </NativeSelect.Field>
-                            </NativeSelect.Root>
-                        </HStack>
-                    ))}
-                </VStack>
-                {registeredTeams.length < gc ? (
+
+                {/* Config: group count + advance, then auto/manual toggle. */}
+                <Flex gap="4" align="flex-end" wrap="wrap">
+                    <Box>
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                            Broj grupa
+                        </Text>
+                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgGroups} onChange={(e) => changeGroupCount(e.target.value)} />
+                    </Box>
+                    <Box>
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                            Prolazi po grupi
+                        </Text>
+                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance} onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))} />
+                    </Box>
+                    <HStack gap="2">
+                        <Button size="sm" variant={drawMode === "auto" ? "solid" : "outline"} colorPalette={drawMode === "auto" ? "brand" : "gray"} onClick={() => chooseMode("auto")}>
+                            Automatski
+                        </Button>
+                        <Button size="sm" variant={drawMode === "manual" ? "solid" : "outline"} colorPalette={drawMode === "manual" ? "brand" : "gray"} onClick={() => chooseMode("manual")}>
+                            Ručno
+                        </Button>
+                    </HStack>
+                </Flex>
+
+                {!enoughTeams && (
                     <Text fontSize="xs" color="red.fg">
-                        Potrebno je barem {gc} ekipa za {gc} grupe.
+                        Potrebno je barem {gcNum} ekipa za {gcNum} grupe (prijavljeno {registeredTeams.length}).
                     </Text>
-                ) : (
-                    <Button
-                        colorPalette="brand"
-                        onClick={submitManual}
-                        loading={drawingManual}
-                    >
-                        Generiraj grupe (ručno)
-                    </Button>
                 )}
+
+                {drawMode === "auto" ? (
+                    <VStack align="stretch" gap="2">
+                        <HStack justify="space-between" align="center">
+                            <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em" color="fg.muted">
+                                PREGLED ŽDRIJEBA
+                            </Text>
+                            <Button size="xs" variant="outline" onClick={() => setAssign(buildAssign(gcNum, true))}>
+                                <HStack gap="1"><LuShuffle size={13} /> Promiješaj</HStack>
+                            </Button>
+                        </HStack>
+                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap="3">
+                            {Array.from({ length: gcNum }, (_, i) => (
+                                <Box key={i} borderWidth="1px" borderColor="border" rounded="lg" p="3">
+                                    <HStack justify="space-between" mb="2">
+                                        <Text fontWeight="bold" fontSize="sm">Grupa {grpLabel(i)}</Text>
+                                        <Badge variant="subtle" colorPalette="brand" size="sm">{advNum} prolaze</Badge>
+                                    </HStack>
+                                    <VStack align="stretch" gap="1">
+                                        {registeredTeams.filter((tm) => grpOf(tm.id) === i).map((tm) => (
+                                            <Text key={tm.id} fontSize="sm" truncate>
+                                                {tm.name?.trim() || "Bez imena"}
+                                            </Text>
+                                        ))}
+                                    </VStack>
+                                </Box>
+                            ))}
+                        </Box>
+                    </VStack>
+                ) : (
+                    <VStack align="stretch" gap="1.5">
+                        {registeredTeams.map((tm) => (
+                            <HStack key={tm.id} gap="3" justify="space-between" borderWidth="1px" borderColor="border" rounded="lg" px="3" py="2">
+                                <Text fontSize="sm" flex="1" minW="0" truncate>
+                                    {tm.name?.trim() || "Bez imena"}
+                                </Text>
+                                <NativeSelect.Root size="sm" w="140px" flexShrink={0}>
+                                    <NativeSelect.Field
+                                        value={String(grpOf(tm.id))}
+                                        onChange={(e) => setAssign((a) => ({ ...a, [tm.id]: Number(e.target.value) }))}
+                                    >
+                                        {Array.from({ length: gcNum }, (_, i) => (
+                                            <option key={i} value={i}>Grupa {grpLabel(i)}</option>
+                                        ))}
+                                    </NativeSelect.Field>
+                                </NativeSelect.Root>
+                            </HStack>
+                        ))}
+                    </VStack>
+                )}
+
+                <Button colorPalette="brand" onClick={submitDraw} loading={drawing} disabled={!enoughTeams}>
+                    Potvrdi ždrijeb
+                </Button>
             </VStack>
         </Panel>
     )
@@ -402,7 +440,7 @@ export default function GroupsTab({
     const started = tournamentStarted || anyMatchPlayed
 
     if (!hasGroups) {
-        if (canEdit && manualOpen) return manualDrawPanel
+        if (canEdit && drawOpen) return drawPanel
         return (
             <Panel>
                 <EmptyState
@@ -410,27 +448,18 @@ export default function GroupsTab({
                     title="Grupe još nisu izvučene"
                     description={
                         canEdit
-                            ? "Izvuci grupe automatski ili ručno rasporedi ekipe sam."
+                            ? "Odaberi broj grupa i koliko ekipa prolazi dalje, pogledaj pregled (automatski ili ručno) pa potvrdi."
                             : "Organizator još nije izvukao grupe."
                     }
                     action={
                         canEdit ? (
-                            <HStack gap="2" wrap="wrap" justify="center">
-                                <Button
-                                    colorPalette="brand"
-                                    onClick={runAutoDraw}
-                                    loading={drawing}
-                                >
-                                    Automatski ždrijeb
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    onClick={openManual}
-                                    disabled={registeredTeams.length < gc}
-                                >
-                                    Ručni ždrijeb
-                                </Button>
-                            </HStack>
+                            <Button
+                                colorPalette="brand"
+                                onClick={openDraw}
+                                disabled={registeredTeams.length < 2}
+                            >
+                                Izvuci grupe
+                            </Button>
                         ) : undefined
                     }
                 />
@@ -674,25 +703,18 @@ export default function GroupsTab({
             {canEdit && !started && (
                 <Flex justify="flex-end" gap="2" wrap="wrap">
                     <GhostButton
-                        icon={<FiRefreshCw size={14} />}
-                        onClick={openManual}
-                        disabled={drawing || drawingManual}
-                    >
-                        Ručni ždrijeb
-                    </GhostButton>
-                    <GhostButton
                         danger
                         icon={<FiRefreshCw size={14} />}
-                        onClick={confirmAutoDraw}
+                        onClick={openDraw}
                         disabled={drawing}
                     >
-                        {drawing ? "Ždrijeb…" : "Ponovi ždrijeb (auto)"}
+                        {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
                     </GhostButton>
                     <GhostButton
                         danger
                         icon={<FiTrash2 size={14} />}
                         onClick={confirmResetGroups}
-                        disabled={drawing || drawingManual || resetting}
+                        disabled={drawing || resetting}
                     >
                         {resetting ? "Resetiranje…" : "Resetiraj"}
                     </GhostButton>
@@ -700,7 +722,18 @@ export default function GroupsTab({
             )}
 
             {/* Manual re-draw editor (shown above the groups when opened). */}
-            {canEdit && !started && manualOpen && manualDrawPanel}
+            {canEdit && !started && drawOpen && drawPanel}
+
+            <ConfirmDialog
+                open={confirmResetGroupsOpen}
+                busy={resetting}
+                danger
+                title="Resetirati grupnu fazu?"
+                description="Sve utakmice grupne faze i podjela u grupe bit će obrisane."
+                confirmLabel="Da, resetiraj"
+                onClose={() => setConfirmResetGroupsOpen(false)}
+                onConfirm={async () => { await runResetGroups(); setConfirmResetGroupsOpen(false) }}
+            />
 
             {/* Groups are drawn but fixtures aren't generated until the
                 schedule is created on the Raspored tab. */}
@@ -713,12 +746,23 @@ export default function GroupsTab({
                     px="4"
                     py="3"
                 >
-                    <Text fontSize="sm" color="fg.ink" fontWeight="medium">
-                        Grupe su izvučene. Utakmice se generiraju kad{" "}
-                        {canEdit ? "u tabu " : ""}
-                        <Text as="span" fontWeight="bold">Raspored</Text>{" "}
-                        {canEdit ? "generiraš raspored." : "organizator generira raspored."}
-                    </Text>
+                    <Flex justify="space-between" align="center" gap="3" wrap="wrap">
+                        <Text fontSize="sm" color="fg.ink" fontWeight="medium">
+                            Grupe su izvučene. Utakmice se generiraju kad{" "}
+                            {canEdit ? "u tabu " : ""}
+                            <Text as="span" fontWeight="bold">Raspored</Text>{" "}
+                            {canEdit ? "generiraš raspored." : "organizator generira raspored."}
+                        </Text>
+                        {onGoToSchedule && (
+                            <GhostButton
+                                icon={<FiClock size={14} />}
+                                onClick={onGoToSchedule}
+                                flexShrink={0}
+                            >
+                                Idi na raspored
+                            </GhostButton>
+                        )}
+                    </Flex>
                 </Box>
             )}
 
@@ -772,7 +816,7 @@ export default function GroupsTab({
                             </Text>
                         </HStack>
                         <HStack gap="2" align="center">
-                            {advancePerGroup != null && advancePerGroup > 0 && (
+                            {effectiveAdvance != null && effectiveAdvance > 0 && (
                                 <Box
                                     fontFamily="mono"
                                     fontSize="9px"
@@ -784,7 +828,7 @@ export default function GroupsTab({
                                     py="1"
                                     rounded="full"
                                 >
-                                    {advancePerGroup} PROLAZE
+                                    {effectiveAdvance} PROLAZE
                                 </Box>
                             )}
                             {/* Manual reorder — only the organizer, and only
@@ -850,7 +894,7 @@ export default function GroupsTab({
                         {/* Standings rows */}
                         {g.standings.map((row, idx) => {
                             const advances =
-                                advancePerGroup != null && idx < advancePerGroup
+                                effectiveAdvance != null && idx < effectiveAdvance
                             return (
                                 <Box
                                     key={row.teamId}
@@ -1382,19 +1426,13 @@ export function GroupLiveMatchDialog({
             setResetting(false)
         }
     }
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false)
     function confirmReset() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati utakmicu?",
-            description:
-                "Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje.",
-            duration: 8000,
-            closable: true,
-            action: { label: "Resetiraj", onClick: doReset },
-        })
+        setConfirmResetOpen(true)
     }
 
     return (
+        <>
         <Dialog.Root
             open
             onOpenChange={(e) => { if (!e.open) onClose() }}
@@ -1598,6 +1636,17 @@ export function GroupLiveMatchDialog({
                 </Dialog.Positioner>
             </Portal>
         </Dialog.Root>
+        <ConfirmDialog
+            open={confirmResetOpen}
+            busy={resetting}
+            danger
+            title="Resetirati utakmicu?"
+            description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+            confirmLabel="Da, resetiraj"
+            onClose={() => setConfirmResetOpen(false)}
+            onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+        />
+        </>
     )
 }
 

@@ -16,5 +16,12 @@ public record ScheduledMatchDto(
         Integer score1,
         Integer score2,
         OffsetDateTime kickoffAt,
-        String status
+        String status,
+        /** Knockout only — the team that advanced (decides win/loss in a team's
+         *  match history; group matches leave this null and use the score). */
+        Long winnerTeamId,
+        /** Penalty-shootout score, set only for a knockout match level after
+         *  regulation. */
+        Integer penalties1,
+        Integer penalties2
 ) {}

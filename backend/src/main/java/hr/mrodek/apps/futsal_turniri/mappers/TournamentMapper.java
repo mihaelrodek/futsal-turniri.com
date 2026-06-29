@@ -156,9 +156,11 @@ public interface TournamentMapper {
             // page). The controller guards against desync: once fixtures
             // exist it restores the previous format config after this mapping.
             @Mapping(target = "format", source = "format"),
-            @Mapping(target = "groupCount", source = "groupCount"),
-            @Mapping(target = "advancePerGroup", source = "advancePerGroup"),
-            @Mapping(target = "bracketFill", source = "bracketFill"),
+            // Group count / advance / bracket fill are chosen at draw time, not
+            // via the edit form, so a details update must never overwrite them.
+            @Mapping(target = "groupCount", ignore = true),
+            @Mapping(target = "advancePerGroup", ignore = true),
+            @Mapping(target = "bracketFill", ignore = true),
 
             @Mapping(target = "name", source = "name"),
             @Mapping(target = "location", source = "location"),

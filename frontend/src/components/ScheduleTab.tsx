@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
     Box,
     Button,
@@ -11,14 +11,14 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiFilter } from "react-icons/fi"
-import { LuCalendarClock, LuCalendarX2, LuSettings2 } from "react-icons/lu"
-import { confirmSchedule, fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
+import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiEdit2, FiFilter, FiRefreshCw, FiTrash2 } from "react-icons/fi"
+import { LuCalendarClock, LuCalendarX2, LuGripVertical, LuSettings2 } from "react-icons/lu"
+import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
 import { fetchGroups } from "../api/groups"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
-import { EmptyState, Loader, Panel } from "../ui/primitives"
-import { MonoLabel, PrimaryButton, SectionCard } from "../ui/pitch"
+import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
+import { GhostButton, MonoLabel, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -149,16 +149,32 @@ function CfgField({
             >
                 {label}
             </Field.Label>
-            <Input
-                size="sm"
-                type="number"
-                inputMode="numeric"
-                rounded="xl"
-                textAlign="center"
-                fontWeight="semibold"
-                value={value}
-                onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ""))}
-            />
+            <Box position="relative">
+                <Input
+                    size="sm"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    rounded="xl"
+                    textAlign="center"
+                    fontWeight="semibold"
+                    px="7"
+                    value={value}
+                    // Digits only — strips any sign / letter so negatives and the
+                    // "-" / "e" characters can never be entered.
+                    onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ""))}
+                />
+                <Box
+                    position="absolute"
+                    right="2.5"
+                    top="50%"
+                    transform="translateY(-50%)"
+                    fontSize="xs"
+                    color="fg.muted"
+                    pointerEvents="none"
+                >
+                    min
+                </Box>
+            </Box>
         </Field.Root>
     )
 }
@@ -512,9 +528,21 @@ export default function ScheduleTab({
     const [loading, setLoading] = useState(true)
     const [generating, setGenerating] = useState(false)
     const [confirming, setConfirming] = useState(false)
+    const [clearing, setClearing] = useState(false)
+    /** Which destructive schedule action awaits confirmation in the popup. */
+    const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
     /** GROUPS_KNOCKOUT only — true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
+    /** "Uredi raspored" — after the tournament starts, lets the organizer edit
+     *  times + reorder matches that haven't started yet. */
+    const [editScheduleMode, setEditScheduleMode] = useState(false)
+    /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
+    const [dragId, setDragId] = useState<number | null>(null)
+    const [overId, setOverId] = useState<number | null>(null)
+    /** Latest values read by the global pointer listeners (avoid stale state). */
+    const overIdRef = useRef<number | null>(null)
+    const orderRef = useRef<number[]>([])
     /** Team id (as string) to filter the schedule by; "" = all teams. */
     const [teamFilter, setTeamFilter] = useState<string>("")
     const [cfg, setCfg] = useState<Cfg>({
@@ -572,6 +600,46 @@ export default function ScheduleTab({
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
     }, [focusMatchId, loading, schedule])
 
+    // Pointer-based drag reorder — works with BOTH mouse and touch. While a row
+    // is dragged we track the row under the pointer (elementFromPoint) and
+    // commit the new order on release. orderRef holds the current draggable ids.
+    useEffect(() => {
+        if (dragId == null) return
+        const onMove = (e: PointerEvent) => {
+            const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+            const row = el?.closest("[data-sched-row]") as HTMLElement | null
+            const attr = row?.getAttribute("data-match-id")
+            const id = attr ? Number(attr) : null
+            overIdRef.current = id
+            setOverId(id)
+        }
+        const finish = () => {
+            const dragged = dragId
+            const target = overIdRef.current
+            overIdRef.current = null
+            setOverId(null)
+            setDragId(null)
+            if (dragged == null || target == null || dragged === target) return
+            const ids = orderRef.current
+            const from = ids.indexOf(dragged)
+            const to = ids.indexOf(target)
+            if (from === -1 || to === -1 || from === to) return
+            const next = [...ids]
+            const [moved] = next.splice(from, 1)
+            next.splice(to, 0, moved)
+            void commitReorder(next)
+        }
+        window.addEventListener("pointermove", onMove)
+        window.addEventListener("pointerup", finish)
+        window.addEventListener("pointercancel", finish)
+        return () => {
+            window.removeEventListener("pointermove", onMove)
+            window.removeEventListener("pointerup", finish)
+            window.removeEventListener("pointercancel", finish)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dragId])
+
     const slot =
         HALF_COUNT * numVal(cfg.halfLengthMin) +
         numVal(cfg.halftimeBreakMin) +
@@ -604,6 +672,27 @@ export default function ScheduleTab({
             /* error toast surfaced by the http interceptor */
         } finally {
             setConfirming(false)
+        }
+    }
+
+    async function runClear() {
+        setClearing(true)
+        try {
+            setSchedule(await clearSchedule(uuid))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setClearing(false)
+        }
+    }
+
+    /** Persist a new play order — the backend keeps the time slots fixed and
+     *  reassigns them to the matches in this order (so a move swaps times). */
+    async function commitReorder(orderedIds: number[]) {
+        try {
+            setSchedule(await reorderSchedule(uuid, orderedIds))
+        } catch {
+            /* error toast surfaced by the http interceptor */
         }
     }
 
@@ -665,20 +754,15 @@ export default function ScheduleTab({
     // border so the organizer immediately sees which game is on deck.
     const nextMatchId = byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
 
-    const renderRow = (m: ScheduledMatch) => (
-        <Box
-            key={m.matchId}
-            id={`sched-match-${m.matchId}`}
-            rounded="xl"
-            css={
-                focusMatchId === m.matchId
-                    ? {
-                          outline: "2px solid var(--chakra-colors-brand-solid)",
-                          outlineOffset: "2px",
-                      }
-                    : undefined
-            }
-        >
+    const renderRow = (
+        m: ScheduledMatch,
+        dnd?: {
+            handle: React.ReactNode
+            isOver: boolean
+            isDragging: boolean
+        },
+    ) => {
+        const content = (
             <MatchRow
                 match={m}
                 tournamentUuid={uuid}
@@ -687,15 +771,48 @@ export default function ScheduleTab({
                 tournamentSlug={tournamentSlug}
                 slotMinutes={slot}
                 onTimeChange={onTimeChange}
-                canEdit={canEdit}
+                canEdit={scheduleEditable && m.status === "SCHEDULED"}
                 isNext={m.matchId === nextMatchId}
             />
-        </Box>
-    )
+        )
+        return (
+            <Box
+                key={m.matchId}
+                id={`sched-match-${m.matchId}`}
+                rounded="xl"
+                opacity={dnd?.isDragging ? 0.4 : 1}
+                transition="opacity 0.12s"
+                data-sched-row={dnd ? "" : undefined}
+                data-match-id={dnd ? m.matchId : undefined}
+                css={{
+                    ...(focusMatchId === m.matchId
+                        ? { outline: "2px solid var(--chakra-colors-brand-solid)", outlineOffset: "2px" }
+                        : {}),
+                    ...(dnd?.isOver
+                        ? { boxShadow: "0 -3px 0 0 var(--chakra-colors-brand-solid)" }
+                        : {}),
+                }}
+            >
+                {dnd ? (
+                    <Flex align="center" gap="1">
+                        {dnd.handle}
+                        <Box flex="1" minW="0">{content}</Box>
+                    </Flex>
+                ) : (
+                    content
+                )}
+            </Box>
+        )
+    }
 
-    // Tournament has started if any match is LIVE or FINISHED.
+    // Tournament has started once a REAL match is played. A knockout bye is
+    // auto-FINISHED on generation (one team, no game) and must NOT count —
+    // otherwise drawing an elimination with byes would hide the schedule
+    // controls (generate / reorder) before anything has actually been played.
     const tournamentStarted = rawMatches.some(
-        (m) => m.status === "LIVE" || m.status === "FINISHED",
+        (m) =>
+            m.status === "LIVE" ||
+            (m.status === "FINISHED" && m.team1Id != null && m.team2Id != null),
     )
 
     // The schedule has a stored format once it's been generated.
@@ -710,6 +827,24 @@ export default function ScheduleTab({
     // draw is enough, since generating the schedule is what builds the group
     // fixtures (so there are no matches yet at that point).
     const drawGenerated = rawMatches.length > 0 || groupsDrawn
+    // True once the schedule has actually been laid out (≥1 kickoff assigned).
+    // Then the organizer gets "ponovno postavi" / "očisti" instead of the
+    // first-time "Generiraj raspored".
+    const scheduleLaidOut = rawMatches.some((m) => m.kickoffAt != null)
+    // The schedule is freely editable before the tournament starts. Once it
+    // starts it's read-only UNLESS the organizer turns on "Uredi raspored" —
+    // which re-enables editing kickoff times + reorder for matches that haven't
+    // started yet (SCHEDULED only).
+    const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode)
+    // Drag-and-drop reorder — only SCHEDULED (not-yet-played) matches, and not
+    // while a team filter is active (the visible subset isn't the real order).
+    const reorderEnabled = scheduleEditable && scheduleLaidOut && !teamFilter
+    // Keep the current draggable order in a ref the pointer listeners can read.
+    orderRef.current = reorderEnabled
+        ? upcomingMatches
+              .filter((m) => m.status === "SCHEDULED" && m.kickoffAt != null)
+              .map((m) => m.matchId)
+        : []
 
     return (
         <VStack align="stretch" gap="5" py="2">
@@ -719,8 +854,22 @@ export default function ScheduleTab({
                 <SectionCard
                     icon={LuSettings2}
                     title="Postavke rasporeda"
-                    subtitle="Format utakmice — vrijedi za sve utakmice"
+                    subtitle={
+                        editScheduleMode
+                            ? "Uređivanje uključeno — promijeni termin ili povuci utakmicu koja još nije počela"
+                            : "Format utakmice — vrijedi za sve utakmice"
+                    }
                     padding="4"
+                    action={
+                        canEdit && tournamentStarted ? (
+                            <PrimaryButton
+                                onClick={() => setEditScheduleMode((v) => !v)}
+                                icon={<FiEdit2 size={14} />}
+                            >
+                                {editScheduleMode ? "Gotovo" : "Uredi raspored"}
+                            </PrimaryButton>
+                        ) : undefined
+                    }
                 >
                     <Box
                         display="grid"
@@ -730,7 +879,7 @@ export default function ScheduleTab({
                         <SettingStat label="Min / poluvrijeme" value={`${schedule.halfLengthMin}`} />
                         <SettingStat label="Poluvremena" value={`${schedule.halfCount ?? 2}`} />
                         <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
-                        <SettingStat label="Pauza između" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
+                        <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
                         <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
                     </Box>
                 </SectionCard>
@@ -787,13 +936,33 @@ export default function ScheduleTab({
                             : "Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored"
                     }
                     action={
-                        <PrimaryButton
-                            onClick={runGenerate}
-                            disabled={generating || !drawGenerated}
-                            icon={<LuCalendarClock size={14} />}
-                        >
-                            {generating ? "Generiranje…" : "Generiraj raspored"}
-                        </PrimaryButton>
+                        scheduleLaidOut ? (
+                            <HStack gap="2" wrap="wrap" justify="flex-end">
+                                <PrimaryButton
+                                    onClick={() => setConfirmAction("regenerate")}
+                                    disabled={generating || clearing}
+                                    icon={<FiRefreshCw size={14} />}
+                                >
+                                    Ponovno postavi raspored
+                                </PrimaryButton>
+                                <GhostButton
+                                    danger
+                                    onClick={() => setConfirmAction("clear")}
+                                    disabled={generating || clearing}
+                                    icon={<FiTrash2 size={14} />}
+                                >
+                                    Očisti raspored
+                                </GhostButton>
+                            </HStack>
+                        ) : (
+                            <PrimaryButton
+                                onClick={runGenerate}
+                                disabled={generating || !drawGenerated}
+                                icon={<LuCalendarClock size={14} />}
+                            >
+                                {generating ? "Generiranje…" : "Generiraj raspored"}
+                            </PrimaryButton>
+                        )
                     }
                 >
                     <Box
@@ -812,12 +981,12 @@ export default function ScheduleTab({
                             onChange={(v) => setCfg((c) => ({ ...c, halftimeBreakMin: v }))}
                         />
                         <CfgField
-                            label="Pauza između"
+                            label="Pauza između utakmica"
                             value={cfg.breakBetweenMatchesMin}
                             onChange={(v) => setCfg((c) => ({ ...c, breakBetweenMatchesMin: v }))}
                         />
                         <CfgField
-                            label="Buffer"
+                            label="Rezerva"
                             value={cfg.bufferMin}
                             onChange={(v) => setCfg((c) => ({ ...c, bufferMin: v }))}
                         />
@@ -938,10 +1107,64 @@ export default function ScheduleTab({
                         <SectionCard
                             icon={LuCalendarClock}
                             title="Nadolazeće utakmice"
+                            subtitle={
+                                reorderEnabled ? (
+                                    <>
+                                        Povuci utakmicom klikom na{" "}
+                                        <Box
+                                            as="span"
+                                            display="inline-flex"
+                                            verticalAlign="middle"
+                                            color="fg.muted"
+                                            mx="0.5"
+                                        >
+                                            <LuGripVertical size={14} />
+                                        </Box>{" "}
+                                        za promjenu rasporeda — satnica se ažurira automatski
+                                    </>
+                                ) : undefined
+                            }
                             padding="4"
                         >
                             <VStack align="stretch" gap="2">
-                                {upcomingMatches.map(renderRow)}
+                                {upcomingMatches.map((m) => {
+                                    if (!(reorderEnabled && m.status === "SCHEDULED" && m.kickoffAt != null)) return renderRow(m)
+                                    return renderRow(m, {
+                                        isOver: overId === m.matchId && dragId != null && dragId !== m.matchId,
+                                        isDragging: dragId === m.matchId,
+                                        handle: (
+                                            <Box
+                                                onPointerDown={(e) => {
+                                                    e.preventDefault()
+                                                    // Capture the pointer so the drag keeps tracking even
+                                                    // when the finger/cursor leaves the small handle — this
+                                                    // is what makes touch drag-and-drop work on phones.
+                                                    try {
+                                                        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                                                    } catch { /* not supported — falls back to window listeners */ }
+                                                    setDragId(m.matchId)
+                                                    overIdRef.current = m.matchId
+                                                }}
+                                                cursor="grab"
+                                                color={dragId === m.matchId ? "brand.solid" : "fg.subtle"}
+                                                _hover={{ color: "fg.muted" }}
+                                                display="flex"
+                                                alignItems="center"
+                                                justifyContent="center"
+                                                px="2"
+                                                py="1.5"
+                                                flexShrink={0}
+                                                style={{ touchAction: "none", userSelect: "none" }}
+                                                title="Povuci za promjenu rasporeda"
+                                                aria-label="Povuci za promjenu rasporeda"
+                                            >
+                                                {/* pointer-events none so the touch lands on the handle Box
+                                                    (which has touch-action:none), not the SVG. */}
+                                                <LuGripVertical size={18} style={{ pointerEvents: "none" }} />
+                                            </Box>
+                                        ),
+                                    })
+                                })}
                             </VStack>
                         </SectionCard>
                     )}
@@ -952,12 +1175,32 @@ export default function ScheduleTab({
                             padding="4"
                         >
                             <VStack align="stretch" gap="2">
-                                {finishedMatches.map(renderRow)}
+                                {finishedMatches.map((m) => renderRow(m))}
                             </VStack>
                         </SectionCard>
                     )}
                 </>
             )}
+
+            {/* Confirm popup for the two destructive schedule actions. */}
+            <ConfirmDialog
+                open={confirmAction !== null}
+                busy={confirmAction === "clear" ? clearing : generating}
+                danger={confirmAction === "clear"}
+                title={confirmAction === "clear" ? "Očistiti raspored?" : "Ponovno postaviti raspored?"}
+                description={
+                    confirmAction === "clear"
+                        ? "Svi termini utakmica bit će obrisani. Utakmice (grupe / eliminacija) ostaju, ali bez termina — možeš ih kasnije ponovno postaviti ili unijeti ručno."
+                        : "Termini svih utakmica bit će ponovno postavljeni prema trenutnim postavkama formata. Ručno upisani termini bit će prepisani."
+                }
+                confirmLabel={confirmAction === "clear" ? "Da, očisti" : "Da, ponovno postavi"}
+                onClose={() => setConfirmAction(null)}
+                onConfirm={async () => {
+                    if (confirmAction === "clear") await runClear()
+                    else await runGenerate()
+                    setConfirmAction(null)
+                }}
+            />
         </VStack>
     )
 }

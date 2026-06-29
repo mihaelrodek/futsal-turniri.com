@@ -27,4 +27,7 @@ public class TournamentCardDto {
     private Integer registeredTeams;
     /** True when this tournament has at least one match in progress (status LIVE). */
     private boolean liveMatch;
+    /** Set when an admin has featured this tournament; null otherwise. The home
+     *  list sorts featured tournaments to the very front (before live ones). */
+    private OffsetDateTime featuredAt;
 }

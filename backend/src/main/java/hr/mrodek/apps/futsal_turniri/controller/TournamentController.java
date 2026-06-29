@@ -1556,8 +1556,11 @@ public class TournamentController {
         int score2 = 0;
         for (MatchEvent ev : matchEventRepo.findByMatch_IdAndType(match.getId(), MatchEventType.GOAL)) {
             Player scorer = ev.getPlayer();
+            // Named scorer → his team; anonymous goal → the team stored on the
+            // event itself (so privacy goals still count for the right side).
             Long scorerTeamId = (scorer != null && scorer.getTeam() != null)
-                    ? scorer.getTeam().getId() : null;
+                    ? scorer.getTeam().getId()
+                    : (ev.getTeam() != null ? ev.getTeam().getId() : null);
             if (team1Id != null && Objects.equals(scorerTeamId, team1Id)) {
                 score1++;
             } else {
@@ -1646,10 +1649,11 @@ public class TournamentController {
         else if (fs2 > fs1) match.setWinnerTeam(match.getTeam2());
         else match.setWinnerTeam(null);
 
-        // Notify bell subscribers of the final score.
+        // Notify the match's bell subscribers (+ tournament bell) of the final score.
         Tournaments t = match.getTournament();
         if (t != null) {
-            firePushSafe(
+            firePushMatchSafe(
+                    match.getId(),
                     t.getId(),
                     "🏁 Kraj utakmice — " + t.getName(),
                     matchScoreLine(match),
@@ -1860,13 +1864,15 @@ public class TournamentController {
 
         boolean isPenalty = type == MatchEventType.PENALTY_GOAL
                 || type == MatchEventType.PENALTY_MISSED;
+        // A penalty kick OR a goal may be recorded without naming the scorer
+        // (anonymous scorer — privacy); then the side comes from teamId. The
+        // goal still counts for that team. Cards always require a player.
+        boolean teamOnlyAllowed = isPenalty || type == MatchEventType.GOAL;
 
-        // A penalty kick may be recorded without naming the taker; then the
-        // side comes from teamId. Goals/cards always require a player.
         Player player = null;
         Teams eventTeam = null;
         if (body.playerId() == null) {
-            if (!isPenalty) {
+            if (!teamOnlyAllowed) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("playerId is required").build();
             }
             if (body.teamId() == null) {
@@ -1896,6 +1902,10 @@ public class TournamentController {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("ASSIST_ONLY_FOR_GOALS").build();
             }
+            if (player == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("ASSIST_REQUIRES_NAMED_SCORER").build();
+            }
             assist = playerRepo.findByIdOptional(body.assistPlayerId()).orElse(null);
             if (assist == null || assist.getTeam() == null
                     || !Objects.equals(assist.getTeam().getId(), player.getTeam().getId())) {
@@ -1924,7 +1934,8 @@ public class TournamentController {
             // roll back the goal we just persisted.
             Tournaments t = match.getTournament();
             if (t != null) {
-                firePushSafe(
+                firePushMatchSafe(
+                        match.getId(),
                         t.getId(),
                         "⚽ Gol — " + t.getName(),
                         matchScoreLine(match),
@@ -2047,6 +2058,16 @@ public class TournamentController {
             // Intentionally swallowed: the goal/half/finish has already
             // been written. We log via the service's own logger; nothing
             // for the caller to do here.
+        }
+    }
+
+    /** Like {@link #firePushSafe} but also notifies this match's bell
+     *  subscribers (deduped against the tournament subscribers). */
+    private void firePushMatchSafe(Long matchId, Long tournamentId, String title, String body, String url) {
+        try {
+            pushService.sendToMatchAndTournamentSubscribers(matchId, tournamentId, title, body, url);
+        } catch (Exception e) {
+            // Swallowed — the event is already persisted; push is best-effort.
         }
     }
 }

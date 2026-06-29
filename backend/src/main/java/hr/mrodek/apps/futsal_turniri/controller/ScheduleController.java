@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
+import hr.mrodek.apps.futsal_turniri.dtos.ReorderScheduleRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduleConfigRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduleDto;
 import hr.mrodek.apps.futsal_turniri.dtos.UpdateKickoffRequest;
@@ -94,6 +95,30 @@ public class ScheduleController {
     public ScheduleDto confirm(@PathParam("uuid") String uuid) {
         Tournaments t = assertCanEdit(uuid);
         schedulingService.confirmSchedule(t);
+        return schedulingService.schedule(t);
+    }
+
+    /** Reorder the schedule (drag-and-drop) — keep the time slots, reassign
+     *  them to the matches in the supplied new order. Owner/admin. */
+    @POST
+    @Path("/reorder")
+    @Authenticated
+    @Transactional
+    public ScheduleDto reorder(@PathParam("uuid") String uuid, ReorderScheduleRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        schedulingService.reorderSchedule(t, body == null ? null : body.matchIds());
+        return schedulingService.schedule(t);
+    }
+
+    /** Clear the laid-out schedule — wipe every kickoff time. Fixtures stay;
+     *  only the slots are removed so the organizer can start over. Owner/admin. */
+    @POST
+    @Path("/clear")
+    @Authenticated
+    @Transactional
+    public ScheduleDto clear(@PathParam("uuid") String uuid) {
+        Tournaments t = assertCanEdit(uuid);
+        schedulingService.clearSchedule(t);
         return schedulingService.schedule(t);
     }
 

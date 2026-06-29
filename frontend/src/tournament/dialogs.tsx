@@ -15,8 +15,18 @@ import { FiAward, FiCheckCircle, FiX } from "react-icons/fi"
 
 import type { TeamShort } from "../types/teams"
 import type { UserTeamPreset } from "../api/userTeamPresets"
-import type { RoundLocal } from "./parts"
+import type { ScheduledMatch } from "../types/schedule"
 import { TeamAvatar } from "./parts"
+
+/** Knockout stage → Croatian label for the match-history rows. */
+const STAGE_LABEL: Record<string, string> = {
+    ROUND_OF_32: "1/16 finala",
+    ROUND_OF_16: "Osmina finala",
+    QUARTERFINAL: "Četvrtfinale",
+    SEMIFINAL: "Polufinale",
+    FINAL: "Finale",
+    THIRD_PLACE: "Za 3. mjesto",
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    Tournament detail — dialogs.
@@ -150,15 +160,17 @@ export function SelfRegisterDialog({
 export function TeamInfoDialog({
     teamId,
     teams,
-    rounds,
-    teamById,
+    matches,
     onClose,
+    onSelectMatch,
 }: {
     teamId: number | null
     teams: TeamShort[]
-    rounds: RoundLocal[]
-    teamById: Map<number, TeamShort>
+    /** Every match of the tournament (group + knockout), in play order. */
+    matches: ScheduledMatch[]
     onClose: () => void
+    /** Open a match (its timeline modal) from a history row. */
+    onSelectMatch?: (m: ScheduledMatch) => void
 }) {
     return (
         <Dialog.Root open={teamId !== null} onOpenChange={(e) => { if (!e.open) onClose() }}>
@@ -170,41 +182,65 @@ export function TeamInfoDialog({
                         if (!team) return null
 
                         type Played = {
-                            round: number
-                            tableNo: number
+                            key: number
+                            raw: ScheduledMatch
+                            stageLabel: string
                             opponentName: string | null
-                            myScore: number | null | undefined
-                            oppScore: number | null | undefined
+                            myScore: number | null
+                            oppScore: number | null
+                            penInfo: string | null
                             isFinished: boolean
+                            isLive: boolean
                             isBye: boolean
-                            isWinner: boolean
+                            result: "win" | "loss" | "draw" | null
                         }
 
-                        const played: Played[] = rounds.flatMap((r) =>
-                            r.matches
-                                .filter((m) => m.team1Id === team.id || m.team2Id === team.id)
-                                .map((m) => {
-                                    const meIs1 = m.team1Id === team.id
-                                    const oppId = meIs1 ? m.team2Id : m.team1Id
-                                    const oppName =
-                                        (meIs1 ? m.team2Name : m.team1Name) ??
-                                        (oppId ? teamById.get(oppId)?.name ?? null : null)
-                                    return {
-                                        round: r.number,
-                                        tableNo: m.tableNo,
-                                        opponentName: oppName,
-                                        myScore: meIs1 ? m.score1 : m.score2,
-                                        oppScore: meIs1 ? m.score2 : m.score1,
-                                        isFinished: m.status === "FINISHED",
-                                        isBye: !m.team2Id,
-                                        isWinner: m.winnerTeamId != null && m.winnerTeamId === team.id,
+                        const played: Played[] = matches
+                            .filter((m) => m.team1Id === team.id || m.team2Id === team.id)
+                            .map((m) => {
+                                const meIs1 = m.team1Id === team.id
+                                const oppId = meIs1 ? m.team2Id : m.team1Id
+                                const oppName = meIs1 ? m.team2Name : m.team1Name
+                                const myScore = meIs1 ? m.score1 : m.score2
+                                const oppScore = meIs1 ? m.score2 : m.score1
+                                const myPen = meIs1 ? m.penalties1 : m.penalties2
+                                const oppPen = meIs1 ? m.penalties2 : m.penalties1
+                                const isFinished = m.status === "FINISHED"
+                                const isLive = m.status === "LIVE"
+                                const isBye = oppId == null
+                                let result: "win" | "loss" | "draw" | null = null
+                                if (isFinished && !isBye) {
+                                    if (m.winnerTeamId != null) {
+                                        result = m.winnerTeamId === team.id ? "win" : "loss"
+                                    } else if (myScore != null && oppScore != null) {
+                                        result = myScore > oppScore ? "win" : myScore < oppScore ? "loss" : "draw"
                                     }
-                                }),
-                        )
+                                }
+                                const penInfo =
+                                    myPen != null && oppPen != null ? `(${myPen}:${oppPen} pen)` : null
+                                const stageLabel =
+                                    m.stage === "GROUP"
+                                        ? m.groupName ? `Grupa ${m.groupName}` : "Grupa"
+                                        : STAGE_LABEL[m.stage] ?? m.stage
+                                return {
+                                    key: m.matchId,
+                                    raw: m,
+                                    stageLabel,
+                                    opponentName: oppName,
+                                    myScore,
+                                    oppScore,
+                                    penInfo,
+                                    isFinished,
+                                    isLive,
+                                    isBye,
+                                    result,
+                                }
+                            })
 
-                        const finishedPlayed = played.filter((x) => x.isFinished && !x.isBye)
-                        const wins = finishedPlayed.filter((x) => x.isWinner).length
-                        const losses = finishedPlayed.filter((x) => !x.isWinner).length
+                        const finishedReal = played.filter((x) => x.isFinished && !x.isBye)
+                        const wins = finishedReal.filter((x) => x.result === "win").length
+                        const draws = finishedReal.filter((x) => x.result === "draw").length
+                        const losses = finishedReal.filter((x) => x.result === "loss").length
 
                         return (
                             <>
@@ -225,11 +261,15 @@ export function TeamInfoDialog({
                                     <HStack gap="6" mb="4" wrap="wrap">
                                         <Box>
                                             <Text fontSize="xs" color="fg.muted">Odigrano</Text>
-                                            <Text fontSize="xl" fontWeight="semibold">{finishedPlayed.length}</Text>
+                                            <Text fontSize="xl" fontWeight="semibold">{finishedReal.length}</Text>
                                         </Box>
                                         <Box>
                                             <Text fontSize="xs" color="fg.muted">Pobjede</Text>
                                             <Text fontSize="xl" fontWeight="semibold" color="green.fg">{wins}</Text>
+                                        </Box>
+                                        <Box>
+                                            <Text fontSize="xs" color="fg.muted">Neriješeno</Text>
+                                            <Text fontSize="xl" fontWeight="semibold" color="fg.muted">{draws}</Text>
                                         </Box>
                                         <Box>
                                             <Text fontSize="xs" color="fg.muted">Porazi</Text>
@@ -248,14 +288,14 @@ export function TeamInfoDialog({
                                             textAlign="center"
                                         >
                                             <Text color="fg.muted" fontSize="sm">
-                                                Ekipa još nije odigrala nijedan meč.
+                                                Ekipa još nema nijedan meč u rasporedu.
                                             </Text>
                                         </Box>
                                     ) : (
                                         <VStack align="stretch" gap="2">
-                                            {played.map((x, i) => (
+                                            {played.map((x) => (
                                                 <Box
-                                                    key={i}
+                                                    key={x.key}
                                                     borderWidth="1px"
                                                     borderColor="border"
                                                     rounded="md"
@@ -263,21 +303,36 @@ export function TeamInfoDialog({
                                                     bg={
                                                         x.isBye
                                                             ? "brand.subtle"
-                                                            : !x.isFinished
+                                                            : x.isLive
                                                                 ? "yellow.subtle"
-                                                                : x.isWinner
-                                                                    ? "green.subtle"
-                                                                    : "red.subtle"
+                                                                : !x.isFinished
+                                                                    ? "bg.surfaceTint"
+                                                                    : x.result === "win"
+                                                                        ? "green.subtle"
+                                                                        : x.result === "loss"
+                                                                            ? "red.subtle"
+                                                                            : "bg.surfaceTint"
+                                                    }
+                                                    onClick={
+                                                        !x.isBye && onSelectMatch
+                                                            ? () => onSelectMatch(x.raw)
+                                                            : undefined
+                                                    }
+                                                    cursor={!x.isBye && onSelectMatch ? "pointer" : undefined}
+                                                    role={!x.isBye && onSelectMatch ? "button" : undefined}
+                                                    title={!x.isBye && onSelectMatch ? "Prikaži utakmicu" : undefined}
+                                                    transition="border-color 0.12s, background 0.12s"
+                                                    _hover={
+                                                        !x.isBye && onSelectMatch
+                                                            ? { borderColor: "brand.solid" }
+                                                            : undefined
                                                     }
                                                 >
                                                     <HStack justify="space-between" gap="2" wrap="wrap">
                                                         <HStack gap="2" minW="0" flex="1">
                                                             <Badge variant="solid" colorPalette="gray" size="sm" flexShrink={0}>
-                                                                R{x.round}
+                                                                {x.stageLabel}
                                                             </Badge>
-                                                            <Text fontSize="xs" color="fg.muted" flexShrink={0}>
-                                                                Stol {x.tableNo}
-                                                            </Text>
                                                             <Text
                                                                 fontWeight="medium"
                                                                 overflow="hidden"
@@ -289,23 +344,32 @@ export function TeamInfoDialog({
                                                             </Text>
                                                         </HStack>
                                                         <HStack gap="2" flexShrink={0}>
-                                                            {!x.isBye && x.isFinished && (
+                                                            {!x.isBye && (x.isFinished || x.isLive) && (
                                                                 <Text fontWeight="semibold" fontSize="sm">
                                                                     {x.myScore ?? "—"} : {x.oppScore ?? "—"}
+                                                                    {x.penInfo ? (
+                                                                        <Text as="span" fontSize="xs" color="fg.muted" ml="1">
+                                                                            {x.penInfo}
+                                                                        </Text>
+                                                                    ) : null}
                                                                 </Text>
                                                             )}
                                                             {x.isBye ? (
                                                                 <Badge variant="solid" colorPalette="brand" size="sm">
                                                                     <HStack gap="1"><FiCheckCircle size={11} /> Prošao</HStack>
                                                                 </Badge>
+                                                            ) : x.isLive ? (
+                                                                <Badge variant="solid" colorPalette="yellow" size="sm">Uživo</Badge>
                                                             ) : !x.isFinished ? (
-                                                                <Badge variant="solid" colorPalette="yellow" size="sm">U tijeku</Badge>
-                                                            ) : x.isWinner ? (
+                                                                <Badge variant="solid" colorPalette="gray" size="sm">Zakazano</Badge>
+                                                            ) : x.result === "win" ? (
                                                                 <Badge variant="solid" colorPalette="green" size="sm">
                                                                     <HStack gap="1"><FiAward size={11} /> Pobjeda</HStack>
                                                                 </Badge>
-                                                            ) : (
+                                                            ) : x.result === "loss" ? (
                                                                 <Badge variant="solid" colorPalette="red" size="sm">Poraz</Badge>
+                                                            ) : (
+                                                                <Badge variant="solid" colorPalette="gray" size="sm">Neriješeno</Badge>
                                                             )}
                                                         </HStack>
                                                     </HStack>

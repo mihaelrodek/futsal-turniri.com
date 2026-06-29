@@ -24,6 +24,7 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -50,6 +51,7 @@ public class KnockoutService {
     @Inject MatchesRepository matchesRepo;
     @Inject RoundsRepository roundsRepo;
     @Inject GroupStageService groupStageService;
+    @Inject PushService pushService;
 
     /** Group-standings ranking used to seed qualifiers within a placement tier. */
     private static final Comparator<GroupStandingRowDto> STANDING_RANK =
@@ -76,6 +78,21 @@ public class KnockoutService {
      */
     @Transactional
     public BracketDto generateBracket(Tournaments t) {
+        return generateBracket(t, null, false);
+    }
+
+    /**
+     * Build (or rebuild) the knockout bracket. {@code byeTeamIds} (optional)
+     * lets the organizer choose which teams get the round-one bye (direct
+     * advance) when the qualifier count isn't a power of two — those teams are
+     * moved to the top seeds, which is exactly where standard seeding places the
+     * byes. Null/empty → automatic (best seeds get the byes).
+     *
+     * <p>{@code shuffleRest} randomly reorders the non-bye teams (the automatic
+     * draw path), so the rest of the bracket isn't always the same.
+     */
+    @Transactional
+    public BracketDto generateBracket(Tournaments t, List<Long> byeTeamIds, boolean shuffleRest) {
         if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
             long groupTotal = matchesRepo.count(
                     "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
@@ -94,6 +111,27 @@ public class KnockoutService {
         List<Teams> qs = qualifiers(t);
         if (qs.size() < 2) {
             throw new BadRequestException("Need at least 2 teams for a knockout bracket");
+        }
+        // Organizer-chosen byes: pull those teams to the top seeds, where the
+        // standard seeding (below) hands out the round-one byes. The non-bye
+        // teams keep their seed order, or are shuffled for the automatic draw.
+        if ((byeTeamIds != null && !byeTeamIds.isEmpty()) || shuffleRest) {
+            Set<Long> byeSet = byeTeamIds == null ? Set.of() : new HashSet<>(byeTeamIds);
+            List<Teams> front = new ArrayList<>();
+            if (byeTeamIds != null) {
+                for (Long id : byeTeamIds) {
+                    for (Teams tm : qs) {
+                        if (tm.getId().equals(id)) { front.add(tm); break; }
+                    }
+                }
+            }
+            List<Teams> rest = new ArrayList<>();
+            for (Teams tm : qs) {
+                if (!byeSet.contains(tm.getId())) rest.add(tm);
+            }
+            if (shuffleRest) Collections.shuffle(rest);
+            front.addAll(rest);
+            if (front.size() == qs.size()) qs = front;
         }
 
         // Wipe any prior knockout matches and their now-empty rounds.
@@ -516,6 +554,28 @@ public class KnockoutService {
             t.setSecondPlaceName(loser.getName());
         } else if (m.getStage() == MatchStage.THIRD_PLACE) {
             m.getTournament().setThirdPlaceName(winner.getName());
+        }
+
+        // Notify the match's bell subscribers (+ tournament bell) of the result.
+        Tournaments tour = m.getTournament();
+        if (tour != null) {
+            String t1 = m.getTeam1() != null && m.getTeam1().getName() != null ? m.getTeam1().getName() : "?";
+            String t2 = m.getTeam2() != null && m.getTeam2().getName() != null ? m.getTeam2().getName() : "?";
+            String body = t1 + " " + m.getScore1() + ":" + m.getScore2() + " " + t2;
+            if (m.getPenalties1() != null && m.getPenalties2() != null) {
+                body += " (" + m.getPenalties1() + ":" + m.getPenalties2() + " p)";
+            }
+            String ref = tour.getSlug() != null && !tour.getSlug().isBlank()
+                    ? tour.getSlug()
+                    : (tour.getUuid() != null ? tour.getUuid().toString() : null);
+            String url = ref != null ? "/turniri/" + ref + "?tab=bracket" : null;
+            try {
+                pushService.sendToMatchAndTournamentSubscribers(
+                        m.getId(), tour.getId(),
+                        "🏁 Kraj utakmice — " + tour.getName(), body, url);
+            } catch (Exception ignored) {
+                // best-effort — the result is already saved.
+            }
         }
     }
 

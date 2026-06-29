@@ -61,6 +61,9 @@ export type DrawAssignment = {
 
 export type DrawRequest = {
     mode: DrawMode
+    /** Chosen at draw time (no longer at tournament creation). */
+    groupCount?: number | null
+    advancePerGroup?: number | null
     /** Required when mode is MANUAL; ignored for AUTO. */
     assignments?: DrawAssignment[] | null
 }

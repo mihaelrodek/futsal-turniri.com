@@ -108,7 +108,7 @@ export default function FirstRunInstallPrompt() {
                             <VStack align="stretch" gap="4">
                                 <HStack gap="3" align="center">
                                     <Image
-                                        src="/futsal-turniri-symbol.svg"
+                                        src="/logo/mark-green.svg"
                                         alt=""
                                         h="56px"
                                         w="auto"

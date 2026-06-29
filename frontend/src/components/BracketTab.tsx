@@ -41,7 +41,7 @@ import {
 } from "../api/matchEvents"
 import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
-import { EmptyState, Loader, Panel } from "../ui/primitives"
+import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
 import { FiArrowDown, FiArrowUp, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
@@ -273,12 +273,13 @@ function useDragPan() {
 export default function BracketTab({
     uuid,
     canEdit = false,
-    tournamentStarted = false,
     tournamentName,
     format,
 }: {
     uuid: string
     canEdit?: boolean
+    /** Accepted for API compatibility; the bracket's "started" lock is derived
+     *  from the elimination matches, not the tournament status. */
     tournamentStarted?: boolean
     /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
@@ -313,6 +314,12 @@ export default function BracketTab({
     const [seedsOpen, setSeedsOpen] = useState(false)
     const [seedOrder, setSeedOrder] = useState<BracketCandidate[]>([])
     const [savingSeeds, setSavingSeeds] = useState(false)
+    // Bye picker — when the qualifier count isn't a power of two, the organizer
+    // chooses which teams advance directly (round-one bye) before generating.
+    const [byeOpen, setByeOpen] = useState(false)
+    const [byeIds, setByeIds] = useState<Set<number>>(new Set())
+    /** Which destructive bracket action awaits confirmation in the popup. */
+    const [confirmAction, setConfirmAction] = useState<null | "reset" | "regenerate">(null)
     // Eligible teams for the bracket (group qualifiers / all teams) + whether
     // the group stage is finished — both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
@@ -351,10 +358,11 @@ export default function BracketTab({
         }
     }
 
-    async function runGenerate() {
+    async function runGenerate(byeIds?: number[], shuffleRest?: boolean) {
         setGenerating(true)
         try {
-            setBracket(await generateBracket(uuid))
+            setBracket(await generateBracket(uuid, byeIds, shuffleRest))
+            setByeOpen(false)
             setEditingId(null)
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -425,20 +433,9 @@ export default function BracketTab({
     }
 
     /** Re-drawing wipes the existing bracket, so "Ponovno (auto)" asks for an
-     *  explicit confirmation via a toast action before running — same pattern
-     *  as the group draw. */
+     *  explicit confirmation in a popup modal before running. */
     function confirmRegenerate() {
-        toaster.create({
-            type: "warning",
-            title: "Ponoviti ždrijeb?",
-            description: "Postojeća eliminacijska ljestvica bit će obrisana i izvučena ponovno.",
-            duration: 10000,
-            closable: true,
-            action: {
-                label: "Ponovi ždrijeb",
-                onClick: () => { void runGenerate() },
-            },
-        })
+        setConfirmAction("regenerate")
     }
 
     async function runResetBracket() {
@@ -453,20 +450,9 @@ export default function BracketTab({
         }
     }
 
-    /** "Resetiraj" wipes every elimination match — ask for an explicit
-     *  confirmation via a toast action before running. */
+    /** "Resetiraj" wipes every elimination match — confirm in a popup modal. */
     function confirmResetBracket() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati eliminaciju?",
-            description: "Sve utakmice eliminacijske faze bit će obrisane.",
-            duration: 10000,
-            closable: true,
-            action: {
-                label: "Resetiraj",
-                onClick: () => { void runResetBracket() },
-            },
-        })
+        setConfirmAction("reset")
     }
 
     /** SCHEDULED -> LIVE, then open the live dialog and re-fetch. */
@@ -676,11 +662,17 @@ export default function BracketTab({
     const pool = qualifiers
     const bracketN = pool.length >= 2 ? nextPow2(pool.length) : 2
     const matchCount = bracketN / 2
+    // How many teams get a round-one bye (direct advance) — only when the
+    // qualifier count isn't already a power of two.
+    const byesNeeded = pool.length >= 2 ? bracketN - pool.length : 0
 
     function openManualBracket() {
-        // Seed slots in qualifier (seed) order; trailing empties become byes.
-        const seed: (number | null)[] = []
-        for (let i = 0; i < bracketN; i++) seed.push(pool[i]?.id ?? null)
+        // Put the teams that advance directly (byes) FIRST, at the top — each in
+        // its own match with an empty opponent — then pair up the rest below.
+        const seed: (number | null)[] = new Array(bracketN).fill(null)
+        for (let i = 0; i < byesNeeded; i++) seed[2 * i] = pool[i]?.id ?? null
+        let slot = byesNeeded * 2
+        for (let i = byesNeeded; i < pool.length; i++) seed[slot++] = pool[i]?.id ?? null
         setSlots(seed)
         setManualOpen(true)
     }
@@ -898,6 +890,103 @@ export default function BracketTab({
         </Panel>
     )
 
+    // ─── Bye picker — choose who advances directly when not a power of two ───
+    function openByePicker() {
+        setByeIds(new Set(pool.slice(0, byesNeeded).map((tm) => tm.id)))
+        setByeOpen(true)
+    }
+    function toggleBye(id: number) {
+        setByeIds((s) => {
+            const c = new Set(s)
+            if (c.has(id)) c.delete(id)
+            // Single bye: clicking another team just swaps the selection.
+            else if (byesNeeded === 1) { c.clear(); c.add(id) }
+            // Otherwise cap at the exact number of byes (deselect one to change).
+            else if (c.size < byesNeeded) c.add(id)
+            return c
+        })
+    }
+
+    const byePanel = (
+        <Panel p={{ base: "4", md: "5" }}>
+            <VStack align="stretch" gap="3">
+                <HStack justify="space-between" align="center">
+                    <Text fontWeight="bold" fontSize="sm">Tko prolazi direktno dalje?</Text>
+                    <Button size="xs" variant="ghost" onClick={() => setByeOpen(false)} disabled={generating}>
+                        Odustani
+                    </Button>
+                </HStack>
+                <Text fontSize="xs" color="fg.muted">
+                    {pool.length} ekipa ne popunjava ljestvicu od {bracketN}. Odaberi {byesNeeded}{" "}
+                    {byesNeeded === 1 ? "ekipu koja preskače" : "ekipe koje preskaču"} prvo kolo
+                    (slobodan prolaz u sljedeće).
+                </Text>
+                <VStack align="stretch" gap="1.5">
+                    {pool.map((tm, idx) => {
+                        const on = byeIds.has(tm.id)
+                        // For a single bye, others stay clickable (they swap);
+                        // for multiple, dim once the cap is reached.
+                        const atCap = !on && byesNeeded > 1 && byeIds.size >= byesNeeded
+                        return (
+                            <HStack
+                                as="button"
+                                key={tm.id}
+                                onClick={() => toggleBye(tm.id)}
+                                gap="3"
+                                borderWidth="1px"
+                                borderColor={on ? "pitch.500" : "border"}
+                                bg={on ? "pitch.50" : "bg.panel"}
+                                rounded="lg"
+                                px="3"
+                                py="2"
+                                textAlign="left"
+                                opacity={atCap ? 0.45 : 1}
+                                cursor={atCap ? "not-allowed" : "pointer"}
+                            >
+                                <Box
+                                    w="18px"
+                                    h="18px"
+                                    rounded="md"
+                                    flexShrink={0}
+                                    borderWidth="2px"
+                                    borderColor={on ? "pitch.500" : "border.emphasized"}
+                                    bg={on ? "pitch.500" : "transparent"}
+                                    color="white"
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    fontSize="11px"
+                                    fontWeight={800}
+                                >
+                                    {on ? "✓" : ""}
+                                </Box>
+                                <Text fontSize="2xs" fontFamily="mono" color="fg.muted" w="5" flexShrink={0}>
+                                    {idx + 1}.
+                                </Text>
+                                <Text fontSize="sm" fontWeight={600} flex="1" minW="0" truncate>
+                                    {tm.name?.trim() || "Bez imena"}
+                                </Text>
+                            </HStack>
+                        )
+                    })}
+                </VStack>
+                {byeIds.size !== byesNeeded && (
+                    <Text fontSize="xs" color="red.fg">
+                        Odabrano {byeIds.size} / {byesNeeded}.
+                    </Text>
+                )}
+                <Button
+                    colorPalette="brand"
+                    onClick={() => runGenerate([...byeIds], true)}
+                    loading={generating}
+                    disabled={byeIds.size !== byesNeeded}
+                >
+                    Generiraj ljestvicu
+                </Button>
+            </VStack>
+        </Panel>
+    )
+
     if (loading) {
         return <Loader label="Učitavanje ljestvice…" />
     }
@@ -905,6 +994,7 @@ export default function BracketTab({
     const hasBracket = bracket != null && bracket.rounds.length > 0
 
     if (!hasBracket) {
+        if (canEdit && byeOpen) return byePanel
         if (canEdit && seedsOpen) return seedsPanel
         if (canEdit && manualOpen) return manualBracketPanel
         return (
@@ -926,9 +1016,9 @@ export default function BracketTab({
                                 <Button
                                     colorPalette="brand"
                                     size="sm"
-                                    onClick={runGenerate}
+                                    onClick={() => { if (byesNeeded > 0) openByePicker(); else void runGenerate() }}
                                     loading={generating}
-                                    disabled={!groupStageComplete}
+                                    disabled={!groupStageComplete || pool.length < 2}
                                 >
                                     Automatski
                                 </Button>
@@ -987,14 +1077,18 @@ export default function BracketTab({
 
     const roundCount = bracket.rounds.length
 
-    // Once any bracket match is LIVE / FINISHED the draw is locked — re-drawing
-    // would wipe real results — so the draw buttons disappear. Derived locally
-    // because the tournament's status field may not flip the instant a match
-    // goes live.
+    // Once a real ELIMINATION match is played the draw is locked — re-drawing
+    // would wipe results — so the draw buttons disappear. Based only on bracket
+    // matches (NOT the tournament status). A bye match is auto-FINISHED on
+    // generation (one team, no game) — it must NOT count as "played", otherwise
+    // a freshly-drawn bracket with byes would hide the reset button.
     const started =
-        tournamentStarted ||
         [...bracket.rounds.flatMap((r) => r.matches), ...(bracket.thirdPlace ? [bracket.thirdPlace] : [])]
-            .some((m) => m.status === "LIVE" || m.status === "FINISHED")
+            .some(
+                (m) =>
+                    m.status === "LIVE" ||
+                    (m.status === "FINISHED" && m.team1Id != null && m.team2Id != null),
+            )
 
     // `libraryMatches` + `matchById` are computed above (before the
     // early returns) — re-aliasing here for readability only. Each
@@ -1102,6 +1196,26 @@ export default function BracketTab({
                     </GhostButton>
                 </Flex>
             )}
+
+            {/* Confirm popup for the destructive draw actions (reset / regenerate). */}
+            <ConfirmDialog
+                open={confirmAction !== null}
+                busy={confirmAction === "reset" ? resetting : generating}
+                danger
+                title={confirmAction === "reset" ? "Resetirati eliminaciju?" : "Ponoviti ždrijeb?"}
+                description={
+                    confirmAction === "reset"
+                        ? "Sve utakmice eliminacijske faze bit će obrisane."
+                        : "Postojeća eliminacijska ljestvica bit će obrisana i izvučena ponovno."
+                }
+                confirmLabel={confirmAction === "reset" ? "Da, resetiraj" : "Da, ponovi ždrijeb"}
+                onClose={() => setConfirmAction(null)}
+                onConfirm={async () => {
+                    if (confirmAction === "reset") await runResetBracket()
+                    else await runGenerate()
+                    setConfirmAction(null)
+                }}
+            />
 
             {/* Manual draw editor — shown above the bracket when opened. */}
             {canEdit && !started && manualOpen && manualBracketPanel}
@@ -1973,16 +2087,9 @@ export function BracketLiveMatchDialog({
             setResetting(false)
         }
     }
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false)
     function confirmReset() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati utakmicu?",
-            description:
-                "Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje.",
-            duration: 8000,
-            closable: true,
-            action: { label: "Resetiraj", onClick: doReset },
-        })
+        setConfirmResetOpen(true)
     }
 
     /** Penalty shootout decided — persist the level score + penalty result
@@ -2006,6 +2113,7 @@ export function BracketLiveMatchDialog({
     }
 
     return (
+        <>
         <Dialog.Root
             open
             onOpenChange={(e) => { if (!e.open) onClose() }}
@@ -2266,6 +2374,17 @@ export function BracketLiveMatchDialog({
                 </Dialog.Positioner>
             </Portal>
         </Dialog.Root>
+        <ConfirmDialog
+            open={confirmResetOpen}
+            busy={resetting}
+            danger
+            title="Resetirati utakmicu?"
+            description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+            confirmLabel="Da, resetiraj"
+            onClose={() => setConfirmResetOpen(false)}
+            onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+        />
+        </>
     )
 }
 

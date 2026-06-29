@@ -120,7 +120,7 @@ export function InstallAppButton({
                             <Dialog.Header>
                                 <HStack gap="2" align="center">
                                     <Image
-                                        src="/futsal-turniri-symbol.svg"
+                                        src="/logo/mark-green.svg"
                                         alt=""
                                         h="28px"
                                         w="auto"

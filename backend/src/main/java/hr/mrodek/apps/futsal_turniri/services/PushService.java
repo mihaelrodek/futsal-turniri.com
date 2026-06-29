@@ -186,6 +186,47 @@ public class PushService {
         }
     }
 
+    /**
+     * Fan-out for a single match's live events (goal, finished) to BOTH its
+     * per-match bell subscribers AND the tournament bell subscribers — but
+     * de-duplicated by user, so someone subscribed to both gets exactly one
+     * notification. Same per-device resilience as the other fan-outs.
+     */
+    @Transactional
+    public void sendToMatchAndTournamentSubscribers(
+            Long matchId, Long tournamentId, String title, String body, String url) {
+        if (!isReady()) return;
+        java.util.LinkedHashSet<String> uids = new java.util.LinkedHashSet<>();
+        if (matchId != null) {
+            for (var ms : matchSubRepo.findByMatchId(matchId)) {
+                if (ms.getUserUid() != null && !ms.getUserUid().isBlank()) uids.add(ms.getUserUid());
+            }
+        }
+        if (tournamentId != null) {
+            for (var ts : tournamentSubRepo.findByTournamentId(tournamentId)) {
+                if (ts.getUserUid() != null && !ts.getUserUid().isBlank()) uids.add(ts.getUserUid());
+            }
+        }
+        if (uids.isEmpty()) return;
+
+        String json = serialize(new PushPayload(title, body, url));
+        for (String uid : uids) {
+            try {
+                for (var deviceSub : subRepo.findByUserUid(uid)) {
+                    try {
+                        sendOne(deviceSub, json);
+                    } catch (Exception inner) {
+                        LOG.warnf(inner,
+                                "Push: match+tournament fan-out failed for subscription %d (uid=%s)",
+                                deviceSub.getId(), uid);
+                    }
+                }
+            } catch (Exception outer) {
+                LOG.warnf(outer, "Push: match+tournament fan-out failed for uid=%s", uid);
+            }
+        }
+    }
+
     private void sendOne(PushSubscription sub, String payloadJson) {
         try {
             var notification = new Notification(

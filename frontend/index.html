@@ -59,10 +59,11 @@
 
     <!-- Open Graph / link previews. og:image must be a raster format
          (PNG/JPEG) — WhatsApp and Facebook crawlers silently drop SVG
-         and the share renders without a thumbnail. The 1200x1200 PNG
-         is rendered from futsal-turniri-symbol.svg at build time and
-         checked into public/. og:image:secure_url and the explicit
-         dimensions help platforms cache and lay out the card correctly.
+         and the share renders without a thumbnail. The app icons are
+         rendered from public/logo/mark-green.svg via
+         scripts/gen-pwa-icons.mjs and checked into public/.
+         og:image:secure_url and the explicit dimensions help platforms
+         cache and lay out the card correctly.
 
          Per-page overrides (poster art on tournament detail, avatar on
          profile) are set client-side via useDocumentHead and take

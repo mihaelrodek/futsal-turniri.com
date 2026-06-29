@@ -119,6 +119,13 @@ function TeamBadge({ name, size = 44 }: { name: string | null | undefined; size?
     )
 }
 
+/**
+ * Disabled: the old separate "tournament of the day" hero card. A featured
+ * tournament is now promoted as the "GLAVNA UTAKMICA" live slot (here) and
+ * first in the home-page list. Flip to true to restore the hero card.
+ */
+const FEATURED_HERO_ENABLED = false
+
 /** Admin-curated "tournament of the day" hero.
  *
  *  Same visual family as the live match hero on /turniri (dark pitch
@@ -411,15 +418,21 @@ function LiveMatchCard({
                     borderColor="border"
                     bg="bg.surfaceTint"
                 >
-                    <HStack justify="space-between" mb="2">
+                    <Box
+                        display="grid"
+                        gridTemplateColumns="1fr auto 1fr"
+                        alignItems="center"
+                        mb="2"
+                    >
+                        <Box />
                         <MonoLabel color="fg.muted">DOGAĐAJI UTAKMICE</MonoLabel>
-                        <HStack gap="1" color="fg.muted">
+                        <HStack gap="1" color="fg.muted" justifySelf="end">
                             <PulseDot color="accent.red" size={5} />
                             <Text fontSize="10px" fontFamily="mono" letterSpacing="0.1em">
                                 AŽURIRA SE
                             </Text>
                         </HStack>
-                    </HStack>
+                    </Box>
                     <GoalscorersPanel
                         tournamentUuid={match.tournamentUuid}
                         matchId={match.matchId}
@@ -434,19 +447,22 @@ function LiveMatchCard({
             {/* Footer — split into expand toggle (left) and open-tournament
                  navigation (right). Stops propagation so clicking the link
                  doesn't also toggle expand. */}
-            <Flex
-                justify="space-between"
-                align="center"
+            <Box
+                display="grid"
+                gridTemplateColumns="1fr auto 1fr"
+                alignItems="center"
                 px="4"
                 py="2.5"
                 borderTopWidth="1px"
                 borderColor="border"
             >
+                <Box />
                 <Flex
                     align="center"
                     gap="1.5"
                     color="fg.muted"
                     cursor="pointer"
+                    justifySelf="center"
                     onClick={(e) => {
                         e.stopPropagation()
                         setExpanded((v) => !v)
@@ -464,6 +480,7 @@ function LiveMatchCard({
                     fontWeight={700}
                     color="pitch.500"
                     cursor="pointer"
+                    justifySelf="end"
                     onClick={(e) => {
                         e.stopPropagation()
                         onOpen()
@@ -473,7 +490,7 @@ function LiveMatchCard({
                 >
                     Otvori turnir →
                 </Box>
-            </Flex>
+            </Box>
         </Box>
     )
 }
@@ -577,10 +594,11 @@ export default function LivePage() {
     return (
         <VStack align="stretch" gap="7">
             {/* ── Admin-curated daily hero ─────────────────────────────
-                 Rendered only when an admin has explicitly featured a
-                 tournament via the toggle on its detail page. Falls
-                 through silently when nothing's featured. */}
-            {featured && <FeaturedTournamentHero tournament={featured} onOpen={() => {
+                 Disabled: a featured tournament is now surfaced as the
+                 "GLAVNA UTAKMICA" live slot below + first on the home list,
+                 instead of this separate "tournament of the day" card.
+                 Code kept — flip FEATURED_HERO_ENABLED to bring it back. */}
+            {FEATURED_HERO_ENABLED && featured && <FeaturedTournamentHero tournament={featured} onOpen={() => {
                 navigate(`/turniri/${featured.slug ?? featured.uuid}`)
             }} />}
 
@@ -666,9 +684,7 @@ export default function LivePage() {
                                         letterSpacing="0.2em"
                                         color={isAdminFeatured ? "pitch.500" : "fg.muted"}
                                     >
-                                        {isAdminFeatured
-                                            ? "★ IZDVOJENA UTAKMICA"
-                                            : "GLAVNA UTAKMICA"}
+                                        {isAdminFeatured ? "★ GLAVNA UTAKMICA" : "GLAVNA UTAKMICA"}
                                     </Box>
                                 </HStack>
                                 <Box

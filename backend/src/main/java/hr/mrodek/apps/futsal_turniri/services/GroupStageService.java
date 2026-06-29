@@ -67,9 +67,20 @@ public class GroupStageService {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
             throw new BadRequestException("Tournament format is not GROUPS_KNOCKOUT");
         }
-        Integer groupCount = t.getGroupCount();
-        if (groupCount == null || groupCount < 2) {
-            throw new BadRequestException("Group count is not configured for this tournament");
+        // Group count + advance-per-group are chosen at draw time. Persist them
+        // on the tournament so the bracket / standings know how many advance.
+        Integer reqGroupCount = req != null ? req.groupCount() : null;
+        int groupCount = reqGroupCount != null ? reqGroupCount
+                : (t.getGroupCount() != null ? t.getGroupCount() : 0);
+        if (groupCount < 2) {
+            throw new BadRequestException("Need at least 2 groups");
+        }
+        t.setGroupCount(groupCount);
+        if (req != null && req.advancePerGroup() != null) {
+            if (req.advancePerGroup() < 1) {
+                throw new BadRequestException("At least 1 team must advance per group");
+            }
+            t.setAdvancePerGroup(req.advancePerGroup());
         }
 
         // Registered teams = everything except still-pending self-registrations.

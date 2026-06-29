@@ -108,14 +108,21 @@ public class KnockoutController {
         return new hr.mrodek.apps.futsal_turniri.dtos.BracketQualifiersDto(complete, teams);
     }
 
-    /** Build (or rebuild) the knockout bracket from the qualifiers. */
+    /** Build (or rebuild) the knockout bracket from the qualifiers. Optional
+     *  body {@code { byeTeamIds }} chooses who advances directly (round-one
+     *  bye) when the qualifier count isn't a power of two. */
     @POST
     @Path("/generate")
     @Authenticated
     @Transactional
-    public BracketDto generate(@PathParam("uuid") String uuid) {
+    public BracketDto generate(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.GenerateBracketRequest body) {
         Tournaments t = assertCanEdit(uuid);
-        return knockoutService.generateBracket(t);
+        return knockoutService.generateBracket(
+                t,
+                body == null ? null : body.byeTeamIds(),
+                body != null && Boolean.TRUE.equals(body.shuffleRest()));
     }
 
     /** Wipe the knockout bracket (all elimination matches). Owner/admin. */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Spinner, Text, VStack } from "@chakra-ui/react"
 import { FiClock, FiEdit2, FiPlay, FiRotateCcw, FiTrash2 } from "react-icons/fi"
 import { addMatchEvent, adjustMatchFouls, deleteMatchEvent, fetchMatchEvents, resetMatchFouls } from "../api/matchEvents"
-import { toaster } from "../toaster"
+import { ConfirmDialog } from "../ui/primitives"
 import type { MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
 import { fetchPlayers } from "../api/players"
 import type { PlayerDto } from "../types/players"
@@ -294,10 +294,16 @@ export function LiveEventRow({
             : ev.type === "PENALTY_MISSED" ? "accent.red"
                 : undefined
     const label = isPenalty ? "pen" : `${ev.minute}'`
-    // An unattributed penalty kick shows "(gol)" / "(promašaj)" instead of a name.
+    // No-name events: an anonymous goal shows ONLY the goal icon (empty name);
+    // an unattributed penalty kick shows "(gol)" / "(promašaj)".
     const noName = ev.playerName == null
     const displayName =
-        ev.playerName ?? (ev.type === "PENALTY_MISSED" ? "(promašaj)" : "(gol)")
+        ev.playerName ??
+        (ev.type === "GOAL"
+            ? ""
+            : ev.type === "PENALTY_MISSED"
+                ? "(promašaj)"
+                : "(gol)")
 
     const minuteEl = (
         <Text
@@ -562,7 +568,7 @@ export function GoalscorersPanel({
             }
             if (hideEmpty) return null
             return (
-                <Text fontSize="xs" color="fg.muted">
+                <Text fontSize="xs" color="fg.muted" textAlign="center">
                     Još nema događaja.
                 </Text>
             )
@@ -786,6 +792,13 @@ function liveMatchMinute(args: {
     }
 }
 
+/**
+ * Feature flag for the "anonymous goal" button (goal counts for the team, no
+ * named scorer). Disabled for now — flip to true to re-enable. The supporting
+ * code (pickAnon, the button, the backend team-only goal path) is kept intact.
+ */
+const ANON_GOAL_ENABLED = false
+
 export function LiveGoalEntry({
     uuid,
     matchId,
@@ -823,6 +836,8 @@ export function LiveGoalEntry({
     const [minute, setMinute] = useState<string>("")
     /** playerId whose add call is in flight (for the per-button spinner). */
     const [addingId, setAddingId] = useState<number | null>(null)
+    /** teamId whose anonymous-goal add is in flight. */
+    const [addingAnon, setAddingAnon] = useState<number | null>(null)
 
     /** Snapshot the current play minute into the field (TIMER matches). */
     function fillNow() {
@@ -875,6 +890,27 @@ export function LiveGoalEntry({
             /* error toast surfaced by the http interceptor */
         } finally {
             setAddingId(null)
+        }
+    }
+
+    // Anonymous goal — counts for the team, no named scorer (privacy). Recorded
+    // with teamId instead of playerId; the timeline shows just the goal icon.
+    async function pickAnon(teamId: number) {
+        if (!minuteValid || addingId != null || addingAnon != null) return
+        setAddingAnon(teamId)
+        try {
+            await addMatchEvent(uuid, matchId, {
+                type: "GOAL",
+                playerId: null,
+                teamId,
+                minute: minuteNum,
+                assistPlayerId: null,
+            })
+            await onAdded()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setAddingAnon(null)
         }
     }
 
@@ -936,19 +972,27 @@ export function LiveGoalEntry({
             <Grid templateColumns="1fr 1fr" gap="2">
                 <PlayerPickColumn
                     teamName={team1Name}
+                    teamId={team1Id}
                     players={team1Id != null ? rosters[team1Id] ?? [] : []}
                     addingId={addingId}
                     disabled={!minuteValid}
                     sentOffPlayerIds={sentOffPlayerIds}
                     onPick={pick}
+                    showAnonGoal={ANON_GOAL_ENABLED && kind === "GOAL"}
+                    addingAnon={addingAnon}
+                    onAnon={pickAnon}
                 />
                 <PlayerPickColumn
                     teamName={team2Name}
+                    teamId={team2Id}
                     players={team2Id != null ? rosters[team2Id] ?? [] : []}
                     addingId={addingId}
                     disabled={!minuteValid}
                     sentOffPlayerIds={sentOffPlayerIds}
                     onPick={pick}
+                    showAnonGoal={ANON_GOAL_ENABLED && kind === "GOAL"}
+                    addingAnon={addingAnon}
+                    onAnon={pickAnon}
                     align="right"
                 />
             </Grid>
@@ -958,19 +1002,29 @@ export function LiveGoalEntry({
 
 function PlayerPickColumn({
     teamName,
+    teamId,
     players,
     addingId,
     disabled,
     sentOffPlayerIds,
     onPick,
+    showAnonGoal = false,
+    addingAnon = null,
+    onAnon,
     align = "left",
 }: {
     teamName: string | null
+    teamId?: number | null
     players: PlayerDto[]
     addingId: number | null
     disabled: boolean
     sentOffPlayerIds?: Set<number>
     onPick: (p: PlayerDto) => void
+    /** Show the "anonymous goal" (goal-icon only) button beneath the roster —
+     *  records a goal for the team with no named scorer (privacy). Goals only. */
+    showAnonGoal?: boolean
+    addingAnon?: number | null
+    onAnon?: (teamId: number) => void
     align?: "left" | "right"
 }) {
     return (
@@ -1016,6 +1070,23 @@ function PlayerPickColumn({
                         </Button>
                     )
                 })
+            )}
+            {/* Anonymous goal — counts for the team, no named scorer (privacy).
+                Just the goal icon, beneath the players. */}
+            {showAnonGoal && teamId != null && (
+                <Button
+                    size="sm"
+                    variant="outline"
+                    colorPalette="gray"
+                    justifyContent={align === "right" ? "flex-end" : "flex-start"}
+                    loading={addingAnon === teamId}
+                    disabled={disabled || addingId != null || (addingAnon != null && addingAnon !== teamId)}
+                    onClick={() => onAnon?.(teamId)}
+                    title="Gol bez strijelca (anonimno)"
+                    aria-label="Gol bez strijelca (anonimno)"
+                >
+                    <Text>⚽</Text>
+                </Button>
             )}
         </VStack>
     )
@@ -1664,19 +1735,14 @@ export function FoulControls({
     }
 
     // Reset is destructive → confirm via a toast action before zeroing.
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false)
     function confirmReset() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati prekršaje?",
-            description: "Akumulirani prekršaji oba tima vraćaju se na 0.",
-            duration: 10000,
-            closable: true,
-            action: { label: "Resetiraj", onClick: () => { void doReset() } },
-        })
+        setConfirmResetOpen(true)
     }
 
     // Compact single-row counter: [team1 − N +] · PREKRŠAJI ⟲ · [team2 − M +].
     return (
+        <>
         <Flex align="center" justify="space-between" gap="2" px="0.5">
             <FoulCounter count={cur1} busy={busy} onMinus={() => adjust(1, -1)} onPlus={() => adjust(1, 1)} />
             <HStack gap="1" align="center" minW="0">
@@ -1704,6 +1770,17 @@ export function FoulControls({
             </HStack>
             <FoulCounter count={cur2} busy={busy} onMinus={() => adjust(2, -1)} onPlus={() => adjust(2, 1)} />
         </Flex>
+        <ConfirmDialog
+            open={confirmResetOpen}
+            busy={busy}
+            danger
+            title="Resetirati prekršaje?"
+            description="Akumulirani prekršaji oba tima vraćaju se na 0."
+            confirmLabel="Da, resetiraj"
+            onClose={() => setConfirmResetOpen(false)}
+            onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+        />
+        </>
     )
 }
 

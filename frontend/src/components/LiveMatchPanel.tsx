@@ -12,7 +12,7 @@ import {
 import { recordKnockoutResult } from "../api/bracket"
 import { fetchSchedule } from "../api/schedule"
 import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
-import { toaster } from "../toaster"
+import { ConfirmDialog } from "../ui/primitives"
 import {
     FoulControls,
     LiveClock,
@@ -283,16 +283,9 @@ export default function LiveMatchPanel({
             setResetting(false)
         }
     }
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false)
     function confirmReset() {
-        toaster.create({
-            type: "warning",
-            title: "Resetirati utakmicu?",
-            description:
-                "Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje.",
-            duration: 8000,
-            closable: true,
-            action: { label: "Resetiraj", onClick: doReset },
-        })
+        setConfirmResetOpen(true)
     }
 
     return (
@@ -454,6 +447,17 @@ export default function LiveMatchPanel({
                     </Button>
                 </Flex>
             )}
+
+            <ConfirmDialog
+                open={confirmResetOpen}
+                busy={resetting}
+                danger
+                title="Resetirati utakmicu?"
+                description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+                confirmLabel="Da, resetiraj"
+                onClose={() => setConfirmResetOpen(false)}
+                onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+            />
         </Box>
     )
 }

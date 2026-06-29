@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.ScheduleConfigRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduleDto;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduledMatchDto;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
@@ -20,6 +21,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Match scheduler (Phase E4). One court — every match is played sequentially.
@@ -189,6 +191,52 @@ public class SchedulingService {
         return result;
     }
 
+    /**
+     * Clear the laid-out schedule — drop every kickoff time so the matches go
+     * back to "no slot". The fixtures themselves (groups / bracket) are kept;
+     * only the times are wiped, so the organizer can re-generate or set them by
+     * hand. LIVE / FINISHED matches keep their time (this is only reachable
+     * before the tournament starts anyway).
+     */
+    @Transactional
+    public void clearSchedule(Tournaments t) {
+        for (Matches m : matchesRepo.findByTournament_Id(t.getId())) {
+            if (m.getStatus() != MatchStatus.LIVE && m.getStatus() != MatchStatus.FINISHED) {
+                m.setKickoffAt(null);
+            }
+        }
+    }
+
+    /**
+     * Reorder the schedule by drag-and-drop. The time slots stay fixed — we
+     * take the existing kickoff times of the reordered matches, sort them
+     * ascending, and hand the i-th slot to the match now in the i-th position.
+     * Moving a match up therefore swaps its kickoff with the one above it.
+     * Only this tournament's not-yet-played matches that already have a slot are
+     * touched; LIVE / FINISHED matches and untimed matches are ignored.
+     */
+    @Transactional
+    public void reorderSchedule(Tournaments t, List<Long> orderedMatchIds) {
+        if (orderedMatchIds == null || orderedMatchIds.isEmpty()) return;
+        Map<Long, Matches> byId = matchesRepo.findByTournament_Id(t.getId()).stream()
+                .collect(Collectors.toMap(Matches::getId, x -> x));
+        List<Matches> ordered = new ArrayList<>();
+        for (Long id : orderedMatchIds) {
+            Matches m = byId.get(id);
+            if (m == null || m.getKickoffAt() == null) continue;
+            if (m.getStatus() == MatchStatus.LIVE || m.getStatus() == MatchStatus.FINISHED) continue;
+            ordered.add(m);
+        }
+        if (ordered.size() < 2) return;
+        List<OffsetDateTime> slots = ordered.stream()
+                .map(Matches::getKickoffAt)
+                .sorted()
+                .collect(Collectors.toList());
+        for (int i = 0; i < ordered.size(); i++) {
+            ordered.get(i).setKickoffAt(slots.get(i));
+        }
+    }
+
     /** Override one match's kickoff time. */
     @Transactional
     public void updateKickoff(Long matchId, OffsetDateTime kickoffAt) {
@@ -239,6 +287,8 @@ public class SchedulingService {
                 m.getTeam2() != null ? m.getTeam2().getName() : null,
                 m.getScore1(), m.getScore2(),
                 m.getKickoffAt(),
-                m.getStatus() != null ? m.getStatus().name() : null);
+                m.getStatus() != null ? m.getStatus().name() : null,
+                m.getWinnerTeam() != null ? m.getWinnerTeam().getId() : null,
+                m.getPenalties1(), m.getPenalties2());
     }
 }

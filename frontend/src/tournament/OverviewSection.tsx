@@ -37,7 +37,7 @@ import {
 } from "react-icons/fi"
 import { FaTrophy } from "react-icons/fa"
 
-import type { TournamentDetails, TournamentFormat, BracketFill } from "../types/tournaments"
+import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { LocationAutocomplete } from "../components/LocationAutocomplete"
 import LocationMapPicker from "../components/LocationMapPicker"
 import { FormatSketch } from "../components/FormatSketch"
@@ -525,64 +525,10 @@ export default function OverviewSection(props: OverviewSectionProps) {
                         <FormatSketch format={editForm.format} />
 
                         {editForm.format === "GROUPS_KNOCKOUT" && (
-                            <>
-                                <Box
-                                    display="grid"
-                                    gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
-                                    gap="4"
-                                >
-                                    <Field.Root>
-                                        <Field.Label>Broj grupa</Field.Label>
-                                        <Input
-                                            type="number"
-                                            inputMode="numeric"
-                                            min={2}
-                                            disabled={tournamentStarted}
-                                            value={editForm.groupCount}
-                                            onChange={(e) => patchEdit("groupCount", sanitizeInt(e.target.value))}
-                                        />
-                                    </Field.Root>
-                                    <Field.Root>
-                                        <Field.Label>Ekipa prolazi iz grupe</Field.Label>
-                                        <Input
-                                            type="number"
-                                            inputMode="numeric"
-                                            min={1}
-                                            disabled={tournamentStarted}
-                                            value={editForm.advancePerGroup}
-                                            onChange={(e) => patchEdit("advancePerGroup", sanitizeInt(e.target.value))}
-                                        />
-                                    </Field.Root>
-                                </Box>
-
-                                <Field.Root>
-                                    <Field.Label>Popunjavanje eliminacijske ljestvice</Field.Label>
-                                    <RadioGroup.Root
-                                        value={editForm.bracketFill}
-                                        onValueChange={(v) =>
-                                            patchEdit("bracketFill", (typeof v === "string" ? v : (v as any)?.value) as BracketFill)
-                                        }
-                                        disabled={tournamentStarted}
-                                    >
-                                        <VStack align="stretch" gap="2">
-                                            <RadioGroup.Item value="BYES">
-                                                <RadioGroup.ItemHiddenInput />
-                                                <RadioGroup.ItemIndicator />
-                                                <RadioGroup.ItemText>
-                                                    Slobodan prolaz — najbolje ekipe preskaču prvo kolo kad broj ekipa nije potpun
-                                                </RadioGroup.ItemText>
-                                            </RadioGroup.Item>
-                                            <RadioGroup.Item value="WILDCARDS">
-                                                <RadioGroup.ItemHiddenInput />
-                                                <RadioGroup.ItemIndicator />
-                                                <RadioGroup.ItemText>
-                                                    Najbolji trećeplasirani — dodatne ekipe popunjavaju ljestvicu
-                                                </RadioGroup.ItemText>
-                                            </RadioGroup.Item>
-                                        </VStack>
-                                    </RadioGroup.Root>
-                                </Field.Root>
-                            </>
+                            <Box fontSize="sm" color="fg.muted">
+                                Broj grupa i koliko ekipa prolazi dalje biraju se kod izvlačenja
+                                grupa (tab Ždrijeb), prema broju prijavljenih ekipa.
+                            </Box>
                         )}
 
                         {editForm.format === "KNOCKOUT_ONLY" && (
@@ -941,7 +887,8 @@ function DetailsReadView({
                                 accent="var(--chakra-colors-accent-amber)"
                                 icon={<FiUsers size={12} />}
                                 label="EKIPE"
-                                value={`${teamCount}${typeof t.maxTeams === "number" ? ` / ${t.maxTeams}` : ""}`}
+                                value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
+                                hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
                             />
                             {typeof t.entryPrice === "number" ? (
                                 <AccentStat

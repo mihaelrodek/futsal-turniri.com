@@ -36,7 +36,7 @@ import { FormSectionCard } from "../ui/primitives"
 import { getProfile } from "../api/userMe"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
-import type { BracketFill, CreateTournamentPayload, TournamentFormat } from "../types/tournaments"
+import type { CreateTournamentPayload, TournamentFormat } from "../types/tournaments"
 
 // Register the Croatian locale once for the calendar UI (month/day names,
 // week-starts-Monday, etc.). The format itself is forced via the dateFormat
@@ -58,9 +58,6 @@ type FormState = {
     entryPrice: string
     maxTeams: string
     format: TournamentFormat
-    groupCount: string
-    advancePerGroup: string
-    bracketFill: BracketFill
     rewards: Record<RewardPlace, RewardRow>
     contactName: string
     contactPhoneCountry: string
@@ -202,9 +199,6 @@ export default function CreateTournamentPage() {
         entryPrice: "30",
         maxTeams: "",
         format: "GROUPS_KNOCKOUT",
-        groupCount: "4",
-        advancePerGroup: "2",
-        bracketFill: "BYES",
         rewards: {
             first: { amount: "", note: "" },
             second: { amount: "", note: "" },
@@ -267,36 +261,6 @@ export default function CreateTournamentPage() {
         })()
         return () => { cancelled = true }
     }, [user?.uid])
-
-    // Suggested number of groups — aim for groups of ~4 teams. The organiser
-    // can override the "Broj grupa" field; this just powers the "Primijeni"
-    // hint shown beneath it.
-    const suggestedGroups = useMemo(() => {
-        const n = parseInt(form.maxTeams || "0", 10)
-        if (!Number.isFinite(n) || n < 4) return 2
-        return Math.max(2, Math.ceil(n / 4))
-    }, [form.maxTeams])
-
-    // Human-readable preview of the chosen group/knockout structure.
-    const formatPreview = useMemo(() => {
-        if (form.format === "KNOCKOUT_ONLY") return null
-        const teams = parseInt(form.maxTeams || "0", 10) || 0
-        const groups = parseInt(form.groupCount || "0", 10) || 0
-        const adv = parseInt(form.advancePerGroup || "0", 10) || 0
-        if (groups < 2 || adv < 1) return null
-        const qualifiers = groups * adv
-        let sizes = ""
-        if (teams >= groups) {
-            const per = Math.floor(teams / groups)
-            const rem = teams % groups
-            sizes =
-                rem === 0
-                    ? ` (po ${per})`
-                    : ` (${rem}×${per + 1} + ${groups - rem}×${per})`
-        }
-        return `${teams || "?"} ekipa → ${groups} grupa${sizes}, prolazi ${adv} `
-            + `iz svake → ${qualifiers} ekipa u eliminaciji`
-    }, [form.format, form.maxTeams, form.groupCount, form.advancePerGroup])
 
     // required-field summary for the sticky bar. Rewards are optional now —
     // a tournament can have no prize fund (or only trophies).
@@ -423,15 +387,11 @@ export default function CreateTournamentPage() {
             maxTeams: maxTeamsSafe,
 
             format: form.format,
-            groupCount:
-                form.format === "GROUPS_KNOCKOUT"
-                    ? (parseInt(form.groupCount || "0", 10) || null)
-                    : null,
-            advancePerGroup:
-                form.format === "GROUPS_KNOCKOUT"
-                    ? (parseInt(form.advancePerGroup || "0", 10) || null)
-                    : null,
-            bracketFill: form.format === "GROUPS_KNOCKOUT" ? form.bracketFill : null,
+            // Group count, advance-per-group and bracket fill are chosen later
+            // (at the group draw / bracket generation), not at creation.
+            groupCount: null,
+            advancePerGroup: null,
+            bracketFill: null,
 
             entryPrice: Number.isFinite(entrySafe as number) ? (entrySafe as number) : 0,
 
@@ -968,86 +928,17 @@ export default function CreateTournamentPage() {
                         <FormatSketch format={form.format} />
 
                         {form.format === "GROUPS_KNOCKOUT" && (
-                            <>
-                                <Box
-                                    display="grid"
-                                    gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
-                                    gap="4"
-                                >
-                                    <Field.Root>
-                                        <Field.Label>Broj grupa</Field.Label>
-                                        <Input
-                                            type="number"
-                                            inputMode="numeric"
-                                            min={2}
-                                            value={form.groupCount}
-                                            onChange={(e) => onChange("groupCount", sanitizeInt(e.target.value))}
-                                        />
-                                        <Field.HelperText>
-                                            Prijedlog za {form.maxTeams || "?"} ekipa: {suggestedGroups}{" "}
-                                            <chakra.button
-                                                type="button"
-                                                color="blue.500"
-                                                textDecoration="underline"
-                                                cursor="pointer"
-                                                onClick={() => onChange("groupCount", String(suggestedGroups))}
-                                            >
-                                                Primijeni
-                                            </chakra.button>
-                                        </Field.HelperText>
-                                    </Field.Root>
-                                    <Field.Root>
-                                        <Field.Label>Ekipa prolazi iz grupe</Field.Label>
-                                        <Input
-                                            type="number"
-                                            inputMode="numeric"
-                                            min={1}
-                                            value={form.advancePerGroup}
-                                            onChange={(e) => onChange("advancePerGroup", sanitizeInt(e.target.value))}
-                                        />
-                                    </Field.Root>
-                                </Box>
-
-                                <Field.Root>
-                                    <Field.Label>Popunjavanje eliminacijske ljestvice</Field.Label>
-                                    <RadioGroup.Root
-                                        value={form.bracketFill}
-                                        onValueChange={(v) =>
-                                            onChange("bracketFill", (typeof v === "string" ? v : (v as any)?.value) as BracketFill)
-                                        }
-                                    >
-                                        <VStack align="stretch" gap="2">
-                                            <RadioGroup.Item value="BYES">
-                                                <RadioGroup.ItemHiddenInput />
-                                                <RadioGroup.ItemIndicator />
-                                                <RadioGroup.ItemText>
-                                                    Slobodan prolaz — najbolje ekipe preskaču prvo kolo kad broj ekipa nije potpun
-                                                </RadioGroup.ItemText>
-                                            </RadioGroup.Item>
-                                            <RadioGroup.Item value="WILDCARDS">
-                                                <RadioGroup.ItemHiddenInput />
-                                                <RadioGroup.ItemIndicator />
-                                                <RadioGroup.ItemText>
-                                                    Najbolji trećeplasirani — dodatne ekipe popunjavaju ljestvicu
-                                                </RadioGroup.ItemText>
-                                            </RadioGroup.Item>
-                                        </VStack>
-                                    </RadioGroup.Root>
-                                </Field.Root>
-
-                                {formatPreview && (
-                                    <Box
-                                        fontSize="sm"
-                                        color="fg.muted"
-                                        bg="bg.subtle"
-                                        rounded="md"
-                                        px="3"
-                                        py="2"
-                                    >
-                                        {formatPreview}
-                                    </Box>
-                                )}
-                            </>
+                            <Box
+                                fontSize="sm"
+                                color="fg.muted"
+                                bg="bg.subtle"
+                                rounded="md"
+                                px="3"
+                                py="2"
+                            >
+                                Broj grupa i koliko ekipa prolazi dalje birat ćeš kasnije — kod
+                                izvlačenja grupa, prema broju prijavljenih ekipa.
+                            </Box>
                         )}
 
                         {form.format === "KNOCKOUT_ONLY" && (
@@ -1179,7 +1070,7 @@ export default function CreateTournamentPage() {
                         : null
                     const formatStr =
                         form.format === "GROUPS_KNOCKOUT"
-                            ? `Grupe + eliminacija (${form.groupCount || "?"} grupe, prolazi ${form.advancePerGroup || "?"})`
+                            ? "Grupe + eliminacija"
                             : "Samo eliminacija"
                     const posterSrc = posterPreviewUrl || form.posterUrl || null
                     const phoneStr = form.contactPhone.trim()

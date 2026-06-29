@@ -38,6 +38,8 @@ import {
     featureTournament,
     unfeatureTournament,
 } from "../api/tournaments"
+import { fetchSchedule } from "../api/schedule"
+import type { ScheduledMatch } from "../types/schedule"
 import { listPresets } from "../api/userTeamPresets"
 import type { UserTeamPreset } from "../api/userTeamPresets"
 import { listTeamRequestsForTournament } from "../api/teamRequests"
@@ -47,6 +49,7 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
 import GroupsTab from "../components/GroupsTab"
 import BracketTab from "../components/BracketTab"
 import ScheduleTab from "../components/ScheduleTab"
+import { MatchTimelineModal } from "../components/liveMatch"
 
 import {
     buildEditForm,
@@ -221,6 +224,22 @@ export default function TournamentDetailsPage() {
     const [deleteTournamentOpen, setDeleteTournamentOpen] = useState(false)
     const [deletingTournament, setDeletingTournament] = useState(false)
     const [infoTeamId, setInfoTeamId] = useState<number | null>(null)
+    /** All tournament matches (group + knockout), loaded for the team-info
+     *  history dialog. Fetched lazily when a team's info is opened. */
+    const [infoMatches, setInfoMatches] = useState<ScheduledMatch[]>([])
+    /** Match whose read-only timeline modal is open (from a history row). */
+    const [historyMatch, setHistoryMatch] = useState<ScheduledMatch | null>(null)
+
+    // Load the full match list for the team-info history dialog the moment a
+    // team's info is opened (lazy — most visits never open it).
+    useEffect(() => {
+        if (!uuid || infoTeamId == null) return
+        let cancelled = false
+        fetchSchedule(uuid)
+            .then((s) => { if (!cancelled) setInfoMatches(s.matches) })
+            .catch(() => { /* leave previous — dialog shows the empty state */ })
+        return () => { cancelled = true }
+    }, [uuid, infoTeamId])
 
     /* ---------- Details edit mode ---------- */
     const [editingDetails, setEditingDetails] = useState(false)
@@ -451,12 +470,6 @@ export default function TournamentDetailsPage() {
     /* ──────────────────────────────────────────────────────────────────────
        Derived values
        ────────────────────────────────────────────────────────────────────── */
-    const teamById = useMemo(() => {
-        const m = new Map<number, TeamShort>()
-        teams.forEach((p) => m.set(p.id, p))
-        return m
-    }, [teams])
-
     // organizer = admin OR creator.
     const canEdit = !!t && (isAdmin || (!!user?.uid && user.uid === t.createdByUid))
 
@@ -988,6 +1001,7 @@ export default function TournamentDetailsPage() {
                                     teams={teams}
                                     canEdit={canEdit}
                                     tournamentStarted={tournamentStarted}
+                                    onGoToSchedule={() => setSection("raspored")}
                                 />
                             ) : (
                                 <BracketTab
@@ -1038,10 +1052,21 @@ export default function TournamentDetailsPage() {
             <TeamInfoDialog
                 teamId={infoTeamId}
                 teams={teams}
-                rounds={[]}
-                teamById={teamById}
+                matches={infoMatches}
                 onClose={() => setInfoTeamId(null)}
+                onSelectMatch={(m) => {
+                    setInfoTeamId(null)
+                    setHistoryMatch(m)
+                }}
             />
+
+            {historyMatch && uuid && (
+                <MatchTimelineModal
+                    uuid={uuid}
+                    match={historyMatch}
+                    onClose={() => setHistoryMatch(null)}
+                />
+            )}
 
             <DeleteTournamentDialog
                 open={deleteTournamentOpen}
