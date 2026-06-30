@@ -460,6 +460,7 @@ export function GoalscorersPanel({
     matchId,
     team1Id,
     team2Id,
+    halfLengthMin,
     pollMs,
     hideEmpty = false,
     emptyNote,
@@ -469,6 +470,10 @@ export function GoalscorersPanel({
     matchId: number
     team1Id: number | null
     team2Id: number | null
+    /** Half length (min) — splits the regulation timeline into "1./2.
+     *  poluvrijeme" sections (an event's half = minute < / >= this). When
+     *  absent the regulation events render as a single section. */
+    halfLengthMin?: number | null
     /** When set, refetches events on this interval so live cards on the
      *  /uzivo page stay in sync as goals are scored. Leave undefined for
      *  the static "finished match" timeline. */
@@ -590,186 +595,186 @@ export function GoalscorersPanel({
             )
         }
 
+        // Group events into vertical-timeline sections. Regulation goals/cards
+        // split into 1./2. poluvrijeme when the half length is known (an event's
+        // half = its minute below / at-or-above the boundary); penalty-shootout
+        // kicks always get their own "Penali" section.
+        const sections: { key: string; title: string; events: MatchEventDto[] }[] = []
+        const hl = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
+        if (regulation.length > 0) {
+            if (hl != null) {
+                const first = regulation.filter((e) => e.minute < hl)
+                const second = regulation.filter((e) => e.minute >= hl)
+                if (first.length) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
+                if (second.length) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
+            } else {
+                // No half boundary known — one headerless timeline section (the
+                // parent already labels the whole thing "Tijek utakmice").
+                sections.push({ key: "reg", title: "", events: regulation })
+            }
+        }
+        if (penalties.length > 0) {
+            sections.push({ key: "pen", title: "Penali", events: penalties })
+        }
+
         return (
-            <VStack align="stretch" gap="0" w="full">
-                {regulation.map((evt) => {
-                    const isLeft = evt.teamId === t1Id
-                    const iconCode = EVENT_ICON[evt.type] ?? "2022"
-                    const icon = String.fromCodePoint(parseInt(iconCode, 16))
-
-                    if (isLeft) {
-                        return (
-                            <Box
-                                key={evt.id}
-                                display="grid"
-                                gridTemplateColumns="1fr 1fr"
-                                w="full"
-                                py="0.5"
-                            >
-                                <Flex align="flex-start" gap="1" pr="2">
-                                    <Text
-                                        fontSize="xs"
-                                        fontWeight="bold"
-                                        color="fg"
-                                        whiteSpace="nowrap"
-                                        flexShrink={0}
-                                    >
-                                        {evt.minute}&apos;
-                                    </Text>
-                                    <Text fontSize="xs" flexShrink={0} lineHeight="1.4">
-                                        {icon}
-                                    </Text>
-                                    <VStack align="flex-start" gap="0" minW="0">
-                                        <Text fontSize="xs" color="fg" lineHeight="1.4" truncate>
-                                            {evt.playerName ?? (evt.type === "GOAL" ? "Nepoznati strijelac" : "")}
-                                        </Text>
-                                        {evt.type === "GOAL" && evt.assistPlayerName && (
-                                            <Text
-                                                fontSize="2xs"
-                                                color="fg.muted"
-                                                lineHeight="1.3"
-                                                truncate
-                                            >
-                                                asist. {evt.assistPlayerName}
-                                            </Text>
-                                        )}
-                                    </VStack>
-                                </Flex>
-                                <Box />
-                            </Box>
-                        )
-                    }
-
-                    return (
-                        <Box
-                            key={evt.id}
-                            display="grid"
-                            gridTemplateColumns="1fr 1fr"
-                            w="full"
-                            py="0.5"
-                        >
-                            <Box />
-                            <Flex align="flex-start" gap="1" pl="2" justify="flex-end">
-                                <VStack align="flex-end" gap="0" minW="0">
-                                    <Text
-                                        fontSize="xs"
-                                        color="fg"
-                                        lineHeight="1.4"
-                                        truncate
-                                        textAlign="right"
-                                    >
-                                        {evt.playerName ?? (evt.type === "GOAL" ? "Nepoznati strijelac" : "")}
-                                    </Text>
-                                    {evt.type === "GOAL" && evt.assistPlayerName && (
-                                        <Text
-                                            fontSize="2xs"
-                                            color="fg.muted"
-                                            lineHeight="1.3"
-                                            truncate
-                                            textAlign="right"
-                                        >
-                                            asist. {evt.assistPlayerName}
-                                        </Text>
-                                    )}
-                                </VStack>
-                                <Text fontSize="xs" flexShrink={0} lineHeight="1.4">
-                                    {icon}
-                                </Text>
+            <Box position="relative" w="full">
+                {/* Continuous dashed central line behind everything; the dots
+                    sit on it and the section-header chips mask it behind their
+                    text. The left/right labels never cross the centre, so the
+                    line only ever shows in the empty middle column. */}
+                <Box
+                    position="absolute"
+                    top="3"
+                    bottom="3"
+                    left="50%"
+                    transform="translateX(-50%)"
+                    borderLeftWidth="2px"
+                    borderColor="border"
+                    borderStyle="dashed"
+                    zIndex={0}
+                />
+                <VStack align="stretch" gap="0" w="full" position="relative" zIndex={1}>
+                {sections.map((sec) => (
+                    <Box key={sec.key} w="full">
+                        {/* Section header — centred, masks the line behind it. */}
+                        {sec.title && (
+                            <Flex justify="center" py="2">
                                 <Text
+                                    px="3"
+                                    bg="bg.panel"
                                     fontSize="xs"
-                                    fontWeight="bold"
-                                    color="fg"
+                                    fontWeight={700}
+                                    letterSpacing="0.04em"
+                                    color="fg.muted"
+                                    textAlign="center"
                                     whiteSpace="nowrap"
-                                    flexShrink={0}
                                 >
-                                    {evt.minute}&apos;
+                                    {sec.title}
                                 </Text>
                             </Flex>
-                        </Box>
-                    )
-                })}
-
-                {/* Penalty shootout — its own clearly-marked section. Each kick
-                    shows the shooter and a ✓ (scored) / ✗ (missed); left team1,
-                    right team2. */}
-                {penalties.length > 0 && (
-                    <>
-                        <Flex align="center" gap="2" mt="2" mb="1">
-                            <Box flex="1" h="1px" bg="border" />
-                            <Text
-                                fontSize="2xs"
-                                fontWeight={800}
-                                letterSpacing="0.12em"
-                                textTransform="uppercase"
-                                color="fg.muted"
-                                whiteSpace="nowrap"
-                            >
-                                Penali
-                            </Text>
-                            <Box flex="1" h="1px" bg="border" />
-                        </Flex>
-                        {penalties.map((evt) => {
-                            const isLeft = evt.teamId === t1Id
-                            const scored = evt.type === "PENALTY_GOAL"
-                            const mark = scored ? "✓" : "✗"
-                            const markColor = scored ? "pitch.500" : "accent.red"
-                            // No named taker → "(gol)" / "(promašaj)".
-                            const noName = evt.playerName == null
-                            const kickName =
-                                evt.playerName ?? (scored ? "(gol)" : "(promašaj)")
-                            return (
-                                <Box
-                                    key={evt.id}
-                                    display="grid"
-                                    gridTemplateColumns="1fr 1fr"
-                                    w="full"
-                                    py="0.5"
-                                >
-                                    {isLeft ? (
-                                        <Flex align="center" gap="1.5" pr="2">
-                                            <Box as="span" color={markColor} fontWeight={800} fontSize="xs">
-                                                {mark}
-                                            </Box>
-                                            <Text
-                                                fontSize="xs"
-                                                color={noName ? "fg.muted" : "fg"}
-                                                fontStyle={noName ? "italic" : undefined}
-                                                truncate
-                                            >
-                                                {kickName}
-                                            </Text>
-                                        </Flex>
-                                    ) : (
-                                        <Box />
-                                    )}
-                                    {isLeft ? (
-                                        <Box />
-                                    ) : (
-                                        <Flex align="center" gap="1.5" pl="2" justify="flex-end">
-                                            <Text
-                                                fontSize="xs"
-                                                color={noName ? "fg.muted" : "fg"}
-                                                fontStyle={noName ? "italic" : undefined}
-                                                truncate
-                                                textAlign="right"
-                                            >
-                                                {kickName}
-                                            </Text>
-                                            <Box as="span" color={markColor} fontWeight={800} fontSize="xs">
-                                                {mark}
-                                            </Box>
-                                        </Flex>
-                                    )}
-                                </Box>
-                            )
-                        })}
-                    </>
-                )}
-            </VStack>
+                        )}
+                        {sec.events.map((evt) => (
+                            <TimelineEventLine
+                                key={evt.id}
+                                evt={evt}
+                                isLeft={evt.teamId === t1Id}
+                            />
+                        ))}
+                    </Box>
+                ))}
+                </VStack>
+            </Box>
         )
     }
 
     return null
+}
+
+/**
+ * One event on the centred match timeline: a coloured dot sitting on the
+ * central vertical line, with the event label branching to its team's side
+ * (team1 → left, team2 → right). The icon always sits nearest the line.
+ */
+function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolean }) {
+    const isPenGoal = evt.type === "PENALTY_GOAL"
+    const isPenMiss = evt.type === "PENALTY_MISSED"
+    const isPenalty = isPenGoal || isPenMiss
+
+    // Icon nearest the line: ⚽ for (penalty) goals, ❌ for a missed penalty,
+    // 🟨 / 🟥 for cards.
+    const icon = isPenMiss
+        ? "❌"
+        : isPenGoal
+            ? "⚽"
+            : EVENT_ICON[evt.type]
+                ? String.fromCodePoint(parseInt(EVENT_ICON[evt.type], 16))
+                : "•"
+
+    // Dot colour: goals blue, missed penalty / red card red, yellow card amber.
+    const dotColor =
+        isPenMiss || evt.type === "RED_CARD"
+            ? "red.solid"
+            : evt.type === "YELLOW_CARD"
+                ? "yellow.solid"
+                : "blue.solid"
+
+    // Penalty kicks carry no meaningful match minute; regulation events do.
+    const showMinute = !isPenalty
+    const noName = evt.playerName == null
+    const name =
+        evt.playerName ??
+        (evt.type === "GOAL" || isPenGoal
+            ? "Nepoznati strijelac"
+            : isPenMiss
+                ? "(promašaj)"
+                : "")
+
+    const minuteEl = showMinute ? (
+        <Text fontSize="xs" fontWeight="bold" color="fg" whiteSpace="nowrap" flexShrink={0}>
+            {evt.minute}&apos;
+        </Text>
+    ) : null
+    const iconEl = (
+        <Text fontSize="xs" flexShrink={0} lineHeight="1.4">
+            {icon}
+        </Text>
+    )
+    const nameEl = (
+        <VStack align={isLeft ? "flex-end" : "flex-start"} gap="0" minW="0">
+            <Text
+                fontSize="xs"
+                color={noName ? "fg.muted" : "fg"}
+                fontStyle={noName ? "italic" : undefined}
+                lineHeight="1.4"
+                truncate
+                textAlign={isLeft ? "right" : "left"}
+            >
+                {name}
+            </Text>
+            {evt.type === "GOAL" && evt.assistPlayerName && (
+                <Text
+                    fontSize="2xs"
+                    color="fg.muted"
+                    lineHeight="1.3"
+                    truncate
+                    textAlign={isLeft ? "right" : "left"}
+                >
+                    asist. {evt.assistPlayerName}
+                </Text>
+            )}
+        </VStack>
+    )
+
+    return (
+        <Box display="grid" gridTemplateColumns="1fr 28px 1fr" w="full" alignItems="stretch">
+            {/* Left cell (team1) — pushed toward the centre line. */}
+            <Flex align="center" justify="flex-end" gap="1.5" pr="2" py="1.5" minW="0" overflow="hidden">
+                {isLeft && (
+                    <>
+                        {nameEl}
+                        {minuteEl}
+                        {iconEl}
+                    </>
+                )}
+            </Flex>
+            {/* Centre: the coloured dot, sitting on the continuous central
+                line drawn by the panel behind this row. */}
+            <Flex align="center" justify="center">
+                <Box boxSize="10px" rounded="full" bg={dotColor} />
+            </Flex>
+            {/* Right cell (team2) — pushed toward the centre line. */}
+            <Flex align="center" justify="flex-start" gap="1.5" pl="2" py="1.5" minW="0" overflow="hidden">
+                {!isLeft && (
+                    <>
+                        {iconEl}
+                        {minuteEl}
+                        {nameEl}
+                    </>
+                )}
+            </Flex>
+        </Box>
+    )
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -1594,10 +1599,13 @@ type TimelineMatch = {
 export function MatchTimelineModal({
     uuid,
     match,
+    halfLengthMin,
     onClose,
 }: {
     uuid: string
     match: TimelineMatch
+    /** Half length (min) — splits the timeline into 1./2. poluvrijeme. */
+    halfLengthMin?: number | null
     onClose: () => void
 }) {
     const isLive = match.status === "LIVE"
@@ -1685,6 +1693,7 @@ export function MatchTimelineModal({
                                 matchId={match.matchId}
                                 team1Id={match.team1Id ?? null}
                                 team2Id={match.team2Id ?? null}
+                                halfLengthMin={halfLengthMin}
                                 pollMs={isLive ? 6000 : undefined}
                                 hideEmpty={!isLive}
                                 emptyNote={

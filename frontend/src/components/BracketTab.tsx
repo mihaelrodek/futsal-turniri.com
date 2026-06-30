@@ -228,7 +228,13 @@ function useDragPan() {
             top: el.scrollTop,
             moved: false,
         }
-        setDragging(true)
+        // NOTE: do NOT setDragging(true) here. A press that turns out to be a
+        // plain click must not trigger a re-render between pointerdown and the
+        // click — the library re-renders each match inside an SVG foreignObject,
+        // which would replace the card's DOM node and the browser would then
+        // never fire the click (so "open timeline" silently failed on desktop;
+        // touch was unaffected because it returns early above). Flip to the
+        // grabbing cursor only once a real drag actually starts (in move).
     }
     const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
         const d = drag.current
@@ -237,7 +243,10 @@ function useDragPan() {
         if (!el) return
         const dx = e.clientX - d.x
         const dy = e.clientY - d.y
-        if (!d.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) d.moved = true
+        if (!d.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+            d.moved = true
+            setDragging(true) // real drag → grabbing cursor (and click-swallow)
+        }
         el.scrollLeft = d.left - dx
         el.scrollTop = d.top - dy
     }
@@ -1476,6 +1485,7 @@ export default function BracketTab({
                 <MatchTimelineModal
                     uuid={uuid}
                     match={timelineMatch}
+                    halfLengthMin={halfLengthMin}
                     onClose={() => setTimelineMatch(null)}
                 />
             )}

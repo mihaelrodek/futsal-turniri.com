@@ -60,8 +60,11 @@ public class Tournaments {
     @Column(length = 20, nullable = false)
     private TournamentStatus status = TournamentStatus.DRAFT;
 
-    @Column(name = "max_teams", nullable = false)
-    private Integer maxTeams = 16;
+    /** Maximum number of teams. Null means "no cap" (unlimited) — the organizer
+     *  left it blank on create/edit. Not defaulted to a number, so blank stays
+     *  unlimited instead of silently becoming a 16-team ceiling. */
+    @Column(name = "max_teams")
+    private Integer maxTeams;
 
     // --- Format (Phase E) ---
     /** Structural format of the tournament. See {@link TournamentFormat}. */
@@ -242,7 +245,7 @@ public class Tournaments {
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();     // 👈 generate server-side
         if (status == null) status = TournamentStatus.DRAFT;
-        if (maxTeams == null) maxTeams = 16;
+        // maxTeams left null on purpose = unlimited; do NOT coerce to a number.
         if (format == null) format = TournamentFormat.GROUPS_KNOCKOUT;
         if (entryPrice == null) entryPrice = BigDecimal.ZERO;
     }

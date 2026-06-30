@@ -1027,6 +1027,7 @@ export default function GroupsTab({
                 <MatchTimelineModal
                     uuid={uuid}
                     match={timelineMatch}
+                    halfLengthMin={halfLengthMin}
                     onClose={() => setTimelineMatch(null)}
                 />
             )}

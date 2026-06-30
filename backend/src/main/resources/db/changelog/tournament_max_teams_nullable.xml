@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        max_teams is now optional: a NULL value means "no cap" (unlimited teams).
+        It was created NOT NULL with a hard 16 default, which silently turned a
+        blank "max teams" field into a 16-team ceiling. Drop the NOT NULL so the
+        organizer's "unlimited" choice can actually be stored. Existing rows keep
+        their current value (we can't tell an intentional 16 from a defaulted one).
+    -->
+    <changeSet id="2026-06-30-tournament-max-teams-nullable" author="mrodek">
+        <dropNotNullConstraint tableName="tournaments" columnName="max_teams" columnDataType="int"/>
+        <!-- Drop the DB-level 16 default too, so an insert that omits the column
+             stays NULL (unlimited) instead of falling back to 16. -->
+        <dropDefaultValue tableName="tournaments" columnName="max_teams" columnDataType="int"/>
+    </changeSet>
+</databaseChangeLog>

@@ -160,6 +160,7 @@ export function LiveMatchRow({
                         matchId={match.matchId}
                         team1Id={null}
                         team2Id={null}
+                        halfLengthMin={match.halfLengthMin}
                     />
                 </Box>
             )}

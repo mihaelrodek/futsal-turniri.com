@@ -202,7 +202,7 @@ public interface TournamentMapper {
     @AfterMapping
     default void applyDefaults(CreateTournamentRequest req, @MappingTarget Tournaments t) {
         if (t.getStatus() == null) t.setStatus(TournamentStatus.DRAFT);
-        if (t.getMaxTeams() == null) t.setMaxTeams(16);
+        // maxTeams left null = unlimited (no cap); never coerce it to a number.
         if (t.getFormat() == null) t.setFormat(TournamentFormat.GROUPS_KNOCKOUT);
 
         if (t.getEntryPrice() == null) t.setEntryPrice(BigDecimal.ZERO);

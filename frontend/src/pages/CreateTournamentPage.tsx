@@ -900,7 +900,6 @@ export default function CreateTournamentPage() {
                 >
                     <VStack align="stretch" gap="4">
                         <Field.Root>
-                            <Field.Label>Format</Field.Label>
                             <RadioGroup.Root
                                 value={form.format}
                                 onValueChange={(v) =>

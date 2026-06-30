@@ -29,7 +29,7 @@ public record CreateTournamentRequest(
         String bannerUrl,
 
         @Min(value = 2, message = "maxTeams must be at least 2")
-        Integer maxTeams,                      // default 16 if null
+        Integer maxTeams,                      // null = unlimited (no cap)
 
         // --- Format (Phase E) ---
         TournamentFormat format,               // GROUPS_KNOCKOUT (default) | KNOCKOUT_ONLY

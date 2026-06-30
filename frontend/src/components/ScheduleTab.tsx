@@ -217,12 +217,15 @@ function MatchRow({
     tournamentLocation,
     tournamentSlug,
     slotMinutes,
+    halfLengthMin,
     onTimeChange,
     canEdit,
     isNext = false,
 }: {
     match: ScheduledMatch
     tournamentUuid: string
+    /** Half length (min) — splits the expanded timeline into 1./2. poluvrijeme. */
+    halfLengthMin?: number | null
     /** Surfaced into the ICS SUMMARY so the calendar entry reads
      *  "Team A vs Team B — Tournament name". */
     tournamentName: string
@@ -245,7 +248,9 @@ function MatchRow({
     const hasScore = match.score1 != null && match.score2 != null
     const isLive = match.status === "LIVE"
     const isFinished = match.status === "FINISHED"
-    const canExpand = true // any match expands to show its timeline (tijek)
+    // Only a started match (LIVE or FINISHED) has a timeline to expand; a match
+    // that hasn't kicked off yet can't be expanded.
+    const canExpand = isLive || isFinished
     // Scoreboard layout (team-left / score / team-right) for both LIVE
     // and FINISHED — mirrors the LivePage card design so the user has
     // one consistent mental model across the two screens.
@@ -409,8 +414,8 @@ function MatchRow({
                     gridTemplateColumns="1fr auto 1fr"
                     alignItems="center"
                     gap={{ base: "2", sm: "4" }}
-                    cursor="pointer"
-                    onClick={() => setExpanded((v) => !v)}
+                    cursor={canExpand ? "pointer" : "default"}
+                    onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
                 >
                     <Text
                         fontSize="sm"
@@ -485,6 +490,7 @@ function MatchRow({
                         matchId={match.matchId}
                         team1Id={match.team1Id ?? null}
                         team2Id={match.team2Id ?? null}
+                        halfLengthMin={halfLengthMin}
                         hideEmpty={!isLive}
                         emptyNote={
                             isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : undefined
@@ -773,6 +779,7 @@ export default function ScheduleTab({
                 tournamentLocation={tournamentLocation}
                 tournamentSlug={tournamentSlug}
                 slotMinutes={slot}
+                halfLengthMin={schedule?.halfLengthMin}
                 onTimeChange={onTimeChange}
                 canEdit={scheduleEditable && m.status === "SCHEDULED"}
                 isNext={m.matchId === nextMatchId}

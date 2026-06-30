@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
     Box,
     Button,
@@ -40,6 +40,8 @@ import { fetchLiveMatches, pickFeaturedFirst, type LiveMatch } from "../api/live
 import { useUserLocation } from "../hooks/useUserLocation"
 import { haversineKm } from "../utils/distance"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { useLiveSocket } from "../hooks/useLiveSocket"
+import { usePolling } from "../hooks/usePolling"
 import {
     BallIcon,
     DateStamp,
@@ -1067,6 +1069,25 @@ export default function TournamentsPage() {
         setRadiusKm(RADIUS_MAX_KM)
     }
 
+    // Featured live match shown in the home hero. Promote a match from the
+    // admin-featured tournament when one is live; otherwise the first live
+    // match. `pickFeaturedFirst` sorts: featured-tournament matches first
+    // (most recently featured wins on ties), then by liveStartedAt asc.
+    const loadLive = useCallback(async () => {
+        try {
+            const live = await fetchLiveMatches()
+            setLiveTop(pickFeaturedFirst(live)[0] ?? null)
+        } catch {
+            /* keep the last value; the poll / socket will retry */
+        }
+    }, [])
+
+    // Keep the hero current: poll while the tab is visible, and refetch the
+    // instant the backend pushes a live change (goal, finish, …) so a goal
+    // shows on the home hero immediately instead of on the next reload.
+    usePolling(loadLive, 15_000)
+    useLiveSocket(() => { void loadLive() })
+
     useEffect(() => {
         let cancelled = false
         ;(async () => {
@@ -1075,23 +1096,15 @@ export default function TournamentsPage() {
                 setError(null)
                 setLoadingFinished(true)
                 setErrorFinished(null)
-                const [dataUpcoming, dataFinishedPage, finishedTotalCount, live] = await Promise.all([
+                const [dataUpcoming, dataFinishedPage, finishedTotalCount] = await Promise.all([
                     fetchTournaments("upcoming"),
                     fetchTournaments("finished", { offset: 0, limit: FINISHED_PREVIEW_LIMIT }),
                     fetchTournamentsCount("finished"),
-                    fetchLiveMatches().catch(() => []),
                 ])
                 if (!cancelled) {
                     setUpcoming(dataUpcoming as TournamentCardWithUuid[])
                     setFinished(dataFinishedPage as TournamentCardWithUuid[])
                     setFinishedTotal(finishedTotalCount)
-                    // Promote a match from the admin-featured tournament
-                    // when one is live; otherwise fall back to the first
-                    // live match the backend returned. `pickFeaturedFirst`
-                    // sorts: featured-tournament matches first (most
-                    // recently featured wins on ties), then by
-                    // liveStartedAt asc.
-                    setLiveTop(pickFeaturedFirst(live)[0] ?? null)
                 }
             } catch (e: any) {
                 if (!cancelled) {

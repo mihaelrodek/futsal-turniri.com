@@ -34,6 +34,7 @@
     <include file="db/changelog/match_fouls.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_first_half_end.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_half_length_default.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_max_teams_nullable.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_event_team.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_game_system_website.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

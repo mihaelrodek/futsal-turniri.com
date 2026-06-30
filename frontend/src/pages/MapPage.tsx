@@ -95,7 +95,7 @@ function makePinIcon(color: string, isUser = false, live = false): L.DivIcon {
            </div>`
         : `<div style="position:relative;width:32px;height:42px;">
              ${livePing}
-             <svg width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg" style="position:relative;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+             <svg width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg" style="position:relative;display:block;overflow:visible;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
                <path d="M16 0C9.4 0 4 5.4 4 12c0 9 12 30 12 30s12-21 12-30c0-6.6-5.4-12-12-12z"
                      fill="${color}" stroke="white" stroke-width="2"/>
                <circle cx="16" cy="12" r="5" fill="white"/>
