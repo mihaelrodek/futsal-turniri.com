@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        A half length is mandatory for the live TIMER clock to count up to a
+        boundary and freeze there (1st half → length, 2nd half → 2× length).
+        Tournaments created before the schedule config was set (or with the
+        field left blank) ended up with half_length_min NULL/0, which made the
+        clock free-run with no cap. Backfill those to the futsal-standard 10 and
+        give the column a default so new rows are never left without one.
+    -->
+    <changeSet id="2026-06-30-tournament-half-length-default" author="mrodek">
+        <addDefaultValue tableName="tournaments" columnName="half_length_min"
+                         defaultValueNumeric="10"/>
+        <update tableName="tournaments">
+            <column name="half_length_min" valueNumeric="10"/>
+            <where>half_length_min IS NULL OR half_length_min &lt;= 0</where>
+        </update>
+    </changeSet>
+</databaseChangeLog>

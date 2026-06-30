@@ -73,7 +73,12 @@ public class SchedulingService {
         }
 
         t.setHalfCount(cfg.halfCount() != null ? cfg.halfCount() : 2);
-        t.setHalfLengthMin(cfg.halfLengthMin());
+        // A half length is mandatory for the TIMER clock to cap/freeze at the
+        // end of a half — never store null/0; fall back to the futsal default.
+        t.setHalfLengthMin(
+                cfg.halfLengthMin() != null && cfg.halfLengthMin() > 0
+                        ? cfg.halfLengthMin()
+                        : 10);
         t.setHalftimeBreakMin(cfg.halftimeBreakMin());
         t.setBreakBetweenMatchesMin(cfg.breakBetweenMatchesMin());
         t.setBufferMin(cfg.bufferMin());

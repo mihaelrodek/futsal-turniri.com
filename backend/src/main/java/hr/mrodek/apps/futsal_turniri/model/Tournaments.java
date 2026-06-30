@@ -90,9 +90,11 @@ public class Tournaments {
     @Column(name = "half_count")
     private Integer halfCount = 2;
 
-    /** Length of one half, in minutes. */
+    /** Length of one half, in minutes. Defaults to the futsal-standard 10 so a
+     *  TIMER match clock always has a length to count to (and freeze at) rather
+     *  than free-running; the organizer can change it in the schedule config. */
     @Column(name = "half_length_min")
-    private Integer halfLengthMin;
+    private Integer halfLengthMin = 10;
 
     /** Halftime break between the halves, in minutes. */
     @Column(name = "halftime_break_min")
