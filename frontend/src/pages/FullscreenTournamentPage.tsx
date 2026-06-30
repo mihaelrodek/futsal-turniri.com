@@ -94,7 +94,7 @@ export default function FullscreenTournamentPage() {
     const [tournament, setTournament] = useState<TournamentDetails | null>(null)
     const [matches, setMatches] = useState<ScheduledMatch[]>([])
     const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([])
-    // Half config drives the scoreboard semaphore clock; only the schedule
+    // Half config drives the half-aware match clock; only the schedule
     // carries it (the /live DTO doesn't), so we stash it from the poll.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
@@ -460,7 +460,7 @@ function BigScoreboard({
     halfCount: number | null
     refreshSignal?: number
 }) {
-    // Re-render every second so the clock counts down and the last-minute
+    // Re-render every second so the clock counts up and the last-minute
     // pulse turns on/off exactly when the remaining time crosses 60s.
     const [, setTick] = useState(0)
     useEffect(() => {
@@ -530,7 +530,7 @@ function BigScoreboard({
                 </Text>
             </Flex>
 
-            {/* Live match clock (scoreboard semaphore) */}
+            {/* Live match clock (counts up, half-aware) */}
             <BigMatchClock display={clock.display} label={clock.label} pulsing={pulsing} />
 
             {/* Scoreboard row */}
@@ -613,10 +613,11 @@ function fmtClock(total: number): string {
 
 type ClockInfo = { display: string; label: string; lastMinute: boolean }
 
-/* ── Scoreboard clock state. TIMER mode counts the running half DOWN to 0:00
-   (venue semaphore behaviour) and flags `lastMinute` when ≤60s remain; SIMPLE
-   / no-config just counts elapsed time up and never flags last-minute (we
-   don't know when a half ends). */
+/* ── Scoreboard clock state. TIMER mode counts the cumulative match time UP,
+   freezing at each half boundary (1st half → half length → 2× half length),
+   and flags `lastMinute` when ≤60s remain in the running half; SIMPLE /
+   no-config just counts elapsed time up and never flags last-minute (we don't
+   know when a half ends). */
 function computeClock(
     match: LiveMatch,
     halfLengthMin: number | null,
@@ -632,26 +633,31 @@ function computeClock(
         }
     }
     const halfSecs = halfLengthMin! * 60
+    const halves = halfCount === 1 ? 1 : 2
     const phase = matchPhase({
         liveStartedAt: match.liveStartedAt,
+        firstHalfEndedAt: match.firstHalfEndedAt,
         secondHalfStartedAt: match.secondHalfStartedAt,
         halfLengthMin,
         halfCount,
     })
+    // Counts UP the cumulative match minute, freezing at each half boundary.
     switch (phase) {
         case "FIRST_HALF": {
-            const rem = halfSecs - elapsedSecs(match.liveStartedAt)
-            return { display: fmtClock(rem), label: "1. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
+            const into = elapsedSecs(match.liveStartedAt)
+            const rem = halfSecs - into
+            return { display: fmtClock(Math.min(into, halfSecs)), label: "1. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
         }
         case "HALFTIME":
-            return { display: "0:00", label: "POLUVRIJEME", lastMinute: false }
+            return { display: fmtClock(halfSecs), label: "POLUVRIJEME", lastMinute: false }
         case "SECOND_HALF": {
-            const rem = halfSecs - elapsedSecs(match.secondHalfStartedAt)
-            return { display: fmtClock(rem), label: "2. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
+            const into = elapsedSecs(match.secondHalfStartedAt)
+            const rem = halfSecs - into
+            return { display: fmtClock(Math.min(halfSecs + into, 2 * halfSecs)), label: "2. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
         }
         case "FULL_TIME":
         default:
-            return { display: "0:00", label: "KRAJ", lastMinute: false }
+            return { display: fmtClock(halves * halfSecs), label: "KRAJ", lastMinute: false }
     }
 }
 
@@ -961,8 +967,20 @@ function MatchStrip({
                                         px="3"
                                         py="1"
                                         rounded="md"
+                                        whiteSpace="nowrap"
                                     >
                                         {m.score1 ?? 0}:{m.score2 ?? 0}
+                                        {m.penalties1 != null && m.penalties2 != null && (
+                                            <Box
+                                                as="span"
+                                                ml="1.5"
+                                                fontSize={{ base: "11px", md: "13px" }}
+                                                fontWeight={700}
+                                                color="var(--fs-fg-subtle)"
+                                            >
+                                                ({m.penalties1}:{m.penalties2} pen)
+                                            </Box>
+                                        )}
                                     </Text>
                                 )}
                             </Flex>

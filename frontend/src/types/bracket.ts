@@ -19,6 +19,8 @@ export type BracketMatch = {
     liveMode?: MatchLiveMode | null
     /** ISO timestamp the match was started LIVE; drives the TIMER clock. */
     liveStartedAt?: string | null
+    /** ISO timestamp the 1st half was ended (match in half-time "pauza"); null otherwise. */
+    firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
     /** Scheduled kickoff; null until the schedule is generated/confirmed. A

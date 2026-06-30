@@ -20,6 +20,7 @@ import type { Group, GroupMatch } from "../types/groups"
 import type { TeamShort } from "../types/teams"
 import {
     deleteMatchEvent,
+    endFirstHalf,
     fetchMatchEvents,
     finishMatch,
     resetMatch,
@@ -137,8 +138,8 @@ export default function GroupsTab({
     const [timelineMatch, setTimelineMatch] = useState<GroupMatch | null>(null)
     /** Group whose manual-reorder dialog is open (organizer, finished group). */
     const [reorderGroupTarget, setReorderGroupTarget] = useState<Group | null>(null)
-    // Half config (schedule) so the inline row clocks count DOWN and stop at
-    // the end of a half, just like the dialog clock — not a free-running timer.
+    // Half config (schedule) so the inline row clocks count UP and freeze at
+    // each half boundary, just like the dialog clock — not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
     // Group draw — group count + advance-per-group are chosen here, then the
@@ -1256,11 +1257,15 @@ export function GroupLiveMatchDialog({
      * locally so the dialog reflects the 2nd half the moment the organizer
      * starts it; the half config (length + count) comes from the schedule.
      */
+    const [firstHalfEndedAt, setFirstHalfEndedAt] = useState<string | null>(
+        match.firstHalfEndedAt ?? null,
+    )
     const [secondHalfStartedAt, setSecondHalfStartedAt] = useState<string | null>(
         match.secondHalfStartedAt ?? null,
     )
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
+    const [endingHalf, setEndingHalf] = useState(false)
     const [startingHalf, setStartingHalf] = useState(false)
 
     const [finishing, setFinishing] = useState(false)
@@ -1290,19 +1295,34 @@ export function GroupLiveMatchDialog({
         return () => { cancelled = true }
     }, [uuid, isTimer])
 
-    /** Re-fetch this match's row to pick up a freshly-set secondHalfStartedAt. */
+    /** Re-fetch this match's row to pick up freshly-set half instants. */
     async function refreshMatchHalf() {
         try {
             const groups = await fetchGroups(uuid)
             for (const g of groups) {
                 const found = g.matches.find((mm) => mm.matchId === matchId)
                 if (found) {
+                    setFirstHalfEndedAt(found.firstHalfEndedAt ?? null)
                     setSecondHalfStartedAt(found.secondHalfStartedAt ?? null)
                     return
                 }
             }
         } catch {
             /* error toast surfaced by the http interceptor */
+        }
+    }
+
+    /** End the 1st half (enter pauza), then refetch so the clock freezes. */
+    async function handleEndFirstHalf() {
+        setEndingHalf(true)
+        try {
+            await endFirstHalf(uuid, matchId)
+            await refreshMatchHalf()
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setEndingHalf(false)
         }
     }
 
@@ -1337,19 +1357,26 @@ export function GroupLiveMatchDialog({
         isTimer && !isFinished
             ? matchPhase({
                   liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt,
                   secondHalfStartedAt,
                   halfLengthMin,
                   halfCount,
               })
             : null
-    const atHalftime = phase === "HALFTIME"
-    const atFullTime = phase === "FULL_TIME"
-    // The app's own countdown is running (TIMER + a configured half length). When
-    // it is, the match can only be finished once the clock has run out (full
-    // time); with no app clock (SIMPLE, or no half length) the organizer keeps
-    // their own time and may finish whenever.
+    // The app's own countdown is running (TIMER + a configured half length). With
+    // no app clock (SIMPLE, or no half length) the organizer keeps their own time.
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
-    const mustWaitForFullTime = hasClock && !atFullTime
+    const twoHalves = halfCount !== 1
+    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
+    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    const canStartSecondHalf = isTimer && phase === "HALFTIME"
+    // The half whose end is the match's end (single period → 1st; else 2nd).
+    const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
+    // Finishing "early" needs a confirm: not at full time, unless we're in the
+    // final half of a free-running match (no clock → manual end is the norm).
+    const finishIsPremature =
+        isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
     // Half label shown in the centre of the modal header (TIMER matches).
     const halfLabel =
         phase === "FIRST_HALF" ? "1. POLUVRIJEME"
@@ -1430,6 +1457,14 @@ export function GroupLiveMatchDialog({
     function confirmReset() {
         setConfirmResetOpen(true)
     }
+    const [confirmFinishOpen, setConfirmFinishOpen] = useState(false)
+    function requestFinish() {
+        if (finishIsPremature) {
+            setConfirmFinishOpen(true)
+            return
+        }
+        void handleFinish()
+    }
 
     return (
         <>
@@ -1479,6 +1514,7 @@ export function GroupLiveMatchDialog({
                                                 {isTimer && (
                                                     <LiveClock
                                                         liveStartedAt={match.liveStartedAt}
+                                                        firstHalfEndedAt={firstHalfEndedAt}
                                                         secondHalfStartedAt={secondHalfStartedAt}
                                                         halfLengthMin={halfLengthMin}
                                                         halfCount={halfCount}
@@ -1535,6 +1571,7 @@ export function GroupLiveMatchDialog({
                                         team2Name={match.team2Name ?? null}
                                         liveMode={match.liveMode}
                                         liveStartedAt={match.liveStartedAt}
+                                        firstHalfEndedAt={firstHalfEndedAt}
                                         secondHalfStartedAt={secondHalfStartedAt}
                                         halfLengthMin={halfLengthMin}
                                         halfCount={halfCount}
@@ -1606,7 +1643,16 @@ export function GroupLiveMatchDialog({
                                         Resetiraj
                                     </Button>
                                 )}
-                                {!isFinished && atHalftime && (
+                                {!isFinished && canEndFirstHalf && (
+                                    <Button
+                                        colorPalette="red"
+                                        loading={endingHalf}
+                                        onClick={handleEndFirstHalf}
+                                    >
+                                        Završi 1. poluvrijeme
+                                    </Button>
+                                )}
+                                {!isFinished && canStartSecondHalf && (
                                     <Button
                                         colorPalette="red"
                                         loading={startingHalf}
@@ -1619,13 +1665,7 @@ export function GroupLiveMatchDialog({
                                     <Button
                                         colorPalette="red"
                                         loading={finishing}
-                                        disabled={mustWaitForFullTime}
-                                        title={
-                                            mustWaitForFullTime
-                                                ? "Utakmica se može završiti tek kad istekne vrijeme 2. poluvremena"
-                                                : undefined
-                                        }
-                                        onClick={handleFinish}
+                                        onClick={requestFinish}
                                     >
                                         Završi
                                     </Button>
@@ -1645,6 +1685,15 @@ export function GroupLiveMatchDialog({
             confirmLabel="Da, resetiraj"
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+        />
+        <ConfirmDialog
+            open={confirmFinishOpen}
+            busy={finishing}
+            title="Završiti utakmicu prije kraja?"
+            description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
+            confirmLabel="Da, završi"
+            onClose={() => setConfirmFinishOpen(false)}
+            onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
         />
         </>
     )

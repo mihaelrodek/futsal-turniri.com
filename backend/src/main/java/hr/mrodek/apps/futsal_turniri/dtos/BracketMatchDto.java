@@ -22,6 +22,8 @@ public record BracketMatchDto(
         String status,
         String liveMode,
         OffsetDateTime liveStartedAt,
+        /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
+        OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
         /** Scheduled kickoff — null until the schedule is generated/confirmed.
          *  A match can't be started live before it has one. */

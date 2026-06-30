@@ -1448,6 +1448,7 @@ public class TournamentController {
                             m.getScore2(),
                             m.getLiveMode() != null ? m.getLiveMode().name() : null,
                             m.getLiveStartedAt(),
+                            m.getFirstHalfEndedAt(),
                             m.getSecondHalfStartedAt(),
                             t != null ? t.getHalfLengthMin() : null,
                             t != null ? t.getHalfCount() : null,
@@ -1688,6 +1689,7 @@ public class TournamentController {
         match.setStatus(MatchStatus.SCHEDULED);
         match.setLiveMode(null);
         match.setLiveStartedAt(null);
+        match.setFirstHalfEndedAt(null);
         match.setSecondHalfStartedAt(null);
         match.setScore1(null);
         match.setScore2(null);
@@ -1776,6 +1778,46 @@ public class TournamentController {
     }
 
     /**
+     * Record the moment the 1st half was ended — the match enters the half-time
+     * "pauza". Organizer-or-admin only; the match must be LIVE (409 otherwise).
+     * Idempotent: a no-op if the 1st half was already ended.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/first-half-end")
+    @Authenticated
+    @Transactional
+    public Response endFirstHalf(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+
+        if (match.getStatus() != MatchStatus.LIVE) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Match is not LIVE").build();
+        }
+
+        if (match.getFirstHalfEndedAt() == null) {
+            match.setFirstHalfEndedAt(java.time.OffsetDateTime.now());
+        }
+
+        // Fan out the half-time whistle to bell subscribers.
+        Tournaments t = match.getTournament();
+        if (t != null) {
+            firePushSafe(
+                    t.getId(),
+                    "⏸️ Poluvrijeme — " + t.getName(),
+                    matchVersusLine(match),
+                    tournamentScheduleUrl(t)
+            );
+        }
+
+        notifyLive(match);
+        return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
      * Record the 2nd-half kickoff instant. Organizer-or-admin only.
      * The match must be in status LIVE — returns 409 otherwise.
      */
@@ -1795,6 +1837,11 @@ public class TournamentController {
                     .entity("Match is not LIVE").build();
         }
 
+        // Defensive: the 1st half is implicitly over once the 2nd starts, so the
+        // phase stays consistent even if the half-time step was skipped.
+        if (match.getFirstHalfEndedAt() == null) {
+            match.setFirstHalfEndedAt(java.time.OffsetDateTime.now());
+        }
         match.setSecondHalfStartedAt(java.time.OffsetDateTime.now());
 
         // Fan out the second-half kickoff to bell subscribers.

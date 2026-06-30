@@ -108,10 +108,11 @@ export default function FirstRunInstallPrompt() {
                             <VStack align="stretch" gap="4">
                                 <HStack gap="3" align="center">
                                     <Image
-                                        src="/logo/mark-green.svg"
-                                        alt=""
+                                        src="/icon-192.png"
+                                        alt="Futsal Turniri"
                                         h="56px"
-                                        w="auto"
+                                        w="56px"
+                                        rounded="2xl"
                                         flexShrink={0}
                                     />
                                     <Box flex="1">

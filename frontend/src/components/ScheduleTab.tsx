@@ -486,6 +486,9 @@ function MatchRow({
                         team1Id={match.team1Id ?? null}
                         team2Id={match.team2Id ?? null}
                         hideEmpty={!isLive}
+                        emptyNote={
+                            isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : undefined
+                        }
                     />
                 </Box>
             )}

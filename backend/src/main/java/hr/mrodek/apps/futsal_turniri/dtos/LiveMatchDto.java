@@ -19,6 +19,8 @@ public record LiveMatchDto(
         Integer score2,
         String liveMode,
         OffsetDateTime liveStartedAt,
+        /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
+        OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
         /** Tournament half length (minutes) + half count — lets every live
          *  widget run the scoreboard-semaphore countdown (stop at the end of

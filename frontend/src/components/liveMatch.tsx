@@ -47,51 +47,66 @@ function formatClock(totalSecs: number): string {
 /**
  * Which phase a TIMER-mode match is in.
  *  - "FIRST_HALF"  — 1st half running.
- *  - "HALFTIME"    — 1st half over, 2nd half not yet started (only when halfCount >= 2).
+ *  - "HALFTIME"    — 1st half ended ("pauza"), 2nd half not yet started.
  *  - "SECOND_HALF" — 2nd half running.
- *  - "FULL_TIME"   — match clock has run out (full time / "Kraj").
+ *  - "FULL_TIME"   — the running half's clock has run out (finish-ready / "Kraj").
  */
 export type MatchPhase = "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "FULL_TIME"
 
 /**
  * Compute the current phase of a TIMER-mode match.
  *
- * When {@code halfLengthMin} is absent the match is treated as a single
- * free-running period — it is always "FIRST_HALF" (no halftime / full time).
+ * The phase is an EXPLICIT state machine driven by which instants are set, not
+ * inferred from the running clock:
+ *  - 1st half running        → "FIRST_HALF"
+ *  - {@code firstHalfEndedAt} → "HALFTIME"  (organizer ended the 1st half)
+ *  - {@code secondHalfStartedAt} → "SECOND_HALF"
+ *
+ * The half length only decides when a *running* half's clock has expired
+ * (→ "FULL_TIME", a finish-ready signal); it never advances the phase on its
+ * own, so the clock freezes at the end of a half and waits for the organizer.
+ * With no half length the clock free-runs and only the explicit instants move
+ * the phase along.
  */
 export function matchPhase({
     liveStartedAt,
+    firstHalfEndedAt,
     secondHalfStartedAt,
     halfLengthMin,
     halfCount,
 }: {
     liveStartedAt: string | null | undefined
+    firstHalfEndedAt?: string | null
     secondHalfStartedAt?: string | null
     halfLengthMin?: number | null
     halfCount?: number | null
 }): MatchPhase {
-    // No half config — free-running, never ends on its own.
-    if (halfLengthMin == null || halfLengthMin <= 0) return "FIRST_HALF"
+    const halfSecs = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin * 60 : null
+    // Single period only when the config explicitly says so; a missing/null
+    // halfCount must NOT collapse the match to one half (futsal default = 2).
+    const halves = halfCount === 1 ? 1 : 2
 
-    const halfSecs = halfLengthMin * 60
-    const halves = halfCount != null && halfCount >= 2 ? 2 : 1
-
-    // 2nd half already started.
+    // 2nd half running — full time once its clock expires (still manual finish).
     if (secondHalfStartedAt) {
-        const sh = elapsedSeconds(secondHalfStartedAt)
-        return sh >= halfSecs ? "FULL_TIME" : "SECOND_HALF"
+        if (halfSecs != null && elapsedSeconds(secondHalfStartedAt) >= halfSecs) return "FULL_TIME"
+        return "SECOND_HALF"
     }
 
-    // Still in (or just past) the 1st half.
-    const fh = elapsedSeconds(liveStartedAt)
-    if (fh < halfSecs) return "FIRST_HALF"
+    // 1st half explicitly ended → half-time "pauza" (2nd half not yet started).
+    if (firstHalfEndedAt) return "HALFTIME"
 
-    // 1st half is over. Single-period matches end here; otherwise it's halftime.
-    return halves === 1 ? "FULL_TIME" : "HALFTIME"
+    // 1st half running. A single-period match reaches full time when its clock
+    // expires; a two-half match freezes at 0:00 and waits for "Završi 1. pol.".
+    if (halves === 1 && halfSecs != null && elapsedSeconds(liveStartedAt) >= halfSecs) {
+        return "FULL_TIME"
+    }
+    return "FIRST_HALF"
 }
 
 type LiveClockProps = {
     liveStartedAt: string | null | undefined
+    /** ISO timestamp the 1st half ended ("pauza"); freezes the clock at half-time. */
+    firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half started; enables 2nd-half timing. */
     secondHalfStartedAt?: string | null
     /** Length of one half in minutes; when absent the clock just free-runs. */
@@ -106,15 +121,16 @@ type LiveClockProps = {
  * A live, ticking match clock. Re-renders once a second.
  *
  * With no {@code halfLengthMin} it behaves as a plain free-running elapsed
- * clock. With a half config it becomes half-aware:
- *  - 1st half: counts up; stops at the half length and shows "Poluvrijeme"
- *    (when halfCount >= 2) or "Kraj" (single period).
- *  - 2nd half (once {@code secondHalfStartedAt} is set): the displayed match
- *    minute continues from the half length; stops at 2x the half length and
- *    shows "Kraj".
+ * clock. With a half config it counts UP the cumulative match minute and is
+ * half-aware:
+ *  - 1st half: counts up 0:00 → the half length, then holds there until the
+ *    organizer ends the half (→ "Poluvrijeme" at the same frozen value).
+ *  - 2nd half (once {@code secondHalfStartedAt} is set): continues from the
+ *    half length → 2x the half length, then holds there ("Kraj").
  */
 export function LiveClock({
     liveStartedAt,
+    firstHalfEndedAt,
     secondHalfStartedAt,
     halfLengthMin,
     halfCount,
@@ -147,49 +163,49 @@ export function LiveClock({
     }
 
     const halfSecs = halfLengthMin * 60
-    const phase = matchPhase({ liveStartedAt, secondHalfStartedAt, halfLengthMin, halfCount })
+    const halves = halfCount === 1 ? 1 : 2
+    const phase = matchPhase({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, halfLengthMin, halfCount })
 
-    // Scoreboard semaphore behaviour: the clock COUNTS DOWN the remaining
-    // time in the running half — from the configured half length to 0:00 —
-    // exactly like a venue match clock. At 0:00 it waits for the organizer
-    // (start 2nd half / finish), it never advances on its own.
-    let display: string
+    // Match-clock behaviour: the clock COUNTS UP the cumulative match minute and
+    // freezes at each half boundary. 1st half runs 0:00 → the half length; at
+    // half-time it holds on the half length; the 2nd half continues from there
+    // → 2× the half length. It never advances past a boundary on its own — it
+    // waits for the organizer (end 1st half / start 2nd half / finish).
+    let elapsedInHalf = 0 // seconds into the currently running half (amber warning)
+    let shownSecs: number
     let label: string
     switch (phase) {
         case "FIRST_HALF": {
-            const remaining = halfSecs - elapsedSeconds(liveStartedAt)
-            display = formatClock(remaining)
+            elapsedInHalf = elapsedSeconds(liveStartedAt)
+            shownSecs = Math.min(elapsedInHalf, halfSecs)
             label = "1. pol."
             break
         }
         case "HALFTIME": {
-            display = "0:00"
+            shownSecs = halfSecs
             label = "Poluvrijeme"
             break
         }
         case "SECOND_HALF": {
-            const remaining = halfSecs - elapsedSeconds(secondHalfStartedAt)
-            display = formatClock(remaining)
+            elapsedInHalf = elapsedSeconds(secondHalfStartedAt)
+            shownSecs = Math.min(halfSecs + elapsedInHalf, 2 * halfSecs)
             label = "2. pol."
             break
         }
         case "FULL_TIME":
         default: {
-            display = "0:00"
+            shownSecs = halves * halfSecs
             label = "Kraj"
             break
         }
     }
+    const display = formatClock(shownSecs)
 
     // Flash to amber in the last 60s of a running half so the organizer can
-    // see the half is about to end; red otherwise (and at full time).
+    // see the half is about to end; red otherwise (and at the boundaries).
     const running = phase === "FIRST_HALF" || phase === "SECOND_HALF"
-    const remainingSecs = running
-        ? (phase === "FIRST_HALF"
-            ? halfSecs - elapsedSeconds(liveStartedAt)
-            : halfSecs - elapsedSeconds(secondHalfStartedAt))
-        : 0
-    const clockColor = running && remainingSecs <= 60 ? "accent.amber" : "red.fg"
+    const clockColor =
+        running && halfSecs - elapsedInHalf <= 60 ? "accent.amber" : "red.fg"
 
     return (
         <Text
@@ -294,13 +310,13 @@ export function LiveEventRow({
             : ev.type === "PENALTY_MISSED" ? "accent.red"
                 : undefined
     const label = isPenalty ? "pen" : `${ev.minute}'`
-    // No-name events: an anonymous goal shows ONLY the goal icon (empty name);
+    // No-name events: a goal without a named scorer shows "Nepoznati strijelac";
     // an unattributed penalty kick shows "(gol)" / "(promašaj)".
     const noName = ev.playerName == null
     const displayName =
         ev.playerName ??
         (ev.type === "GOAL"
-            ? ""
+            ? "Nepoznati strijelac"
             : ev.type === "PENALTY_MISSED"
                 ? "(promašaj)"
                 : "(gol)")
@@ -605,7 +621,7 @@ export function GoalscorersPanel({
                                     </Text>
                                     <VStack align="flex-start" gap="0" minW="0">
                                         <Text fontSize="xs" color="fg" lineHeight="1.4" truncate>
-                                            {evt.playerName}
+                                            {evt.playerName ?? (evt.type === "GOAL" ? "Nepoznati strijelac" : "")}
                                         </Text>
                                         {evt.type === "GOAL" && evt.assistPlayerName && (
                                             <Text
@@ -642,7 +658,7 @@ export function GoalscorersPanel({
                                         truncate
                                         textAlign="right"
                                     >
-                                        {evt.playerName}
+                                        {evt.playerName ?? (evt.type === "GOAL" ? "Nepoznati strijelac" : "")}
                                     </Text>
                                     {evt.type === "GOAL" && evt.assistPlayerName && (
                                         <Text
@@ -769,35 +785,43 @@ export function GoalscorersPanel({
    to keep entry quick.
    ────────────────────────────────────────────────────────────────────────── */
 
-/** Current football minute of a TIMER match (accounts for the 2nd half). */
+/**
+ * Current cumulative football minute of a TIMER match — matches the count-up
+ * clock, capped at each half boundary (1st half ≤ half length, 2nd half ≤ 2×).
+ */
 function liveMatchMinute(args: {
     liveStartedAt: string | null | undefined
+    firstHalfEndedAt?: string | null
     secondHalfStartedAt: string | null | undefined
     halfLengthMin: number | null
     halfCount: number | null
 }): number {
     const hl = args.halfLengthMin ?? 0
+    const halves = args.halfCount === 1 ? 1 : 2
     const phase = matchPhase(args)
     switch (phase) {
         case "FIRST_HALF":
-            return elapsedMinutes(args.liveStartedAt)
+            return hl > 0
+                ? Math.min(elapsedMinutes(args.liveStartedAt), hl)
+                : elapsedMinutes(args.liveStartedAt)
         case "HALFTIME":
             return hl
         case "SECOND_HALF":
-            return hl + elapsedMinutes(args.secondHalfStartedAt)
+            return hl > 0
+                ? Math.min(hl + elapsedMinutes(args.secondHalfStartedAt), halves * hl)
+                : hl + elapsedMinutes(args.secondHalfStartedAt)
         case "FULL_TIME":
-            return hl * (args.halfCount ?? 1)
+            return halves * hl
         default:
             return elapsedMinutes(args.liveStartedAt)
     }
 }
 
 /**
- * Feature flag for the "anonymous goal" button (goal counts for the team, no
- * named scorer). Disabled for now — flip to true to re-enable. The supporting
- * code (pickAnon, the button, the backend team-only goal path) is kept intact.
+ * Feature flag for the "Nepoznati strijelac" (unknown scorer) button — records
+ * a goal for the team with no named scorer. Flip to false to hide it.
  */
-const ANON_GOAL_ENABLED = false
+const ANON_GOAL_ENABLED = true
 
 export function LiveGoalEntry({
     uuid,
@@ -808,6 +832,7 @@ export function LiveGoalEntry({
     team2Name,
     liveMode,
     liveStartedAt,
+    firstHalfEndedAt,
     secondHalfStartedAt,
     halfLengthMin,
     halfCount,
@@ -822,6 +847,7 @@ export function LiveGoalEntry({
     team2Name: string | null
     liveMode: MatchLiveMode | null | undefined
     liveStartedAt: string | null | undefined
+    firstHalfEndedAt?: string | null
     secondHalfStartedAt: string | null | undefined
     halfLengthMin: number | null
     halfCount: number | null
@@ -834,17 +860,13 @@ export function LiveGoalEntry({
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kind, setKind] = useState<MatchEventType>("GOAL")
     const [minute, setMinute] = useState<string>("")
+    /** While true (TIMER) the "Min" field auto-follows the running clock; a
+     *  manual edit turns it off, "Sada" turns it back on. */
+    const [autoMinute, setAutoMinute] = useState(true)
     /** playerId whose add call is in flight (for the per-button spinner). */
     const [addingId, setAddingId] = useState<number | null>(null)
     /** teamId whose anonymous-goal add is in flight. */
     const [addingAnon, setAddingAnon] = useState<number | null>(null)
-
-    /** Snapshot the current play minute into the field (TIMER matches). */
-    function fillNow() {
-        setMinute(
-            String(liveMatchMinute({ liveStartedAt, secondHalfStartedAt, halfLengthMin, halfCount })),
-        )
-    }
 
     // Load both rosters once.
     useEffect(() => {
@@ -863,13 +885,24 @@ export function LiveGoalEntry({
         return () => { cancelled = true }
     }, [uuid, team1Id, team2Id])
 
-    // Pre-fill the current play minute when the entry opens (TIMER) so the
-    // field isn't empty; the organizer re-snaps it with "Sada" when a goal
-    // lands, or types a value manually.
+    // Auto-follow the live match minute (TIMER): the "Min" field tracks the
+    // running clock every second so a goal is stamped with the current minute
+    // without any extra tap — until the organizer types a manual value, when
+    // following stops; "Sada" resumes it.
     useEffect(() => {
-        if (isTimer) fillNow()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+        if (!isTimer || !autoMinute) return
+        const sync = () =>
+            setMinute(String(liveMatchMinute({
+                liveStartedAt,
+                firstHalfEndedAt,
+                secondHalfStartedAt,
+                halfLengthMin,
+                halfCount,
+            })))
+        sync()
+        const id = setInterval(sync, 1000)
+        return () => clearInterval(id)
+    }, [isTimer, autoMinute, liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, halfLengthMin, halfCount])
 
     const minuteNum = parseInt(minute, 10)
     const minuteValid = Number.isFinite(minuteNum) && minuteNum >= 0
@@ -947,14 +980,18 @@ export function LiveGoalEntry({
                         min={0}
                         maxW="20"
                         value={minute}
-                        onChange={(e) => setMinute(e.target.value)}
+                        onChange={(e) => {
+                            setMinute(e.target.value)
+                            setAutoMinute(false) // manual override — stop auto-follow
+                        }}
                     />
                     {isTimer && (
                         <Button
                             size="sm"
-                            variant="outline"
+                            variant={autoMinute ? "solid" : "outline"}
                             colorPalette="brand"
-                            onClick={fillNow}
+                            onClick={() => setAutoMinute(true)}
+                            title={autoMinute ? "Minuta automatski prati mjerač" : "Vrati na automatsko praćenje mjerača"}
                         >
                             Sada
                         </Button>
@@ -1020,8 +1057,8 @@ function PlayerPickColumn({
     disabled: boolean
     sentOffPlayerIds?: Set<number>
     onPick: (p: PlayerDto) => void
-    /** Show the "anonymous goal" (goal-icon only) button beneath the roster —
-     *  records a goal for the team with no named scorer (privacy). Goals only. */
+    /** Show the "Nepoznati strijelac" button first, above the roster — records
+     *  a goal for the team with no named scorer. Goals only. */
     showAnonGoal?: boolean
     addingAnon?: number | null
     onAnon?: (teamId: number) => void
@@ -1040,6 +1077,23 @@ function PlayerPickColumn({
             >
                 {teamName ?? "—"}
             </Text>
+            {/* Unknown scorer — goal counts for the team, no named scorer.
+                Shown first, above the players. */}
+            {showAnonGoal && teamId != null && (
+                <Button
+                    size="sm"
+                    variant="outline"
+                    colorPalette="gray"
+                    justifyContent={align === "right" ? "flex-end" : "flex-start"}
+                    loading={addingAnon === teamId}
+                    disabled={disabled || addingId != null || (addingAnon != null && addingAnon !== teamId)}
+                    onClick={() => onAnon?.(teamId)}
+                    title="Gol za ekipu bez imena strijelca"
+                    aria-label="Nepoznati strijelac"
+                >
+                    <Text truncate>⚽ Nepoznati strijelac</Text>
+                </Button>
+            )}
             {players.length === 0 ? (
                 <Text fontSize="xs" color="fg.subtle" textAlign={align}>
                     Nema igrača
@@ -1070,23 +1124,6 @@ function PlayerPickColumn({
                         </Button>
                     )
                 })
-            )}
-            {/* Anonymous goal — counts for the team, no named scorer (privacy).
-                Just the goal icon, beneath the players. */}
-            {showAnonGoal && teamId != null && (
-                <Button
-                    size="sm"
-                    variant="outline"
-                    colorPalette="gray"
-                    justifyContent={align === "right" ? "flex-end" : "flex-start"}
-                    loading={addingAnon === teamId}
-                    disabled={disabled || addingId != null || (addingAnon != null && addingAnon !== teamId)}
-                    onClick={() => onAnon?.(teamId)}
-                    title="Gol bez strijelca (anonimno)"
-                    aria-label="Gol bez strijelca (anonimno)"
-                >
-                    <Text>⚽</Text>
-                </Button>
             )}
         </VStack>
     )

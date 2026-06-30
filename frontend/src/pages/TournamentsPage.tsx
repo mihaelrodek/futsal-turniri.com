@@ -50,6 +50,7 @@ import {
     TintButton,
     TournamentPoster,
 } from "../ui/pitch"
+import { matchPhase } from "../components/liveMatch"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Turniri (listing) — "Pitch" theme.
@@ -134,6 +135,22 @@ function teamShort(name: string | null | undefined): string {
 }
 
 function LiveHero({ match }: { match: LiveMatch }) {
+    const heroPhase =
+        match.liveMode === "TIMER"
+            ? matchPhase({
+                  liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt: match.firstHalfEndedAt ?? null,
+                  secondHalfStartedAt: match.secondHalfStartedAt ?? null,
+                  halfLengthMin: match.halfLengthMin,
+                  halfCount: match.halfCount,
+              })
+            : null
+    const heroHalfLabel =
+        heroPhase === "HALFTIME" ? "POLUVRIJEME"
+            : heroPhase === "SECOND_HALF" ? "2. POLUVRIJEME"
+                : heroPhase === "FULL_TIME" ? "KRAJ"
+                    : heroPhase === "FIRST_HALF" ? "1. POLUVRIJEME"
+                        : match.secondHalfStartedAt ? "2. POLUVRIJEME" : "1. POLUVRIJEME"
     return (
         <Box
             position="relative"
@@ -233,8 +250,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                         letterSpacing="0.18em"
                         fontWeight={700}
                     >
-                        <FiClock size={12} /> UŽIVO ·{" "}
-                        {match.secondHalfStartedAt ? "2. POLUVRIJEME" : "1. POLUVRIJEME"}
+                        <FiClock size={12} /> UŽIVO · {heroHalfLabel}
                     </Box>
                     <Box
                         fontFamily="mono"

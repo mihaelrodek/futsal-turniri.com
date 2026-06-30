@@ -103,6 +103,16 @@ public class Matches {
     @Column(name = "live_started_at")
     private java.time.OffsetDateTime liveStartedAt;
 
+    /**
+     * Wall-clock instant the organizer ended the 1st half (match entered the
+     * half-time "pauza"). Null until set. Together with {@link #liveStartedAt},
+     * {@link #secondHalfStartedAt} and {@link #status} this makes the live half
+     * flow an explicit state machine — the phase is no longer inferred from the
+     * running clock, so the clock freezes at the end of a half and waits.
+     */
+    @Column(name = "first_half_ended_at")
+    private java.time.OffsetDateTime firstHalfEndedAt;
+
     /** Wall-clock instant the 2nd half kicked off. Null until set. */
     @Column(name = "second_half_started_at")
     private java.time.OffsetDateTime secondHalfStartedAt;

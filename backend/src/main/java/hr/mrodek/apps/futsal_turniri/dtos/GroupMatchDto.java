@@ -14,6 +14,8 @@ public record GroupMatchDto(
         String status,
         String liveMode,
         OffsetDateTime liveStartedAt,
+        /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
+        OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
         /** Scheduled kickoff (set when the schedule is generated); null before. */
         OffsetDateTime kickoffAt,

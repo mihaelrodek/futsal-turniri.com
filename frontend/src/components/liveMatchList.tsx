@@ -62,8 +62,8 @@ export function LiveMatchRow({
                 _hover={{ bg: "bg.muted" }}
                 rounded="md"
             >
-                {/* TIMER mode: scoreboard-semaphore clock — counts the
-                    running half DOWN, stops at 0:00, and labels the phase
+                {/* TIMER mode: match clock — counts the cumulative match time
+                    UP, freezing at each half boundary, and labels the phase
                     ("1. pol." / "Poluvrijeme" / "2. pol." / "Kraj"). Uses the
                     tournament half config from the /live DTO; falls back to a
                     free-running clock only if the schedule has no half length. */}
@@ -71,6 +71,7 @@ export function LiveMatchRow({
                     <Flex justify="center" mb="1">
                         <LiveClock
                             liveStartedAt={match.liveStartedAt}
+                            firstHalfEndedAt={match.firstHalfEndedAt}
                             secondHalfStartedAt={match.secondHalfStartedAt}
                             halfLengthMin={match.halfLengthMin}
                             halfCount={match.halfCount}

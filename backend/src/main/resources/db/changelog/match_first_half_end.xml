@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Explicit half-time instant. The live half flow is now a real state
+        machine: 1st half → (organizer ends it) → pauza → (organizer starts
+        2nd) → 2nd half → kraj. This column marks the moment the 1st half was
+        ended; together with second_half_started_at + status it tells the
+        scoreboard exactly which phase a match is in (no longer inferred from
+        the running clock), so the clock freezes at the end of a half and waits
+        for the organizer instead of rolling straight into half-time.
+    -->
+    <changeSet id="2026-06-29-match-first-half-ended" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="first_half_ended_at" type="timestamptz"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

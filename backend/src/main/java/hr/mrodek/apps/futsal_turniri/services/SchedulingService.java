@@ -192,14 +192,17 @@ public class SchedulingService {
     }
 
     /**
-     * Clear the laid-out schedule — drop every kickoff time so the matches go
-     * back to "no slot". The fixtures themselves (groups / bracket) are kept;
-     * only the times are wiped, so the organizer can re-generate or set them by
-     * hand. LIVE / FINISHED matches keep their time (this is only reachable
-     * before the tournament starts anyway).
+     * Clear the laid-out schedule. The generated group fixtures (created by
+     * generating the schedule) are DELETED — keeping the groups/draw — so the
+     * tournament returns to the pre-schedule state and can be regenerated. Any
+     * other matches (e.g. an elimination bracket, which is generated elsewhere)
+     * just lose their kickoff slot. Played matches are left untouched.
      */
     @Transactional
     public void clearSchedule(Tournaments t) {
+        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+            groupStageService.clearFixtures(t);
+        }
         for (Matches m : matchesRepo.findByTournament_Id(t.getId())) {
             if (m.getStatus() != MatchStatus.LIVE && m.getStatus() != MatchStatus.FINISHED) {
                 m.setKickoffAt(null);

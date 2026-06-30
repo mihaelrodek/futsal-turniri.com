@@ -133,6 +133,23 @@ public class GroupStageService {
     }
 
     /**
+     * Delete the generated group-stage fixtures (and their now-empty matchday
+     * rounds) but KEEP the groups / draw — so "Očisti raspored" returns to the
+     * groups-drawn state and the schedule can be regenerated. Only not-yet-
+     * played matches are removed.
+     */
+    @Transactional
+    public void clearFixtures(Tournaments t) {
+        matchesRepo.delete(
+                "tournament = ?1 and stage = ?2 and status = ?3",
+                t, MatchStage.GROUP, MatchStatus.SCHEDULED);
+        matchesRepo.flush();
+        for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
+            if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
+        }
+    }
+
+    /**
      * Generate the round-robin group fixtures for an already-drawn group
      * stage. Called when the organizer generates the schedule. Idempotent and
      * non-destructive: if group matches already exist it does nothing (so a
@@ -312,6 +329,7 @@ public class GroupStageService {
                         m.getStatus() != null ? m.getStatus().name() : null,
                         m.getLiveMode() != null ? m.getLiveMode().name() : null,
                         m.getLiveStartedAt(),
+                        m.getFirstHalfEndedAt(),
                         m.getSecondHalfStartedAt(),
                         m.getKickoffAt(),
                         m.getFouls1First(),

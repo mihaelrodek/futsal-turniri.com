@@ -34,6 +34,7 @@ import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
 import { showError, toaster } from "../toaster"
 import {
     deleteMatchEvent,
+    endFirstHalf,
     fetchMatchEvents,
     resetMatch,
     startMatch,
@@ -44,7 +45,7 @@ import { fetchSchedule } from "../api/schedule"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
-import { FiArrowDown, FiArrowUp, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -300,8 +301,8 @@ export default function BracketTab({
     const [liveMatch, setLiveMatch] = useState<BracketMatch | null>(null)
     /** Match whose read-only timeline modal is open (any viewer can open it). */
     const [timelineMatch, setTimelineMatch] = useState<BracketMatch | null>(null)
-    // Half config (schedule) so inline row clocks count DOWN + stop at the
-    // end of a half, like the dialog clock — not a free-running timer.
+    // Half config (schedule) so inline row clocks count UP + freeze at each
+    // half boundary, like the dialog clock — not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
     // Manual draw — organizer arranges teams into the bracket's first-round slots.
@@ -1559,6 +1560,22 @@ function MatchCard({
             rounded="xl"
             shadow={isFinal ? "md" : "xs"}
             overflow="hidden"
+            cursor={editing ? "default" : "pointer"}
+            // Click anywhere on the card → read-only match timeline (tijek).
+            // Clicks on the action controls (start menu, edit/score inputs,
+            // live/result buttons) are ignored so they keep their own behaviour.
+            onClick={(e) => {
+                if (editing) return
+                const t = e.target as HTMLElement
+                if (
+                    t.closest(
+                        'button, a, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [data-scope="menu"]',
+                    )
+                ) {
+                    return
+                }
+                onOpenTimeline(m)
+            }}
         >
             {/* Card top strip — final badge / live indicator */}
             {(isFinal || isThirdPlace || isLive) && (
@@ -1603,6 +1620,7 @@ function MatchCard({
                             {m.liveMode === "TIMER" && (
                                 <LiveClock
                                     liveStartedAt={m.liveStartedAt}
+                                    firstHalfEndedAt={m.firstHalfEndedAt}
                                     secondHalfStartedAt={m.secondHalfStartedAt}
                                     halfLengthMin={halfLengthMin}
                                     halfCount={halfCount}
@@ -1614,15 +1632,12 @@ function MatchCard({
                 </Flex>
             )}
 
-            {/* Two team rows */}
+            {/* Two team rows. The whole card opens the timeline (see the card
+                onClick above); while entering a result the score inputs sit in
+                each team row and the card's interactive-target guard ignores
+                their clicks. */}
             <Box px="3" py="2.5">
-                {/* Click the result → read-only match timeline (tijek). While
-                    entering a result the score is typed inline in each team row
-                    (where the "–" is), so the input click is swallowed. */}
-                <Box
-                    cursor={editing ? "default" : "pointer"}
-                    onClick={() => { if (!editing) onOpenTimeline(m) }}
-                >
+                <Box>
                     <TeamRow
                         name={m.team1Name}
                         score={m.score1}
@@ -1645,6 +1660,28 @@ function MatchCard({
                             : undefined}
                     />
                 </Box>
+
+                {/* Scheduled kickoff — when this match is set to be played. */}
+                {m.kickoffAt && !editing && (
+                    <HStack
+                        gap="1.5"
+                        mt="2"
+                        justify="center"
+                        fontSize="2xs"
+                        fontWeight="600"
+                        color="fg.muted"
+                        fontFamily="mono"
+                    >
+                        <FiClock size={11} />
+                        <Box>
+                            {(() => {
+                                const d = new Date(m.kickoffAt)
+                                const p = (n: number) => String(n).padStart(2, "0")
+                                return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+                            })()}
+                        </Box>
+                    </HStack>
+                )}
 
                 {editing ? (
                     <VStack align="stretch" gap="2" mt="3">
@@ -1910,11 +1947,15 @@ export function BracketLiveMatchDialog({
      * locally so the dialog reflects the 2nd half the moment the organizer
      * starts it; the half config (length + count) comes from the schedule.
      */
+    const [firstHalfEndedAt, setFirstHalfEndedAt] = useState<string | null>(
+        match.firstHalfEndedAt ?? null,
+    )
     const [secondHalfStartedAt, setSecondHalfStartedAt] = useState<string | null>(
         match.secondHalfStartedAt ?? null,
     )
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
+    const [endingHalf, setEndingHalf] = useState(false)
     const [startingHalf, setStartingHalf] = useState(false)
 
     const [finishing, setFinishing] = useState(false)
@@ -1947,7 +1988,7 @@ export function BracketLiveMatchDialog({
         return () => { cancelled = true }
     }, [uuid, isTimer])
 
-    /** Re-fetch this match from the bracket to pick up secondHalfStartedAt. */
+    /** Re-fetch this match from the bracket to pick up freshly-set half instants. */
     async function refreshMatchHalf() {
         try {
             const bracket = await fetchBracket(uuid)
@@ -1956,9 +1997,26 @@ export function BracketLiveMatchDialog({
                 ...(bracket.thirdPlace ? [bracket.thirdPlace] : []),
             ]
             const found = all.find((mm) => mm.matchId === matchId)
-            if (found) setSecondHalfStartedAt(found.secondHalfStartedAt ?? null)
+            if (found) {
+                setFirstHalfEndedAt(found.firstHalfEndedAt ?? null)
+                setSecondHalfStartedAt(found.secondHalfStartedAt ?? null)
+            }
         } catch {
             /* error toast surfaced by the http interceptor */
+        }
+    }
+
+    /** End the 1st half (enter pauza), then refetch so the clock freezes. */
+    async function handleEndFirstHalf() {
+        setEndingHalf(true)
+        try {
+            await endFirstHalf(uuid, matchId)
+            await refreshMatchHalf()
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setEndingHalf(false)
         }
     }
 
@@ -1991,17 +2049,26 @@ export function BracketLiveMatchDialog({
         isTimer && !isFinished
             ? matchPhase({
                   liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt,
                   secondHalfStartedAt,
                   halfLengthMin,
                   halfCount,
               })
             : null
-    const atHalftime = phase === "HALFTIME"
-    const atFullTime = phase === "FULL_TIME"
-    // App countdown running (TIMER + configured half length) → the match can
-    // only be finished at full time; otherwise the organizer may finish anytime.
+    // App countdown running (TIMER + configured half length). With no app clock
+    // (SIMPLE, or no half length) the organizer keeps their own time.
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
-    const mustWaitForFullTime = hasClock && !atFullTime
+    const twoHalves = halfCount !== 1
+    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
+    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    const canStartSecondHalf = isTimer && phase === "HALFTIME"
+    // The half whose end is the match's end (single period → 1st; else 2nd).
+    const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
+    // Finishing "early" needs a confirm: not at full time, unless we're in the
+    // final half of a free-running match (no clock → manual end is the norm).
+    const finishIsPremature =
+        isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
     // Half label shown in the centre of the modal header (TIMER matches).
     const halfLabel =
         phase === "FIRST_HALF" ? "1. POLUVRIJEME"
@@ -2091,6 +2158,14 @@ export function BracketLiveMatchDialog({
     function confirmReset() {
         setConfirmResetOpen(true)
     }
+    const [confirmFinishOpen, setConfirmFinishOpen] = useState(false)
+    function requestFinish() {
+        if (finishIsPremature) {
+            setConfirmFinishOpen(true)
+            return
+        }
+        void handleFinish()
+    }
 
     /** Penalty shootout decided — persist the level score + penalty result
      *  (the backend sets the winner and advances the bracket). */
@@ -2160,6 +2235,7 @@ export function BracketLiveMatchDialog({
                                                 {isTimer && (
                                                     <LiveClock
                                                         liveStartedAt={match.liveStartedAt}
+                                                        firstHalfEndedAt={firstHalfEndedAt}
                                                         secondHalfStartedAt={secondHalfStartedAt}
                                                         halfLengthMin={halfLengthMin}
                                                         halfCount={halfCount}
@@ -2276,6 +2352,7 @@ export function BracketLiveMatchDialog({
                                         team2Name={match.team2Name ?? null}
                                         liveMode={match.liveMode}
                                         liveStartedAt={match.liveStartedAt}
+                                        firstHalfEndedAt={firstHalfEndedAt}
                                         secondHalfStartedAt={secondHalfStartedAt}
                                         halfLengthMin={halfLengthMin}
                                         halfCount={halfCount}
@@ -2344,7 +2421,16 @@ export function BracketLiveMatchDialog({
                                         Resetiraj
                                     </Button>
                                 )}
-                                {!isFinished && !shootout && atHalftime && (
+                                {!isFinished && !shootout && canEndFirstHalf && (
+                                    <Button
+                                        colorPalette="red"
+                                        loading={endingHalf}
+                                        onClick={handleEndFirstHalf}
+                                    >
+                                        Završi 1. poluvrijeme
+                                    </Button>
+                                )}
+                                {!isFinished && !shootout && canStartSecondHalf && (
                                     <Button
                                         colorPalette="red"
                                         loading={startingHalf}
@@ -2357,13 +2443,7 @@ export function BracketLiveMatchDialog({
                                     <Button
                                         colorPalette="red"
                                         loading={finishing}
-                                        disabled={mustWaitForFullTime}
-                                        title={
-                                            mustWaitForFullTime
-                                                ? "Utakmica se može završiti tek kad istekne vrijeme 2. poluvremena"
-                                                : undefined
-                                        }
-                                        onClick={handleFinish}
+                                        onClick={requestFinish}
                                     >
                                         Završi
                                     </Button>
@@ -2383,6 +2463,15 @@ export function BracketLiveMatchDialog({
             confirmLabel="Da, resetiraj"
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+        />
+        <ConfirmDialog
+            open={confirmFinishOpen}
+            busy={finishing}
+            title="Završiti utakmicu prije kraja?"
+            description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
+            confirmLabel="Da, završi"
+            onClose={() => setConfirmFinishOpen(false)}
+            onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
         />
         </>
     )

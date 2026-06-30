@@ -633,6 +633,7 @@ public class KnockoutService {
                 m.getStatus() != null ? m.getStatus().name() : null,
                 m.getLiveMode() != null ? m.getLiveMode().name() : null,
                 m.getLiveStartedAt(),
+                m.getFirstHalfEndedAt(),
                 m.getSecondHalfStartedAt(),
                 m.getKickoffAt(),
                 m.getFouls1First(),

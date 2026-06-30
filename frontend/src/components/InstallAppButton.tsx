@@ -6,6 +6,8 @@ import {
     IconButton,
     Image,
     Portal,
+    Text,
+    VStack,
 } from "@chakra-ui/react"
 import { FiDownload } from "react-icons/fi"
 import { useInstallPrompt } from "../hooks/useInstallPrompt"
@@ -26,9 +28,10 @@ import IosInstallSteps from "./IosInstallSteps"
  * native `title` give the icon a name for screen readers and a hover
  * tooltip for sighted desktop users.
  *
- * iOS path opens a dialog with the shared IosInstallSteps walkthrough,
- * which is the same component the FirstRunInstallPrompt uses inline —
- * one source of truth for the Croatian Share-menu copy.
+ * Tapping it always opens an explanatory dialog (one source of truth for the
+ * install copy + the app icon preview): iOS shows the shared IosInstallSteps
+ * Share-menu walkthrough; Android/Chrome shows a short note plus an
+ * "Instaliraj" button that fires the browser's native install prompt.
  */
 export function InstallAppButton({
     size = "sm",
@@ -43,28 +46,27 @@ export function InstallAppButton({
     variant?: "icon" | "labeled"
 }) {
     const { canInstall, isIos, install } = useInstallPrompt()
-    const [iosOpen, setIosOpen] = useState(false)
+    const [dialogOpen, setDialogOpen] = useState(false)
 
     if (!canInstall && !isIos) return null
 
     // One label for both platforms keeps the button width consistent and
     // doesn't wrap on narrow phones. The iOS-vs-Android distinction is
-    // already visible in the dialog that opens after the tap (iOS shows
-    // the Share-menu walkthrough; Android fires the native prompt), so
-    // we don't need to spell it out on the button itself.
+    // spelled out inside the dialog that opens after the tap.
     const label = "Instaliraj aplikaciju"
 
+    // Always open the explanatory dialog (not the bare native prompt) so the
+    // user sees what they're installing — the app icon + how-to steps.
     function handleClick() {
-        if (canInstall) {
-            install().catch(() => {
+        setDialogOpen(true)
+    }
+
+    function handleNativeInstall() {
+        install()
+            .catch(() => {
                 /* user dismissed or browser refused — no-op */
             })
-        } else {
-            // iOS path. Open the steps dialog. We don't gate this on isIos
-            // because the early-return above already guarantees that one of
-            // the two conditions is true.
-            setIosOpen(true)
-        }
+            .finally(() => setDialogOpen(false))
     }
 
     return (
@@ -106,9 +108,9 @@ export function InstallAppButton({
                 </IconButton>
             )}
             <Dialog.Root
-                open={iosOpen}
+                open={dialogOpen}
                 onOpenChange={(e) => {
-                    if (!e.open) setIosOpen(false)
+                    if (!e.open) setDialogOpen(false)
                 }}
                 placement="center"
                 motionPreset="slide-in-bottom"
@@ -118,23 +120,43 @@ export function InstallAppButton({
                     <Dialog.Positioner>
                         <Dialog.Content maxW={{ base: "92%", md: "md" }}>
                             <Dialog.Header>
-                                <HStack gap="2" align="center">
+                                <HStack gap="3" align="center">
                                     <Image
-                                        src="/logo/mark-green.svg"
-                                        alt=""
-                                        h="28px"
-                                        w="auto"
+                                        src="/icon-192.png"
+                                        alt="Futsal Turniri"
+                                        h="40px"
+                                        w="40px"
+                                        rounded="xl"
+                                        flexShrink={0}
                                     />
                                     <Dialog.Title>Instaliraj Futsal Turniri</Dialog.Title>
                                 </HStack>
                             </Dialog.Header>
                             <Dialog.Body>
-                                <IosInstallSteps />
+                                <VStack align="stretch" gap="3">
+                                    <Text fontSize="sm" color="fg.muted">
+                                        {isIos
+                                            ? "Dodaj aplikaciju na svoj iPhone u 3 koraka:"
+                                            : "Spremi Futsal Turniri kao aplikaciju i otvori je jednim klikom s početnog zaslona."}
+                                    </Text>
+                                    {/* iOS has no JS install API — show the manual
+                                        Share → Add to Home Screen walkthrough. */}
+                                    {isIos && <IosInstallSteps />}
+                                </VStack>
                             </Dialog.Body>
                             <Dialog.Footer>
-                                <Button variant="ghost" onClick={() => setIosOpen(false)}>
+                                <Button variant="ghost" onClick={() => setDialogOpen(false)}>
                                     Zatvori
                                 </Button>
+                                {canInstall && (
+                                    <Button
+                                        variant="solid"
+                                        colorPalette="pitch"
+                                        onClick={handleNativeInstall}
+                                    >
+                                        <FiDownload /> Instaliraj
+                                    </Button>
+                                )}
                             </Dialog.Footer>
                         </Dialog.Content>
                     </Dialog.Positioner>

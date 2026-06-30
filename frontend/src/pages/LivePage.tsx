@@ -23,7 +23,7 @@ import {
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
-import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
+import { GoalscorersPanel, LiveClock, matchPhase } from "../components/liveMatch"
 import MatchNotificationBell from "../components/MatchNotificationBell"
 import { FiChevronDown, FiChevronUp } from "react-icons/fi"
 
@@ -287,7 +287,22 @@ function LiveMatchCard({
     onOpen: () => void
     refreshSignal?: number
 }) {
-    const half = match.secondHalfStartedAt ? "2. POL." : "1. POL."
+    const livePhase =
+        match.liveMode === "TIMER"
+            ? matchPhase({
+                  liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt: match.firstHalfEndedAt ?? null,
+                  secondHalfStartedAt: match.secondHalfStartedAt ?? null,
+                  halfLengthMin: match.halfLengthMin,
+                  halfCount: match.halfCount,
+              })
+            : null
+    const half =
+        livePhase === "HALFTIME" ? "PAUZA"
+            : livePhase === "SECOND_HALF" ? "2. POL."
+                : livePhase === "FULL_TIME" ? "KRAJ"
+                    : livePhase === "FIRST_HALF" ? "1. POL."
+                        : match.secondHalfStartedAt ? "2. POL." : "1. POL."
     const [expanded, setExpanded] = useState(false)
     return (
         <Box
@@ -341,12 +356,18 @@ function LiveMatchCard({
                     {match.liveMode === "TIMER" && match.liveStartedAt && (
                         <LiveClock
                             liveStartedAt={match.liveStartedAt}
+                            firstHalfEndedAt={match.firstHalfEndedAt ?? null}
                             secondHalfStartedAt={match.secondHalfStartedAt ?? null}
                             halfLengthMin={match.halfLengthMin}
                             halfCount={match.halfCount}
                         />
                     )}
                     <MonoLabel color="fg.muted">{half}</MonoLabel>
+                    {/* Follow this live match — goal / finish notifications. */}
+                    <MatchNotificationBell
+                        tournamentUuid={match.tournamentUuid}
+                        matchId={match.matchId}
+                    />
                 </HStack>
             </Flex>
 

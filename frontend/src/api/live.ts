@@ -22,6 +22,8 @@ export type LiveMatch = {
     score2: number | null
     liveMode: MatchLiveMode | null
     liveStartedAt: string | null
+    /** ISO timestamp the 1st half was ended (match in half-time "pauza"); null otherwise. */
+    firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
     /** Tournament half length (min) + half count — drives the scoreboard

@@ -61,6 +61,24 @@ export async function resetMatch(
 }
 
 /**
+ * End the 1st half of a LIVE match — moves it into the half-time "pauza".
+ *
+ * Sets {@code firstHalfEndedAt} to now on the backend so the clock freezes and
+ * the scoreboard shows half-time until the 2nd half is started. Organizer-only;
+ * the match must currently be LIVE.
+ */
+export async function endFirstHalf(
+    tournamentUuid: string,
+    matchId: number,
+): Promise<void> {
+    await http.post(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/first-half-end`,
+        undefined,
+        { successMessage: "Prvo poluvrijeme je završeno." } as any,
+    )
+}
+
+/**
  * Start the 2nd half of a LIVE match.
  *
  * Sets {@code secondHalfStartedAt} to now on the backend so the TIMER clock

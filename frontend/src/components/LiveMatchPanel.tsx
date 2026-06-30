@@ -3,6 +3,7 @@ import { Box, Button, Flex, HStack, Text, VStack } from "@chakra-ui/react"
 
 import {
     deleteMatchEvent,
+    endFirstHalf,
     fetchMatchEvents,
     finishMatch,
     resetMatch,
@@ -35,6 +36,7 @@ export type PanelMatch = {
     status: string
     liveMode?: MatchLiveMode | null
     liveStartedAt?: string | null
+    firstHalfEndedAt?: string | null
     secondHalfStartedAt?: string | null
     team1Id: number | null
     team1Name: string | null
@@ -102,10 +104,14 @@ export default function LiveMatchPanel({
     const [events, setEvents] = useState<MatchEventDto[] | null>(null)
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
+    const [firstHalfEndedAt, setFirstHalfEndedAt] = useState<string | null>(
+        match.firstHalfEndedAt ?? null,
+    )
     const [secondHalfStartedAt, setSecondHalfStartedAt] = useState<string | null>(
         match.secondHalfStartedAt ?? null,
     )
     const [starting, setStarting] = useState(false)
+    const [endingHalf, setEndingHalf] = useState(false)
     const [startingHalf, setStartingHalf] = useState(false)
     const [finishing, setFinishing] = useState(false)
     const [resetting, setResetting] = useState(false)
@@ -169,15 +175,24 @@ export default function LiveMatchPanel({
         isTimer && isLive
             ? matchPhase({
                   liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt,
                   secondHalfStartedAt,
                   halfLengthMin,
                   halfCount,
               })
             : null
-    const atHalftime = phase === "HALFTIME"
-    const atFullTime = phase === "FULL_TIME"
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
-    const mustWaitForFullTime = hasClock && !atFullTime
+    const twoHalves = halfCount !== 1
+    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
+    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    const canStartSecondHalf = isTimer && phase === "HALFTIME"
+    // The half whose end is the match's end (single period → 1st; else 2nd).
+    const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
+    // Finishing "early" needs a confirm: not at full time, unless we're in the
+    // final half of a free-running match (no clock → manual end is the norm).
+    const finishIsPremature =
+        isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
     const halfLabel =
         phase === "FIRST_HALF" ? "1. POLUVRIJEME"
             : phase === "HALFTIME" ? "POLUVRIJEME"
@@ -203,6 +218,19 @@ export default function LiveMatchPanel({
             /* error toast surfaced by the http interceptor */
         } finally {
             setStarting(false)
+        }
+    }
+
+    async function handleEndFirstHalf() {
+        setEndingHalf(true)
+        try {
+            await endFirstHalf(uuid, matchId)
+            setFirstHalfEndedAt(new Date().toISOString())
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setEndingHalf(false)
         }
     }
 
@@ -287,6 +315,14 @@ export default function LiveMatchPanel({
     function confirmReset() {
         setConfirmResetOpen(true)
     }
+    const [confirmFinishOpen, setConfirmFinishOpen] = useState(false)
+    function requestFinish() {
+        if (finishIsPremature) {
+            setConfirmFinishOpen(true)
+            return
+        }
+        void handleFinish()
+    }
 
     return (
         <Box borderWidth="1px" borderColor="border.emphasized" rounded="xl" p={{ base: "4", md: "5" }}>
@@ -306,6 +342,7 @@ export default function LiveMatchPanel({
                             {isTimer && (
                                 <LiveClock
                                     liveStartedAt={match.liveStartedAt}
+                                    firstHalfEndedAt={firstHalfEndedAt}
                                     secondHalfStartedAt={secondHalfStartedAt}
                                     halfLengthMin={halfLengthMin}
                                     halfCount={halfCount}
@@ -381,6 +418,7 @@ export default function LiveMatchPanel({
                             team2Name={match.team2Name ?? null}
                             liveMode={match.liveMode}
                             liveStartedAt={match.liveStartedAt}
+                            firstHalfEndedAt={firstHalfEndedAt}
                             secondHalfStartedAt={secondHalfStartedAt}
                             halfLengthMin={halfLengthMin}
                             halfCount={halfCount}
@@ -394,7 +432,12 @@ export default function LiveMatchPanel({
                             <Button variant="outline" colorPalette="red" loading={resetting} onClick={confirmReset}>
                                 Resetiraj
                             </Button>
-                            {atHalftime && (
+                            {canEndFirstHalf && (
+                                <Button colorPalette="red" loading={endingHalf} onClick={handleEndFirstHalf}>
+                                    Završi 1. poluvrijeme
+                                </Button>
+                            )}
+                            {canStartSecondHalf && (
                                 <Button colorPalette="red" loading={startingHalf} onClick={handleStartSecondHalf}>
                                     Započni 2. poluvrijeme
                                 </Button>
@@ -402,9 +445,7 @@ export default function LiveMatchPanel({
                             <Button
                                 colorPalette="red"
                                 loading={finishing}
-                                disabled={mustWaitForFullTime}
-                                title={mustWaitForFullTime ? "Utakmica se može završiti tek kad istekne vrijeme 2. poluvremena" : undefined}
-                                onClick={handleFinish}
+                                onClick={requestFinish}
                             >
                                 Završi
                             </Button>
@@ -457,6 +498,16 @@ export default function LiveMatchPanel({
                 confirmLabel="Da, resetiraj"
                 onClose={() => setConfirmResetOpen(false)}
                 onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+            />
+
+            <ConfirmDialog
+                open={confirmFinishOpen}
+                busy={finishing}
+                title="Završiti utakmicu prije kraja?"
+                description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
+                confirmLabel="Da, završi"
+                onClose={() => setConfirmFinishOpen(false)}
+                onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
             />
         </Box>
     )
