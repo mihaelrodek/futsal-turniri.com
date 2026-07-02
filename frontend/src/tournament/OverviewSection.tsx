@@ -804,6 +804,8 @@ function DetailsReadView({
                         height={360}
                         big
                         seed={t.uuid}
+                        downloadable
+                        natural
                     />
                 </Box>
 

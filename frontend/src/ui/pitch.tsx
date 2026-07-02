@@ -11,6 +11,7 @@ import {
 } from "@chakra-ui/react"
 import type { ElementType, ReactNode } from "react"
 import { FaFutbol } from "react-icons/fa"
+import { FiDownload } from "react-icons/fi"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Pitch theme primitives — Nogometni-turniri.com redesign.
@@ -584,23 +585,70 @@ export function TournamentPoster({
     height = 180,
     big = false,
     seed,
+    downloadable = false,
+    natural = false,
 }: {
     name: string
     bannerUrl?: string | null
     height?: number | string
     big?: boolean
     seed?: string
+    /** Show a small download button (top-right) over the poster image. */
+    downloadable?: boolean
+    /** Render the poster at its natural aspect ratio (whole image always
+     *  visible, height adapts) instead of a fixed-height cover crop — for
+     *  the details page where a tall portrait poster must not be cut off.
+     *  `height` is ignored in this mode. */
+    natural?: boolean
 }) {
     if (bannerUrl) {
         return (
             <Box
                 position="relative"
-                h={`${typeof height === "number" ? `${height}px` : height}`}
                 overflow="hidden"
-                bgImage={`url(${bannerUrl})`}
-                bgSize="cover"
-                css={{ backgroundPosition: "center" }}
-            />
+                {...(natural
+                    ? {}
+                    : {
+                          h: `${typeof height === "number" ? `${height}px` : height}`,
+                          bgImage: `url(${bannerUrl})`,
+                          bgSize: "cover",
+                          css: { backgroundPosition: "center" },
+                      })}
+            >
+                {natural && (
+                    <chakra.img
+                        src={bannerUrl}
+                        alt={`Plakat — ${name}`}
+                        display="block"
+                        w="full"
+                        h="auto"
+                    />
+                )}
+                {downloadable && (
+                    <chakra.a
+                        href={bannerUrl}
+                        download={`plakat-${name}.jpg`}
+                        aria-label="Preuzmi plakat"
+                        title="Preuzmi plakat"
+                        onClick={(e) => e.stopPropagation()}
+                        position="absolute"
+                        top="2"
+                        right="2"
+                        display="inline-flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        boxSize="34px"
+                        rounded="full"
+                        bg="rgba(0,0,0,0.55)"
+                        color="white"
+                        backdropFilter="blur(4px)"
+                        transition="background .15s"
+                        _hover={{ bg: "rgba(0,0,0,0.75)" }}
+                    >
+                        <FiDownload size={16} />
+                    </chakra.a>
+                )}
+            </Box>
         )
     }
     const initials =
