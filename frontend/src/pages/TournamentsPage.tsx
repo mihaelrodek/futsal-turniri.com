@@ -1579,7 +1579,6 @@ export default function TournamentsPage() {
                     </Heading>
                     {finished.length > 0 ? (
                         <Box fontSize="13px" color="pitch.500" fontWeight={600}>
-                            Arhiva sezona →
                         </Box>
                     ) : null}
                 </Flex>
