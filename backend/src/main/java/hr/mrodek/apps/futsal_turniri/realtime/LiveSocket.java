@@ -14,9 +14,11 @@ import io.quarkus.websockets.next.WebSocket;
  * for clients that can't hold a socket.
  *
  * <p>The path is {@code /ws/live} (not under the {@code /api} REST root-path —
- * websockets-next paths are independent of {@code quarkus.http.root-path}).
- * Caddy proxies {@code /ws/*} to the backend; the Vite dev server proxies it
- * too.
+ * websockets-next paths are independent of {@code quarkus.http.root-path}) —
+ * WRONG in practice: websockets-next registers the route UNDER the root-path,
+ * so the backend actually serves {@code /api/ws/live}. Clients keep the public
+ * {@code /ws/live} URL; both proxies rewrite to {@code /api/ws/live}
+ * (Caddy in prod, Vite in dev).
  */
 @WebSocket(path = "/ws/live")
 public class LiveSocket {

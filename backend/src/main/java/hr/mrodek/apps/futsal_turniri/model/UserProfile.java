@@ -29,6 +29,15 @@ public class UserProfile {
     private String displayName;
 
     /**
+     * Email address, mirrored from the Firebase ID token's {@code email} claim
+     * on every /user/me/sync. Used to send tournament-notification emails.
+     * Null for older rows synced before this was captured, or if the token
+     * carries no email (rare).
+     */
+    @Column(name = "email", length = 320)
+    private String email;
+
+    /**
      * Public, URL-safe handle used at /profile/{slug}. Derived from displayName
      * with auto-numbered collision (-2, -3) and made unique by an index.
      */

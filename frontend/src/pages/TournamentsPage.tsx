@@ -53,6 +53,7 @@ import {
     TournamentPoster,
 } from "../ui/pitch"
 import { matchPhase } from "../components/liveMatch"
+import HelpFab from "../components/HelpFab"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Turniri (listing) — "Pitch" theme.
@@ -622,8 +623,10 @@ function TournamentCardView({
                         borderColor="border"
                         mt="auto"
                     >
-                        <VStack align="start" gap="0.5">
-                            <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px">
+                        {/* Kotizacija + ukupna nagrada — one row, separated by
+                            a thin divider dot; wraps gracefully on narrow cards. */}
+                        <HStack gap="2" align="baseline" wrap="wrap" minW="0">
+                            <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px" align="baseline">
                                 {price ? (
                                     <>
                                         <Box>{price}</Box>
@@ -638,14 +641,19 @@ function TournamentCardView({
                                 )}
                             </HStack>
                             {variant === "upcoming" && prize && (
-                                <HStack gap="1.5" color="accent.amber" fontWeight={700} fontSize="14px">
-                                    <Box>{prize}</Box>
-                                    <Box fontSize="11px" color="fg.muted" fontWeight={500}>
-                                        ukupna nagrada
+                                <>
+                                    <Box as="span" color="fg.subtle" fontSize="11px">
+                                        ·
                                     </Box>
-                                </HStack>
+                                    <HStack gap="1.5" color="accent.amber" fontWeight={700} fontSize="16px" align="baseline">
+                                        <Box>{prize}</Box>
+                                        <Box fontSize="11px" color="fg.muted" fontWeight={500}>
+                                            ukupna nagrada
+                                        </Box>
+                                    </HStack>
+                                </>
                             )}
-                        </VStack>
+                        </HStack>
                         <TintButton>Detalji →</TintButton>
                     </Flex>
                 </VStack>
@@ -1195,6 +1203,7 @@ export default function TournamentsPage() {
 
     return (
         <VStack align="stretch" gap="7">
+            <HelpFab />
             {liveTop ? <LiveHero match={liveTop} /> : null}
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}

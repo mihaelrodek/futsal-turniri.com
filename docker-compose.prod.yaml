@@ -147,6 +147,11 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:mihael.rodek1@gmail.com}
+
+      # Email (Brevo SMTP). Unset → EmailService is a no-op (no mail sent).
+      MAIL_SMTP_LOGIN: ${MAIL_SMTP_LOGIN:-}
+      MAIL_SMTP_KEY: ${MAIL_SMTP_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-Futsal Turniri <obavijesti@futsal-turniri.com>}
     networks:
       - futsal_internal
 

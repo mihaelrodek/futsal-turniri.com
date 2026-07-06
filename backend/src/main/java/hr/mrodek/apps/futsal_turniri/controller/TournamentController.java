@@ -26,11 +26,7 @@ import hr.mrodek.apps.futsal_turniri.repository.RoundsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserTeamPresetRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
-import hr.mrodek.apps.futsal_turniri.services.GeocodeService;
-import hr.mrodek.apps.futsal_turniri.services.PushService;
-import hr.mrodek.apps.futsal_turniri.services.SlugService;
-import hr.mrodek.apps.futsal_turniri.services.StorageService;
-import hr.mrodek.apps.futsal_turniri.services.TournamentSlugService;
+import hr.mrodek.apps.futsal_turniri.services.*;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.RolesAllowed;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -65,6 +61,7 @@ public class TournamentController {
     @Inject SlugService slugService;
     @Inject TournamentSlugService tournamentSlugService;
     @Inject PushService pushService;
+    @Inject hr.mrodek.apps.futsal_turniri.services.EmailService emailService;
 
     @Inject TournamentsRepository tournamentsRepo;
     @Inject TeamsRepository teamRepo;
@@ -439,6 +436,24 @@ public class TournamentController {
         t.setStatus(TournamentStatus.FINISHED);
         t.setWinnerName(winner.getName());
         t.setUpdatedAt(OffsetDateTime.now());
+
+        // Email the tournament's followers the final result. Fire-and-forget:
+        // a mail hiccup must not fail the finish. No-op when SMTP is unconfigured.
+        try {
+            String url = emailService.baseUrl() + "/turniri/"
+                    + (t.getSlug() != null ? t.getSlug() : t.getUuid());
+            String html = emailService.shell(
+                    "Turnir je završen",
+                    "<p><strong>" + EmailService.escapeHtml(t.getName()) + "</strong> je završen.</p>"
+                            + "<p style=\"font-size:17px;\">🏆 Pobjednik: <strong>"
+                            + EmailService.escapeHtml(winner.getName()) + "</strong></p>"
+                            + "<p>Pogledaj konačni poredak, strijelce i statistiku na stranici turnira.</p>",
+                    url, "Pogledaj rezultate");
+            emailService.sendToTournamentSubscribers(
+                    t.getId(), "🏁 Turnir završen — " + t.getName(), html);
+        } catch (Exception ignored) {
+            // best-effort — the tournament is already finished
+        }
 
         return Response.ok(tournamentMapper.toDetails(t)).build();
     }
@@ -882,6 +897,25 @@ public class TournamentController {
             s.setUserUid(myUid);
             s.setTournament(t);
             subRepo.persist(s);
+
+            // Confirmation email to the follower (their address is on the token).
+            // Fire-and-forget; no-op when SMTP is unconfigured or no email claim.
+            try {
+                Object emailClaim = jwt.getClaim("email");
+                String email = emailClaim != null ? emailClaim.toString() : null;
+                if (email != null && !email.isBlank()) {
+                    String url = emailService.baseUrl() + "/turniri/"
+                            + (t.getSlug() != null ? t.getSlug() : t.getUuid());
+                    String html = emailService.shell(
+                            "Pratiš turnir",
+                            "<p>Od sada pratiš <strong>" + EmailService.escapeHtml(t.getName())
+                                    + "</strong>. Javit ćemo ti obavijesti o turniru (npr. konačni rezultat).</p>",
+                            url, "Otvori turnir");
+                    emailService.sendHtml(email, "Pratiš turnir — " + t.getName(), html);
+                }
+            } catch (Exception ignored) {
+                // best-effort — the subscription is already saved
+            }
         }
         return Response.status(Response.Status.CREATED).build();
     }

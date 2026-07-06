@@ -32,6 +32,7 @@ const LivePage = lazy(() => import('./pages/LivePage'))
 const MapPage = lazy(() => import('./pages/MapPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
+const GuidePage = lazy(() => import('./pages/GuidePage'))
 const ProfileRedirect = lazy(() => import('./pages/ProfileRedirect'))
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'))
 const ClaimTeamPage = lazy(() => import('./pages/ClaimTeamPage'))
@@ -183,6 +184,7 @@ export default function App() {
                     {/* English alias for the stats page. */}
                     <Route path="/stats" element={<Navigate to="/statistika" replace />} />
                     <Route path="/privatnost" element={<PrivacyPage />} />
+                    <Route path="/vodic" element={<GuidePage />} />
                     <Route path="/pronadi-ekipu" element={<FindTeamPage />} />
                     {/* /profil bounces to /profil/{my-slug} once the backend
                         has synced. /profil/:slug is publicly visible per

@@ -95,7 +95,7 @@ function StageBadge({ stage, groupName }: { stage: string; groupName?: string | 
             fontWeight="semibold"
             letterSpacing="wide"
             textTransform="uppercase"
-            bg={isGroup ? "brand.subtle" : "gray.100"}
+            bg={isGroup ? "brand.subtle" : "bg.muted"}
             color={isGroup ? "brand.fg" : "fg.muted"}
             flexShrink={0}
             whiteSpace="nowrap"

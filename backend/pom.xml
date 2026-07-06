@@ -98,6 +98,22 @@
             <artifactId>quarkus-oidc</artifactId>
         </dependency>
 
+        <!-- Email (SMTP via Brevo). Sends tournament notifications; falls back
+             to no-op when SMTP creds are unset (see EmailService.isReady). -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-mailer</artifactId>
+        </dependency>
+
+        <!-- Image downscale/recompress on upload (pure-Java, no natives).
+             Posters arrived as 3-6 MB camera JPEGs and were served verbatim —
+             the single biggest mobile LCP cost. See StorageService.recompress. -->
+        <dependency>
+            <groupId>net.coobird</groupId>
+            <artifactId>thumbnailator</artifactId>
+            <version>0.4.20</version>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

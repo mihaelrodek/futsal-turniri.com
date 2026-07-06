@@ -103,7 +103,10 @@ export default function FirstRunInstallPrompt() {
             <Portal>
                 <Dialog.Backdrop />
                 <Dialog.Positioner>
-                    <Dialog.Content maxW={{ base: "92%", md: "md" }}>
+                    {/* aria-label: this dialog has no Dialog.Title (the heading
+                        is body copy), so name it explicitly for screen readers
+                        — also fixes Lighthouse's aria-dialog-name audit. */}
+                    <Dialog.Content maxW={{ base: "92%", md: "md" }} aria-label="Instaliraj Futsal Turniri">
                         <Dialog.Body py="5" px={{ base: "4", md: "6" }}>
                             <VStack align="stretch" gap="4">
                                 <HStack gap="3" align="center">

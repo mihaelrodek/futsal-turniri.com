@@ -34,10 +34,23 @@
     <script>
       try { fetch("/api/tournaments?status=upcoming").catch(function(){}); } catch (e) {}
     </script>
+    <!-- Async font CSS — `media="print"` makes the browser fetch it without
+         blocking first paint (print styles don't block rendering); onload
+         flips it to `all` and the fonts swap in. Saves ~1s of mobile
+         render-block vs a plain stylesheet link; display=swap keeps text
+         visible on the system stack meanwhile. -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"
+      />
+    </noscript>
 
     <!-- ── PWA / Add to Home Screen ─────────────────────────────────────
          Installable web app metadata. With the manifest below, Chrome

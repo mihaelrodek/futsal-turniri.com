@@ -175,6 +175,13 @@ public class UserMeController {
         String uid = jwt.getSubject();
         String displayName = body == null ? null : blank(body.displayName());
         var profile = slugService.ensureProfile(uid, displayName);
+        // Mirror the email from the Firebase ID token so we can send tournament
+        // notifications. Managed entity → the setter flushes in this @Transactional.
+        Object emailClaim = jwt.getClaim("email");
+        if (emailClaim != null) {
+            String email = blank(emailClaim.toString());
+            if (email != null) profile.setEmail(email);
+        }
         // ensureProfile returns the persisted entity with the slug guaranteed.
         return toDto(profile);
     }

@@ -34,9 +34,14 @@ export default defineConfig({
             // swallows proxy errors so a not-yet-started backend (the WS endpoint
             // only exists after the backend is restarted with quarkus-websockets-next)
             // doesn't spam the console — the app just falls back to polling.
+            //
+            // rewrite: quarkus-websockets-next registers the endpoint UNDER
+            // quarkus.http.root-path (/api) → the backend serves /api/ws/live.
+            // Same mapping Caddy does in prod; the client keeps using /ws/live.
             "/ws": {
                 target: "ws://localhost:8087",
                 ws: true,
+                rewrite: (path) => `/api${path}`,
                 configure: (proxy) => {
                     proxy.on("error", () => {
                         /* backend WS not available — ignore; polling covers it */
@@ -61,7 +66,24 @@ export default defineConfig({
                 // 'createContext')". Keeping everything that touches React in
                 // one chunk makes that impossible.
                 manualChunks(id) {
-                    if (id.includes("node_modules")) return "vendor"
+                    if (!id.includes("node_modules")) return undefined
+                    // Heavy libs used ONLY by lazy routes get their own chunks
+                    // so the first paint of /turniri doesn't pay for them:
+                    //  - leaflet + react-leaflet  → /karta (MapPage)
+                    //  - @g-loot bracket library  → TournamentDetailsPage
+                    // React itself stays in the main vendor chunk together
+                    // with everything else React-touching (see note below) —
+                    // these two only *import* React across chunks, which is
+                    // safe; the historical createContext crash came from
+                    // splitting React away from other React-consuming libs
+                    // in the SAME initial graph.
+                    if (id.includes("node_modules/leaflet") || id.includes("node_modules/react-leaflet")) {
+                        return "vendor-map"
+                    }
+                    if (id.includes("@g-loot")) {
+                        return "vendor-bracket"
+                    }
+                    return "vendor"
                 },
             },
         },

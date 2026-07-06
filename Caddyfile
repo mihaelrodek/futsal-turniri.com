@@ -72,9 +72,23 @@ futsal-turniri.com, www.futsal-turniri.com {
 	}
 	# WebSocket - realtime live channel: instant live score/event push
 	# for /uzivo + the fullscreen TV display. Caddy auto-detects the
-	# Upgrade header and proxies the socket to the backend; served at
-	# /ws/live (independent of the backend's /api REST root-path).
+	# Upgrade header and proxies the socket to the backend.
+	#
+	# NOTE: quarkus-websockets-next registers its endpoints UNDER
+	# quarkus.http.root-path (/api), so the backend actually serves the
+	# socket at /api/ws/live — the bare /ws/live returned 404 and every
+	# client silently fell back to polling. Keep the public URL /ws/live
+	# (clients + SW already use it) and rewrite here.
 	handle /ws/* {
+		rewrite * /api{path}
+		reverse_proxy backend:8085
+	}
+
+	# Bare /sitemap.xml → the backend's dynamic sitemap. robots.txt already
+	# points crawlers at /api/sitemap.xml, but the bare root path is the
+	# convention Search Console users type in, so serve it there too.
+	handle /sitemap.xml {
+		rewrite * /api/sitemap.xml
 		reverse_proxy backend:8085
 	}
 
@@ -241,6 +255,14 @@ futsal-turniri.com, www.futsal-turniri.com {
 	# forever — the browser never has to re-validate them.
 	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Non-hashed static images (logos, PWA icons, favicons). Not immutable —
+	# they keep their filenames across redesigns — but they change rarely, so
+	# a week of caching kills the repeated re-fetches Lighthouse flags
+	# (ttl=0 on /logo/*.svg, /icon-192.png). A redesign that must show up
+	# instantly should rename the file instead of relying on cache expiry.
+	@staticimg path *.png *.svg *.ico *.webp *.jpg *.jpeg
+	header @staticimg Cache-Control "public, max-age=604800"
 
 	# The HTML shell, service worker and manifest must NOT be cached, or a
 	# deploy wouldn't take effect until the old copies expire. `no-cache`

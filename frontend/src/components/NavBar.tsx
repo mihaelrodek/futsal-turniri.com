@@ -16,6 +16,7 @@ import { FiLogOut, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
 import { getProfile } from "../api/userMe"
 import { InstallAppButton } from "./InstallAppButton"
+import ColorModeToggle from "./ColorModeToggle"
 import { LiveNavItem } from "./LiveNavItem"
 import { Logo } from "./Logo"
 import { MonoLabel } from "../ui/pitch"
@@ -272,6 +273,7 @@ export default function NavBar() {
                         wired to anything and added clutter next to install. */}
                     <HStack justify="end" gap="3">
                         <HStack data-tour={isMobile ? undefined : "help-install"} gap="1.5">
+                            <ColorModeToggle size="sm" />
                             <InstallAppButton size="sm" />
                         </HStack>
                         <DesktopAuthArea />
@@ -287,7 +289,10 @@ export default function NavBar() {
                     <Logo size={32} showDomain={false} to="/turniri" />
                     <Box flex="1" />
                     <Box data-tour={isMobile ? "help-install" : undefined}>
-                        <InstallAppButton size="sm" />
+                        <HStack gap="1.5">
+                            <ColorModeToggle size="sm" />
+                            <InstallAppButton size="sm" />
+                        </HStack>
                     </Box>
                     <Box data-tour={isMobile ? "nav-auth" : undefined}>
                         {!loading && user && (

@@ -98,11 +98,9 @@ const config = defineConfig({
                     900: { value: "#032513" },
                     950: { value: "#021609" },
                 },
-                accent: {
-                    amber: { value: "#d97706" },
-                    red: { value: "#dc2626" },
-                    goal: { value: "#f5b921" },
-                },
+                // NB: `accent` lives in semanticTokens (light + dark pair)
+                // rather than here — a plain token and a semantic token can't
+                // share the same path.
                 team: {
                     blue: { value: "#2563eb" },
                     purple: { value: "#7c3aed" },
@@ -214,47 +212,64 @@ const config = defineConfig({
             colors: {
                 // Canvas/surfaces — let `bg="bg.canvas"` / `bg="bg.panel"` keep
                 // working on existing components without touching call sites.
+                // Every token carries a `_dark` twin: a deep green-tinted dark
+                // ("night pitch") rather than neutral gray, so the brand hue
+                // survives the flip. Toggle lives in the navbar; next-themes
+                // sets the `dark` class that Chakra's `_dark` condition reads.
                 bg: {
-                    DEFAULT: { value: "{colors.surface.base}" },
-                    canvas: { value: "{colors.surface.canvas}" },
-                    panel: { value: "{colors.surface.base}" },
-                    subtle: { value: "{colors.surface.tint2}" },
-                    muted: { value: "{colors.surface.tint}" },
-                    surfaceTint: { value: "{colors.surface.tint}" },
-                    surfaceTint2: { value: "{colors.surface.tint2}" },
+                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#131c16" } },
+                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#0c1310" } },
+                    panel: { value: { base: "{colors.surface.base}", _dark: "#131c16" } },
+                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#17221b" } },
+                    muted: { value: { base: "{colors.surface.tint}", _dark: "#1c2a21" } },
+                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#1c2a21" } },
+                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#17221b" } },
                 },
                 fg: {
-                    DEFAULT: { value: "{colors.ink}" },
-                    ink: { value: "{colors.ink}" },
-                    soft: { value: "{colors.ink.soft}" },
-                    muted: { value: "{colors.ink.mute}" },
-                    subtle: { value: "{colors.ink.mute}" },
+                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#e6ede7" } },
+                    ink: { value: { base: "{colors.ink}", _dark: "#e6ede7" } },
+                    soft: { value: { base: "{colors.ink.soft}", _dark: "#b3c0b6" } },
+                    muted: { value: { base: "{colors.ink.mute}", _dark: "#8a988e" } },
+                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#77857b" } },
                 },
                 border: {
-                    DEFAULT: { value: "{colors.line}" },
-                    emphasized: { value: "{colors.line.strong}" },
-                    subtle: { value: "{colors.line}" },
-                    strong: { value: "{colors.line.strong}" },
+                    DEFAULT: { value: { base: "{colors.line}", _dark: "#263427" } },
+                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#35473a" } },
+                    subtle: { value: { base: "{colors.line}", _dark: "#202c23" } },
+                    strong: { value: { base: "{colors.line.strong}", _dark: "#35473a" } },
                 },
-                // Make `colorPalette="pitch"` fully wired.
+                // Make `colorPalette="pitch"` fully wired. Dark: solid pops a
+                // step brighter, fg goes light-green for text/links, subtle/
+                // muted become deep green fills instead of near-white ones.
                 pitch: {
-                    solid: { value: "{colors.pitch.500}" },
+                    solid: { value: { base: "{colors.pitch.500}", _dark: "#148f4e" } },
                     contrast: { value: "#ffffff" },
-                    fg: { value: "{colors.pitch.500}" },
-                    muted: { value: "{colors.pitch.200}" },
-                    subtle: { value: "{colors.pitch.50}" },
-                    emphasized: { value: "{colors.pitch.400}" },
-                    focusRing: { value: "{colors.pitch.500}" },
+                    fg: { value: { base: "{colors.pitch.500}", _dark: "#4cc088" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#1b4028" } },
+                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#12281c" } },
+                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#2c6644" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#3aa56b" } },
                 },
                 // Alias.
                 brand: {
-                    solid: { value: "{colors.pitch.500}" },
+                    solid: { value: { base: "{colors.pitch.500}", _dark: "#148f4e" } },
                     contrast: { value: "#ffffff" },
-                    fg: { value: "{colors.pitch.500}" },
-                    muted: { value: "{colors.pitch.200}" },
-                    subtle: { value: "{colors.pitch.50}" },
-                    emphasized: { value: "{colors.pitch.400}" },
-                    focusRing: { value: "{colors.pitch.500}" },
+                    fg: { value: { base: "{colors.pitch.500}", _dark: "#4cc088" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#1b4028" } },
+                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#12281c" } },
+                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#2c6644" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#3aa56b" } },
+                },
+                // Status accents — slightly brighter in dark so they keep
+                // their pop on the deep-green surfaces. Referenced directly
+                // as `accent.*` across the app.
+                // NB: raw values (not {colors.accent.*} references) — a semantic
+                // token that references a plain token at the SAME path would
+                // resolve to itself and cycle.
+                accent: {
+                    amber: { value: { base: "#d97706", _dark: "#f59e0b" } },
+                    red: { value: { base: "#dc2626", _dark: "#f05252" } },
+                    goal: { value: { base: "#f5b921", _dark: "#fbc934" } },
                 },
             },
         },
