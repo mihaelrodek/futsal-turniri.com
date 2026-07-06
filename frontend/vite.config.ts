@@ -67,21 +67,16 @@ export default defineConfig({
                 // one chunk makes that impossible.
                 manualChunks(id) {
                     if (!id.includes("node_modules")) return undefined
-                    // Heavy libs used ONLY by lazy routes get their own chunks
-                    // so the first paint of /turniri doesn't pay for them:
-                    //  - leaflet + react-leaflet  → /karta (MapPage)
-                    //  - @g-loot bracket library  → TournamentDetailsPage
-                    // React itself stays in the main vendor chunk together
-                    // with everything else React-touching (see note below) —
-                    // these two only *import* React across chunks, which is
-                    // safe; the historical createContext crash came from
-                    // splitting React away from other React-consuming libs
-                    // in the SAME initial graph.
-                    if (id.includes("node_modules/leaflet") || id.includes("node_modules/react-leaflet")) {
+                    // ONLY plain `leaflet` gets its own chunk — it's the heavy
+                    // part (~150 kB) and imports no React, so it can never hit
+                    // the cross-chunk init crash. Anything React-touching
+                    // (react-leaflet, @g-loot bracket, …) MUST stay in the one
+                    // vendor chunk: splitting react-leaflet out shipped
+                    // "Cannot read properties of undefined (reading
+                    // 'forwardRef')" — it executed before the React chunk had
+                    // initialized. Don't re-split those.
+                    if (id.includes("node_modules/leaflet/")) {
                         return "vendor-map"
-                    }
-                    if (id.includes("@g-loot")) {
-                        return "vendor-bracket"
                     }
                     return "vendor"
                 },
