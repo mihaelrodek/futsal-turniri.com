@@ -64,3 +64,6 @@ frontend/*.local
 # ──────────────────────────────────────────────────────────
 uploads/
 backend/uploads/
+
+# Maintenance flag — toggled at deploy time by ops/deploy.sh, never committed
+ops/maintenance/ENABLED

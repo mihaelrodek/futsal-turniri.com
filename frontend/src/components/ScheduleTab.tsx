@@ -291,8 +291,10 @@ function MatchRow({
                     the right. Equal flex on the two side clusters keeps the
                     time visually centred regardless of badge width. */}
                 <Flex align="center" gap="2" wrap="wrap">
-                    {/* Left: stage + live/next badges */}
-                    <HStack gap="2" minW="0" flex="1" wrap="wrap">
+                    {/* Left: stage + live/next badges. Fixed width (no flex
+                        shrink) so the nowrap badge never collapses to 0 and
+                        overflows over the date/calendar on narrow phones. */}
+                    <HStack gap="2" flexShrink={0} wrap="wrap">
                         <StageBadge stage={match.stage} groupName={match.groupName} />
                         {isLive && <LiveBadge />}
                         {/* "Na redu" tag for the next match to start. */}
@@ -317,8 +319,8 @@ function MatchRow({
                         )}
                     </HStack>
 
-                    {/* Center: kickoff time / editor */}
-                    <Box flexShrink={0}>
+                    {/* Center: kickoff time / editor — shrinks to fit. */}
+                    <Box flex="1" minW="0">
                         {canEdit ? (
                             <chakra.input
                                 type="datetime-local"
@@ -372,7 +374,7 @@ function MatchRow({
                     </Box>
 
                     {/* Right: add to calendar (scheduled matches only) */}
-                    <Flex flex="1" justify="flex-end" minW="0">
+                    <Flex flexShrink={0} justify="flex-end" ml="auto">
                         {!scoreboard && match.kickoffAt && (
                             <RowButton
                                 type="button"
@@ -398,7 +400,9 @@ function MatchRow({
                                 flexShrink={0}
                             >
                                 <FiCalendar size={12} />
-                                Dodaj u kalendar
+                                <chakra.span display={{ base: "none", md: "inline" }}>
+                                    Dodaj u kalendar
+                                </chakra.span>
                             </RowButton>
                         )}
                     </Flex>

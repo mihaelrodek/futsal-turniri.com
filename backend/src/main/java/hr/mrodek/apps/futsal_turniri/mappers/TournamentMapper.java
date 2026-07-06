@@ -29,6 +29,7 @@ public interface TournamentMapper {
             @Mapping(target = "maxTeams", source = "maxTeams"),
             @Mapping(target = "format", source = "format", qualifiedByName = "enumToName"),
             @Mapping(target = "entryPrice", source = "entryPrice"),
+            @Mapping(target = "prizeTotal", expression = "java(prizeTotal(t))"),
             @Mapping(target = "winnerName", source = "winnerName"),
             @Mapping(target = "bannerUrl", expression = "java(publicUrl(t))"),
             @Mapping(target = "registeredTeams",
@@ -192,6 +193,17 @@ public interface TournamentMapper {
     @Named("enumToName")
     default String enumToName(Enum<?> e) {
         return e == null ? null : e.name();
+    }
+
+    /** Total prize fund in euros = sum of the four prize places. Returns null
+     *  when nothing is set (so the card can hide the "ukupna nagrada" line). */
+    default BigDecimal prizeTotal(Tournaments t) {
+        BigDecimal sum = BigDecimal.ZERO;
+        if (t.getRewardFirst() != null) sum = sum.add(t.getRewardFirst());
+        if (t.getRewardSecond() != null) sum = sum.add(t.getRewardSecond());
+        if (t.getRewardThird() != null) sum = sum.add(t.getRewardThird());
+        if (t.getRewardFourth() != null) sum = sum.add(t.getRewardFourth());
+        return sum.signum() > 0 ? sum : null;
     }
 
     @Named("nameToRewardType")

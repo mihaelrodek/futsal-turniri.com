@@ -274,7 +274,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                         mt="1.5"
                         display="block"
                     >
-                        FUTSAL · NOGOMETNI-TURNIRI.COM
+                        FUTSAL · FUTSAL-TURNIRI.COM
                     </MonoLabel>
                 </Box>
 
@@ -431,6 +431,7 @@ function TournamentCardView({
                         ? "fg.muted"
                         : "pitch.400"
     const price = fmtEuro(t.entryPrice)
+    const prize = fmtEuro(t.prizeTotal)
     const winner = (t.winnerName ?? "").trim()
 
     return (
@@ -621,20 +622,30 @@ function TournamentCardView({
                         borderColor="border"
                         mt="auto"
                     >
-                        <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px">
-                            {price ? (
-                                <>
-                                    <Box>{price}</Box>
-                                    <Box fontSize="11px" color="fg.muted" fontWeight={500}>
-                                        kotizacija
+                        <VStack align="start" gap="0.5">
+                            <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px">
+                                {price ? (
+                                    <>
+                                        <Box>{price}</Box>
+                                        <Box fontSize="11px" color="fg.muted" fontWeight={500}>
+                                            kotizacija
+                                        </Box>
+                                    </>
+                                ) : (
+                                    <Box fontSize="13px" color="fg.muted" fontWeight={500}>
+                                        Besplatan ulaz
                                     </Box>
-                                </>
-                            ) : (
-                                <Box fontSize="13px" color="fg.muted" fontWeight={500}>
-                                    Besplatan ulaz
-                                </Box>
+                                )}
+                            </HStack>
+                            {variant === "upcoming" && prize && (
+                                <HStack gap="1.5" color="accent.amber" fontWeight={700} fontSize="14px">
+                                    <Box>{prize}</Box>
+                                    <Box fontSize="11px" color="fg.muted" fontWeight={500}>
+                                        ukupna nagrada
+                                    </Box>
+                                </HStack>
                             )}
-                        </HStack>
+                        </VStack>
                         <TintButton>Detalji →</TintButton>
                     </Flex>
                 </VStack>
@@ -897,10 +908,15 @@ function ViewToggleButton({
     )
 }
 
-/** Month-grouped calendar list of upcoming tournaments. */
-function UpcomingMonthList({ items }: { items: TournamentCard[] }) {
+/** Month-grouped calendar list of tournaments. Ascending by default (upcoming);
+ *  pass `desc` for most-recent-first (the finished archive). */
+function MonthList({ items, desc = false }: { items: TournamentCard[]; desc?: boolean }) {
     const today = useMemo(() => new Date(), [])
-    const groups = useMemo(() => groupByMonth(items), [items])
+    const groups = useMemo(() => {
+        const g = groupByMonth(items)
+        if (!desc) return g
+        return [...g].reverse().map((m) => ({ ...m, days: [...m.days].reverse() }))
+    }, [items, desc])
 
     if (groups.length === 0) {
         return (
@@ -1539,7 +1555,7 @@ export default function TournamentsPage() {
                         }
                     />
                 ) : upcomingView === "list" ? (
-                    <UpcomingMonthList items={filteredUpcoming} />
+                    <MonthList items={filteredUpcoming} />
                 ) : (
                     <Grid templateColumns={gridCols} gap="5">
                         {filteredUpcoming.map((t) => (
@@ -1589,11 +1605,15 @@ export default function TournamentsPage() {
                     />
                 ) : (
                     <>
-                        <Grid templateColumns={gridCols} gap="5">
-                            {finished.map((t) => (
-                                <TournamentCardView key={t.uuid} t={t} variant="finished" />
-                            ))}
-                        </Grid>
+                        {upcomingView === "list" ? (
+                            <MonthList items={finished} desc />
+                        ) : (
+                            <Grid templateColumns={gridCols} gap="5">
+                                {finished.map((t) => (
+                                    <TournamentCardView key={t.uuid} t={t} variant="finished" />
+                                ))}
+                            </Grid>
+                        )}
                         {finishedHasMore && (
                             <HStack justify="center" mt="4">
                                 <Button

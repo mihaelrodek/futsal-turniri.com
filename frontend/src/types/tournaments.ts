@@ -17,6 +17,8 @@ export type TournamentCard = {
     maxTeams?: number | null;
     format?: TournamentFormat | null;
     entryPrice?: number | null;
+    /** Total prize fund in euros (sum of 1st–4th place). Null when none set. */
+    prizeTotal?: number | null;
     winnerName?: string | null;
     registeredTeams?: number | null;
     /** True when this tournament currently has a match in progress. */

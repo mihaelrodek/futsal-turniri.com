@@ -23,6 +23,9 @@ public class TournamentCardDto {
     private Integer maxTeams;
     private String format;
     private BigDecimal entryPrice;
+    /** Sum of the prize amounts (1st+2nd+3rd+4th), in euros. Null when the
+     *  organizer set no prize fund. Shown on the card as "ukupna nagrada". */
+    private BigDecimal prizeTotal;
     private String winnerName;
     private Integer registeredTeams;
     /** True when this tournament has at least one match in progress (status LIVE). */

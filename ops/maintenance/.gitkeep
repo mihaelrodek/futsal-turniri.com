@@ -1,0 +1,3 @@
+# Keeps ops/maintenance/ in git so the edge bind-mount target exists on the
+# host after a fresh clone. The actual maintenance flag file (ENABLED) is
+# created/removed at deploy time and is gitignored.

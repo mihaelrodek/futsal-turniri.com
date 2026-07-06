@@ -7,6 +7,7 @@ import {
     IconButton,
     Input,
     Spinner,
+    Stack,
     Text,
     VStack,
     chakra,
@@ -768,7 +769,12 @@ function RosterPanel({
     return (
         <Panel p={{ base: "4", md: "5" }}>
             <VStack align="stretch" gap="4">
-                <HStack justify="space-between" align="center" gap="3" wrap="wrap">
+                <Stack
+                    direction={{ base: "column", md: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", md: "center" }}
+                    gap="3"
+                >
                     <HStack gap="3" align="center" minW="0" flex="1">
                         <IconButton
                             aria-label="Natrag na ekipe"
@@ -813,7 +819,7 @@ function RosterPanel({
                         </Box>
                     </HStack>
                     {canEdit && (
-                        <HStack gap="2" flexShrink={0} wrap="wrap" justify="flex-end">
+                        <HStack gap="2" flexShrink={0} wrap="wrap" justify={{ base: "flex-start", md: "flex-end" }}>
                             {/* Uredi / Gotovo toggle. Hidden while the
                                  "add player" form is open so the action
                                  surface stays focused on confirming the
@@ -862,7 +868,7 @@ function RosterPanel({
                             )}
                         </HStack>
                     )}
-                </HStack>
+                </Stack>
 
                 {canEdit && adding && (
                     <Box

@@ -176,6 +176,10 @@ services:
       # hit the Let's Encrypt rate limit.
       - caddy_data:/data
       - caddy_config:/config
+      # Maintenance flag (read-only). The deploy script touches/removes
+      # ./ops/maintenance/ENABLED on the host; Caddy serves the
+      # "Nadogradnja u tijeku" 503 page while that file exists.
+      - ./ops/maintenance:/maintenance:ro
     networks:
       - futsal_internal
 

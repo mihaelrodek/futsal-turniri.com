@@ -372,7 +372,7 @@ async function addPlayersToTeam(tournamentUuid, teamId, playerCount) {
 
 async function main() {
   console.log("\n" + "=".repeat(60));
-  console.log("  Nogometni-turniri.com -- Mock Data Seed");
+  console.log("  Futsal-turniri.com -- Mock Data Seed");
   console.log("=".repeat(60));
   console.log(`  API: ${BASE_URL}`);
   console.log(`  Tournaments to create: ${TOURNAMENT_SPECS.length}`);

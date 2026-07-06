@@ -98,7 +98,7 @@ public final class ShareImageRenderer {
 
             g.setFont(monoSm);
             g.setColor(WHITE_FAINT);
-            g.drawString("NOGOMETNI-TURNIRI.COM", 60, HEIGHT - 36);
+            g.drawString("FUTSAL-TURNIRI.COM", 60, HEIGHT - 36);
         } finally {
             g.dispose();
         }

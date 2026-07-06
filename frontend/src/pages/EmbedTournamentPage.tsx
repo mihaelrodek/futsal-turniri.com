@@ -171,7 +171,7 @@ export default function EmbedTournamentPage() {
                         "&:hover": { color: "var(--chakra-colors-pitch-600)" },
                     }}
                 >
-                    POWERED BY NOGOMETNI-TURNIRI.COM
+                    POWERED BY FUTSAL-TURNIRI.COM
                 </Link>
             </VStack>
         </Shell>

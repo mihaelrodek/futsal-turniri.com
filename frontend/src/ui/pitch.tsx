@@ -342,8 +342,9 @@ export function SectionCard({
                 <Flex
                     px="6"
                     py="4"
+                    direction={{ base: "column", md: "row" }}
                     justify="space-between"
-                    align="center"
+                    align={{ base: "stretch", md: "center" }}
                     borderBottomWidth={children ? "1px" : "0"}
                     borderColor="border"
                     gap="3"

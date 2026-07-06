@@ -29,6 +29,36 @@
 futsal-turniri.com, www.futsal-turniri.com {
 	encode zstd gzip
 
+	# ─── 0. Maintenance mode ──────────────────────────────────────────
+	# When the flag file /maintenance/ENABLED exists, short-circuit EVERY
+	# request with a friendly "Nadogradnja u tijeku" page and HTTP 503 +
+	# Retry-After (Google treats 503 as temporary and does NOT de-index).
+	#
+	# The flag lives on a host bind-mount (see docker-compose.prod.yaml),
+	# so the deploy script toggles it with a plain `touch` / `rm` — no image
+	# rebuild, no Caddy reload (the matcher stat()s the file per request) —
+	# and it survives an edge-container restart mid-deploy.
+	#
+	# This handle is listed first, so it wins over the API / bot / SPA
+	# handlers below whenever the flag is present. The maintenance page is
+	# fully self-contained (inline CSS + SVG), so it needs no other assets
+	# even though those would also return the 503 page during maintenance.
+	@maintenance {
+		file {
+			root /maintenance
+			try_files /ENABLED
+		}
+	}
+	handle @maintenance {
+		root * /srv
+		rewrite * /maintenance.html
+		header Cache-Control "no-store"
+		header Retry-After "120"
+		file_server {
+			status 503
+		}
+	}
+
 	# ─── 1. API — pass through to backend ─────────────────────────────
 	# lb_try_duration makes Caddy keep retrying the backend for a few
 	# seconds when it's briefly unreachable (cold start right after a

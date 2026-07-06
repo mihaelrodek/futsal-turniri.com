@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="hr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <!-- Auto-reload every 20 s: the instant the deploy finishes and the flag is
+         cleared, the visitor's browser reloads straight into the live app. -->
+    <meta http-equiv="refresh" content="20" />
+    <title>Nadogradnja u tijeku — Futsal Turniri</title>
+    <style>
+        :root { color-scheme: light; }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0b6b3a 0%, #084a28 100%);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .card {
+            width: 100%;
+            max-width: 440px;
+            text-align: center;
+        }
+        .badge {
+            width: 84px;
+            height: 84px;
+            margin: 0 auto 24px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .badge svg { display: block; }
+        h1 {
+            font-size: 26px;
+            line-height: 1.2;
+            margin: 0 0 12px;
+            letter-spacing: -0.02em;
+        }
+        p {
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0 auto;
+            max-width: 360px;
+            color: rgba(255, 255, 255, 0.82);
+        }
+        .dots {
+            display: inline-flex;
+            gap: 6px;
+            margin-top: 28px;
+        }
+        .dots span {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.55);
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        .dots span:nth-child(2) { animation-delay: 0.2s; }
+        .dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.35; transform: scale(0.85); }
+            50%      { opacity: 1;    transform: scale(1); }
+        }
+        .brand {
+            margin-top: 34px;
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.55);
+            font-weight: 700;
+        }
+        .brand b { color: #fff; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="badge" aria-hidden="true">
+            <!-- Futsal ball -->
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#fff" />
+                <path d="M12 6.5l3.2 2.3-1.2 3.8h-4L8.8 8.8 12 6.5z" fill="#0b6b3a" />
+                <path d="M12 2.4l0 4.1M4.2 8.9l3.9 1.3M6.1 18.2l2.5-3.3M17.9 18.2l-2.5-3.3M19.8 8.9l-3.9 1.3" stroke="#0b6b3a" stroke-width="1.1" stroke-linecap="round" />
+            </svg>
+        </div>
+        <h1>Nadogradnja u tijeku</h1>
+        <p>
+            Radimo na poboljšanjima aplikacije. Stranica će uskoro ponovno biti
+            dostupna — stranica se osvježava sama, ne treba ništa raditi.
+            Hvala na strpljenju!
+        </p>
+        <div class="dots" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </div>
+        <div class="brand">Futsal <b>Turniri</b></div>
+    </main>
+</body>
+</html>
