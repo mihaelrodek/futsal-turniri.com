@@ -5,7 +5,7 @@ import { FaFutbol } from "react-icons/fa"
 import { GhostButton, PitchBackdrop, PrimaryButton } from "../ui/pitch"
 
 /**
- * Shared "not found" panel in the Pitch theme — dark-green gradient hero with
+ * Shared "not found" panel in the Pitch theme - dark-green gradient hero with
  * the painted-lines backdrop, a big mono 404 and a football rolling off the
  * baseline. Used by the router catch-all (NotFoundPage) and by detail pages
  * whose entity vanished (deleted tournament, dead slug), replacing the raw

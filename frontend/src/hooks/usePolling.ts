@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   usePolling — run a callback immediately, then on an interval, but ONLY
+   usePolling - run a callback immediately, then on an interval, but ONLY
    while the tab is visible.
 
    Why: several always-mounted components (live nav item, mobile bottom nav,
    the /uzivo page, embeds) used to poll `/tournaments/live` every 30s
-   forever — including in background tabs nobody was looking at. That's
+   forever - including in background tabs nobody was looking at. That's
    wasted server load + battery. This hook:
 
      • fires the callback once on mount,

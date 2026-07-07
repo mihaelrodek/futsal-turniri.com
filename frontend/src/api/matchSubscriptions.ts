@@ -7,7 +7,7 @@ import { http } from "./http"
    starts that match (it goes LIVE), the backend sends a Web Push to every
    subscriber. See PushService.sendToMatchSubscribers + the /start endpoint.
 
-   Endpoints — all under /tournaments/{uuid}/matches/{matchId}:
+   Endpoints - all under /tournaments/{uuid}/matches/{matchId}:
      GET  /subscription  →  { subscribed: boolean }   (authenticated)
      POST /subscribe                                   (authenticated)
      DEL  /subscribe                                   (authenticated)

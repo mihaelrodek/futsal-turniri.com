@@ -26,7 +26,7 @@ public class Player {
     @Column(name = "name", length = 200, nullable = false)
     private String name;
 
-    /** Jersey number — optional, players may not have one assigned. */
+    /** Jersey number - optional, players may not have one assigned. */
     @Column(name = "number")
     private Integer number;
 

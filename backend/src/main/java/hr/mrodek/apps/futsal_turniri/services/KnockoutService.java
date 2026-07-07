@@ -62,7 +62,7 @@ public class KnockoutService {
     /**
      * Deterministic seed order for KNOCKOUT_ONLY tournaments. Organizer-set
      * manual seeds (manualRank) come first, in that order; teams without a seed
-     * fall back to registration order (id). Same teams → same bracket, always —
+     * fall back to registration order (id). Same teams → same bracket, always -
      * just like Challonge. No randomness.
      */
     private static final Comparator<Teams> SEED_ORDER =
@@ -73,7 +73,7 @@ public class KnockoutService {
     /* ─────────────────────────── generation ──────────────────────────── */
 
     /**
-     * Build (or rebuild) the knockout bracket and return it. Re-runnable —
+     * Build (or rebuild) the knockout bracket and return it. Re-runnable -
      * any existing knockout matches are wiped first.
      */
     @Transactional
@@ -84,7 +84,7 @@ public class KnockoutService {
     /**
      * Build (or rebuild) the knockout bracket. {@code byeTeamIds} (optional)
      * lets the organizer choose which teams get the round-one bye (direct
-     * advance) when the qualifier count isn't a power of two — those teams are
+     * advance) when the qualifier count isn't a power of two - those teams are
      * moved to the top seeds, which is exactly where standard seeding places the
      * byes. Null/empty → automatic (best seeds get the byes).
      *
@@ -144,7 +144,7 @@ public class KnockoutService {
         int q = qs.size();
         int n = nextPowerOfTwo(q); // bracket size
 
-        // One Round entity carries the whole knockout — `stage` distinguishes
+        // One Round entity carries the whole knockout - `stage` distinguishes
         // the rounds, so a Round per stage isn't needed.
         int baseNum = roundsRepo.findTopByTournamentOrderByNumberDesc(t)
                 .map(Rounds::getNumber).orElse(0);
@@ -196,7 +196,7 @@ public class KnockoutService {
             repairSameGroup(round1);
         }
 
-        // Third-place playoff — fed by the semi-final losers.
+        // Third-place playoff - fed by the semi-final losers.
         Matches third = new Matches();
         third.setTournament(t);
         third.setRound(koRound);
@@ -220,7 +220,7 @@ public class KnockoutService {
     }
 
     /**
-     * Wipe the knockout bracket — deletes every non-group match (all knockout
+     * Wipe the knockout bracket - deletes every non-group match (all knockout
      * rounds + the third-place playoff) and removes the now-empty knockout
      * round. Group-stage matches and standings are left untouched. Backs the
      * "Resetiraj" action so the organizer can clear and redo the elimination.
@@ -238,7 +238,7 @@ public class KnockoutService {
      * Build (or rebuild) the knockout bracket from organizer-supplied
      * first-round pairings (the manual draw). Same tree construction as
      * {@link #generateBracket}, but round one is seeded exactly as given
-     * instead of auto cross-seeding — no group/qualifier logic, no same-group
+     * instead of auto cross-seeding - no group/qualifier logic, no same-group
      * repair (the organizer drew the pairs deliberately).
      */
     @Transactional
@@ -342,7 +342,7 @@ public class KnockoutService {
             round1.get(i).setTeam2(roundOnePairs.get(i)[1]);
         }
 
-        // Third-place playoff — fed by the semi-final losers.
+        // Third-place playoff - fed by the semi-final losers.
         Matches third = new Matches();
         third.setTournament(t);
         third.setRound(koRound);
@@ -398,7 +398,7 @@ public class KnockoutService {
      */
     public List<Teams> bracketCandidates(Tournaments t) {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
-            // KNOCKOUT_ONLY — every registered team is a candidate, returned in
+            // KNOCKOUT_ONLY - every registered team is a candidate, returned in
             // the deterministic seed order (manual seeds first, then by id).
             List<Teams> all = teamsRepo.list(
                     "tournament.id = ?1 and pendingApproval = false", t.getId());
@@ -430,7 +430,7 @@ public class KnockoutService {
                 .stream().collect(Collectors.toMap(Teams::getId, x -> x));
 
         // Tier by tier: every group winner first (ranked among themselves),
-        // then every runner-up, etc. — group winners become the top seeds.
+        // then every runner-up, etc. - group winners become the top seeds.
         List<Teams> qualified = new ArrayList<>();
         for (int placement = 0; placement < adv; placement++) {
             List<GroupStandingRowDto> tier = new ArrayList<>();
@@ -513,7 +513,7 @@ public class KnockoutService {
             Integer p2 = req.penalties2();
             if (p1 == null || p2 == null || p1.equals(p2)) {
                 throw new BadRequestException(
-                        "A knockout match cannot end level — enter a penalty result");
+                        "A knockout match cannot end level - enter a penalty result");
             }
             m.setPenalties1(p1);
             m.setPenalties2(p2);
@@ -533,7 +533,7 @@ public class KnockoutService {
         advanceWinner(m, winner);
 
         // Semi-final loser → third-place playoff. The lower-id semi-final
-        // feeds slot 1, the other slot 2 — deterministic even on a re-score.
+        // feeds slot 1, the other slot 2 - deterministic even on a re-score.
         if (m.getStage() == MatchStage.SEMIFINAL) {
             Tournaments t = m.getTournament();
             Matches third = matchesRepo.find(
@@ -572,9 +572,9 @@ public class KnockoutService {
             try {
                 pushService.sendToMatchAndTournamentSubscribers(
                         m.getId(), tour.getId(),
-                        "🏁 Kraj utakmice — " + tour.getName(), body, url);
+                        "🏁 Kraj utakmice - " + tour.getName(), body, url);
             } catch (Exception ignored) {
-                // best-effort — the result is already saved.
+                // best-effort - the result is already saved.
             }
         }
     }
@@ -680,7 +680,7 @@ public class KnockoutService {
     /**
      * Standard seeded-bracket slot order for a bracket of size n (a power of
      * two). Each consecutive pair of returned seed numbers is one round-one
-     * match — e.g. n=8 → [1,8,4,5,2,7,3,6], so matches are 1v8, 4v5, 2v7, 3v6.
+     * match - e.g. n=8 → [1,8,4,5,2,7,3,6], so matches are 1v8, 4v5, 2v7, 3v6.
      * This keeps the top seeds in opposite halves/quarters of the bracket.
      */
     private static int[] seedSlots(int n) {

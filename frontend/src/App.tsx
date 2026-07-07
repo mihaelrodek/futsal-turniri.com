@@ -9,7 +9,7 @@ import ThemeSync from './components/ThemeSync'
 import { RequireAuth } from "./components/RequireAuth"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Eager imports — small components on the critical path. Login/register
+   Eager imports - small components on the critical path. Login/register
    and the tournaments list need to render on the very first paint.
    ────────────────────────────────────────────────────────────────────── */
 import TournamentsPage from './pages/TournamentsPage'
@@ -54,7 +54,7 @@ function RouteLoading() {
 /**
  * Legacy English-alias redirects. We can't use <Navigate to="/turniri/:uuid">
  * because react-router doesn't expand path params on Navigate destinations
- * — :uuid would be taken literally. These small components pull the param
+ * - :uuid would be taken literally. These small components pull the param
  * out of the current URL and forward it to the Croatian canonical path,
  * preserving the query string (?bill=, ?match=, ?next=) which push
  * notifications and OAuth back-links rely on.
@@ -86,7 +86,7 @@ function LegacyClaimNameRedirect() {
 }
 
 export default function App() {
-    // Embed routes are chrome-less — no nav, no container, no padding.
+    // Embed routes are chrome-less - no nav, no container, no padding.
     // They're meant to be iframed into 3rd-party websites and inherit
     // the host page's background.
     const { pathname } = useLocation()
@@ -94,7 +94,7 @@ export default function App() {
     // Warm the heaviest "next click" chunk while the browser is idle. From
     // the tournaments list the overwhelmingly common navigation is into a
     // tournament's detail page, so we prefetch that lazy chunk after first
-    // paint — opening a tournament then feels instant. Skipped for embeds.
+    // paint - opening a tournament then feels instant. Skipped for embeds.
     useEffect(() => {
         if (pathname.startsWith("/embed/")) return
         const prefetch = () => {
@@ -150,7 +150,7 @@ export default function App() {
                 {/* All user-facing routes use Croatian slugs. English slugs
                     (/tournaments, /profile, /calendar, …) are kept around
                     purely as <Navigate replace> aliases so existing
-                    in-browser links don't break — server-side 301 redirects
+                    in-browser links don't break - server-side 301 redirects
                     in Caddy handle the SEO side. */}
                 <Suspense fallback={<RouteLoading />}>
                 <Routes>
@@ -191,14 +191,14 @@ export default function App() {
                         product decision. */}
                     <Route path="/profil" element={<ProfileRedirect />} />
                     <Route path="/profil/:slug" element={<PublicProfilePage />} />
-                    {/* Team-sharing claim landing pages — token routes, not
+                    {/* Team-sharing claim landing pages - token routes, not
                         SEO-relevant, but translated for consistency. Old
                         share tokens still resolve via the legacy aliases
                         below. */}
                     <Route path="/preuzmi-ekipu/:token" element={<ClaimTeamPage />} />
                     <Route path="/preuzmi-ime/:token" element={<ClaimNamePage />} />
 
-                    {/* Legacy English aliases — client-side Navigate for any
+                    {/* Legacy English aliases - client-side Navigate for any
                         in-app link or typed URL that slips past Caddy's
                         301. We preserve :param segments so the destination
                         gets the same slug/token. NB: <Navigate to=> doesn't
@@ -217,13 +217,13 @@ export default function App() {
                     <Route path="/claim-team/:token" element={<LegacyClaimTeamRedirect />} />
                     <Route path="/claim-name/:token" element={<LegacyClaimNameRedirect />} />
 
-                    {/* Catch-all — keep last so explicit routes win. */}
+                    {/* Catch-all - keep last so explicit routes win. */}
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
                 </Suspense>
             </Container>
             </Box>
-            {/* Slim sticky brand footer — pinned to the viewport bottom,
+            {/* Slim sticky brand footer - pinned to the viewport bottom,
                 stays visible while scrolling. */}
             <Footer />
             <MobileBottomNav />

@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthContext"
  * Wrap a route element to require authentication. Anonymous visitors get
  * redirected to /prijava with a `state.from` so login can send them back where
  * they came from. While the initial auth-state probe is running, render a
- * lightweight spinner instead of bouncing — that prevents a brief flash of
+ * lightweight spinner instead of bouncing - that prevents a brief flash of
  * the login page for users who are signed-in but the SDK hasn't restored yet.
  */
 export function RequireAuth({ children }: { children: React.ReactNode }) {

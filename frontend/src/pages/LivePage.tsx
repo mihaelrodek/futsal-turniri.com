@@ -28,14 +28,14 @@ import MatchNotificationBell from "../components/MatchNotificationBell"
 import { FiChevronDown, FiChevronUp } from "react-icons/fi"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LivePage — "Pitch" theme /uzivo.
+   LivePage - "Pitch" theme /uzivo.
 
    Structure:
-     1. Header — pulsing live-now kicker, dynamic "{n} utakmica u tijeku"
+     1. Header - pulsing live-now kicker, dynamic "{n} utakmica u tijeku"
         title, share + raspored ghost buttons.
      2. 2-column grid of live match cards (compact scoreboard per match),
         each expandable to reveal live minute + goalscorer timeline.
-     3. "Nadolazeći turniri" calendar — same shape as the previous LivePage,
+     3. "Nadolazeći turniri" calendar - same shape as the previous LivePage,
         the page works even when nothing is live.
    ────────────────────────────────────────────────────────────────────── */
 
@@ -87,7 +87,7 @@ function teamShort(name: string | null | undefined): string {
     return name.slice(0, 2).toUpperCase()
 }
 
-// Deterministic colour per team name — used for the team badge gradient.
+// Deterministic colour per team name - used for the team badge gradient.
 const BADGE_COLORS = ["#dc2626", "#2563eb", "#7c3aed", "#f59e0b", "#10b981", "#06b6d4", "#ef4444", "#8b5cf6"]
 function badgeColor(name?: string | null): string {
     if (!name) return BADGE_COLORS[0]
@@ -144,7 +144,7 @@ function FeaturedTournamentHero({
     onOpen: () => void
 }) {
     const startDate = tournament.startAt ? new Date(tournament.startAt) : null
-    const dayNum = startDate ? String(startDate.getDate()).padStart(2, "0") : "—"
+    const dayNum = startDate ? String(startDate.getDate()).padStart(2, "0") : "-"
     const monthNom = startDate ? HR_MONTHS_NOM[startDate.getMonth()].toUpperCase() : ""
     const yearStr = startDate ? String(startDate.getFullYear()) : ""
     return (
@@ -173,7 +173,7 @@ function FeaturedTournamentHero({
                 gap={{ base: 0, md: 0 }}
                 alignItems="stretch"
             >
-                {/* Poster column — fixed width on desktop, banner-style on mobile */}
+                {/* Poster column - fixed width on desktop, banner-style on mobile */}
                 <Box
                     h={{ base: "140px", md: "auto" }}
                     minH={{ md: "220px" }}
@@ -253,7 +253,7 @@ function FeaturedTournamentHero({
                     </HStack>
                     <Box mt="2">
                         {/* Outer Box already wires `onOpen` on click, so the
-                             button doesn't need to stopPropagation — both
+                             button doesn't need to stopPropagation - both
                              paths fire the same handler. */}
                         <PrimaryButton onClick={onOpen}>
                             Otvori turnir →
@@ -265,7 +265,7 @@ function FeaturedTournamentHero({
     )
 }
 
-/** Compact live match card — header strip, scoreboard, expandable scorer
+/** Compact live match card - header strip, scoreboard, expandable scorer
  *  timeline, footer CTA.
  *
  *  Behaviour:
@@ -315,7 +315,7 @@ function LiveMatchCard({
             _hover={{ shadow: "md" }}
             css={{ boxShadow: "0 0 0 3px rgba(220,38,38,0.06)" }}
         >
-            {/* Header + scoreboard wrap — clicking anywhere on this region
+            {/* Header + scoreboard wrap - clicking anywhere on this region
                  toggles the expanded scorer timeline below. */}
             <Box cursor="pointer" onClick={() => setExpanded((v) => !v)}>
             {/* Header strip */}
@@ -350,7 +350,7 @@ function LiveMatchCard({
                     </Text>
                 </HStack>
                 <HStack gap="2">
-                    {/* Live clock — pulls minute from the same fields the
+                    {/* Live clock - pulls minute from the same fields the
                          tournament-page LiveMatchDialog uses, so the two
                          views stay numerically in sync. */}
                     {match.liveMode === "TIMER" && match.liveStartedAt && (
@@ -363,7 +363,7 @@ function LiveMatchCard({
                         />
                     )}
                     <MonoLabel color="fg.muted">{half}</MonoLabel>
-                    {/* Follow this live match — goal / finish notifications. */}
+                    {/* Follow this live match - goal / finish notifications. */}
                     <MatchNotificationBell
                         tournamentUuid={match.tournamentUuid}
                         matchId={match.matchId}
@@ -371,7 +371,7 @@ function LiveMatchCard({
                 </HStack>
             </Flex>
 
-            {/* Scoreboard — tighter on mobile so the card stays one-column
+            {/* Scoreboard - tighter on mobile so the card stays one-column
                  friendly while readable. Score scales 30px→42px, badges
                  38px→44px, team names truncate. */}
             <Grid
@@ -389,7 +389,7 @@ function LiveMatchCard({
                         textAlign="right"
                         truncate
                     >
-                        {match.team1Name ?? "—"}
+                        {match.team1Name ?? "-"}
                     </Text>
                     <Box display={{ base: "none", sm: "block" }}>
                         <TeamBadge name={match.team1Name} size={44} />
@@ -422,14 +422,14 @@ function LiveMatchCard({
                         <TeamBadge name={match.team2Name} size={36} />
                     </Box>
                     <Text fontSize={{ base: "13px", md: "16px" }} fontWeight={700} color="fg.ink" truncate>
-                        {match.team2Name ?? "—"}
+                        {match.team2Name ?? "-"}
                     </Text>
                 </Flex>
             </Grid>
             </Box>
             {/* End of clickable region */}
 
-            {/* Expanded scorer timeline — only mounted when open so the
+            {/* Expanded scorer timeline - only mounted when open so the
                  polled fetch isn't spent for every card in the grid. */}
             {expanded && (
                 <Box
@@ -466,7 +466,7 @@ function LiveMatchCard({
                 </Box>
             )}
 
-            {/* Footer — split into expand toggle (left) and open-tournament
+            {/* Footer - split into expand toggle (left) and open-tournament
                  navigation (right). Stops propagation so clicking the link
                  doesn't also toggle expand. */}
             <Box
@@ -550,7 +550,7 @@ export default function LivePage() {
     })
 
     useDocumentHead({
-        title: "Uživo i raspored — futsal-turniri.com",
+        title: "Uživo i raspored - futsal-turniri.com",
         description:
             "Prati futsal utakmice koje su trenutno u tijeku i pogledaj nadolazeće utakmice kroz sve turnire na jednom mjestu.",
         canonical: "https://futsal-turniri.com/uzivo",
@@ -565,12 +565,12 @@ export default function LivePage() {
         fetchUpcomingMatches()
             .then((u) => setUpcomingMatches(u))
             .catch(() => {
-                /* network error — section just shows empty state */
+                /* network error - section just shows empty state */
             })
             .finally(() => setUpcomingLoading(false))
     }, 30000)
 
-    // Admin-curated daily highlight. Silent endpoint (204 when unset) —
+    // Admin-curated daily highlight. Silent endpoint (204 when unset) -
     // failure / empty just leaves `featured` null and the hero block is
     // skipped entirely.
     useEffect(() => {
@@ -580,7 +580,7 @@ export default function LivePage() {
                 const f = await fetchFeaturedTournament()
                 if (!cancelled) setFeatured(f)
             } catch {
-                /* silent — no hero, page still works */
+                /* silent - no hero, page still works */
             }
         })()
         return () => {
@@ -619,12 +619,12 @@ export default function LivePage() {
                  Disabled: a featured tournament is now surfaced as the
                  "GLAVNA UTAKMICA" live slot below + first on the home list,
                  instead of this separate "tournament of the day" card.
-                 Code kept — flip FEATURED_HERO_ENABLED to bring it back. */}
+                 Code kept - flip FEATURED_HERO_ENABLED to bring it back. */}
             {FEATURED_HERO_ENABLED && featured && <FeaturedTournamentHero tournament={featured} onOpen={() => {
                 navigate(`/turniri/${featured.slug ?? featured.uuid}`)
             }} />}
 
-            {/* ── Header — the pulsing red "UŽIVO SADA" kicker only appears
+            {/* ── Header - the pulsing red "UŽIVO SADA" kicker only appears
                  when something is actually live. Nothing live → no red,
                  no pulse (it was misleading to pulse on an empty page). */}
             {!matchesLoading && matches.length > 0 && (
@@ -652,7 +652,7 @@ export default function LivePage() {
                         <Text color="fg.muted">Učitavanje utakmica…</Text>
                     </SectionCard>
                 ) : matches.length === 0 ? (
-                    // Calm, slim banner — no big empty card, no red pulse.
+                    // Calm, slim banner - no big empty card, no red pulse.
                     // The page's focus shifts to "Nadolazeće utakmice" below.
                     <Flex
                         align="center"
@@ -690,7 +690,7 @@ export default function LivePage() {
                     // into a full-width "izdvojena utakmica" slot above
                     // the regular grid. Fallback: when no featured
                     // tournament has a live match, the first sorted match
-                    // takes the spot — same visual hierarchy, so the
+                    // takes the spot - same visual hierarchy, so the
                     // /uzivo header always has one dominant card.
                     const sorted = pickFeaturedFirst(matches)
                     const [featured, ...rest] = sorted
@@ -852,9 +852,9 @@ export default function LivePage() {
                                                 </Flex>
                                                 <Box flex="1" minW="0">
                                                     <Text fontSize="sm" fontWeight={700} truncate color="fg.ink">
-                                                        {m.team1Name ?? "—"}{" "}
+                                                        {m.team1Name ?? "-"}{" "}
                                                         <Box as="span" color="fg.muted" fontWeight={500}>vs</Box>{" "}
-                                                        {m.team2Name ?? "—"}
+                                                        {m.team2Name ?? "-"}
                                                     </Text>
                                                     <HStack gap="1" mt="0.5" color="fg.muted">
                                                         <FiCalendar size={11} />

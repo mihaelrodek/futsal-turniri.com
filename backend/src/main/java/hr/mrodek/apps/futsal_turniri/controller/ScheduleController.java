@@ -27,15 +27,15 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * Match-scheduling endpoints for a tournament (Phase E4).
  *
  * <pre>
- *   GET   /tournaments/{uuid}/schedule                    — anonymous OK
- *   POST  /tournaments/{uuid}/schedule/generate           — owner/admin
- *   PATCH /tournaments/{uuid}/schedule/matches/{matchId}  — owner/admin
+ *   GET   /tournaments/{uuid}/schedule                    - anonymous OK
+ *   POST  /tournaments/{uuid}/schedule/generate           - owner/admin
+ *   PATCH /tournaments/{uuid}/schedule/matches/{matchId}  - owner/admin
  * </pre>
  *
  * <p>Reads are public. Generate / kickoff-override require a Firebase
  * OIDC token AND the caller must be the tournament's creator or an
  * admin. Until 2026-06 these writes were left open under a "OIDC
- * temporarily disabled" comment — a security audit flagged the gap so
+ * temporarily disabled" comment - a security audit flagged the gap so
  * the gate is now enforced.
  */
 @Path("/tournaments/{uuid}/schedule")
@@ -63,7 +63,7 @@ public class ScheduleController {
         return t;
     }
 
-    /** The schedule — config + every match in play order with its kickoff. */
+    /** The schedule - config + every match in play order with its kickoff. */
     @GET
     public ScheduleDto schedule(@PathParam("uuid") String uuid) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid)
@@ -85,7 +85,7 @@ public class ScheduleController {
     /**
      * Fill in kickoff times for matches that don't have one yet (e.g. knockout
      * matches created after the group schedule), continuing after the last
-     * scheduled match — without disturbing existing times. Re-confirm the
+     * scheduled match - without disturbing existing times. Re-confirm the
      * schedule once the knockout bracket is drawn.
      */
     @POST
@@ -98,7 +98,7 @@ public class ScheduleController {
         return schedulingService.schedule(t);
     }
 
-    /** Reorder the schedule (drag-and-drop) — keep the time slots, reassign
+    /** Reorder the schedule (drag-and-drop) - keep the time slots, reassign
      *  them to the matches in the supplied new order. Owner/admin. */
     @POST
     @Path("/reorder")
@@ -110,7 +110,7 @@ public class ScheduleController {
         return schedulingService.schedule(t);
     }
 
-    /** Clear the laid-out schedule — wipe every kickoff time. Fixtures stay;
+    /** Clear the laid-out schedule - wipe every kickoff time. Fixtures stay;
      *  only the slots are removed so the organizer can start over. Owner/admin. */
     @POST
     @Path("/clear")

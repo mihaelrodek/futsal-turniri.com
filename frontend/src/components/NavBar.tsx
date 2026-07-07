@@ -22,7 +22,7 @@ import { Logo } from "./Logo"
 import { MonoLabel } from "../ui/pitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   PitchNav — top navigation in the "Pitch" theme.
+   PitchNav - top navigation in the "Pitch" theme.
 
    Desktop layout (md+):  three-column grid
      [ brand mark + wordmark ]  [ centred pill nav capsule ]  [ user pill ]
@@ -31,7 +31,7 @@ import { MonoLabel } from "../ui/pitch"
                           drawer underneath when open.
 
    The drawer also honours the `futsal:open-nav-menu` /
-   `futsal:close-nav-menu` events fired by the guided Joyride tour — they
+   `futsal:close-nav-menu` events fired by the guided Joyride tour - they
    force the drawer open while the tour highlights nav-internals, then
    close it again when the tour moves on.
    ────────────────────────────────────────────────────────────────────── */
@@ -127,7 +127,7 @@ export default function NavBar() {
     const { user, signOut, loading } = useAuth()
     const navigate = useNavigate()
 
-    // Tour-aware breakpoint flag — see comment block in the previous NavBar
+    // Tour-aware breakpoint flag - see comment block in the previous NavBar
     // for the full reasoning. Short version: the guided tour needs
     // `data-tour` attrs only on the *visible* variant of the nav.
     const isMobile = useBreakpointValue({ base: true, md: false }, { ssr: false }) ?? false
@@ -233,7 +233,7 @@ export default function NavBar() {
             borderColor="border"
             position="sticky"
             top={0}
-            // Beats Leaflet's internal panes — see prior NavBar comment.
+            // Beats Leaflet's internal panes - see prior NavBar comment.
             zIndex={1000}
         >
             <Container maxW="6xl" py="3">
@@ -244,7 +244,7 @@ export default function NavBar() {
                     alignItems="center"
                     gap="3"
                 >
-                    {/* Brand block — shared Logo component (mark + live-text
+                    {/* Brand block - shared Logo component (mark + live-text
                         wordmark + domain) per the brand guide. */}
                     <Box>
                         <Logo size={40} to="/turniri" />
@@ -269,7 +269,7 @@ export default function NavBar() {
                     </HStack>
 
                     {/* Right cluster: install affordance + user pill. The
-                        stand-in notification bell was removed — it wasn't
+                        stand-in notification bell was removed - it wasn't
                         wired to anything and added clutter next to install. */}
                     <HStack justify="end" gap="3">
                         <HStack data-tour={isMobile ? undefined : "help-install"} gap="1.5">
@@ -281,7 +281,7 @@ export default function NavBar() {
                 </Box>
 
                 {/* ── Mobile layout ─────────────────────────────────────────────
-                     No hamburger menu — navigation lives in the fixed
+                     No hamburger menu - navigation lives in the fixed
                      MobileBottomNav at the foot of the viewport. The only
                      extra affordance is the install button, which now sits
                      inline to the left of the profile avatar. */}

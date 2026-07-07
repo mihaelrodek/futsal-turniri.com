@@ -23,14 +23,14 @@ const HIDE_KEY = "user-loc-hidden-v1"
  * Resilient geolocation hook with a few quality-of-life behaviors:
  *
  * - On mount, if the browser already has the permission granted, fetches
- *   the position silently — no extra "Allow?" prompt for return visitors.
+ *   the position silently - no extra "Allow?" prompt for return visitors.
  * - Persists a "hidden" preference in localStorage so a user who clicked
  *   Sakrij stays hidden across reloads, even if the browser permission
  *   is still granted.
  * - Never throws; errors collapse to one of the explicit status values.
  *
  * Browser permission state is owned by the browser (out of our reach).
- * Our `hidden` state is purely a UI preference — the browser still has
+ * Our `hidden` state is purely a UI preference - the browser still has
  * permission; we just don't render the marker until the user re-enables.
  */
 export function useUserLocation(): UserLocation {
@@ -39,7 +39,7 @@ export function useUserLocation(): UserLocation {
 
     /**
      * Translate a GeolocationPositionError into one of our status values.
-     * Only the explicit PERMISSION_DENIED code becomes "denied" — timeouts
+     * Only the explicit PERMISSION_DENIED code becomes "denied" - timeouts
      * and unavailable-position faults revert to "idle" so the user can
      * retry without seeing a misleading "permission denied" message.
      */
@@ -60,7 +60,7 @@ export function useUserLocation(): UserLocation {
             return
         }
 
-        // Try Permissions API for silent grant — falls back to idle if not supported
+        // Try Permissions API for silent grant - falls back to idle if not supported
         if ("permissions" in navigator) {
             navigator.permissions
                 .query({ name: "geolocation" as PermissionName })

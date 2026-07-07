@@ -1,6 +1,6 @@
 // src/types/players.ts
 /**
- * A single player on a team's roster. New backend feature — see
+ * A single player on a team's roster. New backend feature - see
  * src/api/players.ts for the endpoint contract.
  */
 export type PlayerDto = {

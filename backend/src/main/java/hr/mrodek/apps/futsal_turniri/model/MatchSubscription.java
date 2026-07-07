@@ -10,10 +10,10 @@ import java.time.OffsetDateTime;
 /**
  * One user's opt-in to receive a Web Push when a single match goes live.
  *
- * <p>Identity is the {@code (user_uid, match_id)} pair — a uniqueness
+ * <p>Identity is the {@code (user_uid, match_id)} pair - a uniqueness
  * constraint on those two columns makes the subscribe endpoint idempotent
  * regardless of how many times the bell is tapped. Cascade-deleted with the
- * parent match; {@code user_uid} is the Firebase UID (plain string, no FK —
+ * parent match; {@code user_uid} is the Firebase UID (plain string, no FK -
  * same convention as {@link TournamentSubscription}).
  */
 @Entity

@@ -64,7 +64,7 @@ export async function getTeamMatchHistory(slug: string, teamId: number): Promise
     return data
 }
 
-/* ── Career stats — aggregate W/D/L + goals across every team. ───────── */
+/* ── Career stats - aggregate W/D/L + goals across every team. ───────── */
 
 export type CareerRecentTournament = {
     tournamentName: string | null

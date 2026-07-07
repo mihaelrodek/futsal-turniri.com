@@ -8,7 +8,7 @@
 
     <!--
         Allow a match event with no player. Penalty-shootout kicks may be
-        recorded without naming the shooter ("nepoznati izvođač") — they still
+        recorded without naming the shooter ("nepoznati izvođač") - they still
         belong to a team and must show in the timeline as "(gol)"/"(promašaj)".
         So player_id becomes nullable and a nullable team_id is added to carry
         the side when the player is unknown. Goals/cards still require a player

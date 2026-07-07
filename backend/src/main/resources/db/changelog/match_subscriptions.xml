@@ -7,7 +7,7 @@
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
     <!--
-        Per-match push opt-in — one row per (user, match). Mirrors
+        Per-match push opt-in - one row per (user, match). Mirrors
         tournament_subscriptions but scoped to a single match, so a viewer can
         ask to be notified when THAT match goes live (push fired on /start).
         user_uid is the Firebase UID (plain string, no FK). Cascade-deleted
@@ -37,7 +37,7 @@
                 referencedColumnNames="id"
                 onDelete="CASCADE"/>
 
-        <!-- Idempotent (re)subscribe — one row per (user, match). -->
+        <!-- Idempotent (re)subscribe - one row per (user, match). -->
         <addUniqueConstraint
                 tableName="match_subscriptions"
                 columnNames="user_uid, match_id"

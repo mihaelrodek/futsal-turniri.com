@@ -24,7 +24,7 @@ import java.util.Map;
  * <p>The QR encodes the public tournament URL, so scanning it opens the
  * tournament page. Error-correction level H (~30% recovery) lets us punch
  * the futsal-turniri brand mark into the centre without breaking
- * scannability. Pure Java2D over a ZXing BitMatrix — no extra image libs.
+ * scannability. Pure Java2D over a ZXing BitMatrix - no extra image libs.
  */
 public final class QrCodeRenderer {
 
@@ -102,7 +102,7 @@ public final class QrCodeRenderer {
         g.drawLine(Math.round(gx), Math.round(gy), Math.round(gx + gw), Math.round(gy));
         g.drawLine(Math.round(gx + gw), Math.round(gy), Math.round(gx + gw), Math.round(gy + gh));
 
-        // Ball — white circle + small green pentagon, bottom-centre.
+        // Ball - white circle + small green pentagon, bottom-centre.
         float ballR = s * 0.18f;
         float bcx = x + s / 2f;
         float bcy = y + s * 0.66f;

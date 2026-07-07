@@ -18,7 +18,7 @@ import type { LiveMatch } from "../api/live"
 import type { MatchEventDto } from "../types/matchEvents"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   FullscreenTournamentPage — big-screen TV display for a single tournament.
+   FullscreenTournamentPage - big-screen TV display for a single tournament.
 
    Use case: organizer plugs a laptop into a venue TV and opens this URL.
    Page renders a calm, high-contrast layout legible from across the room:
@@ -27,21 +27,21 @@ import type { MatchEventDto } from "../types/matchEvents"
      • Tournament name + status as a strip across the top
      • Centerpiece: huge scoreboard for the current LIVE match (team
        names + 120px score). The scoreboard only PULSES (red ring) during
-       the final minute of a half / the match — the rest of the time it
+       the final minute of a half / the match - the rest of the time it
        stays static so the screen isn't constantly flashing.
      • Below: the single most-recent finished result + the single next
        scheduled match.
      • Polls live matches + schedule every 15 s so the display stays current
 
    Tries `document.documentElement.requestFullscreen()` on mount so the
-   browser chrome is hidden too — ESC (or click X) leaves and returns to
+   browser chrome is hidden too - ESC (or click X) leaves and returns to
    the regular detail page. Some browsers require a user gesture to
    enter fullscreen; if the requestFullscreen call rejects we silently
    fall back to a regular full-viewport layout.
    ────────────────────────────────────────────────────────────────────── */
 
 // Fallback poll for the TV display. The WebSocket (useLiveSocket) is the
-// instant path — a freshly-entered goal pushes immediately; this poll keeps the
+// instant path - a freshly-entered goal pushes immediately; this poll keeps the
 // screen snappy even if the socket can't connect (e.g. before the backend is
 // redeployed with the WS endpoint). The /live + events endpoints are no longer
 // browser-cached (see PublicReadCacheFilter), so every poll is fresh.
@@ -51,7 +51,7 @@ const POLL_MS = 5_000
  * Scale a block down (never up) so it always fits its container's height. The
  * scoreboard sizes its text with viewport units, but on short screens the
  * stack (clock + score + fouls + goalscorers) can still be taller than the
- * space between the header and the bottom strip — this guarantees nothing
+ * space between the header and the bottom strip - this guarantees nothing
  * (especially the goalscorers) gets clipped by measuring the natural height
  * and shrinking the whole block to fit. `deps` re-binds the refs when the
  * measured element changes (e.g. a live match appears/disappears).
@@ -105,7 +105,7 @@ export default function FullscreenTournamentPage() {
         const el = document.documentElement
         if (el.requestFullscreen) {
             el.requestFullscreen().catch(() => {
-                /* user gesture required / browser refused — fall back to layout-only fullscreen */
+                /* user gesture required / browser refused - fall back to layout-only fullscreen */
             })
         }
         return () => {
@@ -115,7 +115,7 @@ export default function FullscreenTournamentPage() {
         }
     }, [])
 
-    // Lock page scroll while the fullscreen display is mounted — the layout
+    // Lock page scroll while the fullscreen display is mounted - the layout
     // already fits in 100vh, so the stray right-hand scrollbar from the
     // underlying app document is pure noise on a TV. Restored on unmount.
     useEffect(() => {
@@ -140,7 +140,7 @@ export default function FullscreenTournamentPage() {
         return () => window.removeEventListener("keydown", onKey)
     }, [uuid, navigate])
 
-    // Tournament details rarely change — fetch once at start.
+    // Tournament details rarely change - fetch once at start.
     useEffect(() => {
         if (!uuid) return
         let cancelled = false
@@ -168,7 +168,7 @@ export default function FullscreenTournamentPage() {
                 }
                 // The route param can be either the UUID or the pretty slug
                 // (the Fullscreen button links with `slug ?? uuid`), so match
-                // a live match on either field — otherwise a slug URL never
+                // a live match on either field - otherwise a slug URL never
                 // matches `tournamentUuid` and the live game never shows.
                 setLiveMatches(
                     live.filter(
@@ -179,12 +179,12 @@ export default function FullscreenTournamentPage() {
             .finally(() => setLoading(false))
     }, [uuid])
 
-    // Fallback poll, paused while the tab is hidden — a backgrounded TV tab
+    // Fallback poll, paused while the tab is hidden - a backgrounded TV tab
     // stops hammering the API until it's foregrounded again.
     usePolling(loadLive, POLL_MS)
 
     // Realtime: refetch instantly when the backend pushes a change for THIS
-    // tournament. The push carries the canonical uuid, but be liberal — accept
+    // tournament. The push carries the canonical uuid, but be liberal - accept
     // it if it matches the real uuid OR the route param (which may be a slug),
     // and always refetch when no uuid is given. Better an extra refetch than a
     // missed update.
@@ -204,7 +204,7 @@ export default function FullscreenTournamentPage() {
     // goalscorers are never clipped on smaller screens.
     const fit = useFitScale([live?.matchId ?? null])
 
-    // Goal flash — when the live match's total score rises (a goal was just
+    // Goal flash - when the live match's total score rises (a goal was just
     // entered), flash the whole screen red for 2 seconds. Tracked by matchId
     // so switching matches doesn't trigger a false flash.
     const [goalFlash, setGoalFlash] = useState(false)
@@ -282,8 +282,8 @@ export default function FullscreenTournamentPage() {
 
     return (
         <FullscreenShell>
-            {/* Goal flash — a soft, colourless veil that gently pulses for ~2s
-                when a goal lands (white on dark, dark on light — no hue). */}
+            {/* Goal flash - a soft, colourless veil that gently pulses for ~2s
+                when a goal lands (white on dark, dark on light - no hue). */}
             {goalFlash && (
                 <Box
                     position="fixed"
@@ -295,7 +295,7 @@ export default function FullscreenTournamentPage() {
                 />
             )}
 
-            {/* Exit X — top-right */}
+            {/* Exit X - top-right */}
             <Box
                 as="button"
                 position="fixed"
@@ -320,7 +320,7 @@ export default function FullscreenTournamentPage() {
             </Box>
 
             <Flex direction="column" h="100vh" px={{ base: "6", md: "10" }} py={{ base: "6", md: "8" }}>
-                {/* Header — logo lockup (with futsal-turniri.com) top-left,
+                {/* Header - logo lockup (with futsal-turniri.com) top-left,
                     tournament name centered. The `1fr auto 1fr` grid centres
                     the name in the viewport regardless of the logo's width;
                     the right column stays empty (the exit X floats above it). */}
@@ -443,7 +443,7 @@ function FullscreenShell({ children }: { children: React.ReactNode }) {
     )
 }
 
-/* ── Huge live-match scoreboard — the visual focal point. Static by default;
+/* ── Huge live-match scoreboard - the visual focal point. Static by default;
    only the red ring pulses during the final minute of a half / the match. */
 function BigScoreboard({
     match,
@@ -486,7 +486,7 @@ function BigScoreboard({
             px={{ base: "6", md: "10", lg: "14" }}
             py={{ base: "3", md: "5", lg: "6" }}
         >
-            {/* Last-minute pulse — a red ring overlay that fades in/out, so the
+            {/* Last-minute pulse - a red ring overlay that fades in/out, so the
                 score/names underneath stay perfectly readable. Only mounted
                 during the final minute of a half (or the match). */}
             {pulsing && (
@@ -540,7 +540,7 @@ function BigScoreboard({
                 gap={{ base: "4", md: "10" }}
                 direction={{ base: "column", lg: "row" }}
             >
-                <BigTeamName name={match.team1Name ?? "—"} align="right" />
+                <BigTeamName name={match.team1Name ?? "-"} align="right" />
                 <Flex
                     fontFamily="mono"
                     fontSize="clamp(56px, 17vh, 180px)"
@@ -557,10 +557,10 @@ function BigScoreboard({
                     <Box opacity={0.4}>:</Box>
                     <Box>{match.score2 ?? 0}</Box>
                 </Flex>
-                <BigTeamName name={match.team2Name ?? "—"} align="left" />
+                <BigTeamName name={match.team2Name ?? "-"} align="left" />
             </Flex>
 
-            {/* Accumulated fouls — a centred "AKUMULIRANI PREKRŠAJI" label with
+            {/* Accumulated fouls - a centred "AKUMULIRANI PREKRŠAJI" label with
                 each team's five foul icons on its own side (they fill up as
                 fouls are committed; red once in deveterac territory). */}
             <Flex
@@ -584,7 +584,7 @@ function BigScoreboard({
                 <FoulIcons fouls={fouls2} />
             </Flex>
 
-            {/* Goalscorers (strijelci) — left = team1, right = team2 */}
+            {/* Goalscorers (strijelci) - left = team1, right = team2 */}
             <BigScorers
                 tournamentUuid={match.tournamentUuid}
                 matchId={match.matchId}
@@ -661,7 +661,7 @@ function computeClock(
     }
 }
 
-/* ── Clock display — presentational. Turns red in the final minute. */
+/* ── Clock display - presentational. Turns red in the final minute. */
 function BigMatchClock({
     display,
     label,
@@ -735,7 +735,7 @@ function BigScorers({
         [events],
     )
 
-    // Resolve team IDs — prefer the scheduled ones, else auto-detect (smaller
+    // Resolve team IDs - prefer the scheduled ones, else auto-detect (smaller
     // id → left) so the columns still split sensibly.
     let t1 = team1Id
     let t2 = team2Id
@@ -824,9 +824,9 @@ function BigTeamName({ name, align }: { name: string; align: "left" | "right" })
     )
 }
 
-/* ── FoulIcons — a team's accumulated-foul icons for the current half. The
+/* ── FoulIcons - a team's accumulated-foul icons for the current half. The
    first four are black (dim until committed); from the 5th foul (deveterac)
-   each further foul adds a red icon — so 4 black + N red shows N deveterci. */
+   each further foul adds a red icon - so 4 black + N red shows N deveterci. */
 function FoulIcons({ fouls }: { fouls: number }) {
     const total = Math.max(5, fouls)
     return (
@@ -850,7 +850,7 @@ function FoulIcons({ fouls }: { fouls: number }) {
     )
 }
 
-/* ── No live match — show a friendly waiting message. */
+/* ── No live match - show a friendly waiting message. */
 function NoLiveMessage() {
     return (
         <VStack gap="6">
@@ -874,7 +874,7 @@ function NoLiveMessage() {
     )
 }
 
-/* ── Bottom strip — last result / next match. */
+/* ── Bottom strip - last result / next match. */
 function MatchStrip({
     title,
     matches,
@@ -954,7 +954,7 @@ function MatchStrip({
                                         truncate
                                         minW="0"
                                     >
-                                        {m.team1Name ?? "—"} vs {m.team2Name ?? "—"}
+                                        {m.team1Name ?? "-"} vs {m.team2Name ?? "-"}
                                     </Text>
                                 </Flex>
                                 {m.status === "FINISHED" && (
@@ -993,7 +993,7 @@ function MatchStrip({
 }
 
 function formatKickoff(iso: string | null | undefined): string {
-    if (!iso) return "—"
+    if (!iso) return "-"
     try {
         const d = new Date(iso)
         return d.toLocaleTimeString("hr-HR", {
@@ -1001,6 +1001,6 @@ function formatKickoff(iso: string | null | undefined): string {
             minute: "2-digit",
         })
     } catch {
-        return "—"
+        return "-"
     }
 }

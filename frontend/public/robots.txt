@@ -1,18 +1,18 @@
-# futsal-turniri.com — crawler instructions.
+# futsal-turniri.com - crawler instructions.
 # The sitemap is generated dynamically by the backend so it always reflects
 # the current set of tournaments and player profiles.
 
 # Default policy for everything not matched below. We block the auth and
 # create-tournament routes (no public value indexing them) and the bulk of
 # /api/, but Allow the three /api/ subtrees that crawlers legitimately need:
-#   /api/preview/    — server-side-rendered OG previews for crawlers
-#   /api/resources/  — proxied tournament posters and avatars (og:image targets)
-#   /api/sitemap.xml — the sitemap itself
+#   /api/preview/    - server-side-rendered OG previews for crawlers
+#   /api/resources/  - proxied tournament posters and avatars (og:image targets)
+#   /api/sitemap.xml - the sitemap itself
 User-agent: *
 # Disallow lists use the Croatian canonical paths. English aliases
 # (/login, /register, /tournaments/new, /find-pair, /profile, /map,
 # /calendar) 301-redirect to the Croatian equivalents via Caddy, so a
-# bot following one is redirected to a Croatian URL anyway — blocking
+# bot following one is redirected to a Croatian URL anyway - blocking
 # only the Croatian paths is sufficient.
 Disallow: /prijava
 Disallow: /registracija
@@ -23,7 +23,7 @@ Allow: /api/preview/
 Allow: /api/resources/
 Allow: /api/sitemap.xml
 
-# Social / link-preview crawlers — explicitly allowed everywhere with an
+# Social / link-preview crawlers - explicitly allowed everywhere with an
 # empty Disallow. Facebook's sharing debugger refuses to scrape unless
 # facebookexternalhit is allowlisted; the rest of these are the bots that
 # actually drive WhatsApp / Slack / Discord / Twitter previews. WhatsApp

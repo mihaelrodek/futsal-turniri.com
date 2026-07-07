@@ -76,7 +76,7 @@ export async function adminSearchUsers(query: string): Promise<AdminUserDto[]> {
 /**
  * Full list of all registered profiles, alphabetical. Backs the admin
  * "Popis igrača" tab. Distinct from {@link adminSearchUsers} (which
- * is capped for the attach-target dropdown) — here we want every
+ * is capped for the attach-target dropdown) - here we want every
  * profile so the admin can browse and jump to any user's page.
  */
 export async function adminListAllUsers(): Promise<AdminUserDto[]> {
@@ -92,9 +92,9 @@ export async function adminListAllUsers(): Promise<AdminUserDto[]> {
  *     future tournaments with the same team name auto-claim too.
  *
  * Common error responses:
- *   - 409 ALREADY_CLAIMED — team was claimed by someone between the
+ *   - 409 ALREADY_CLAIMED - team was claimed by someone between the
  *     UI's list fetch and this request. Refresh the unclaimed list.
- *   - 404                  — team or user not found (user_uid invalid).
+ *   - 404                  - team or user not found (user_uid invalid).
  */
 export async function adminAttachTeam(
     teamId: number,
@@ -126,13 +126,13 @@ export type TransferTournamentResponse = {
  * implicit-via-creation edit rights but retains admin powers.
  *
  * <p>Both `createdByUid` and `createdByName` are updated on the backend
- * — the latter is a snapshot of the target user's UserProfile
+ * - the latter is a snapshot of the target user's UserProfile
  * displayName so subsequent renders show the new owner without any
  * extra lookup.
  *
  * Common error responses:
- *   - 404 TOURNAMENT_NOT_FOUND — tournament id is invalid or soft-deleted.
- *   - 404 USER_NOT_FOUND       — target userUid has no UserProfile row.
+ *   - 404 TOURNAMENT_NOT_FOUND - tournament id is invalid or soft-deleted.
+ *   - 404 USER_NOT_FOUND       - target userUid has no UserProfile row.
  */
 export async function adminTransferTournament(
     tournamentId: number,
@@ -156,7 +156,7 @@ export async function adminTransferTournament(
    detail page. */
 
 /** Force-set tournament status. Bypasses the business rules in
- *  /tournaments/{uuid}/start (INSUFFICIENT_TEAMS, etc.) — admin-only,
+ *  /tournaments/{uuid}/start (INSUFFICIENT_TEAMS, etc.) - admin-only,
  *  for legacy or stuck tournaments where the normal flow can't recover. */
 export async function adminSetTournamentStatus(
     uuid: string,
@@ -170,7 +170,7 @@ export async function adminSetTournamentStatus(
 }
 
 /** Admin-reset a tournament back to DRAFT, wiping rounds/bracket/schedule.
- *  Hits the normal /reset endpoint — assertCanEdit lets admin through.
+ *  Hits the normal /reset endpoint - assertCanEdit lets admin through.
  *  Destructive: surface a confirm prompt before calling. */
 export async function adminResetTournament(uuid: string): Promise<void> {
     await http.post(

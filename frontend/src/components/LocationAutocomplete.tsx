@@ -66,7 +66,7 @@ export function formatNominatimAddress(r: NominatimResult): string {
     if (place) return place
     if (region) return region
 
-    // No usable structured fields — fall back to the first 2 segments of
+    // No usable structured fields - fall back to the first 2 segments of
     // the long display_name, which still trims country/postcode tail.
     const parts = r.display_name.split(",").map((s) => s.trim()).filter(Boolean)
     return parts.slice(0, 2).join(", ") || r.display_name
@@ -76,7 +76,7 @@ export function formatNominatimAddress(r: NominatimResult): string {
  * Free-form text input with location suggestions powered by OpenStreetMap
  * Nominatim. The user can either pick a suggestion (which fills the input
  * with the formatted address and reports lat/lng to the parent) or keep
- * typing freely and submit any string — picking is not required.
+ * typing freely and submit any string - picking is not required.
  */
 export function LocationAutocomplete({
     value,
@@ -170,7 +170,7 @@ export function LocationAutocomplete({
     function pick(r: NominatimResult) {
         const lat = parseFloat(r.lat)
         const lng = parseFloat(r.lon)
-        // Fill the input with Nominatim's full display_name — postcode,
+        // Fill the input with Nominatim's full display_name - postcode,
         // county, country and all. Restored after a brief stint with a
         // shorter formatted label: the verbose form gives WhatsApp shares
         // and the map pin enough context to be unambiguous, and the user

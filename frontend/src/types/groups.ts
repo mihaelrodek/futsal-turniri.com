@@ -13,7 +13,7 @@ export type GroupStandingRow = {
     goalsAgainst: number
     goalDiff: number
     points: number
-    /** Up to the last 5 finished results, chronological — "W" | "D" | "L". */
+    /** Up to the last 5 finished results, chronological - "W" | "D" | "L". */
     form?: string[]
 }
 
@@ -26,7 +26,7 @@ export type GroupMatch = {
     score1: number | null
     score2: number | null
     status: string
-    /** Set while/after the match is LIVE — which live mode was chosen. */
+    /** Set while/after the match is LIVE - which live mode was chosen. */
     liveMode?: MatchLiveMode | null
     /** ISO timestamp the match was started LIVE; drives the TIMER clock. */
     liveStartedAt?: string | null

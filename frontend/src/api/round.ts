@@ -11,7 +11,7 @@ export async function drawRound(uuid: string): Promise<RoundDto> {
     return data
 }
 
-/** One entry in the manual round body — team2Id null means BYE. */
+/** One entry in the manual round body - team2Id null means BYE. */
 export type ManualMatchInput = {
     team1Id: number
     team2Id: number | null
@@ -19,7 +19,7 @@ export type ManualMatchInput = {
 }
 
 /**
- * Manual round generation — bypasses the random pairing logic by sending
+ * Manual round generation - bypasses the random pairing logic by sending
  * the exact list of matches the organiser wants. Used in the late stage
  * of a small bracket where auto-draw doesn't team the way the organiser
  * wants. Backend validates the request and returns 400 with a

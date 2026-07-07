@@ -2,7 +2,7 @@ import { initializeApp, type FirebaseOptions } from "firebase/app"
 import { getAuth, GoogleAuthProvider } from "firebase/auth"
 
 /**
- * Firebase Web SDK config. These values are public by design — Firebase's
+ * Firebase Web SDK config. These values are public by design - Firebase's
  * "API key" identifies the project, not a secret. Real security comes from
  * Firebase Auth rules + server-side ID-token verification.
  *

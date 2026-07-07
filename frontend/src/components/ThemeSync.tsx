@@ -5,7 +5,7 @@ import { getProfile } from "../api/userMe"
 
 /**
  * Mounted once at the app root. Pulls the user's saved colorMode from
- * /user/me/profile after login and applies it via next-themes — so the
+ * /user/me/profile after login and applies it via next-themes - so the
  * theme follows you across devices/browsers, not just localStorage on
  * one machine.
  *
@@ -15,12 +15,12 @@ import { getProfile } from "../api/userMe"
  *   3. App default ("light", from ColorModeProvider)
  *
  * Writes (when the user toggles the theme in Postavke) go in the other
- * direction — see updateColorMode in api/userMe.ts. ThemeSync is read-only.
+ * direction - see updateColorMode in api/userMe.ts. ThemeSync is read-only.
  */
 export default function ThemeSync() {
     const { user, loading } = useAuth()
     const { colorMode, setColorMode } = useColorMode()
-    // Don't re-sync on every render — only once per signed-in UID.
+    // Don't re-sync on every render - only once per signed-in UID.
     // Otherwise we'd fight the user's own toggle (their PUT updates the
     // server, then a refetch races back with the old value).
     const lastSyncedUidRef = useRef<string | null>(null)
@@ -53,7 +53,7 @@ export default function ThemeSync() {
         return () => {
             cancelled = true
         }
-        // colorMode/setColorMode intentionally omitted — we don't want
+        // colorMode/setColorMode intentionally omitted - we don't want
         // this effect to re-fire when the user toggles locally.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.uid, loading])

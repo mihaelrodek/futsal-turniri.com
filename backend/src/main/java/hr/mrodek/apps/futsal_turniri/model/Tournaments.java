@@ -19,7 +19,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "tournaments")
 // Auto-filter soft-deleted rows from every query Hibernate runs against
-// this entity — list, find-by-id, joins, count(), the works. Marking a
+// this entity - list, find-by-id, joins, count(), the works. Marking a
 // tournament deleted is a single-field update; once the flag flips, the
 // row vanishes from every read path without us having to audit every
 // repository method.
@@ -60,7 +60,7 @@ public class Tournaments {
     @Column(length = 20, nullable = false)
     private TournamentStatus status = TournamentStatus.DRAFT;
 
-    /** Maximum number of teams. Null means "no cap" (unlimited) — the organizer
+    /** Maximum number of teams. Null means "no cap" (unlimited) - the organizer
      *  left it blank on create/edit. Not defaulted to a number, so blank stays
      *  unlimited instead of silently becoming a 16-team ceiling. */
     @Column(name = "max_teams")
@@ -103,7 +103,7 @@ public class Tournaments {
     @Column(name = "halftime_break_min")
     private Integer halftimeBreakMin;
 
-    /** "Pauza između utakmica" — break between consecutive matches, in minutes. */
+    /** "Pauza između utakmica" - break between consecutive matches, in minutes. */
     @Column(name = "break_between_matches_min")
     private Integer breakBetweenMatchesMin;
 
@@ -132,7 +132,7 @@ public class Tournaments {
 
     // rewards
     // rewardType is legacy (FIXED | PERCENTAGE). The percent/fixed toggle was
-    // dropped — every prize is now a plain amount + an optional free-text
+    // dropped - every prize is now a plain amount + an optional free-text
     // note ("Ostalo": Pehar, Prijelazni pehar, Utješna nagrada, …). The
     // column stays for back-compat; new tournaments are always FIXED.
     @Enumerated(EnumType.STRING)
@@ -177,7 +177,7 @@ public class Tournaments {
 
     /**
      * Silver-place team name, set by the organiser from the Ekipe tab
-     * after the tournament finishes. Nullable — the organiser can
+     * after the tournament finishes. Nullable - the organiser can
      * leave the podium incomplete (small tournaments may not have a
      * meaningful 2nd or 3rd place). Free-text string rather than a FK
      * to {@link Teams} so we can also paste in a historical name for
@@ -236,7 +236,7 @@ public class Tournaments {
      * from every public read (lists, details, sitemap, live, previews) for
      * everyone EXCEPT its creator and admins, who see it flagged and greyed
      * out in the SPA. Unlike {@link #deleted} this is reversible curation,
-     * not removal — set via POST/DELETE /admin/tournaments/{uuid}/hidden.
+     * not removal - set via POST/DELETE /admin/tournaments/{uuid}/hidden.
      */
     @Column(name = "is_hidden", nullable = false)
     private boolean hidden = false;

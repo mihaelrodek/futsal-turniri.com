@@ -15,10 +15,10 @@ public record UpcomingMatchDto(
         String tournamentName,
         String team1Name,
         String team2Name,
-        /** Scheduled kickoff — always non-null (the query filters nulls out). */
+        /** Scheduled kickoff - always non-null (the query filters nulls out). */
         OffsetDateTime kickoffAt,
         Integer tableNo,
-        /** Match stage (GROUP, ROUND_OF_32, …, FINAL) — lets the /uzivo row
+        /** Match stage (GROUP, ROUND_OF_32, …, FINAL) - lets the /uzivo row
          *  show the phase next to the tournament name. */
         String stage,
         /** Group letter (A, B, …) for GROUP-stage matches; null for knockout. */

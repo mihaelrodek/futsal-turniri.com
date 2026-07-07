@@ -14,7 +14,7 @@ import { FaFutbol } from "react-icons/fa"
 import { FiDownload } from "react-icons/fi"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Pitch theme primitives — Nogometni-turniri.com redesign.
+   Pitch theme primitives - Nogometni-turniri.com redesign.
 
    Small, composable building blocks for the "Pitch" visual language:
    pitch green primary, scoreboard mono numerics, off-white canvas, pill
@@ -29,25 +29,25 @@ import { FiDownload } from "react-icons/fi"
      name.
    ────────────────────────────────────────────────────────────────────── */
 
-/** Futsal-court backdrop — replaces the old football-pitch SVG.
+/** Futsal-court backdrop - replaces the old football-pitch SVG.
  *
  * Why the change: futsal is played on hard indoor courts (parquet / sport
  * tile) or outdoor concrete street courts, NOT on grass. A green "football
  * pitch" backdrop on the card placeholders misrepresented the sport, so the
  * default look is now a **slate hard-court** with proper futsal markings:
  *
- *   - Rectangular court (no 18-yard penalty box — that's football)
+ *   - Rectangular court (no 18-yard penalty box - that's football)
  *   - Halfway line + centre circle (3m)
  *   - Two "D"-shaped penalty arcs at 6m from each goal (the futsal "D")
- *   - First and second penalty marks (6m and 10m — the 10m mark is unique
+ *   - First and second penalty marks (6m and 10m - the 10m mark is unique
  *     to futsal and a recognisable visual cue)
  *   - Quarter-circle corner arcs
  *
  * Two visual tones via the `tone` prop:
- *   - `"court"` (default) — dark slate / asphalt gradient with a subtle
+ *   - `"court"` (default) - dark slate / asphalt gradient with a subtle
  *     concrete-grit dot pattern. Reads as a street / indoor hard court.
  *     Used everywhere a card needs a neutral placeholder.
- *   - `"pitch"` — the legacy green gradient. Reserved for branded hero
+ *   - `"pitch"` - the legacy green gradient. Reserved for branded hero
  *     blocks where the brand-green wash is intentional (live banner).
  */
 export function PitchBackdrop({
@@ -64,7 +64,7 @@ export function PitchBackdrop({
     const stops =
         tone === "pitch"
             ? { from: "#3aa56b", to: "#0b6b3a" }
-            : // Polished-concrete mid-grey — light enough to feel friendly
+            : // Polished-concrete mid-grey - light enough to feel friendly
               // and modern, dark enough that white-cream futsal markings
               // still read clearly. Lighter than the original #2f353d.
               { from: "#9aa3ad", to: "#5d6671" }
@@ -75,7 +75,7 @@ export function PitchBackdrop({
             // viewBox sized to a 40m × 20m futsal court (scaled 30×). All
             // marking distances are derived from the real laws of the game
             // so the silhouette reads as futsal even at low opacity.
-            // @ts-expect-error — Chakra's `as="svg"` forwards SVG attrs.
+            // @ts-expect-error - Chakra's `as="svg"` forwards SVG attrs.
             viewBox="0 0 1200 240"
             preserveAspectRatio="xMidYMid slice"
             position="absolute"
@@ -90,7 +90,7 @@ export function PitchBackdrop({
                     <stop offset="0%" stopColor={stops.from} />
                     <stop offset="100%" stopColor={stops.to} />
                 </linearGradient>
-                {/* Concrete-grit dots — only on court tone, simulates the
+                {/* Concrete-grit dots - only on court tone, simulates the
                      subtle texture of a painted asphalt or sport-tile
                      surface. Skip on pitch tone so the green hero stays
                      clean. */}
@@ -122,7 +122,7 @@ export function PitchBackdrop({
             <circle cx="600" cy="120" r="50" fill="none" stroke={line} strokeWidth="2" />
             <circle cx="600" cy="120" r="3" fill={line} />
 
-            {/* Futsal "D" — 6m penalty arc at each end. Drawn as a half-
+            {/* Futsal "D" - 6m penalty arc at each end. Drawn as a half-
                  ellipse anchored at the goal line so it reads as a true
                  futsal mark, not a football-style penalty box. */}
             <path
@@ -139,20 +139,20 @@ export function PitchBackdrop({
             />
 
             {/* First penalty mark (6m) and second penalty mark (10m) at
-                 each end — the 10m mark is distinctively futsal. */}
+                 each end - the 10m mark is distinctively futsal. */}
             <circle cx="80" cy="120" r="3" fill={line} />
             <circle cx="1120" cy="120" r="3" fill={line} />
             <circle cx="140" cy="120" r="3" fill={line} />
             <circle cx="1060" cy="120" r="3" fill={line} />
 
-            {/* Goal lines — small notches at each goal to suggest goals
+            {/* Goal lines - small notches at each goal to suggest goals
                  without rendering full 3-D nets. */}
             <line x1="20" y1="100" x2="10" y2="100" stroke={line} strokeWidth="2" />
             <line x1="20" y1="140" x2="10" y2="140" stroke={line} strokeWidth="2" />
             <line x1="1180" y1="100" x2="1190" y2="100" stroke={line} strokeWidth="2" />
             <line x1="1180" y1="140" x2="1190" y2="140" stroke={line} strokeWidth="2" />
 
-            {/* Corner quarter-arcs (25cm in the real laws — drawn slightly
+            {/* Corner quarter-arcs (25cm in the real laws - drawn slightly
                  bigger so they read at this scale). */}
             <path d="M 20 35 A 15 15 0 0 0 35 20" fill="none" stroke={line} strokeWidth="2" />
             <path d="M 1180 35 A 15 15 0 0 1 1165 20" fill="none" stroke={line} strokeWidth="2" />
@@ -166,7 +166,7 @@ export function PitchBackdrop({
  *
  * `size` ≤ 24 ⇒ small inline glyph (line-drawing style, used as a
  * "goal scored" cue and a brand mark next to text).
- * `size`  > 24 ⇒ bold placeholder rendition — the centre pentagon stays
+ * `size`  > 24 ⇒ bold placeholder rendition - the centre pentagon stays
  * filled, but the surrounding strokes thicken proportionally so the ball
  * reads cleanly at hero / card-placeholder sizes (60-140 px).
  *
@@ -182,14 +182,14 @@ export function BallIcon({
     color?: string
     strokeWidth?: number
 }) {
-    // Scale stroke width with size — 1.6 looks right at 16px, ~1.4 at
+    // Scale stroke width with size - 1.6 looks right at 16px, ~1.4 at
     // 80px (the SVG itself is scaled, the stroke is relative to its
     // 0..24 viewBox). Caller can override.
     const sw = strokeWidth ?? (size > 24 ? 1.4 : 1.6)
     return (
         <Box
             as="svg"
-            // @ts-expect-error — SVG attrs forwarded by Chakra.
+            // @ts-expect-error - SVG attrs forwarded by Chakra.
             viewBox="0 0 24 24"
             width={`${size}px`}
             height={`${size}px`}
@@ -209,7 +209,7 @@ export function BallIcon({
     )
 }
 
-/** Small all-caps mono caption — "DATUM", "ORGANIZATOR", scoreboard kickers. */
+/** Small all-caps mono caption - "DATUM", "ORGANIZATOR", scoreboard kickers. */
 export function MonoLabel({
     children,
     color = "fg.muted",
@@ -231,7 +231,7 @@ export function MonoLabel({
     )
 }
 
-/** Pulsing dot — base building block for the live/now indicator. */
+/** Pulsing dot - base building block for the live/now indicator. */
 export function PulseDot({
     color = "accent.red",
     size = 7,
@@ -259,7 +259,7 @@ export function PulseDot({
 
 export type StatusKind = "live" | "upcoming" | "soon" | "full" | "draft" | "active" | "finished"
 
-/** Status pill — colored dot + label. Matches the design's `StatusChip` with
+/** Status pill - colored dot + label. Matches the design's `StatusChip` with
  *  six discrete kinds. `live` is solid red with a pulsing dot, all other
  *  upcoming statuses use a white pill with a colored marker for low visual
  *  noise. */
@@ -306,7 +306,7 @@ export function StatusChip({
             <PulseDot
                 color={cfg.dot}
                 size={6}
-                // Only the live status actually pulses — for everything else
+                // Only the live status actually pulses - for everything else
                 // override the global pitchPulse animation with `none` so
                 // upcoming/soon/full dots stay still.
                 css={cfg.pulse ? undefined : { animation: "none" }}
@@ -316,7 +316,7 @@ export function StatusChip({
     )
 }
 
-/** SectionCard — the white panel container used across the design. Optional
+/** SectionCard - the white panel container used across the design. Optional
  *  header row with icon + title + subtitle + right-aligned action slot. The
  *  body is rendered without padding when `padding="0"` so callers can
  *  paint edge-to-edge (e.g. embedded maps). */
@@ -385,7 +385,7 @@ export function SectionCard({
     )
 }
 
-/** Filter chip — pill toggle with optional colored leading dot and trailing
+/** Filter chip - pill toggle with optional colored leading dot and trailing
  *  count. Used in the listing page filter row and the live page filter
  *  switcher. Active state flips to a solid dark pill. */
 export function FilterChip({
@@ -501,7 +501,7 @@ export function PillTabBar<T extends string>({
     )
 }
 
-/** Big accent-striped stat tile — used on the detail "Datum / Vrijeme /
+/** Big accent-striped stat tile - used on the detail "Datum / Vrijeme /
  *  Ekipe / Kotizacija" quick stats row, the statistika headline row, and
  *  the team detail "Prijavljene / Popunjeno / …" strip. */
 export function AccentStat({
@@ -545,7 +545,7 @@ export function AccentStat({
     )
 }
 
-/** Date stamp — top-left overlay on tournament cards. Day-of-week / day /
+/** Date stamp - top-left overlay on tournament cards. Day-of-week / day /
  *  month-mono triplet inside a translucent white pill. */
 export function DateStamp({
     day,
@@ -577,7 +577,7 @@ export function DateStamp({
     )
 }
 
-/** Tournament poster — image when present, otherwise a styled empty-state
+/** Tournament poster - image when present, otherwise a styled empty-state
  *  with the pitch backdrop and centred initials. Same component used in
  *  the listing card (180px) and the detail view (500px, `big`). */
 export function TournamentPoster({
@@ -598,7 +598,7 @@ export function TournamentPoster({
     /** Show a small download button (top-right) over the poster image. */
     downloadable?: boolean
     /** Render the poster at its natural aspect ratio (whole image always
-     *  visible, height adapts) instead of a fixed-height cover crop — for
+     *  visible, height adapts) instead of a fixed-height cover crop - for
      *  the details page where a tall portrait poster must not be cut off.
      *  `height` is ignored in this mode. */
     natural?: boolean
@@ -608,7 +608,7 @@ export function TournamentPoster({
 }) {
     if (bannerUrl) {
         // A real <img> (not a CSS background) so the preload scanner discovers
-        // the LCP image during HTML/early parse — PSI's "LCP request discovery"
+        // the LCP image during HTML/early parse - PSI's "LCP request discovery"
         // flagged the old bgImage approach (only discovered after CSSOM+layout).
         return (
             <Box
@@ -620,14 +620,14 @@ export function TournamentPoster({
             >
                 <chakra.img
                     src={bannerUrl}
-                    alt={`Plakat — ${name}`}
+                    alt={`Plakat - ${name}`}
                     display="block"
                     w="full"
                     loading={priority ? "eager" : "lazy"}
                     fetchPriority={priority ? "high" : "auto"}
                     {...(natural
                         ? { h: "auto" }
-                        : // Anchor the crop to the TOP of the poster — that's
+                        : // Anchor the crop to the TOP of the poster - that's
                           // where the title/header lives on a typical portrait
                           // flyer; a centre crop showed the middle instead.
                           { h: "full", objectFit: "cover", objectPosition: "top center" })}
@@ -674,7 +674,7 @@ export function TournamentPoster({
             color="white"
             display="grid"
             css={{ placeItems: "center" }}
-            // Polished-concrete grey gradient — lighter than the prior
+            // Polished-concrete grey gradient - lighter than the prior
             // slate and reads as an outdoor hard-court / indoor sport
             // tile. Brand green is reserved for accents (status pills,
             // CTAs); the placeholder itself stays neutral.
@@ -689,7 +689,7 @@ export function TournamentPoster({
                 // so it remains the focal point at low backdrop opacity.
                 filter="drop-shadow(0 6px 18px rgba(0,0,0,0.4))"
             >
-                {/* Big centred futsal/soccer ball — using react-icons'
+                {/* Big centred futsal/soccer ball - using react-icons'
                      `FaFutbol` because it carries the universally-
                      recognised Telstar pattern (pentagon + hexagon
                      panels) at every size. The earlier custom outline
@@ -701,7 +701,7 @@ export function TournamentPoster({
                     color="rgba(255,255,255,0.94)"
                     css={{ display: "block", margin: "0 auto" }}
                 />
-                {/* Tournament name instead of a "no poster" note — the
+                {/* Tournament name instead of a "no poster" note - the
                     placeholder doubles as a text poster. Clamped to two
                     lines so a long name can't blow up the card height. */}
                 <Text
@@ -863,7 +863,7 @@ export function TintButton({
     )
 }
 
-/** Page heading row — title + optional status chip + right action slot. */
+/** Page heading row - title + optional status chip + right action slot. */
 export function PageTitle({
     title,
     kicker,
@@ -949,7 +949,7 @@ export function BackLink({
         >
             <Box
                 as="svg"
-                // @ts-expect-error — SVG attrs forwarded.
+                // @ts-expect-error - SVG attrs forwarded.
                 viewBox="0 0 24 24"
                 width="16px"
                 height="16px"

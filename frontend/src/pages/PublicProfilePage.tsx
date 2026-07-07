@@ -64,7 +64,7 @@ const PHONE_COUNTRIES = [
 ] as const
 
 function formatDate(iso?: string | null): string {
-    if (!iso) return "—"
+    if (!iso) return "-"
     return new Intl.DateTimeFormat("hr-HR", {
         weekday: "short",
         day: "2-digit",
@@ -82,7 +82,7 @@ function initialsOf(name?: string | null): string {
     return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase()
 }
 
-/** Lower-cased trimmed name match — same key the backend groups teams by. */
+/** Lower-cased trimmed name match - same key the backend groups teams by. */
 function teamKey(name: string): string {
     return name.trim().toLowerCase()
 }
@@ -106,13 +106,13 @@ export default function PublicProfilePage() {
     const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "dashboard" | "popis-igraca">("turniri")
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
-    // meta tag — phone display is a product call on the page itself, but
+    // meta tag - phone display is a product call on the page itself, but
     // there's no need to make it any more discoverable than it already is.
     const totalTournaments = profile?.tournaments?.length ?? 0
     const totalWins = (profile?.teams ?? []).reduce((sum, p) => sum + (p.wins ?? 0), 0)
     const profileCanonical = slug ? `https://futsal-turniri.com/profil/${slug}` : undefined
     const profileDescription = profile?.displayName
-        ? `${profile.displayName} — povijest nastupa na Futsal turnirima. ${totalTournaments} turnira, ${totalWins} pobjeda.`
+        ? `${profile.displayName} - povijest nastupa na Futsal turnirima. ${totalTournaments} turnira, ${totalWins} pobjeda.`
         : undefined
 
     // Person JSON-LD for Googlebot. Mirrors what ProfilePreviewController
@@ -148,7 +148,7 @@ export default function PublicProfilePage() {
         if (profile.avatarUrl) person.image = profile.avatarUrl
         items.push(person)
 
-        // BreadcrumbList — gives Google an "Igrači › {name}" trail.
+        // BreadcrumbList - gives Google an "Igrači › {name}" trail.
         // There's no top-level "Igrači" index page yet, but the schema
         // still helps Google understand the URL hierarchy and is cheap
         // to ship pre-emptively.
@@ -175,12 +175,12 @@ export default function PublicProfilePage() {
 
     useDocumentHead({
         title: profile?.displayName
-            ? `${profile.displayName} — Futsal igrač | futsal-turniri.com`
-            : "Futsal igrač — futsal-turniri.com",
+            ? `${profile.displayName} - Futsal igrač | futsal-turniri.com`
+            : "Futsal igrač - futsal-turniri.com",
         description: profileDescription,
         ogTitle: profile?.displayName ?? undefined,
         ogDescription: profile?.displayName
-            ? `Povijest nastupa na Futsal turnirima — ${totalTournaments} turnira, ${totalWins} pobjeda.`
+            ? `Povijest nastupa na Futsal turnirima - ${totalTournaments} turnira, ${totalWins} pobjeda.`
             : undefined,
         ogImage: profile?.avatarUrl ?? undefined,
         ogType: "profile",
@@ -194,7 +194,7 @@ export default function PublicProfilePage() {
     // "Prijavi se da vidiš broj" affordance is driven by the `hasPhone`
     // flag the API returns). If we fire this fetch before Firebase has
     // restored the persisted session, the request goes anonymous and we
-    // get back a redacted record — even if the user IS logged in on
+    // get back a redacted record - even if the user IS logged in on
     // this device. Then `setProfile` stores that stale anonymous record
     // and the page shows the blurred phone permanently for this session.
     //
@@ -232,7 +232,7 @@ export default function PublicProfilePage() {
         return () => { cancelled = true }
     }, [slug, authLoading, user?.uid])
 
-    // Career stats — separate request so a slow stats query doesn't hold
+    // Career stats - separate request so a slow stats query doesn't hold
     // up the main profile render. Silent on error (we just hide the card).
     useEffect(() => {
         if (!slug) return
@@ -256,7 +256,7 @@ export default function PublicProfilePage() {
             })
     }, [profile, activeTeam, search])
 
-    // Owner detection — backend deliberately doesn't ship the target UID, so
+    // Owner detection - backend deliberately doesn't ship the target UID, so
     // we compare slugs. mySlug is populated after /user/me/sync runs.
     const isOwner = !!profile && !!user?.uid && !!mySlug && mySlug === profile.slug
 
@@ -306,7 +306,7 @@ export default function PublicProfilePage() {
             mx="auto"
             w="full"
         >
-            {/* Profile header is always visible — it's the identity card.
+            {/* Profile header is always visible - it's the identity card.
                 Avatar, name, and (for the owner) inline edit affordances
                 sit above the tab strip so they don't get hidden when the
                 user is on a non-default tab. */}
@@ -316,7 +316,7 @@ export default function PublicProfilePage() {
                 onProfileChanged={refreshProfile}
             />
 
-            {/* Tabs. Postavke + Računi are owner-only — visitors viewing
+            {/* Tabs. Postavke + Računi are owner-only - visitors viewing
                 someone else's profile just see Turniri (no tab strip at all
                 when there's only one option). */}
             {isOwner && (
@@ -336,7 +336,7 @@ export default function PublicProfilePage() {
                     >
                         Postavke
                     </Button>
-                    {/* Admin-only Dashboard tab — for retroactively attaching
+                    {/* Admin-only Dashboard tab - for retroactively attaching
                         legacy tournament teams to registered users. Gated on
                         the Firebase role=admin custom claim; non-admins never
                         see the button. */}
@@ -350,7 +350,7 @@ export default function PublicProfilePage() {
                             Dashboard
                         </Button>
                     )}
-                    {/* Admin-only Popis igrača tab — full list of all
+                    {/* Admin-only Popis igrača tab - full list of all
                         registered users with a one-click jump to their
                         profile page. Same admin-claim gate as Dashboard. */}
                     {isAdmin && (
@@ -366,7 +366,7 @@ export default function PublicProfilePage() {
                 </HStack>
             )}
 
-            {/* === KARIJERA card — always above the Turniri tab. Visible to
+            {/* === KARIJERA card - always above the Turniri tab. Visible to
                   everyone, owner or visitor. Hidden until career fetch
                   resolves and the user has actually played anything. === */}
             {(!isOwner || profileTab === "turniri") && career && career.tournamentsPlayed > 0 && (
@@ -381,7 +381,7 @@ export default function PublicProfilePage() {
                             <HStack justify="space-between" wrap="wrap" gap="2">
                                 <Heading size="md">
                                     Turniri
-                                    {activeTeam ? <chakra.span color="fg.muted"> — {activeTeam}</chakra.span> : null}
+                                    {activeTeam ? <chakra.span color="fg.muted"> - {activeTeam}</chakra.span> : null}
                                 </Heading>
                                 {activeTeam && profile.teams.length > 0 && (
                                     <Badge variant="subtle" colorPalette="pitch">
@@ -390,7 +390,7 @@ export default function PublicProfilePage() {
                                 )}
                             </HStack>
 
-                            {/* Team picker — filter chips */}
+                            {/* Team picker - filter chips */}
                             {profile.teams.length === 0 ? (
                                 <Box
                                     borderWidth="1px"
@@ -446,7 +446,7 @@ export default function PublicProfilePage() {
                                 )
                             })()}
 
-                            {/* Tournament list — only after a team is picked */}
+                            {/* Tournament list - only after a team is picked */}
                             {activeTeam && (
                                 <>
                                     <Box borderTopWidth="1px" borderColor="border.emphasized" mx="-4" my="1" />
@@ -488,15 +488,15 @@ export default function PublicProfilePage() {
                 </Card.Root>
             )}
 
-            {/* === POSTAVKE tab — owner-only: app preferences (theme, etc.) === */}
+            {/* === POSTAVKE tab - owner-only: app preferences (theme, etc.) === */}
             {isOwner && profileTab === "postavke" && <SettingsCard />}
 
-            {/* === DASHBOARD tab — admin-only, on own profile === */}
+            {/* === DASHBOARD tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "dashboard" && (
                 <AdminDashboardTab />
             )}
 
-            {/* === POPIS IGRAČA tab — admin-only, on own profile === */}
+            {/* === POPIS IGRAČA tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "popis-igraca" && (
                 <AdminPlayersListTab />
             )}
@@ -574,7 +574,7 @@ function ProfileHeader({
             <Card.Body p={{ base: "5", md: "5" }}>
                 <VStack align="stretch" gap="3">
                     <HStack gap="3" align="start">
-                        {/* Avatar — image when uploaded, initials otherwise.
+                        {/* Avatar - image when uploaded, initials otherwise.
                             Wrapped in AvatarPreview so hovering / tapping
                             the circle opens a full-screen lightbox of the
                             picture. The wrapper is a no-op when there's no
@@ -681,7 +681,7 @@ function ProfileHeader({
                             _hover={{ textDecoration: "underline" }}
                         >
                             <FiPhone size={13} />
-                            {/* Show the country flag too — the dial code by itself looks like
+                            {/* Show the country flag too - the dial code by itself looks like
                                 a generic prefix; the flag tells you the country at a glance. */}
                             {profile.phoneCountry && (
                                 <chakra.span aria-hidden mr="0.5">
@@ -750,7 +750,7 @@ function flagFor(dialCode: string | null | undefined): string {
     if (!dialCode) return ""
     const c = PHONE_COUNTRIES.find((x) => x.value === dialCode)
     if (!c) return ""
-    // The label is e.g. "🇭🇷 +385" — the first space splits flag from prefix.
+    // The label is e.g. "🇭🇷 +385" - the first space splits flag from prefix.
     const parts = c.label.split(" ")
     return parts[0] ?? ""
 }
@@ -773,7 +773,7 @@ function EditProfileDialog({
     const [loadingPhone, setLoadingPhone] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    // Re-seed every time the dialog opens — covers cancel-and-reopen and the
+    // Re-seed every time the dialog opens - covers cancel-and-reopen and the
     // case where the underlying profile was changed elsewhere in the meantime.
     useEffect(() => {
         if (!open) return
@@ -805,7 +805,7 @@ function EditProfileDialog({
         try {
             setSaving(true)
             setError(null)
-            // Firebase displayName is the source of truth — update it first
+            // Firebase displayName is the source of truth - update it first
             // so any subsequent token refresh carries the new name. The
             // backend mirror lands via /user/me/sync.
             const [{ auth }, { updateProfile: fbUpdateProfile }] =
@@ -882,7 +882,7 @@ function EditProfileDialog({
                                                 value={phone}
                                                 // Strip non-digits (and non-spaces) so the saved
                                                 // value never contains stray "(", "-", or "+"
-                                                // characters — the country dial code lives in a
+                                                // characters - the country dial code lives in a
                                                 // separate select.
                                                 onChange={(e) => setPhone(e.target.value.replace(/[^\d\s]/g, ""))}
                                             />
@@ -913,7 +913,7 @@ function EditProfileDialog({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   CareerStatsCard — aggregate W/D/L + goals across every team the user
+   CareerStatsCard - aggregate W/D/L + goals across every team the user
    has played as. Rendered at the top of the Turniri tab.
 
    Visible to everyone (owner and visitors). When `tournamentsPlayed`
@@ -938,7 +938,7 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                         )}
                     </HStack>
 
-                    {/* Headline stats — 4-up grid that wraps to 2-up on
+                    {/* Headline stats - 4-up grid that wraps to 2-up on
                         narrow screens. Bricolage / mono digits set them
                         apart from prose. */}
                     <Box
@@ -1006,7 +1006,7 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                         </VStack>
                     )}
 
-                    {/* Recent tournaments — quick scrollable strip. */}
+                    {/* Recent tournaments - quick scrollable strip. */}
                     {career.recent.length > 0 && (
                         <VStack align="stretch" gap="2">
                             <Text
@@ -1042,10 +1042,10 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                                                 fontWeight={600}
                                                 truncate
                                             >
-                                                {r.tournamentName ?? "—"}
+                                                {r.tournamentName ?? "-"}
                                             </Text>
                                             <Text fontSize="xs" color="fg.muted" truncate>
-                                                {r.teamName ?? "—"}
+                                                {r.teamName ?? "-"}
                                             </Text>
                                         </VStack>
                                         <Badge
@@ -1142,7 +1142,7 @@ function TeamChip({
                     </HStack>
                 )}
                 {team.partnerSlug && (
-                    // Tiny "shared" indicator — the actual partner link
+                    // Tiny "shared" indicator - the actual partner link
                     // renders below the chip strip so it stays accessible
                     // (no nested clickable inside the button).
                     <Box color={active ? "blue.100" : "blue.fg"} title="Podijeljeno s partnerom">
@@ -1301,7 +1301,7 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
                 <Text color="fg.muted" fontSize="xs">Stol {m.tableNo}</Text>
             )}
             <Text flex="1" minW="0" lineClamp={1}>
-                vs <chakra.b>{m.opponentName ?? (m.isBye ? "—" : "?")}</chakra.b>
+                vs <chakra.b>{m.opponentName ?? (m.isBye ? "-" : "?")}</chakra.b>
             </Text>
             {(m.ourScore != null || m.opponentScore != null) && (
                 <Text fontFamily="mono" fontWeight="semibold">
@@ -1320,7 +1320,7 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Postavke tab — app-level preferences. Right now just the theme
+ * Postavke tab - app-level preferences. Right now just the theme
  * toggle (which used to live on the navbar). Theme is persisted per
  * user via PUT /user/me/profile colorMode, so the choice follows
  * the user across devices. ThemeSync handles the read direction on
@@ -1332,12 +1332,12 @@ function SettingsCard() {
     const setTheme = async (mode: "light" | "dark") => {
         // Flip the local theme immediately for an instant visual response,
         // then persist to the backend. We're not waiting on the network
-        // before flipping — the response only confirms the save.
+        // before flipping - the response only confirms the save.
         setColorMode(mode)
         try {
             await updateColorMode(mode)
         } catch {
-            // Network failed — local theme is still right; the next login
+            // Network failed - local theme is still right; the next login
             // will resync via ThemeSync.
         }
     }

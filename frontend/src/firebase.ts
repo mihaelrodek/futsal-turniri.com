@@ -1,7 +1,7 @@
 import type { Auth, GoogleAuthProvider } from "firebase/auth"
 
 /**
- * Firebase Web SDK config. These values are public by design — Firebase's
+ * Firebase Web SDK config. These values are public by design - Firebase's
  * "API key" identifies the project, not a secret. Real security comes from
  * Firebase Auth rules + server-side ID-token verification.
  *
@@ -13,7 +13,7 @@ import type { Auth, GoogleAuthProvider } from "firebase/auth"
  *
  * LAZY INIT: the SDK (~100 kB gzip) used to be a static import in the
  * critical bundle even though nothing needs it before first paint. It now
- * loads through a cached dynamic import — callers `await getFirebase()`
+ * loads through a cached dynamic import - callers `await getFirebase()`
  * (plus `await import("firebase/auth")` for the helper functions, which
  * resolves to the same split chunk). PSI's "unused JavaScript" flagged the
  * old static version as the biggest offender in the vendor chunk.

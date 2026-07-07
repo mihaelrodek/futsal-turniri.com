@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 /**
- * Score is nullable — a match can be temporarily saved without a decisive result.
+ * Score is nullable - a match can be temporarily saved without a decisive result.
  * When both values are present, they must be non-negative and within a sane cap.
  * Futsal match scores are tiny (single or low double digits); 100_000 is an absurdly
  * high defensive ceiling to catch obvious typos / malicious input.

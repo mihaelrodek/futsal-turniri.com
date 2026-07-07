@@ -79,7 +79,7 @@ public interface TournamentMapper {
             // can render the full medal stack without a second fetch.
             @Mapping(target = "secondPlaceName", source = "secondPlaceName"),
             @Mapping(target = "thirdPlaceName",  source = "thirdPlaceName"),
-            // Individual awards — set via /awards after FINISH.
+            // Individual awards - set via /awards after FINISH.
             @Mapping(target = "bestGoalkeeperName", source = "bestGoalkeeperName"),
             @Mapping(target = "bestPlayerName", source = "bestPlayerName"),
             @Mapping(target = "bestScorerName", source = "bestScorerName"),
@@ -137,7 +137,7 @@ public interface TournamentMapper {
     Tournaments toEntity(CreateTournamentRequest req);
 
     /* ========== Apply DTO updates onto an existing entity (in place) ==========
-       Reuses CreateTournamentRequest as the wire shape — all fields are settable
+       Reuses CreateTournamentRequest as the wire shape - all fields are settable
        except the ones we deliberately ignore: id/uuid/audit timestamps/status
        (status is driven by /start, /finish, /reset endpoints) and the resource
        (poster) which has its own multipart upload flow. */
@@ -224,7 +224,7 @@ public interface TournamentMapper {
 
     /**
      * Stable poster URL for the SPA. Always returns a backend-proxied path
-     * ({@code /api/resources/<id>/image}) — never the MinIO direct URL —
+     * ({@code /api/resources/<id>/image}) - never the MinIO direct URL -
      * because the MinIO bucket is private. The proxy controller streams the
      * bytes through with proper Content-Type and a 1-year immutable cache.
      *

@@ -3,7 +3,7 @@ import { Box, Text, chakra } from "@chakra-ui/react"
 import type { TournamentFormat } from "../types/tournaments"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   FormatSketch — a lightweight SVG diagram of how the chosen competition
+   FormatSketch - a lightweight SVG diagram of how the chosen competition
    format flows. Shared between the create wizard (Format step) and the
    tournament detail view (Detalji box).
 
@@ -62,7 +62,7 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                     <path d="M132 64 l-7 -4 v8 z" fill={stroke} />
                     <text x="100" y="56" fontSize="8" fontWeight="700" fill={stroke}>prolaze</text>
 
-                    {/* Bracket — semis → final */}
+                    {/* Bracket - semis → final */}
                     {/* SF1 */}
                     <rect x="146" y="20" width="74" height="16" rx="4" fill="none" stroke={faint} strokeWidth="1.5" />
                     {/* SF2 */}
@@ -106,7 +106,7 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
             <Text fontSize="xs" color="fg.muted" mt="3">
                 {format === "GROUPS_KNOCKOUT"
                     ? "Ekipe se prvo bore u grupama; najbolji iz svake grupe prolaze u eliminacijsku ljestvicu do finala."
-                    : "Sve ekipe idu izravno u eliminacijsku ljestvicu — poraz znači ispadanje, sve do finala."}
+                    : "Sve ekipe idu izravno u eliminacijsku ljestvicu - poraz znači ispadanje, sve do finala."}
             </Text>
         </Box>
     )

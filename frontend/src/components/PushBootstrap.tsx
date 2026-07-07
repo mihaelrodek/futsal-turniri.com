@@ -9,7 +9,7 @@ import { usePushSubscription } from "../hooks/usePushSubscription"
  *   2. Listen for {@code futsal:navigate} postMessage events that the
  *      service worker dispatches when the user clicks a notification.
  *      The SW resolves to an existing open tab and asks it to route
- *      to the target URL — we honour that with a client-side navigate
+ *      to the target URL - we honour that with a client-side navigate
  *      instead of a hard reload so the SPA state survives.
  */
 export default function PushBootstrap() {

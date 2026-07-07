@@ -31,7 +31,7 @@ function isSafeImageUrl(raw: string): boolean {
  *
  * Usage:
  *   useDocumentHead({
- *     title: "Zimska Futsal Liga, Zagreb — futsal-turniri.com",
+ *     title: "Zimska Futsal Liga, Zagreb - futsal-turniri.com",
  *     description: "...",
  *     ogTitle: "Zimska Futsal Liga, Zagreb",
  *     ogImage: "https://...",
@@ -48,7 +48,7 @@ export type DocumentHead = {
     canonical?: string
     /**
      * Open Graph canonical URL for the page. Defaults to the same value
-     * as {@link canonical} when omitted — they're nearly always the same.
+     * as {@link canonical} when omitted - they're nearly always the same.
      * Set explicitly only when you need them to differ.
      */
     ogUrl?: string
@@ -71,19 +71,19 @@ export type DocumentHead = {
 
 // Tab title is intentionally identical for every route. Per-page titles
 // fragmented the browser-tab UX (long noisy strings, language-specific
-// suffixes) for no real SEO win — JS-aware crawlers still pick up
+// suffixes) for no real SEO win - JS-aware crawlers still pick up
 // per-page <meta> + og:title below, which is what actually drives search
 // snippets and WhatsApp/Slack link previews.
 const STATIC_TITLE = "Futsal turniri"
 const DEFAULT_DESCRIPTION =
-    "Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca."
+    "Futsal turniri u Hrvatskoj - prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca."
 
 export function useDocumentHead(head: DocumentHead) {
     useEffect(() => {
         const previousMeta = snapshotMeta()
         const previousCanonical = currentCanonical()
 
-        // Force the static title regardless of what the caller passed —
+        // Force the static title regardless of what the caller passed -
         // see STATIC_TITLE comment above. We deliberately ignore head.title.
         document.title = STATIC_TITLE
         if (head.description) setMeta("name", "description", head.description)
@@ -99,7 +99,7 @@ export function useDocumentHead(head: DocumentHead) {
         }
         if (head.ogType) setMeta("property", "og:type", head.ogType)
         if (head.canonical) setCanonical(head.canonical)
-        // og:url defaults to the canonical when not explicitly set —
+        // og:url defaults to the canonical when not explicitly set -
         // they're the same thing on every page we care about. Facebook's
         // scraper flags missing og:url as a required-property warning.
         const ogUrl = head.ogUrl ?? head.canonical
@@ -115,7 +115,7 @@ export function useDocumentHead(head: DocumentHead) {
         for (const item of jsonLdItems) appendJsonLd(item)
 
         // On unmount: restore the meta + canonical the next route may want
-        // to reset, but keep the title pinned to STATIC_TITLE — there's
+        // to reset, but keep the title pinned to STATIC_TITLE - there's
         // nothing to "restore" because every route already wants it.
         return () => {
             document.title = STATIC_TITLE
@@ -130,7 +130,7 @@ export function useDocumentHead(head: DocumentHead) {
         head.ogImage,
         head.ogType,
         head.canonical,
-        // Stringify the JSON-LD for the dep array — comparing object
+        // Stringify the JSON-LD for the dep array - comparing object
         // references would re-run the effect on every render whenever
         // the caller builds a fresh literal each time, which is the
         // common pattern in our pages. Serialising once per render is
@@ -175,7 +175,7 @@ function restoreMeta(snap: MetaSnapshot) {
         const [attr, key] = k.split(":") as ["name" | "property", string]
         const previousValue = snap[k]
         if (previousValue == null) {
-            // Tag didn't exist before — leave whatever we set in place; cheaper
+            // Tag didn't exist before - leave whatever we set in place; cheaper
             // than removing/recreating, and the next route that mounts the hook
             // will overwrite it anyway. For the description tag we restore the
             // app-level default so it doesn't leak across routes.

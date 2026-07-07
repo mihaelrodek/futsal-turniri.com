@@ -150,7 +150,7 @@ public class RoundService {
 
         var saved = matchesRepo.saveAll(toSave);
 
-        // Notify every player whose team has a known user UID — one push per
+        // Notify every player whose team has a known user UID - one push per
         // device telling them which round / table / opponent to head to.
         // Skip BYE matches (team2 == null): there's no real game to attend.
         // Errors inside sendToUser are swallowed by PushService, so a flaky
@@ -159,7 +159,7 @@ public class RoundService {
                 ? t.getSlug()
                 : (t.getUuid() != null ? t.getUuid().toString() : "");
         for (Matches m : saved) {
-            if (m.getTeam2() == null) continue; // BYE — no opponent
+            if (m.getTeam2() == null) continue; // BYE - no opponent
             Teams p1 = m.getTeam1();
             Teams p2 = m.getTeam2();
             if (p1 == null) continue;
@@ -170,7 +170,7 @@ public class RoundService {
             // Deep-link to the specific match: TournamentDetailsPage reads
             // ?match={id} on mount, switches to the Ždrijeb tab, expands
             // the round, and scrolls the row into view (no modal opened
-            // — there's no bill yet at this point in the tournament).
+            // - there's no bill yet at this point in the tournament).
             // SPA route is /turniri/{slug} since the Croatian-routes refactor.
             // /tournaments/... still works as a 301 alias, but emitting the
             // canonical URL means the SW notification-click handler navigates
@@ -182,7 +182,7 @@ public class RoundService {
             String tag = "round-" + round.getId() + "-team-";
             // Notify every UID linked to either team (primary submitter
             // and co-owner from the share-link claim). Same payload for
-            // both — they both need to know which table to head to.
+            // both - they both need to know which table to head to.
             for (String uid : teamUids(p1)) {
                 pushService.sendToUser(
                         uid,
@@ -215,7 +215,7 @@ public class RoundService {
      * <p>Typical use-case: late in a small bracket (≤ 4 active teams)
      * where the automatic draw's random pairing isn't what the organiser
      * wants. The caller provides the exact list of (team1, team2, tableNo)
-     * tuples — we validate and persist them as a new round.
+     * tuples - we validate and persist them as a new round.
      *
      * <p>Mirrors {@link #drawNextRound(String)}'s persistence path so the
      * resulting round/matches look identical to an auto-drawn one
@@ -223,7 +223,7 @@ public class RoundService {
      *
      * <p>Validation (each failure throws {@link IllegalStateException},
      * mapped to HTTP 400 by the global exception mapper):
-     *   - tournament must be STARTED (not FINISHED — a finished tournament
+     *   - tournament must be STARTED (not FINISHED - a finished tournament
      *     is read-only)
      *   - {@code matches} non-empty
      *   - every {@code team1Id} must reference a team in this tournament
@@ -251,7 +251,7 @@ public class RoundService {
             teamsById.put(p.getId(), p);
         }
 
-        // Track which team IDs the request already uses — catches both
+        // Track which team IDs the request already uses - catches both
         // duplicate-in-same-match and reused-across-matches in one pass.
         Set<Long> usedIds = new HashSet<>();
         for (ManualRoundRequest.Match m : req.matches()) {
@@ -308,7 +308,7 @@ public class RoundService {
 
         var saved = matchesRepo.saveAll(toSave);
 
-        // Same push-notification logic as the automatic draw — players
+        // Same push-notification logic as the automatic draw - players
         // get a deep link into their match. Lifted out into a helper so
         // both code paths agree on the payload shape; if you tweak one,
         // tweak the other.
@@ -322,7 +322,7 @@ public class RoundService {
      * Send a "Runda X" push notification to every UID linked to each
      * team playing in the round. Extracted from {@link #drawNextRound}
      * so {@link #drawManualRound} can reuse the same payload shape.
-     * BYE rows (team2 == null) are skipped — there's no opponent to
+     * BYE rows (team2 == null) are skipped - there's no opponent to
      * announce.
      */
     private void notifyMatches(Tournaments t, Rounds round, List<Matches> matches) {
@@ -356,7 +356,7 @@ public class RoundService {
     /* ===================== helpers ===================== */
 
     /**
-     * All UIDs linked to a team — the primary submitter and (if claimed)
+     * All UIDs linked to a team - the primary submitter and (if claimed)
      * the share-link co-owner. Order is primary first then co-owner.
      */
     private static java.util.List<String> teamUids(Teams p) {
@@ -615,7 +615,7 @@ public class RoundService {
             teamsRepo.save(winner);
             teamsRepo.save(loser);
 
-            // Fresh finish via "Završi rundu" — notify the new loser with
+            // Fresh finish via "Završi rundu" - notify the new loser with
             // the table's bill total.
             notifyLoser(t, m);
         }
@@ -672,7 +672,7 @@ public class RoundService {
         }
         matchesRepo.save(match);
 
-        // Loss push — same gating as updateMatchScore (fresh finish or
+        // Loss push - same gating as updateMatchScore (fresh finish or
         // winner flip). Skip for BYE (handled by notifyLoser).
         if (match.getStatus() == MatchStatus.FINISHED) {
             Long newWinnerId = (match.getWinnerTeam() != null) ? match.getWinnerTeam().getId() : null;

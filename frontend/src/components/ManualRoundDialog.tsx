@@ -26,7 +26,7 @@ export type ManualRoundTeam = {
  * teams and the random auto-draw doesn't team the way the organiser
  * wants (typical use-case: choosing who plays the final).
  *
- * <p>Each row in the form represents one match — team1 ⨯ team2 ⨯ table
+ * <p>Each row in the form represents one match - team1 ⨯ team2 ⨯ table
  * number. Either team2 may be set to "Slobodan stol (bye)" to model a
  * walkover when the active-teams count is odd. Backend validates the
  * payload; common errors (eliminated team, duplicate team) come back as
@@ -60,7 +60,7 @@ export default function ManualRoundDialog({
     const [submitting, setSubmitting] = useState(false)
     useEffect(() => {
         if (open) {
-            // Default to floor(N/2) rows with sequential table numbers —
+            // Default to floor(N/2) rows with sequential table numbers -
             // matches the typical bracket layout (2 active → 1 final,
             // 3 active → 1 match + 1 bye, 4 active → 2 semis).
             const half = Math.max(1, Math.floor(teams.length / 2))
@@ -74,7 +74,7 @@ export default function ManualRoundDialog({
         }
     }, [open, teams.length])
 
-    // Teams that aren't yet picked anywhere — populates the dropdown
+    // Teams that aren't yet picked anywhere - populates the dropdown
     // options. We allow each dropdown to show its own currently-selected
     // team (so the user can read what they picked) plus the unpicked
     // pool. Computed per-row inside the JSX below.
@@ -104,7 +104,7 @@ export default function ManualRoundDialog({
 
     // Form is submittable when every row has a team1, and team2 is set
     // to either a real team or the explicit BYE marker. We don't
-    // duplicate the more nuanced backend validation here — relying on
+    // duplicate the more nuanced backend validation here - relying on
     // the dropdown's filtered options to prevent picking the same team
     // twice in the UI in the first place.
     const canSubmit = useMemo(() => {
@@ -224,7 +224,7 @@ export default function ManualRoundDialog({
                                                                         })
                                                                     }
                                                                 >
-                                                                    <option value="">— odaberi ekipu —</option>
+                                                                    <option value="">- odaberi ekipu -</option>
                                                                     {availFor1.map((p) => (
                                                                         <option key={p.id} value={p.id}>{p.name}</option>
                                                                     ))}
@@ -250,7 +250,7 @@ export default function ManualRoundDialog({
                                                                         else setRow(idx, { team2Id: Number(v) })
                                                                     }}
                                                                 >
-                                                                    <option value="">— odaberi ekipu —</option>
+                                                                    <option value="">- odaberi ekipu -</option>
                                                                     <option value="BYE">Slobodan stol (bye)</option>
                                                                     {availFor2.map((p) => (
                                                                         <option key={p.id} value={p.id}>{p.name}</option>

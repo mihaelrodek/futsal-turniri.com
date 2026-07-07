@@ -6,18 +6,18 @@
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
     <!--
-        Per-tournament push subscriptions — one row per (user, tournament).
+        Per-tournament push subscriptions - one row per (user, tournament).
         Lets a logged-in user opt into Web Push fan-outs for goals, second
         halves and finished matches in a specific tournament without
         subscribing them to every tournament on the platform.
 
         The unique constraint on (user_uid, tournament_id) makes the
-        "subscribe" endpoint idempotent — POST /subscribe twice from the
+        "subscribe" endpoint idempotent - POST /subscribe twice from the
         same browser silently no-ops on the second call. CASCADE on the
         tournament FK means deleting a tournament also drops every
         subscription that pointed at it.
 
-        user_uid is the Firebase UID — same plain-string convention as
+        user_uid is the Firebase UID - same plain-string convention as
         push_subscriptions, so no FK to anything.
     -->
     <changeSet id="2026-06-21-tournament-subscriptions" author="mrodek">
@@ -44,7 +44,7 @@
                 referencedColumnNames="id"
                 onDelete="CASCADE"/>
 
-        <!-- Idempotent (re)subscribe — one row per (user, tournament). -->
+        <!-- Idempotent (re)subscribe - one row per (user, tournament). -->
         <addUniqueConstraint
                 tableName="tournament_subscriptions"
                 columnNames="user_uid, tournament_id"

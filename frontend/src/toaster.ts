@@ -5,7 +5,7 @@ import { createToaster } from "@chakra-ui/react"
  * (api/http.ts) push notifications onto this; the actual rendering happens
  * via the <Toaster toaster={toaster} /> mounted near the root in main.tsx.
  *
- * Why one shared instance: notifications need to outlive route changes —
+ * Why one shared instance: notifications need to outlive route changes -
  * if you POST a tournament create and then we navigate away to the
  * detail page, the success toast must keep ticking down on the new page.
  * A per-component toaster would be torn down and miss that.
@@ -27,10 +27,10 @@ const STATUS_FALLBACKS_HR: Record<number, string> = {
     401: "Niste prijavljeni.",
     403: "Nemate ovlasti za ovu akciju.",
     404: "Resurs nije pronađen.",
-    409: "Konflikt — pokušajte osvježiti stranicu.",
+    409: "Konflikt - pokušajte osvježiti stranicu.",
     413: "Datoteka je prevelika.",
     422: "Neispravni podaci.",
-    429: "Previše zahtjeva — pokušajte za nekoliko sekundi.",
+    429: "Previše zahtjeva - pokušajte za nekoliko sekundi.",
     500: "Greška na poslužitelju.",
     502: "Poslužitelj nedostupan.",
     503: "Servis privremeno nedostupan.",
@@ -54,7 +54,7 @@ export function showError(title: string, description?: string) {
     // Dedupe identical errors into a single toast. On a page that fires
     // several requests at once (e.g. /turniri: list + live + upcoming), a
     // backend outage would otherwise stack N copies of "Greška na
-    // poslužitelju". A stable id keyed on the message collapses them — if one
+    // poslužitelju". A stable id keyed on the message collapses them - if one
     // is already on screen we just refresh it instead of adding another.
     const id = `err:${title}:${description ?? ""}`
     if (toaster.isVisible(id)) {

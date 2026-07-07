@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 @Getter @Setter @NoArgsConstructor
 public class UserProfile {
 
-    /** Firebase UID, used as the primary key — one row per user. */
+    /** Firebase UID, used as the primary key - one row per user. */
     @Id
     @Column(name = "user_uid", length = 64)
     private String userUid;
@@ -24,7 +24,7 @@ public class UserProfile {
     @Column(name = "phone", length = 50)
     private String phone;
 
-    /** Mirrored from Firebase on every /user/me/sync — used to label public profiles. */
+    /** Mirrored from Firebase on every /user/me/sync - used to label public profiles. */
     @Column(name = "display_name", length = 200)
     private String displayName;
 
@@ -54,7 +54,7 @@ public class UserProfile {
     private Resources avatar;
 
     /**
-     * Per-user theme preference — "light" or "dark". Null means the
+     * Per-user theme preference - "light" or "dark". Null means the
      * user hasn't picked one yet; the frontend defaults to light. We
      * sync this on login so the choice survives across devices.
      */

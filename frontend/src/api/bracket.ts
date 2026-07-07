@@ -60,7 +60,7 @@ export async function fetchBracketQualifiers(
 }
 
 /** Persist the organizer's manual seed order (nositelji) for a KNOCKOUT_ONLY
- *  bracket — `teamIds` best seed first. Returns the re-ordered candidates. The
+ *  bracket - `teamIds` best seed first. Returns the re-ordered candidates. The
  *  auto draw then yields the same bracket every time (deterministic). */
 export async function setBracketSeeds(
     tournamentUuid: string,

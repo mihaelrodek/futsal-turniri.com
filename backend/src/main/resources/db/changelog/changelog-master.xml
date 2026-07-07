@@ -8,7 +8,7 @@
 
     <!--
         Consolidated pre-launch baseline: one changelog per table, each with
-        the table's full column set. Include order follows FK dependencies —
+        the table's full column set. Include order follows FK dependencies -
         a table must appear after every table it references.
     -->
 

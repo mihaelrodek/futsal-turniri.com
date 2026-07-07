@@ -55,7 +55,7 @@ public class ResourceController {
         Resources r = repo.findByIdOptional(id)
                 .orElseThrow(() -> new NotFoundException("Resource not found: " + id));
 
-        // Stream MinIO's response straight to the client — never buffer the
+        // Stream MinIO's response straight to the client - never buffer the
         // whole blob in memory. The MinIO client's GetObjectResponse is an
         // InputStream-compatible wrapper, so transferTo() copies bytes without
         // an intermediate byte[].
@@ -77,14 +77,14 @@ public class ResourceController {
                 : MediaType.APPLICATION_OCTET_STREAM;
 
         return Response.ok(body)
-                // Use the stored, sanitized Content-Type — set by StorageService
+                // Use the stored, sanitized Content-Type - set by StorageService
                 // from the validated extension, not from any client header.
                 .header("Content-Type", ct)
                 // Resource rows are immutable: bucket + objectKey never change
                 // after creation, so the URL→blob mapping is stable. One-year
                 // immutable cache keeps repeat visits free.
                 .header("Cache-Control", "public, max-age=31536000, immutable")
-                // Defense-in-depth — even if Content-Type were ever wrong, the
+                // Defense-in-depth - even if Content-Type were ever wrong, the
                 // browser must not sniff the bytes as HTML/JS.
                 .header("X-Content-Type-Options", "nosniff")
                 .header("Content-Disposition", "inline")

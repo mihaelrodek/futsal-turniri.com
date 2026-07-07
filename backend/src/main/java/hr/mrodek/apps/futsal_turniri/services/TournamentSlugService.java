@@ -13,7 +13,7 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * Builds human-readable URL slugs for tournaments — e.g. a tournament called
+ * Builds human-readable URL slugs for tournaments - e.g. a tournament called
  * "1. Futsal Open" starting on 2026-04-22 becomes {@code "1-futsal-open-22-04-2026"}.
  *
  * <p>The slug is the only piece of the URL the user sees in WhatsApp shares
@@ -60,7 +60,7 @@ public class TournamentSlugService {
             }
             candidate = base + "-" + suffix;
             suffix++;
-            // Defensive: stop runaway loops — should never realistically hit.
+            // Defensive: stop runaway loops - should never realistically hit.
             if (suffix > 1000) {
                 throw new IllegalStateException("Could not generate unique slug for " + t.getName());
             }
@@ -78,7 +78,7 @@ public class TournamentSlugService {
         OffsetDateTime startAt = t.getStartAt();
         if (startAt != null) {
             // Use Europe/Zagreb so a tournament starting at 22:00 UTC on
-            // 2026-04-22 doesn't render as "23-04-2026" in the slug — the
+            // 2026-04-22 doesn't render as "23-04-2026" in the slug - the
             // user thinks of the date in local time.
             slugDate = startAt.atZoneSameInstant(ZoneId.of("Europe/Zagreb"))
                     .toLocalDate()

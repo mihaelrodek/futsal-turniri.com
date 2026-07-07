@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────
-# Secrets & local config — NEVER commit these
+# Secrets & local config - NEVER commit these
 # ──────────────────────────────────────────────────────────
 .env
 .env.local
@@ -9,7 +9,7 @@
 *.env
 !.env.example
 !.env.prod.example
-# Firebase Admin SDK service-account key — full project access
+# Firebase Admin SDK service-account key - full project access
 scripts/service-account.json
 scripts/node_modules/
 # Seed-script Firebase ID token (short-lived, but still a credential)
@@ -36,7 +36,7 @@ desktop.ini
 *~
 
 # ──────────────────────────────────────────────────────────
-# Backend — Maven / Quarkus
+# Backend - Maven / Quarkus
 # ──────────────────────────────────────────────────────────
 backend/target/
 backend/.quarkus/
@@ -50,7 +50,7 @@ backend/HELP.md
 log/
 
 # ──────────────────────────────────────────────────────────
-# Frontend — Node / Vite
+# Frontend - Node / Vite
 # (frontend/.gitignore already covers these; mirrored here as a safety net)
 # ──────────────────────────────────────────────────────────
 frontend/node_modules/
@@ -65,5 +65,5 @@ frontend/*.local
 uploads/
 backend/uploads/
 
-# Maintenance flag — toggled at deploy time by ops/deploy.sh, never committed
+# Maintenance flag - toggled at deploy time by ops/deploy.sh, never committed
 ops/maintenance/ENABLED

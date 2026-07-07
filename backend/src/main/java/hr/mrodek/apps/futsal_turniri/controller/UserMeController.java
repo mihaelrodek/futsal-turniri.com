@@ -34,7 +34,7 @@ import java.util.List;
 
 /**
  * Read-only endpoints scoped to the currently signed-in user.
- * Enforces auth at the class level — every operation pulls the UID from
+ * Enforces auth at the class level - every operation pulls the UID from
  * the verified JWT so a user can never look at someone else's data.
  */
 @Path("/user/me")
@@ -66,7 +66,7 @@ public class UserMeController {
 
     /**
      * "Moji pari" list on the profile's Predlošci tab. Returns every team
-     * the viewer is linked to — as primary submitter (so they can copy
+     * the viewer is linked to - as primary submitter (so they can copy
      * the share link) or as the claimed co-owner. Each row carries enough
      * context to render without N+1: tournament name/date, both submitters'
      * display info, and the claim token IF the viewer is the primary.
@@ -144,7 +144,7 @@ public class UserMeController {
         }
         existing.setPhoneCountry(blank(body.phoneCountry()));
         existing.setPhone(blank(body.phone()));
-        // body.avatarUrl is intentionally ignored — avatars are managed via
+        // body.avatarUrl is intentionally ignored - avatars are managed via
         // the dedicated /avatar endpoints, not via PUT /profile.
         // Theme: accept "light" or "dark", silently ignore anything else
         // (defensive against stale clients).
@@ -163,7 +163,7 @@ public class UserMeController {
      * we just got from the SDK and ensures a unique slug exists for the public
      * /profile/{slug} URL.
      *
-     * Idempotent — calling repeatedly with the same name keeps the same slug.
+     * Idempotent - calling repeatedly with the same name keeps the same slug.
      * We never auto-rotate the slug if displayName changes; users link-share
      * their profile, and silently shifting the URL would be worse than a
      * slightly stale one. Anyone who really wants a fresh slug can ask.
@@ -189,7 +189,7 @@ public class UserMeController {
     /**
      * Upload (or replace) the current user's avatar. Multipart form with a
      * single {@code avatar} part. The previous avatar's resource row is
-     * unlinked but not deleted from MinIO — a future cleanup job can sweep
+     * unlinked but not deleted from MinIO - a future cleanup job can sweep
      * orphans by querying for resources with no FK referrers.
      */
     @POST
@@ -203,7 +203,7 @@ public class UserMeController {
         String uid = jwt.getSubject();
         var profile = profileRepo.findByUid(uid).orElse(null);
         if (profile == null) {
-            // First-time uploaders may not have an entity yet — make one.
+            // First-time uploaders may not have an entity yet - make one.
             profile = new UserProfile();
             profile.setUserUid(uid);
         }

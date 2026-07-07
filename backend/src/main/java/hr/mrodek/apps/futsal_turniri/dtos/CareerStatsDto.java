@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Aggregate career statistics for a single public profile. Computed by
- * {@code PublicProfileController#getCareer} on the fly — there's no
+ * {@code PublicProfileController#getCareer} on the fly - there's no
  * dedicated table, the numbers are summed across every {@code Teams}
  * row this user is associated with.
  *
@@ -30,7 +30,7 @@ public record CareerStatsDto(
         int goalsFor,
         int goalsAgainst,
 
-        /** Team name that's appeared in the most tournaments — null when no plays yet. */
+        /** Team name that's appeared in the most tournaments - null when no plays yet. */
         String topTeamName,
 
         /** 6 most recent tournaments, freshest first. */

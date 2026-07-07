@@ -12,7 +12,7 @@ import { SectionCard } from "../ui/pitch"
 import { showError } from "../toaster"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   TournamentAwards — individual end-of-tournament awards.
+   TournamentAwards - individual end-of-tournament awards.
 
    Read mode (everyone): shows the three awards (best goalkeeper / player /
    scorer) as medal cards, when set.
@@ -71,9 +71,9 @@ export default function TournamentAwards({
             setSuggestions(s)
             if (!t.bestScorerName && s.bestScorer?.name) setScorer(s.bestScorer.name)
             if (!t.bestPlayerName && s.bestPlayer?.name) setPlayer(s.bestPlayer.name)
-            // GK has no player suggestion — leave the input, show the team hint.
+            // GK has no player suggestion - leave the input, show the team hint.
         } catch {
-            /* suggestions are optional — silent */
+            /* suggestions are optional - silent */
         }
     }
 
@@ -96,7 +96,7 @@ export default function TournamentAwards({
 
     if (editing) {
         return (
-            <SectionCard icon={<FaStar />} title="Nagrade — pojedinačne">
+            <SectionCard icon={<FaStar />} title="Nagrade - pojedinačne">
                 <VStack align="stretch" gap="4">
                     <Text fontSize="sm" color="fg.muted">
                         Prijedlozi su izračunati iz rezultata. Možeš ih prihvatiti ili
@@ -129,7 +129,7 @@ export default function TournamentAwards({
                         onChange={setGk}
                         hint={
                             suggestions?.bestGoalkeeperTeam?.teamName
-                                ? `Najbolja obrana: ${suggestions.bestGoalkeeperTeam.teamName} (${suggestions.bestGoalkeeperTeam.goalsConceded} primljenih) — upiši vratara`
+                                ? `Najbolja obrana: ${suggestions.bestGoalkeeperTeam.teamName} (${suggestions.bestGoalkeeperTeam.goalsConceded} primljenih) - upiši vratara`
                                 : undefined
                         }
                     />

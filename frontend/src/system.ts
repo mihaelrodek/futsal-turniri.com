@@ -1,7 +1,7 @@
 import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react"
 
 /**
- * ─── "Pitch" design system — Nogometni-turniri.com ─────────────────────────
+ * ─── "Pitch" design system - Nogometni-turniri.com ─────────────────────────
  *
  * The visual language leans into football vocabulary: pitch green primary,
  * scoreboard mono numerics, jersey-number type, off-white canvas. Replaces
@@ -9,7 +9,7 @@ import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react"
  * small accent stack (amber / red / goal yellow) for status and live signals.
  *
  * Tokens map 1:1 to the design handoff doc:
- *   pitch.500          primary brand green   — buttons, links, headings
+ *   pitch.500          primary brand green   - buttons, links, headings
  *   pitch.400 / .700   gradient ramp
  *   accent.amber       "Za 6 dana", warnings
  *   accent.red         LIVE / destructive
@@ -38,12 +38,12 @@ const config = defineConfig({
         },
         // Keep Leaflet's stacking context below the mobile bottom nav
         // (z-index 1100). We do this by giving the OUTER container its
-        // own stacking context (isolation: isolate + z-index: 0) — that
+        // own stacking context (isolation: isolate + z-index: 0) - that
         // way leaflet's internal panes (tile 200 / overlay 400 /
         // shadow 500 / marker 600 / tooltip 650 / popup 700) layer
         // normally inside the container without bleeding above the nav.
         //
-        // IMPORTANT: do NOT clamp .leaflet-pane to auto — that collapses
+        // IMPORTANT: do NOT clamp .leaflet-pane to auto - that collapses
         // the per-pane z-index so markers render under tiles and popups
         // never appear above the map.
         ".leaflet-container": {
@@ -53,7 +53,7 @@ const config = defineConfig({
         // NB: the `pitchPulse` keyframes used by PulseDot / StatusChip /
         // FilterChip / LiveNavItem live in index.html. Chakra v3's
         // `globalCss` type rejects raw @keyframes blocks, so they're
-        // injected via a plain <style> tag instead — same effect, types
+        // injected via a plain <style> tag instead - same effect, types
         // stay happy.
     },
     theme: {
@@ -70,7 +70,7 @@ const config = defineConfig({
                 },
             },
             colors: {
-                // Pitch green — primary brand ramp tuned to #0b6b3a.
+                // Pitch green - primary brand ramp tuned to #0b6b3a.
                 pitch: {
                     50: { value: "#eaf1e7" },
                     100: { value: "#cde0c4" },
@@ -99,7 +99,7 @@ const config = defineConfig({
                     950: { value: "#021609" },
                 },
                 // NB: `accent` lives in semanticTokens (light + dark pair)
-                // rather than here — a plain token and a semantic token can't
+                // rather than here - a plain token and a semantic token can't
                 // share the same path.
                 team: {
                     blue: { value: "#2563eb" },
@@ -210,13 +210,13 @@ const config = defineConfig({
         },
         semanticTokens: {
             colors: {
-                // Canvas/surfaces — let `bg="bg.canvas"` / `bg="bg.panel"` keep
+                // Canvas/surfaces - let `bg="bg.canvas"` / `bg="bg.panel"` keep
                 // working on existing components without touching call sites.
                 // Every token carries a `_dark` twin: a deep green-tinted dark
                 // ("night pitch") rather than neutral gray, so the brand hue
                 // survives the flip. Toggle lives in the navbar; next-themes
                 // sets the `dark` class that Chakra's `_dark` condition reads.
-                // Dark surfaces are neutral GRAY (near-slate, no green cast) —
+                // Dark surfaces are neutral GRAY (near-slate, no green cast) -
                 // the brand green stays reserved for accents/CTAs so it pops.
                 bg: {
                     DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#232629" } },
@@ -262,10 +262,10 @@ const config = defineConfig({
                     emphasized: { value: { base: "{colors.pitch.400}", _dark: "#38784f" } },
                     focusRing: { value: { base: "{colors.pitch.500}", _dark: "#4cb37e" } },
                 },
-                // Status accents — slightly brighter in dark so they keep
+                // Status accents - slightly brighter in dark so they keep
                 // their pop on the deep-green surfaces. Referenced directly
                 // as `accent.*` across the app.
-                // NB: raw values (not {colors.accent.*} references) — a semantic
+                // NB: raw values (not {colors.accent.*} references) - a semantic
                 // token that references a plain token at the SAME path would
                 // resolve to itself and cycle.
                 accent: {

@@ -10,7 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.OffsetDateTime;
 
 /**
- * A single timeline event of a live match — a goal, a card, or a knockout
+ * A single timeline event of a live match - a goal, a card, or a knockout
  * penalty-shootout kick (PENALTY_GOAL / PENALTY_MISSED). Goals (optionally with
  * an assist) drive the match score; cards are disciplinary records; penalty
  * kicks never affect the score (the shootout total lives on the match). Rows
@@ -37,7 +37,7 @@ public class MatchEvent {
     /**
      * The scorer (for a goal), the carded player, or the penalty taker.
      * Required for goals/cards (enforced in the controller); may be null for
-     * a penalty-shootout kick whose taker wasn't named — then {@link #team}
+     * a penalty-shootout kick whose taker wasn't named - then {@link #team}
      * carries the side instead.
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -46,7 +46,7 @@ public class MatchEvent {
 
     /**
      * The event's team. Only set (and only needed) when {@link #player} is
-     * null — an unattributed penalty kick. When a player is present the team
+     * null - an unattributed penalty kick. When a player is present the team
      * is derived from the player, so this stays null.
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,13 +56,13 @@ public class MatchEvent {
     @Column(name = "minute", nullable = false)
     private Integer minute;
 
-    /** Assisting player — set only for goals, and even then optional. */
+    /** Assisting player - set only for goals, and even then optional. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assist_player_id")
     private Player assistPlayer;
 
     /**
-     * Insertion timestamp — gives a stable tiebreaker for events that
+     * Insertion timestamp - gives a stable tiebreaker for events that
      * share the same minute when listing the timeline.
      */
     @CreationTimestamp

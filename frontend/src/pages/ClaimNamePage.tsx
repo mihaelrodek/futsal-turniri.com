@@ -74,7 +74,7 @@ export default function ClaimNamePage() {
             if (status === 409 && body === "OWNER_SAME") {
                 setMessage({
                     kind: "err",
-                    text: "Već si vlasnik ove ekipe — ne možeš preuzeti vlastitu ekipu.",
+                    text: "Već si vlasnik ove ekipe - ne možeš preuzeti vlastitu ekipu.",
                 })
             } else if (status === 409 && body === "ALREADY_CLAIMED") {
                 setMessage({

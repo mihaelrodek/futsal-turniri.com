@@ -3,7 +3,7 @@ import { http } from "./http"
 /* ──────────────────────────────────────────────────────────────────────────
    Tournament statistics API.
 
-   Aggregated stats for a tournament — currently the top-scorers list shown
+   Aggregated stats for a tournament - currently the top-scorers list shown
    under the "Statistika" section of the tournament page.
    ────────────────────────────────────────────────────────────────────── */
 

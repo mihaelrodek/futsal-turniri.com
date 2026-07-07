@@ -18,8 +18,8 @@ import type {
  * Transition a scheduled match to LIVE so events can be recorded.
  *
  * The organizer picks a live mode up front:
- *  - TIMER  — a running match clock is shown.
- *  - SIMPLE — only a LIVE badge; the organizer uses their own timer.
+ *  - TIMER  - a running match clock is shown.
+ *  - SIMPLE - only a LIVE badge; the organizer uses their own timer.
  */
 export async function startMatch(
     tournamentUuid: string,
@@ -46,7 +46,7 @@ export async function finishMatch(
 }
 
 /**
- * Reset a match back to SCHEDULED — wipes live state, score, fouls and all
+ * Reset a match back to SCHEDULED - wipes live state, score, fouls and all
  * events so it can be started again cleanly (e.g. after a timer mishap).
  */
 export async function resetMatch(
@@ -61,7 +61,7 @@ export async function resetMatch(
 }
 
 /**
- * End the 1st half of a LIVE match — moves it into the half-time "pauza".
+ * End the 1st half of a LIVE match - moves it into the half-time "pauza".
  *
  * Sets {@code firstHalfEndedAt} to now on the backend so the clock freezes and
  * the scoreboard shows half-time until the 2nd half is started. Organizer-only;
@@ -109,7 +109,7 @@ export async function fetchMatchEvents(
 }
 
 /** Record a new event (goal or card). Adding a GOAL recomputes the score.
- *  Pass `{ silent: true }` to skip the success toast — used when recording a
+ *  Pass `{ silent: true }` to skip the success toast - used when recording a
  *  batch of penalty-shootout kicks so the screen isn't flooded with toasts. */
 export async function addMatchEvent(
     tournamentUuid: string,
@@ -170,7 +170,7 @@ export async function resetMatchFouls(
 }
 
 /** Remove a previously recorded event. Removing a GOAL recomputes the score.
- *  Pass `{ silent: true }` to skip the toast — used when clearing a batch of
+ *  Pass `{ silent: true }` to skip the toast - used when clearing a batch of
  *  old penalty-shootout kicks before re-recording the edited ones. */
 export async function deleteMatchEvent(
     tournamentUuid: string,

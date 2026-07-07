@@ -70,7 +70,7 @@ export async function fetchTournamentDetails(uuid: string): Promise<TournamentDe
     return data;
 }
 
-/** Whether the roster is locked (the draw has been generated) — once true,
+/** Whether the roster is locked (the draw has been generated) - once true,
  *  teams can no longer be added or removed. */
 export async function fetchRosterLocked(uuid: string): Promise<boolean> {
     const { data } = await http.get<{ locked: boolean }>(
@@ -164,7 +164,7 @@ export async function finishTournament(uuid: string): Promise<TournamentDetails>
 
 export async function startTournament(uuid: string): Promise<TournamentDetails> {
     // 409 statuses (INSUFFICIENT_TEAMS, ALREADY_FINISHED) are handled by the
-    // caller — suppress the generic red toast to avoid stacked messages.
+    // caller - suppress the generic red toast to avoid stacked messages.
     const { data } = await http.put<TournamentDetails>(
         `/tournaments/${uuid}/start`,
         undefined,
@@ -275,11 +275,11 @@ export async function saveAwards(
 }
 
 /**
- * "Tournament of the day" — public read.
+ * "Tournament of the day" - public read.
  *
  * Returns the admin-curated featured TournamentCard, or {@code null} when
  * none is featured. The backend responds with 204 No Content in the empty
- * case, which axios surfaces as an empty response body — we normalise
+ * case, which axios surfaces as an empty response body - we normalise
  * both shapes to {@code null} so callers can `?? something` cleanly.
  *
  * Defensive 404 handling: until the backend ships with the new
@@ -301,13 +301,13 @@ export async function fetchFeaturedTournament(): Promise<TournamentCard | null> 
         if (!res.data || typeof res.data !== "object") return null
         return res.data as TournamentCard
     } catch {
-        // Backend route not yet deployed, network blip, anything —
+        // Backend route not yet deployed, network blip, anything -
         // hide the hero, page keeps working.
         return null
     }
 }
 
-/** Admin: mark a tournament as the daily highlight. Idempotent — calling
+/** Admin: mark a tournament as the daily highlight. Idempotent - calling
  *  on an already-featured tournament just refreshes the timestamp. */
 export async function featureTournament(uuid: string): Promise<void> {
     await http.post(
@@ -325,7 +325,7 @@ export async function unfeatureTournament(uuid: string): Promise<void> {
     )
 }
 
-/** Admin: mark a tournament as NOT publicly visible — only the creator and
+/** Admin: mark a tournament as NOT publicly visible - only the creator and
  *  admins keep seeing/opening it (greyed out); everyone else gets 404 and it
  *  drops out of lists, live, sitemap and link previews. Reversible. */
 export async function hideTournament(uuid: string): Promise<void> {

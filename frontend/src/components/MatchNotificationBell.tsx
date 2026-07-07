@@ -18,7 +18,7 @@ import { showError } from "../toaster"
    in first (the subscription is tied to their account so push can reach all
    their devices).
 
-   Designed to sit inside a clickable row — the click is stopped from
+   Designed to sit inside a clickable row - the click is stopped from
    bubbling so tapping the bell never also navigates the row.
    ────────────────────────────────────────────────────────────────────── */
 
@@ -51,7 +51,7 @@ export default function MatchNotificationBell({
     }, [tournamentUuid, matchId, user, authLoading])
 
     async function toggle() {
-        // Anonymous viewers can't be subscribed (no account) — send them to
+        // Anonymous viewers can't be subscribed (no account) - send them to
         // log in, then back to this page to tap the bell again.
         if (!user) {
             navigate("/prijava", { state: { from: `${location.pathname}${location.search}` } })
@@ -107,7 +107,7 @@ export default function MatchNotificationBell({
     const label = !user
         ? "Prijavi se za primanje obavijesti o utakmici"
         : subscribed
-            ? "Primaš obavijest za ovu utakmicu — klikni za isključi"
+            ? "Primaš obavijest za ovu utakmicu - klikni za isključi"
             : "Primaj obavijest kad ova utakmica počne"
 
     return (

@@ -16,17 +16,17 @@ import java.time.OffsetDateTime;
 /**
  * Team-sharing claim flow.
  *
- *   GET   /teams/claim/{token}/preview   — public read of basic info so
+ *   GET   /teams/claim/{token}/preview   - public read of basic info so
  *                                          the claim landing page can
  *                                          show the partner what they're
  *                                          claiming before they accept.
- *   POST  /teams/claim/{token}           — auth-required claim; sets
+ *   POST  /teams/claim/{token}           - auth-required claim; sets
  *                                          coSubmittedByUid on the team.
  *
  * The primary submitter copies the share URL from their team card
  * (the /claim-team/{token} route on the frontend) and hands it to
  * their partner. The partner opens it, signs in if needed, taps the
- * Preuzmi button, and becomes co-owner of the team — meaning the team
+ * Preuzmi button, and becomes co-owner of the team - meaning the team
  * shows up on their profile, they get push notifications about it,
  * and their personal invoice list includes matches it played.
  */
@@ -44,7 +44,7 @@ public class TeamClaimController {
      * Public read used by the claim landing page. Returns the minimum
      * info the partner needs to recognise the team: team name,
      * tournament name + start date, and current claim state (whether
-     * it's already been claimed by someone, and by whom if so — name +
+     * it's already been claimed by someone, and by whom if so - name +
      * slug for display, no UIDs leaked).
      */
     @GET
@@ -105,7 +105,7 @@ public class TeamClaimController {
         }
         if (p.getCoSubmittedByUid() != null) {
             if (me.equals(p.getCoSubmittedByUid())) {
-                // No-op idempotent — already claimed by this same user.
+                // No-op idempotent - already claimed by this same user.
                 return new ClaimResultDto(true, p.getId());
             }
             throw new ClientErrorException("ALREADY_CLAIMED", 409);

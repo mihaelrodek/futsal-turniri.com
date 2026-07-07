@@ -25,7 +25,7 @@ export async function listMyTournaments(): Promise<MyTournamentParticipation[]> 
     return data
 }
 
-/** "Moji pari" row — teams the user is linked to across tournaments. */
+/** "Moji pari" row - teams the user is linked to across tournaments. */
 export type MyTeamDto = {
     teamId: number
     teamName: string
@@ -39,7 +39,7 @@ export type MyTeamDto = {
     primarySlug: string | null
     coOwnerName: string | null
     coOwnerSlug: string | null
-    /** Only set when isPrimary — token used for the /claim-team/{token} share URL. */
+    /** Only set when isPrimary - token used for the /claim-team/{token} share URL. */
     claimToken: string | null
 }
 
@@ -76,7 +76,7 @@ export async function updateProfile(payload: { phoneCountry: string | null; phon
 
 /**
  * Persist the user's theme choice. Sent on its own (no contact fields)
- * because the toggle lives outside the contact-form UX. Silent — the
+ * because the toggle lives outside the contact-form UX. Silent - the
  * UI flips colors instantly, a "saved" toast would be redundant noise.
  */
 export async function updateColorMode(mode: "light" | "dark"): Promise<UserProfile> {
@@ -90,7 +90,7 @@ export async function updateColorMode(mode: "light" | "dark"): Promise<UserProfi
 
 /**
  * Push the current Firebase displayName up to the backend so it can persist
- * it + assign a public slug. Idempotent — fire-and-forget on every login.
+ * it + assign a public slug. Idempotent - fire-and-forget on every login.
  * Silent so it doesn't fire a toast every time the auth context boots.
  */
 export async function syncProfile(displayName: string | null | undefined): Promise<UserProfile> {

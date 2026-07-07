@@ -9,9 +9,9 @@
     <!--
         Accumulated team fouls, tracked per half (futsal rule: from a team's
         5th accumulated foul in a half the opponent gets a 10 m direct free
-        kick — "deveterac"; each subsequent foul is another one). Fouls don't
+        kick - "deveterac"; each subsequent foul is another one). Fouls don't
         record who committed them, only the per-team running count, and reset
-        every half — hence separate first/second-half columns per team.
+        every half - hence separate first/second-half columns per team.
     -->
     <changeSet id="2026-06-24-match-fouls" author="mrodek">
         <addColumn tableName="matches">

@@ -29,7 +29,7 @@ const STAGE_LABEL: Record<string, string> = {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Tournament detail — dialogs.
+   Tournament detail - dialogs.
 
    The modals used by the redesigned tournament page: the self-register
    team dialog, the per-team match-history dialog, and the
@@ -248,7 +248,7 @@ export function TeamInfoDialog({
                                     <HStack gap="3" align="center">
                                         <TeamAvatar name={team.name} eliminated={team.isEliminated} />
                                         <Box flex="1" minW="0">
-                                            <Text fontWeight="semibold" lineHeight="short">{team.name || "—"}</Text>
+                                            <Text fontWeight="semibold" lineHeight="short">{team.name || "-"}</Text>
                                             <Text fontSize="xs" color="fg.muted">Povijest mečeva</Text>
                                         </Box>
                                         <IconButton aria-label="Zatvori" size="sm" variant="ghost" onClick={onClose}>
@@ -340,13 +340,13 @@ export function TeamInfoDialog({
                                                                 whiteSpace="nowrap"
                                                                 minW="0"
                                                             >
-                                                                {x.isBye ? "Slobodan prolaz" : `vs ${x.opponentName ?? "—"}`}
+                                                                {x.isBye ? "Slobodan prolaz" : `vs ${x.opponentName ?? "-"}`}
                                                             </Text>
                                                         </HStack>
                                                         <HStack gap="2" flexShrink={0}>
                                                             {!x.isBye && (x.isFinished || x.isLive) && (
                                                                 <Text fontWeight="semibold" fontSize="sm">
-                                                                    {x.myScore ?? "—"} : {x.oppScore ?? "—"}
+                                                                    {x.myScore ?? "-"} : {x.oppScore ?? "-"}
                                                                     {x.penInfo ? (
                                                                         <Text as="span" fontSize="xs" color="fg.muted" ml="1">
                                                                             {x.penInfo}

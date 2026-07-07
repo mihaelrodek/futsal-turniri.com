@@ -5,16 +5,16 @@ import { FiX } from "react-icons/fi"
 /**
  * Wraps any avatar trigger element to add a hover / tap preview of the
  * underlying image. The preview is a self-contained bounded card that
- * sits centered above the page on a light dim — bigger than the 48 px
+ * sits centered above the page on a light dim - bigger than the 48 px
  * trigger circle and easy to glance at, but explicitly NOT a fullscreen
  * lightbox (the previous fullscreen version felt heavy for an avatar).
  *
  * <p>Activation matrix:
- *   - mouse hover (desktop) — opens after a short delay so brushing
+ *   - mouse hover (desktop) - opens after a short delay so brushing
  *     past the avatar doesn't accidentally launch the preview;
- *   - tap / click — opens immediately (and re-clicks the backdrop /
+ *   - tap / click - opens immediately (and re-clicks the backdrop /
  *     X button to close);
- *   - Escape — closes.
+ *   - Escape - closes.
  *
  * <p>Why a Portal instead of inline absolute-positioned: the avatar
  * lives inside Chakra's {@code Card.Root}, which has
@@ -24,7 +24,7 @@ import { FiX } from "react-icons/fi"
  * a Portal at the document root sidesteps every ancestor's overflow
  * and lets the popup sit wherever we tell it to.
  *
- * <p>No-op when {@code src} is falsy — the trigger renders as-is, with
+ * <p>No-op when {@code src} is falsy - the trigger renders as-is, with
  * no pointer-cursor change, so initials-only avatars don't pick up a
  * "zoom-in" affordance they can't deliver.
  */
@@ -43,7 +43,7 @@ export default function AvatarPreview({
      * Upper bound on the image's longer side, in pixels. The image
      * keeps its natural aspect ratio inside this box, so portrait
      * photos render as a portrait card and landscape ones as landscape.
-     * Default 360 px is roughly 7.5× the 48 px trigger — visibly
+     * Default 360 px is roughly 7.5× the 48 px trigger - visibly
      * "bigger" without crowding the page on a desktop card.
      */
     maxPx?: number
@@ -54,7 +54,7 @@ export default function AvatarPreview({
      * regardless of this value.
      */
     hoverOpenDelayMs?: number
-    /** The trigger node — usually the avatar circle the user sees. */
+    /** The trigger node - usually the avatar circle the user sees. */
     children: React.ReactNode
 }) {
     const [open, setOpen] = useState(false)
@@ -77,7 +77,7 @@ export default function AvatarPreview({
     function handleMouseLeave() {
         // Only cancels the *pending* open. Once the popup is up the
         // cursor will move off the small trigger area to interact
-        // with the popup — closing on mouse-leave there would make
+        // with the popup - closing on mouse-leave there would make
         // the popup chase the cursor.
         cancelOpenTimer()
     }
@@ -112,7 +112,7 @@ export default function AvatarPreview({
                 cursor="zoom-in"
                 // Inline-block keeps the wrapper sized to its child
                 // (the avatar circle) instead of stretching to fill
-                // the parent — which would extend the hover hitbox
+                // the parent - which would extend the hover hitbox
                 // into empty space and pop the preview from far away.
                 display="inline-block"
             >
@@ -150,7 +150,7 @@ export default function AvatarPreview({
                             // Card grows to fit the image but never
                             // exceeds maxPx on either axis (or the
                             // viewport with a small margin, whichever
-                            // is smaller — protects against landscape
+                            // is smaller - protects against landscape
                             // images on narrow phones).
                             maxW={{ base: "calc(100vw - 32px)", md: `${maxPx + 16}px` }}
                             maxH={{ base: "calc(100vh - 32px)", md: `${maxPx + 16}px` }}

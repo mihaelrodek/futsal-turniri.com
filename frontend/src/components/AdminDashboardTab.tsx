@@ -42,11 +42,11 @@ import {
  * Admin-only "Dashboard" tab on the profile page. Two parallel flows
  * gated on a single tournament picker at the top:
  *
- * <p><b>1. Attach teams to users</b> — for legacy/organiser-added teams
+ * <p><b>1. Attach teams to users</b> - for legacy/organiser-added teams
  * imported from old spreadsheets. After attaching, the team shows up on
  * the target user's public profile as if they had self-registered.
  *
- * <p><b>2. Transfer tournament ownership</b> — for tournaments the admin
+ * <p><b>2. Transfer tournament ownership</b> - for tournaments the admin
  * pre-created on behalf of an organiser (e.g. before the organiser had
  * signed up). After transfer the target user becomes the owner and can
  * manage teams, edit details, generate rounds, set the podium, etc.
@@ -65,7 +65,7 @@ import {
  *      updates with the new owner).
  *
  * <p>Component-level state intentionally lives here rather than a
- * context — the dashboard is a single self-contained screen that
+ * context - the dashboard is a single self-contained screen that
  * doesn't share state with anything else.
  */
 export default function AdminDashboardTab() {
@@ -204,7 +204,7 @@ export default function AdminDashboardTab() {
         try {
             setTransferring(user.userUid)
             const result = await adminTransferTournament(selectedTournament.id, user.userUid)
-            // Patch the tournament list in place — the picker rows show the
+            // Patch the tournament list in place - the picker rows show the
             // owner and we want the new value to appear without a full
             // refetch (cheaper + avoids losing the user's scroll position).
             setTournaments((prev) => prev?.map((t) =>
@@ -223,7 +223,7 @@ export default function AdminDashboardTab() {
         try {
             setAttaching(user.userUid)
             await adminAttachTeam(attachTargetTeam.id, user.userUid)
-            // Drop the team from the unclaimed list — it's now claimed.
+            // Drop the team from the unclaimed list - it's now claimed.
             setTeams((prev) => prev.filter((p) => p.id !== attachTargetTeam.id))
             closeAttachDialog()
         } catch (err: any) {
@@ -247,7 +247,7 @@ export default function AdminDashboardTab() {
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
                         <Box>
-                            <Text fontSize="lg" fontWeight="semibold">Dashboard — pridruživanje ekipa</Text>
+                            <Text fontSize="lg" fontWeight="semibold">Dashboard - pridruživanje ekipa</Text>
                             <Text fontSize="sm" color="fg.muted">
                                 Odaberi turnir, zatim klikni "Pridruži korisniku" pored ekipe da bi
                                 ga vezao za registriranog igrača. Nakon pridruživanja ekipa se
@@ -257,7 +257,7 @@ export default function AdminDashboardTab() {
                         </Box>
 
                         {/* Tournament picker. Plain Input search + scrollable
-                            list of matches — works for tens-to-hundreds of
+                            list of matches - works for tens-to-hundreds of
                             tournaments without needing a heavier combobox. */}
                         <Box>
                             <Text fontSize="sm" fontWeight="medium" mb="2">Turnir</Text>
@@ -313,7 +313,7 @@ export default function AdminDashboardTab() {
                                                                 {[t.location, formatDate(t.startAt)].filter(Boolean).join(" • ")}
                                                             </Text>
                                                             <Text fontSize="xs" color="fg.muted" truncate>
-                                                                Vlasnik: {t.createdByName || (t.createdByUid ? "(bez imena)" : "— (legacy)")}
+                                                                Vlasnik: {t.createdByName || (t.createdByUid ? "(bez imena)" : "- (legacy)")}
                                                             </Text>
                                                         </Box>
                                                         {t.status && (
@@ -400,7 +400,7 @@ export default function AdminDashboardTab() {
                                     Vlasništvo turnira
                                 </Text>
                                 <Text fontSize="sm" color="fg.muted">
-                                    Prenesi turnir drugom registriranom korisniku — postaje vlasnik
+                                    Prenesi turnir drugom registriranom korisniku - postaje vlasnik
                                     i može uređivati detalje, upravljati ekipama, generirati kola,
                                     postavljati pobjednike itd.
                                 </Text>
@@ -418,7 +418,7 @@ export default function AdminDashboardTab() {
                                     {selectedTournament.createdByName
                                         || (selectedTournament.createdByUid
                                             ? "(bez imena)"
-                                            : "— (legacy / nema vlasnika)")}
+                                            : "- (legacy / nema vlasnika)")}
                                 </Text>
                                 {selectedTournament.createdByUid && (
                                     <Text fontSize="xs" color="fg.muted" mt="1">
@@ -571,7 +571,7 @@ export default function AdminDashboardTab() {
             </Dialog.Root>
 
             {/* Tournament-transfer dialog. Only rendered when the admin has
-                explicitly opened it — keeps the search effect inert
+                explicitly opened it - keeps the search effect inert
                 otherwise (the effect short-circuits on !transferDialogOpen). */}
             <Dialog.Root
                 open={transferDialogOpen}
@@ -607,7 +607,7 @@ export default function AdminDashboardTab() {
                                                 {selectedTournament.createdByName
                                                     || (selectedTournament.createdByUid
                                                         ? "(bez imena)"
-                                                        : "— (legacy)")}
+                                                        : "- (legacy)")}
                                             </Text>
                                         </Box>
                                     )}
@@ -701,7 +701,7 @@ export default function AdminDashboardTab() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   AdminTournamentActions — destructive + status-override controls for
+   AdminTournamentActions - destructive + status-override controls for
    a selected tournament. Lifted into its own component so the busy
    state and confirm prompts don't bloat the main dashboard render.
 
@@ -720,7 +720,7 @@ function AdminTournamentActions({
     onChanged: (kind: "status" | "reset" | "feature" | "deleted") => void
 }) {
     const [busy, setBusy] = useState<null | "status" | "reset" | "delete" | "feature">(null)
-    // The admin endpoints accept uuid OR slug — prefer uuid, fall back
+    // The admin endpoints accept uuid OR slug - prefer uuid, fall back
     // to slug for legacy tournaments missing one.
     const idKey = tournament.uuid ?? tournament.slug ?? ""
 
@@ -763,7 +763,7 @@ function AdminTournamentActions({
         if (busy) return
         const typed = window.prompt(
             `OBRISATI turnir "${tournament.name}"?\n\n` +
-            `Soft-delete — turnir nestaje iz svih lista. Za potvrdu upiši ime turnira.`,
+            `Soft-delete - turnir nestaje iz svih lista. Za potvrdu upiši ime turnira.`,
         )
         if (typed == null) return
         if (typed.trim() !== tournament.name.trim()) {
@@ -814,7 +814,7 @@ function AdminTournamentActions({
                             Akcije turnira
                         </Text>
                         <Text fontSize="sm" color="fg.muted">
-                            Administratorske operacije nad turnirom — koristi pažljivo.
+                            Administratorske operacije nad turnirom - koristi pažljivo.
                             Promjene zaobilaze uobičajene provjere (vlasništvo, broj ekipa,
                             redoslijed kola).
                         </Text>
@@ -837,12 +837,12 @@ function AdminTournamentActions({
                                         : "pitch"
                                 }
                             >
-                                {tournament.status ?? "—"}
+                                {tournament.status ?? "-"}
                             </Badge>
                         </HStack>
                     </Box>
 
-                    {/* Status override — three buttons, the current status is disabled. */}
+                    {/* Status override - three buttons, the current status is disabled. */}
                     <Box>
                         <Text fontSize="xs" color="fg.muted" mb="2">PROMIJENI STATUS (force)</Text>
                         <HStack gap="2" wrap="wrap">
@@ -909,7 +909,7 @@ function AdminTournamentActions({
                         </Button>
                     </HStack>
 
-                    {/* Delete row — separated so it's not adjacent to the
+                    {/* Delete row - separated so it's not adjacent to the
                          "Resetiraj" button (similar visual weight,
                          destructive miscicks are easy). */}
                     <HStack justify="flex-end" pt="2" borderTopWidth="1px" borderColor="border.subtle">

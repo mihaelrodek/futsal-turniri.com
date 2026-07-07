@@ -214,7 +214,7 @@ export default function CreateTournamentPage() {
     })
 
     // Latitude/longitude tracked separately from `form` because they
-    // exist purely to drive the map picker's marker — they're not sent
+    // exist purely to drive the map picker's marker - they're not sent
     // to the backend (the server forward-geocodes form.location on
     // create, and the picker fills that string with a Nominatim
     // display_name so the result lines up). Set from either picking a
@@ -228,7 +228,7 @@ export default function CreateTournamentPage() {
     // time. We only write to a field if it's still empty, so anything
     // the user has already started editing is preserved if the profile
     // fetch resolves after they touched the field. The fetch is
-    // tagged `silent` because a failure here is a soft degrade — the
+    // tagged `silent` because a failure here is a soft degrade - the
     // form is still fully usable, the user just types manually.
     const { user } = useAuth()
     useEffect(() => {
@@ -240,7 +240,7 @@ export default function CreateTournamentPage() {
                 if (cancelled) return
                 setForm((prev) => {
                     // Build the patch only for fields the user hasn't
-                    // touched yet — never overwrite their input.
+                    // touched yet - never overwrite their input.
                     const patch: Partial<FormState> = {}
                     const fallbackName =
                         (profile.displayName?.trim() || user.displayName?.trim()) ?? ""
@@ -254,7 +254,7 @@ export default function CreateTournamentPage() {
                     return { ...prev, ...patch }
                 })
             } catch {
-                /* Anonymous, network glitch, or no profile yet — fine
+                /* Anonymous, network glitch, or no profile yet - fine
                    to leave the contact block blank and let the user
                    fill it in by hand. */
             }
@@ -262,7 +262,7 @@ export default function CreateTournamentPage() {
         return () => { cancelled = true }
     }, [user?.uid])
 
-    // required-field summary for the sticky bar. Rewards are optional now —
+    // required-field summary for the sticky bar. Rewards are optional now -
     // a tournament can have no prize fund (or only trophies).
     const missingRequired = useMemo(() => {
         const missing: string[] = []
@@ -345,7 +345,7 @@ export default function CreateTournamentPage() {
        Replaces the previous single-scroll layout. SectionCards are
        gated on `step` so only the active step's fields render. Step 4
        is a read-only Pregled (summary) + submit. Submit is intentionally
-       only available on step 4 — prevents accidental publish from
+       only available on step 4 - prevents accidental publish from
        earlier steps where validation hasn't been completed yet. */
     const WIZARD_STEPS = ["Osnovno", "Format", "Nagrade", "Pregled"] as const
     type WizardStep = 1 | 2 | 3 | 4
@@ -373,7 +373,7 @@ export default function CreateTournamentPage() {
             return
         }
 
-        // maxTeams is optional — when blank or unparseable, ship null
+        // maxTeams is optional - when blank or unparseable, ship null
         // so the backend treats it as "no cap" rather than defaulting to
         // an arbitrary 16-team ceiling.
         const parsedMaxTeams = parseInt(form.maxTeams || "0", 10)
@@ -409,7 +409,7 @@ export default function CreateTournamentPage() {
             gameSystem: form.gameSystem.trim() || null,
             websiteUrl: form.websiteUrl.trim() || null,
 
-            // Percent/fixed toggle removed — always FIXED amounts, each with
+            // Percent/fixed toggle removed - always FIXED amounts, each with
             // an optional free-text note ("Ostalo": Pehar, Utješna nagrada…).
             rewardType: "FIXED",
             rewardFirst: toMoney(form.rewards.first.amount),
@@ -441,7 +441,7 @@ export default function CreateTournamentPage() {
 
     return (
         <chakra.form onSubmit={handleSubmit}>
-            {/* Sticky step indicator — stays pinned just under the top nav
+            {/* Sticky step indicator - stays pinned just under the top nav
                 while the form scrolls, like the nav bar itself. The wrapper
                 is a full-bleed bg.canvas band (negative margins cancel the
                 page Container's horizontal padding) so scrolling content
@@ -481,10 +481,10 @@ export default function CreateTournamentPage() {
                             <chakra.button
                                 key={s}
                                 // Inside a <form>, a button WITHOUT an explicit
-                                // type defaults to type="submit" — clicking a
+                                // type defaults to type="submit" - clicking a
                                 // step chip (e.g. "Pregled") silently submitted
                                 // the form and published the tournament.
-                                // (chakra.button, not Box as="button" — Box's
+                                // (chakra.button, not Box as="button" - Box's
                                 // typings don't accept the native `type` attr.)
                                 type="button"
                                 onClick={() => setStep(n)}
@@ -552,10 +552,10 @@ export default function CreateTournamentPage() {
                     title="Osnovne informacije"
                 >
                     <VStack align="stretch" gap="4">
-                        {/* Row 1 — three short fields side-by-side on desktop,
+                        {/* Row 1 - three short fields side-by-side on desktop,
                             stacked on mobile. Order is product-driven: organisers
                             think "what's the tournament called", "when is it",
-                            "how many teams" — putting all three in one row keeps
+                            "how many teams" - putting all three in one row keeps
                             that mental flow in a single visual scan. */}
                         <Box
                             display="grid"
@@ -616,7 +616,7 @@ export default function CreateTournamentPage() {
                                         minDate={new Date()}
                                         placeholderText="DD/MM/GGGG HH:MM"
                                         // Stretch the underlying <input> to fill the
-                                        // field width — the library renders a tiny
+                                        // field width - the library renders a tiny
                                         // input by default.
                                         wrapperClassName="futsal-datepicker-input-wrap"
                                         className="futsal-datepicker-input"
@@ -646,7 +646,7 @@ export default function CreateTournamentPage() {
                             </Field.Root>
                         </Box>
 
-                        {/* Row 2 — two columns on desktop:
+                        {/* Row 2 - two columns on desktop:
                               · LEFT  : Detalji, then Kontakt (Ime + Telefon)
                               · RIGHT : Lokacija field, then the map below it
                             On mobile everything stacks in a sensible reading
@@ -658,7 +658,7 @@ export default function CreateTournamentPage() {
                             gap="4"
                             alignItems="start"
                         >
-                            {/* RIGHT column — Lokacija above the map */}
+                            {/* RIGHT column - Lokacija above the map */}
                             <VStack
                                 align="stretch"
                                 gap="4"
@@ -689,7 +689,7 @@ export default function CreateTournamentPage() {
                                 />
                             </VStack>
 
-                            {/* LEFT column — Detalji, then Kontakt */}
+                            {/* LEFT column - Detalji, then Kontakt */}
                             <VStack
                                 align="stretch"
                                 gap="4"
@@ -708,7 +708,7 @@ export default function CreateTournamentPage() {
                                     />
                                 </Field.Root>
 
-                                {/* Sistem igre — quick presets + free text. */}
+                                {/* Sistem igre - quick presets + free text. */}
                                 <Field.Root>
                                     <Field.Label>Sistem igre</Field.Label>
                                     <HStack gap="1.5" wrap="wrap" align="center">
@@ -736,7 +736,7 @@ export default function CreateTournamentPage() {
                                     </HStack>
                                 </Field.Root>
 
-                                {/* Web stranica organizatora — external link. */}
+                                {/* Web stranica organizatora - external link. */}
                                 <Field.Root>
                                     <Field.Label>Web stranica organizatora</Field.Label>
                                     <Input
@@ -749,7 +749,7 @@ export default function CreateTournamentPage() {
                                     />
                                 </Field.Root>
 
-                                {/* Kontakt organizatora — Ime + Telefon on
+                                {/* Kontakt organizatora - Ime + Telefon on
                                     one compact row (label row above) so the
                                     left column stays short and the poster can
                                     sit higher, killing the whitespace next to
@@ -801,7 +801,7 @@ export default function CreateTournamentPage() {
                                     </Box>
                                 </Box>
 
-                                {/* Poster picker — moved into the left column
+                                {/* Poster picker - moved into the left column
                                     (below Kontakt) so it fills the space
                                     beside the tall map instead of leaving a
                                     big gap under the form. */}
@@ -947,7 +947,7 @@ export default function CreateTournamentPage() {
                                 px="3"
                                 py="2"
                             >
-                                Broj grupa i koliko ekipa prolazi dalje birat ćeš kasnije — kod
+                                Broj grupa i koliko ekipa prolazi dalje birat ćeš kasnije - kod
                                 izvlačenja grupa, prema broju prijavljenih ekipa.
                             </Box>
                         )}
@@ -960,7 +960,7 @@ export default function CreateTournamentPage() {
                     </VStack>
                 </FormSectionCard>
                 )}
-                {/* Kotizacija was a separate card on step 2 — it's now an
+                {/* Kotizacija was a separate card on step 2 - it's now an
                     inline field in the basic-info row on step 1 so the user
                     sees price next to teams/date in a single scan. The
                     per-team / per-player hint underneath was also dropped
@@ -974,7 +974,7 @@ export default function CreateTournamentPage() {
                     description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Sve je neobavezno."
                 >
                     <VStack align="stretch" gap="3">
-                        {/* Column header — mirrors the Mjesto / Iznos / Ostalo
+                        {/* Column header - mirrors the Mjesto / Iznos / Ostalo
                             table shown on the tournament detail page. */}
                         <Box
                             display={{ base: "none", md: "grid" }}
@@ -1043,7 +1043,7 @@ export default function CreateTournamentPage() {
                 </FormSectionCard>
                 )}
 
-                {/* ===================== Step 4 — Pregled =====================
+                {/* ===================== Step 4 - Pregled =====================
                      Card-style summary. Mirrors how a finished tournament
                      looks in the public list: poster preview on the left,
                      headline + meta on the right, a compact 2-column
@@ -1089,7 +1089,7 @@ export default function CreateTournamentPage() {
                         : null
 
                     const attrs: Array<{ label: string; value: React.ReactNode }> = [
-                        { label: "Lokacija", value: form.location || <Muted>— nije uneseno</Muted> },
+                        { label: "Lokacija", value: form.location || <Muted>- nije uneseno</Muted> },
                         { label: "Maks. ekipa", value: form.maxTeams || <Muted>Bez ograničenja</Muted> },
                         { label: "Format", value: formatStr },
                         { label: "Kotizacija", value: fmtPrice(form.entryPrice) },
@@ -1103,13 +1103,13 @@ export default function CreateTournamentPage() {
                             label: "Kontakt",
                             value: form.contactName || phoneStr
                                 ? [form.contactName, phoneStr].filter(Boolean).join(" · ")
-                                : <Muted>— nije uneseno</Muted>,
+                                : <Muted>- nije uneseno</Muted>,
                         },
                     ]
 
                     return (
                         <VStack align="stretch" gap="3">
-                            {/* Header strip — kicker + title row */}
+                            {/* Header strip - kicker + title row */}
                             <HStack
                                 justify="space-between"
                                 gap="3"
@@ -1129,7 +1129,7 @@ export default function CreateTournamentPage() {
                                 )}
                             </HStack>
 
-                            {/* Card mock — poster + headline */}
+                            {/* Card mock - poster + headline */}
                             <Box
                                 bg="bg.panel"
                                 borderWidth="1px"
@@ -1139,7 +1139,7 @@ export default function CreateTournamentPage() {
                                 overflow="hidden"
                             >
                                 <Flex direction={{ base: "column", md: "row" }} gap="0">
-                                    {/* Poster — left rail on desktop, top on mobile */}
+                                    {/* Poster - left rail on desktop, top on mobile */}
                                     <Box
                                         w={{ base: "100%", md: "200px" }}
                                         h={{ base: "180px", md: "auto" }}
@@ -1170,7 +1170,7 @@ export default function CreateTournamentPage() {
                                         )}
                                     </Box>
 
-                                    {/* Right column — name + date row + attributes */}
+                                    {/* Right column - name + date row + attributes */}
                                     <VStack
                                         align="stretch"
                                         gap="3"
@@ -1187,7 +1187,7 @@ export default function CreateTournamentPage() {
                                                 color="fg.muted"
                                                 mb="1"
                                             >
-                                                {dateStr ?? "DATUM — NIJE UNESEN"}
+                                                {dateStr ?? "DATUM - NIJE UNESEN"}
                                             </Box>
                                             <Box
                                                 fontFamily="heading"
@@ -1201,7 +1201,7 @@ export default function CreateTournamentPage() {
                                             </Box>
                                         </Box>
 
-                                        {/* Attribute grid — 2 cols desktop, 1 mobile */}
+                                        {/* Attribute grid - 2 cols desktop, 1 mobile */}
                                         <Box
                                             display="grid"
                                             gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}

@@ -6,12 +6,12 @@ import { MonoLabel, PageTitle } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   StatsPage — "Vječna lista strijelaca".
+   StatsPage - "Vječna lista strijelaca".
 
    The all-time scorer list: every player's goals summed across every
    tournament they've ever played, so the same person scoring in multiple
    events climbs one combined ranking. Players are matched by their
-   (uppercase) name — the roster autocomplete keeps that consistent.
+   (uppercase) name - the roster autocomplete keeps that consistent.
 
    Ranking: goals desc, then best-scorer awards desc (a player who's been a
    tournament's top scorer outranks an equal-goal player who hasn't), then
@@ -33,9 +33,9 @@ export default function StatsPage() {
     const [query, setQuery] = useState("")
 
     useDocumentHead({
-        title: "Vječna lista strijelaca — futsal-turniri.com",
+        title: "Vječna lista strijelaca - futsal-turniri.com",
         description:
-            "Vječna lista strijelaca — golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
+            "Vječna lista strijelaca - golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
         canonical: "https://futsal-turniri.com/statistika",
     })
 

@@ -14,7 +14,7 @@ export type TeamRequest = {
     note?: string | null
     status: "OPEN" | "MATCHED"
     createdAt: string
-    /** Firebase UID of the original poster — used to gate Spareno/Delete. */
+    /** Firebase UID of the original poster - used to gate Spareno/Delete. */
     createdByUid?: string | null
 }
 

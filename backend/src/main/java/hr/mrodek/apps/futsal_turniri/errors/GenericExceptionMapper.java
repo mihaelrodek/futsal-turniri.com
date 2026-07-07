@@ -18,7 +18,7 @@ import org.jboss.logging.Logger;
  *
  * <p>{@link WebApplicationException}s are passed through unchanged so
  * framework-raised errors (404 from unknown routes, 415 from wrong
- * content-type, etc.) keep their original response — but we now also
+ * content-type, etc.) keep their original response - but we now also
  * <em>audit-log</em> the security-relevant statuses (401 / 403) at WARN
  * with the caller's JWT subject + request path. Without this, a credential
  * stuffing or IDOR-probing campaign would leave zero traces in our logs.
@@ -38,7 +38,7 @@ public class GenericExceptionMapper implements ExceptionMapper<RuntimeException>
             // Audit log security-relevant statuses so we can spot probing
             // / abuse in the access logs. WARN level keeps them visible
             // even when the app logs at INFO; the message itself contains
-            // no secret material (path, subject, reason — JWT secrets
+            // no secret material (path, subject, reason - JWT secrets
             // never logged).
             if (status == 401 || status == 403) {
                 String path = uriInfo != null ? uriInfo.getPath() : "?";
@@ -48,7 +48,7 @@ public class GenericExceptionMapper implements ExceptionMapper<RuntimeException>
                         sub = jwt.getSubject();
                     }
                 } catch (Exception ignored) {
-                    // jwt may not be in a request context — fine, stay anonymous
+                    // jwt may not be in a request context - fine, stay anonymous
                 }
                 LOG.warnf("AUTHZ %d %s subject=%s reason=%s",
                         status, path, sub, ex.getMessage());

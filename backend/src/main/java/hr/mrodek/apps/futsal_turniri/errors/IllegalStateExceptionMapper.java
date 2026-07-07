@@ -8,7 +8,7 @@ import jakarta.ws.rs.ext.Provider;
 /**
  * Domain guard-clauses throw IllegalStateException when the operation is
  * forbidden by current state (e.g. "next round already started, cannot buy
- * extra life"). Map to 409 Conflict — the request is syntactically valid
+ * extra life"). Map to 409 Conflict - the request is syntactically valid
  * but the resource's state makes it inapplicable.
  */
 @Provider

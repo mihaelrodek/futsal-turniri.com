@@ -5,7 +5,7 @@ package hr.mrodek.apps.futsal_turniri.dtos;
  * Returned by the event endpoints under
  * {@code /tournaments/{uuid}/matches/{matchId}/events}.
  *
- * <p>{@code teamId} is the team of the {@code player} — derived so the
+ * <p>{@code teamId} is the team of the {@code player} - derived so the
  * SPA can render the event on the correct side without a roster lookup.
  * {@code assistPlayerId} / {@code assistPlayerName} are populated only
  * for goals that carried an assist.

@@ -33,7 +33,7 @@ export default defineConfig({
             // HTTP→WS upgrade through to the backend in dev. The error handler
             // swallows proxy errors so a not-yet-started backend (the WS endpoint
             // only exists after the backend is restarted with quarkus-websockets-next)
-            // doesn't spam the console — the app just falls back to polling.
+            // doesn't spam the console - the app just falls back to polling.
             //
             // rewrite: quarkus-websockets-next registers the endpoint UNDER
             // quarkus.http.root-path (/api) → the backend serves /api/ws/live.
@@ -44,7 +44,7 @@ export default defineConfig({
                 rewrite: (path) => `/api${path}`,
                 configure: (proxy) => {
                     proxy.on("error", () => {
-                        /* backend WS not available — ignore; polling covers it */
+                        /* backend WS not available - ignore; polling covers it */
                     })
                 },
             },
@@ -67,19 +67,19 @@ export default defineConfig({
                 // one chunk makes that impossible.
                 manualChunks(id) {
                     if (!id.includes("node_modules")) return undefined
-                    // ONLY plain `leaflet` gets its own chunk — it's the heavy
+                    // ONLY plain `leaflet` gets its own chunk - it's the heavy
                     // part (~150 kB) and imports no React, so it can never hit
                     // the cross-chunk init crash. Anything React-touching
                     // (react-leaflet, @g-loot bracket, …) MUST stay in the one
                     // vendor chunk: splitting react-leaflet out shipped
                     // "Cannot read properties of undefined (reading
-                    // 'forwardRef')" — it executed before the React chunk had
+                    // 'forwardRef')" - it executed before the React chunk had
                     // initialized. Don't re-split those.
                     if (id.includes("node_modules/leaflet/")) {
                         return "vendor-map"
                     }
                     // Firebase is only referenced through dynamic imports
-                    // (firebase.ts getFirebase) and touches no React — safe as
+                    // (firebase.ts getFirebase) and touches no React - safe as
                     // its own async chunk, loaded after first paint.
                     if (id.includes("node_modules/firebase/") || id.includes("node_modules/@firebase/")) {
                         return "vendor-firebase"

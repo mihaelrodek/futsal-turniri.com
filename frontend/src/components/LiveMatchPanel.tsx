@@ -24,7 +24,7 @@ import {
 } from "./liveMatch"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LiveMatchPanel — the same live-control surface as the Grupe / Eliminacija
+   LiveMatchPanel - the same live-control surface as the Grupe / Eliminacija
    match dialogs, but rendered INLINE (no modal). Drives one match through
    SCHEDULED → LIVE → FINISHED: start, goals, fouls, halves, finish (penalties
    for a level knockout) and reset. Reuses the shared live primitives so the
@@ -183,9 +183,9 @@ export default function LiveMatchPanel({
             : null
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
     const twoHalves = halfCount !== 1
-    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    // "Završi 1. poluvrijeme" - only for a two-half match, while the 1st half runs.
     const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
-    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    // "Započni 2. poluvrijeme" - once the 1st half has been ended (pauza).
     const canStartSecondHalf = isTimer && phase === "HALFTIME"
     // The half whose end is the match's end (single period → 1st; else 2nd).
     const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
@@ -260,7 +260,7 @@ export default function LiveMatchPanel({
     }
 
     async function handleFinish() {
-        // A level knockout match can't end as a draw — go to penalties.
+        // A level knockout match can't end as a draw - go to penalties.
         if (isKnockout && score.s1 === score.s2) {
             setShootout(true)
             return
@@ -353,18 +353,18 @@ export default function LiveMatchPanel({
                 )}
                 <HStack justify="center" gap="3" align="center">
                     <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
-                        {match.team1Name ?? "—"}
+                        {match.team1Name ?? "-"}
                     </Text>
                     <Text fontFamily="mono" fontSize="2xl" fontWeight={800} fontVariantNumeric="tabular-nums" color={isLive ? "red.fg" : "fg.ink"} flexShrink={0}>
                         {score.s1} : {score.s2}
                     </Text>
                     <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
-                        {match.team2Name ?? "—"}
+                        {match.team2Name ?? "-"}
                     </Text>
                 </HStack>
             </VStack>
 
-            {/* SCHEDULED — start the match */}
+            {/* SCHEDULED - start the match */}
             {isScheduled && (
                 <VStack gap="2" py="2">
                     <Text fontSize="sm" color="fg.muted">Utakmica još nije pokrenuta.</Text>
@@ -454,7 +454,7 @@ export default function LiveMatchPanel({
                 </VStack>
             )}
 
-            {/* Timeline — always shown (read-only when finished). */}
+            {/* Timeline - always shown (read-only when finished). */}
             <Box textAlign="center" mt="3">
                 <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1.5">
                     Tijek utakmice
@@ -494,7 +494,7 @@ export default function LiveMatchPanel({
                 busy={resetting}
                 danger
                 title="Resetirati utakmicu?"
-                description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+                description="Utakmica se vraća na 'zakazano' - brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
                 confirmLabel="Da, resetiraj"
                 onClose={() => setConfirmResetOpen(false)}
                 onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}

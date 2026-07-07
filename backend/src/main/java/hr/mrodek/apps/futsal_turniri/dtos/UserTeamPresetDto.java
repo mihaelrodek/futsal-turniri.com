@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * Viewer-aware preset row. Same preset can be viewed by either the
- * primary submitter or the claimed co-owner — fields are framed
+ * primary submitter or the claimed co-owner - fields are framed
  * relative to "you" (the viewer) and "your partner" so the frontend
  * doesn't need to translate role names.
  */
@@ -23,11 +23,11 @@ public record UserTeamPresetDto(
         /** "PRIMARY" if the viewer is the original creator of the preset, "CO_OWNER" otherwise. */
         String myRole,
 
-        /** The other owner's display info — null until the preset is claimed. */
+        /** The other owner's display info - null until the preset is claimed. */
         String partnerSlug,
         String partnerName,
 
-        /** Share token — only emitted to the primary when the preset is unclaimed. */
+        /** Share token - only emitted to the primary when the preset is unclaimed. */
         String claimToken,
 
         /** True if there's a pending archive request that THIS viewer filed. */

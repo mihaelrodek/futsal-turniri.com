@@ -28,14 +28,14 @@ import java.util.List;
  * Group-stage endpoints for a tournament (Phase E2).
  *
  * <pre>
- *   GET  /tournaments/{uuid}/groups                      — group tables (live)
- *   POST /tournaments/{uuid}/groups/draw                 — owner/admin only
- *   POST /tournaments/{uuid}/groups/matches/{id}/result  — owner/admin only
+ *   GET  /tournaments/{uuid}/groups                      - group tables (live)
+ *   POST /tournaments/{uuid}/groups/draw                 - owner/admin only
+ *   POST /tournaments/{uuid}/groups/matches/{id}/result  - owner/admin only
  * </pre>
  *
  * <p>Reads are public so anonymous viewers see standings. Every write
  * requires a Firebase OIDC token AND the caller must be either the
- * tournament's creator or an admin — same pattern as
+ * tournament's creator or an admin - same pattern as
  * {@link RoundController}. Until 2026-06 these writes were left open
  * "because Firebase OIDC is temporarily disabled"; OIDC has been on for
  * a while now so this was an active access-control gap.

@@ -15,7 +15,7 @@ public record TeamDto(
         String submittedByUid,
         Boolean pendingApproval,
 
-        // Display info about the submitter — populated from UserProfile when
+        // Display info about the submitter - populated from UserProfile when
         // the controller enriches via TeamMapper.toDtoListEnriched. Null when
         // the team was added by an organizer (no submittedByUid).
         String submittedBySlug,
@@ -29,7 +29,7 @@ public record TeamDto(
         String coSubmittedByName,
 
         // Opaque token that goes in the /claim-team/{token} URL. Only sent
-        // to the primary submitter and to organizers/admins — viewers who
+        // to the primary submitter and to organizers/admins - viewers who
         // shouldn't see the share link get null here.
         String claimToken
 ) {

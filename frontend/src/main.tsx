@@ -33,14 +33,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </React.StrictMode>
 )
 
-// Register the service worker. Only runs in production builds — the dev
+// Register the service worker. Only runs in production builds - the dev
 // server doesn't ship the SW and registering it during HMR would pin stale
 // asset URLs. Without an active SW Chrome / Edge refuse to fire the
 // `beforeinstallprompt` event, so the custom install button never appears.
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
     window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sw.js").catch((err) => {
-            // Non-fatal — the app still works; only the install prompt and
+            // Non-fatal - the app still works; only the install prompt and
             // offline shell are unavailable.
             console.warn("[sw] registration failed:", err)
         })

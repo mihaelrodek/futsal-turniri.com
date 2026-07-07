@@ -10,21 +10,21 @@ import type { ScheduledMatch } from "../types/schedule"
 import type { LiveMatch } from "../api/live"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   EmbedTournamentPage — iframe-friendly scoreboard widget.
+   EmbedTournamentPage - iframe-friendly scoreboard widget.
 
    Use case: a tournament organizer copies an <iframe> snippet into their
    own website (club page, sponsor portal, etc.) and the live state of
-   the tournament stays in sync — no manual updates.
+   the tournament stays in sync - no manual updates.
 
    This route is rendered without NavBar / MobileBottomNav (see App.tsx
    path detection on /embed/*), with a transparent body so the iframe
    blends into the host page's background.
 
    What it shows, in priority order:
-     1. Live match (if any) — big scoreboard with pulsing red dot
-     2. Last finished match — final score
-     3. Next scheduled match — kickoff time
-     4. Empty state — "Nema utakmica"
+     1. Live match (if any) - big scoreboard with pulsing red dot
+     2. Last finished match - final score
+     3. Next scheduled match - kickoff time
+     4. Empty state - "Nema utakmica"
 
    Polls every 15 s so the embed stays current without consuming the host
    site's CPU.
@@ -179,7 +179,7 @@ export default function EmbedTournamentPage() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Shell — transparent outer wrapper with a single white rounded card
+   Shell - transparent outer wrapper with a single white rounded card
    inside. Sized to a typical embed slot (~360 × 220), fluid-shrinks.
    ────────────────────────────────────────────────────────────────────── */
 function Shell({ children }: { children: React.ReactNode }) {
@@ -239,7 +239,7 @@ function LivePill() {
 function EmbedScoreboard({ match }: { match: LiveMatch }) {
     return (
         <Flex align="center" justify="space-between" gap="3" py="2">
-            <TeamName name={match.team1Name ?? "—"} align="right" />
+            <TeamName name={match.team1Name ?? "-"} align="right" />
             <HStack
                 gap="2"
                 fontFamily="mono"
@@ -253,7 +253,7 @@ function EmbedScoreboard({ match }: { match: LiveMatch }) {
                 <Box opacity={0.3}>:</Box>
                 <Box>{match.score2 ?? 0}</Box>
             </HStack>
-            <TeamName name={match.team2Name ?? "—"} align="left" />
+            <TeamName name={match.team2Name ?? "-"} align="left" />
         </Flex>
     )
 }
@@ -271,7 +271,7 @@ function EmbedFinished({ match }: { match: ScheduledMatch }) {
                 POSLJEDNJA UTAKMICA
             </Text>
             <Flex align="center" justify="space-between" gap="3" w="full">
-                <TeamName name={match.team1Name ?? "—"} align="right" />
+                <TeamName name={match.team1Name ?? "-"} align="right" />
                 <HStack
                     gap="2"
                     fontFamily="mono"
@@ -284,7 +284,7 @@ function EmbedFinished({ match }: { match: ScheduledMatch }) {
                     <Box opacity={0.3}>:</Box>
                     <Box>{match.score2 ?? 0}</Box>
                 </HStack>
-                <TeamName name={match.team2Name ?? "—"} align="left" />
+                <TeamName name={match.team2Name ?? "-"} align="left" />
             </Flex>
         </VStack>
     )
@@ -303,7 +303,7 @@ function EmbedUpcoming({ match }: { match: ScheduledMatch }) {
                 SLJEDEĆA UTAKMICA · {formatKickoff(match.kickoffAt)}
             </Text>
             <Flex align="center" justify="space-between" gap="3" w="full">
-                <TeamName name={match.team1Name ?? "—"} align="right" />
+                <TeamName name={match.team1Name ?? "-"} align="right" />
                 <Text
                     fontFamily="mono"
                     fontSize="20px"
@@ -312,7 +312,7 @@ function EmbedUpcoming({ match }: { match: ScheduledMatch }) {
                 >
                     vs
                 </Text>
-                <TeamName name={match.team2Name ?? "—"} align="left" />
+                <TeamName name={match.team2Name ?? "-"} align="left" />
             </Flex>
         </VStack>
     )
@@ -335,7 +335,7 @@ function TeamName({ name, align }: { name: string; align: "left" | "right" }) {
 }
 
 function formatKickoff(iso: string | null | undefined): string {
-    if (!iso) return "—"
+    if (!iso) return "-"
     try {
         const d = new Date(iso)
         return d.toLocaleTimeString("hr-HR", {
@@ -343,6 +343,6 @@ function formatKickoff(iso: string | null | undefined): string {
             minute: "2-digit",
         })
     } catch {
-        return "—"
+        return "-"
     }
 }

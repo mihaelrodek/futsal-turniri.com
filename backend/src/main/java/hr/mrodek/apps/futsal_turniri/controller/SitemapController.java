@@ -54,11 +54,11 @@ public class SitemapController {
 
         // Static high-value pages first. URLs are Croatian since we moved
         // user-facing routes off the English aliases (English aliases still
-        // work via Caddy 301 → Croatian, but we don't list them here — the
+        // work via Caddy 301 → Croatian, but we don't list them here - the
         // sitemap should contain only canonical URLs).
         appendUrl(sb, base + "/",              null, "weekly",  "1.0");
         appendUrl(sb, base + "/turniri",       null, "daily",   "0.9");
-        // /kalendar was merged into /uzivo (301 in the SPA) — list only the
+        // /kalendar was merged into /uzivo (301 in the SPA) - list only the
         // canonical target, never a redirecting URL.
         appendUrl(sb, base + "/uzivo",         null, "daily",   "0.7");
         appendUrl(sb, base + "/karta",         null, "weekly",  "0.7");
@@ -66,13 +66,13 @@ public class SitemapController {
         appendUrl(sb, base + "/pronadi-ekipu", null, "weekly",  "0.6");
         appendUrl(sb, base + "/vodic",         null, "monthly", "0.6");
 
-        // Tournament detail pages — one entry per non-deleted tournament.
+        // Tournament detail pages - one entry per non-deleted tournament.
         // Prefer the pretty slug when present so the sitemap surfaces the
         // canonical, shareable URL; fall back to UUID for any leftover row
         // the slug-backfill hasn't touched yet.
         List<Tournaments> tournaments = tournamentsRepo.listAll();
         for (Tournaments t : tournaments) {
-            if (t.isHidden()) continue; // admin-hidden — never in the sitemap
+            if (t.isHidden()) continue; // admin-hidden - never in the sitemap
             String key;
             if (t.getSlug() != null && !t.getSlug().isBlank()) {
                 key = t.getSlug();
@@ -98,7 +98,7 @@ public class SitemapController {
         sb.append("</urlset>\n");
 
         return Response.ok(sb.toString())
-                // Conservative cache — search bots usually re-fetch daily anyway,
+                // Conservative cache - search bots usually re-fetch daily anyway,
                 // and a stale entry for a few minutes won't hurt.
                 .header("Cache-Control", "public, max-age=300")
                 .build();

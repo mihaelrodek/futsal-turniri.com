@@ -16,7 +16,7 @@ import {
 import type { ElementType, ReactNode } from "react"
 
 /* -- Confirm dialog (popup modal) ---------------------------------------- */
-/** A small yes/no confirmation modal — more visible than a toast for
+/** A small yes/no confirmation modal - more visible than a toast for
  *  destructive actions (reset / regenerate / clear). */
 export function ConfirmDialog({
     open,
@@ -68,7 +68,7 @@ export function ConfirmDialog({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Shared UI primitives — Nogometni-turniri.com redesign.
+   Shared UI primitives - Nogometni-turniri.com redesign.
 
    Small, composable building blocks that give every redesigned section the
    same visual language: soft white panels on the canvas, a consistent
@@ -77,7 +77,7 @@ export function ConfirmDialog({
    ────────────────────────────────────────────────────────────────────── */
 
 /**
- * FormSectionCard — a bordered, titled section card used by the tournament
+ * FormSectionCard - a bordered, titled section card used by the tournament
  * create AND edit forms so both look 1:1. Blue inline icon + title in the
  * header, tight body padding for dense forms. `icon` is a rendered node
  * (e.g. {@code <FiInfo />}).
@@ -117,7 +117,7 @@ export function FormSectionCard({
     )
 }
 
-/** Panel — the standard content surface: a white card on the soft canvas. */
+/** Panel - the standard content surface: a white card on the soft canvas. */
 export function Panel({ children, ...rest }: BoxProps) {
     return (
         <Box
@@ -133,7 +133,7 @@ export function Panel({ children, ...rest }: BoxProps) {
     )
 }
 
-/** A rounded icon chip — badges section headers and empty states. */
+/** A rounded icon chip - badges section headers and empty states. */
 export function IconChip({
     icon,
     tone = "brand",
@@ -160,7 +160,7 @@ export function IconChip({
     )
 }
 
-/** SectionHeader — a title row with optional icon, subtitle and right actions. */
+/** SectionHeader - a title row with optional icon, subtitle and right actions. */
 export function SectionHeader({
     title,
     subtitle,
@@ -203,7 +203,7 @@ export function SectionHeader({
     )
 }
 
-/** StatTile — one labelled metric in a compact bordered tile. */
+/** StatTile - one labelled metric in a compact bordered tile. */
 export function StatTile({
     label,
     value,
@@ -239,7 +239,7 @@ export function StatTile({
     )
 }
 
-/** EmptyState — a centered placeholder with optional call to action. */
+/** EmptyState - a centered placeholder with optional call to action. */
 export function EmptyState({
     icon,
     title,
@@ -278,7 +278,7 @@ export function EmptyState({
     )
 }
 
-/** Meta — a small inline icon + text pair for metadata rows. */
+/** Meta - a small inline icon + text pair for metadata rows. */
 export function Meta({
     icon,
     children,
@@ -294,7 +294,7 @@ export function Meta({
     )
 }
 
-/** Loader — a centered spinner with a label, for section loading states. */
+/** Loader - a centered spinner with a label, for section loading states. */
 export function Loader({ label = "Učitavanje…" }: { label?: string }) {
     return (
         <Flex direction="column" align="center" justify="center" gap="3" py="16">

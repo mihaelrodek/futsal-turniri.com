@@ -27,7 +27,7 @@ import java.util.Set;
  *     backend. Harmless when no edge is present.
  *
  * <p>Endpoints that set their own {@code Cache-Control} (OG image, share
- * image, posters, sitemap) are skipped — we never overwrite an explicit value.
+ * image, posters, sitemap) are skipped - we never overwrite an explicit value.
  */
 @Provider
 public class PublicReadCacheFilter implements ContainerResponseFilter {
@@ -69,7 +69,7 @@ public class PublicReadCacheFilter implements ContainerResponseFilter {
             // The tournaments list is no longer auth-uniform: admin-hidden
             // rows are included for their creator/admins only. Without Vary
             // the browser could serve an ANONYMOUS cached copy (e.g. from the
-            // index.html warm-up fetch) to a signed-in admin for up to 20s —
+            // index.html warm-up fetch) to a signed-in admin for up to 20s -
             // the hidden tournament flickered in and out of the list. Vary
             // keys the browser cache on the Authorization header so anonymous
             // and signed-in responses never mix. Harmless for the endpoints

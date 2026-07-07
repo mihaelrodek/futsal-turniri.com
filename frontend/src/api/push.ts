@@ -15,7 +15,7 @@ export async function fetchPushPublicKey(): Promise<PushPublicKeyResponse> {
 
 /**
  * POST a fresh browser subscription to the backend so it can route
- * future pushes to it. Idempotent — re-subscribing the same endpoint
+ * future pushes to it. Idempotent - re-subscribing the same endpoint
  * just refreshes the crypto material server-side.
  */
 export async function registerPushSubscription(sub: PushSubscriptionJSON): Promise<void> {
@@ -27,7 +27,7 @@ export async function registerPushSubscription(sub: PushSubscriptionJSON): Promi
             auth: sub.keys?.auth ?? "",
         },
         {
-            // No success toast — this is background plumbing the user
+            // No success toast - this is background plumbing the user
             // already opted in to via the OS permission prompt.
             silent: true,
         } as any,

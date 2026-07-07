@@ -12,7 +12,7 @@ public record MyTournamentParticipationDto(
         UUID tournamentUuid,
         /**
          * Pretty URL slug for {@code /tournaments/{slug}} links. May be null
-         * for legacy tournaments that haven't been backfilled yet — frontend
+         * for legacy tournaments that haven't been backfilled yet - frontend
          * should fall back to {@code tournamentUuid} in that case.
          */
         String tournamentSlug,

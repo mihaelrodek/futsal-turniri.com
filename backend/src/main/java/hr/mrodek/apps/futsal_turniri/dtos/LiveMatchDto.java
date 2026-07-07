@@ -22,13 +22,13 @@ public record LiveMatchDto(
         /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
         OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
-        /** Tournament half length (minutes) + half count — lets every live
+        /** Tournament half length (minutes) + half count - lets every live
          *  widget run the scoreboard-semaphore countdown (stop at the end of
          *  a half) instead of a free-running elapsed clock. Null until the
          *  schedule is generated. */
         Integer halfLengthMin,
         Integer halfCount,
-        /** Accumulated team fouls per half — drives the fullscreen foul /
+        /** Accumulated team fouls per half - drives the fullscreen foul /
          *  "deveterac" display under each team name. */
         Integer fouls1First,
         Integer fouls1Second,
@@ -43,7 +43,7 @@ public record LiveMatchDto(
          */
         OffsetDateTime tournamentFeaturedAt,
         /** Match stage (GROUP, ROUND_OF_32, …, FINAL, THIRD_PLACE). Lets the
-         *  home-page "Prati uživo" link jump to the right tab — the groups
+         *  home-page "Prati uživo" link jump to the right tab - the groups
          *  draw for a GROUP match, the bracket for a knockout match. */
         String stage
 ) {}

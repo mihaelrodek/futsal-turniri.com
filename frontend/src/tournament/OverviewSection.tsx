@@ -64,7 +64,7 @@ import {
 import type { EditForm } from "./parts"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   "Detalji" tab — the single, cohesive tournament-details card.
+   "Detalji" tab - the single, cohesive tournament-details card.
 
    Read mode is ONE card holding everything about the tournament: the
    poster, name + status, the key meta row (datum/vrijeme, lokacija,
@@ -73,10 +73,10 @@ import type { EditForm } from "./parts"
 
    Edit mode is the owner/admin-only inline form (basic info, kotizacija,
    nagrade, kontakt) with poster pick/replace/remove and a sticky save
-   bar. All logic is owned by the shell — this is a presentational view.
+   bar. All logic is owned by the shell - this is a presentational view.
    ────────────────────────────────────────────────────────────────────── */
 
-/* Poster validation thresholds — mirror CreateTournamentPage. */
+/* Poster validation thresholds - mirror CreateTournamentPage. */
 export const POSTER_MAX_MB = 5
 export const POSTER_ACCEPT = ["image/jpeg", "image/png", "image/webp"] as const
 
@@ -85,9 +85,9 @@ type OverviewSectionProps = {
     canEdit: boolean
     isAdmin: boolean
     shareUrl: string
-    /** Total registered teams — shown in the "Ekipe" meta tile. */
+    /** Total registered teams - shown in the "Ekipe" meta tile. */
     teamCount: number
-    /** True once the tournament has started/finished — the format editor is
+    /** True once the tournament has started/finished - the format editor is
      *  locked then (changing it would desync generated groups / bracket). */
     tournamentStarted: boolean
     // edit-mode state + handlers (owned by the shell)
@@ -156,7 +156,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
     if (editingDetails && editForm) {
         return (
             <VStack align="stretch" gap="5">
-                {/* Osnovne informacije — identical card to the create form. */}
+                {/* Osnovne informacije - identical card to the create form. */}
                 <FormSectionCard icon={<FiInfo />} title="Osnovne informacije">
                     <VStack align="stretch" gap="4">
                         <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "2fr 2fr 1fr 1fr" }} gap="4">
@@ -228,7 +228,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             </Field.Root>
                         </Box>
 
-                        {/* Row 2 — left: Detalji + Kontakt + Plakat · right: Lokacija + map.
+                        {/* Row 2 - left: Detalji + Kontakt + Plakat · right: Lokacija + map.
                             Identical structure to the create form's "Osnovne informacije". */}
                         <Box
                             display="grid"
@@ -236,7 +236,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             gap="4"
                             alignItems="start"
                         >
-                            {/* RIGHT — Lokacija above the map */}
+                            {/* RIGHT - Lokacija above the map */}
                             <VStack align="stretch" gap="4" gridColumn={{ md: "2" }} order={{ base: 0, md: 1 }}>
                                 <Field.Root required>
                                     <Field.Label>Lokacija <Field.RequiredIndicator /></Field.Label>
@@ -260,7 +260,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 />
                             </VStack>
 
-                            {/* LEFT — Detalji, Kontakt, Plakat */}
+                            {/* LEFT - Detalji, Kontakt, Plakat */}
                             <VStack
                                 align="stretch"
                                 gap="4"
@@ -279,7 +279,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     />
                                 </Field.Root>
 
-                                {/* Sistem igre — quick presets + free text. */}
+                                {/* Sistem igre - quick presets + free text. */}
                                 <Field.Root>
                                     <Field.Label>Sistem igre</Field.Label>
                                     <HStack gap="1.5" wrap="wrap" align="center">
@@ -307,7 +307,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     </HStack>
                                 </Field.Root>
 
-                                {/* Web stranica organizatora — external link. */}
+                                {/* Web stranica organizatora - external link. */}
                                 <Field.Root>
                                     <Field.Label>Web stranica organizatora</Field.Label>
                                     <Input
@@ -320,7 +320,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     />
                                 </Field.Root>
 
-                                {/* Kontakt — ime + telefon on one row (create style). */}
+                                {/* Kontakt - ime + telefon on one row (create style). */}
                                 <Box>
                                     <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
                                         <FiPhone />
@@ -470,7 +470,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     </VStack>
                 </FormSectionCard>
 
-                {/* Format natjecanja — editable while the schedule hasn't been
+                {/* Format natjecanja - editable while the schedule hasn't been
                     generated yet (the backend preserves the format config once
                     fixtures exist, so changes can't desync groups/bracket). */}
                 <FormSectionCard
@@ -544,7 +544,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     </VStack>
                 </FormSectionCard>
 
-                {/* Nagradni fond — amount + free-text note per place (4 places). */}
+                {/* Nagradni fond - amount + free-text note per place (4 places). */}
                 <FormSectionCard
                     icon={<FiGift />}
                     title="Nagradni fond"
@@ -610,7 +610,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     </VStack>
                 </FormSectionCard>
 
-                {/* Floating save capsule — sticky at the bottom-RIGHT of the form
+                {/* Floating save capsule - sticky at the bottom-RIGHT of the form
                     content (aligned to the content edge, not the viewport corner),
                     floating above the footer while the form scrolls. Bottom offset
                     clears the mobile bottom nav (≈92px) / desktop footer. */}
@@ -666,7 +666,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
         )
     }
 
-    /* ===== READ MODE — Pitch theme 2-column layout ===== */
+    /* ===== READ MODE - Pitch theme 2-column layout ===== */
     return <DetailsReadView
         t={t}
         isAdmin={isAdmin}
@@ -679,7 +679,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
 
 /** Read-mode view extracted into its own component so the edit-mode return
  *  above stays focused on form rendering. Mirrors the layout from
- *  design-reference/page-detail.jsx — poster column on the left,
+ *  design-reference/page-detail.jsx - poster column on the left,
  *  info cards on the right. Share / embed / edit / fullscreen actions now
  *  live in the page header; only admin controls render in the poster column. */
 function DetailsReadView({
@@ -697,7 +697,7 @@ function DetailsReadView({
     onToggleFeature: () => void
     onToggleHidden: () => void
 }) {
-    // Prize fund — up to 4 places, each an amount + optional note ("Ostalo").
+    // Prize fund - up to 4 places, each an amount + optional note ("Ostalo").
     // A place is shown only if it has an amount or a note. Medal-tint for the
     // top three, neutral for 4th.
     const prizeColors = ["#f5c842", "#c0c5cc", "#cd8654", "#9aa6b2"]
@@ -818,7 +818,7 @@ function DetailsReadView({
                     />
                 </Box>
 
-                {/* QR kod — directly below the poster. Links to this
+                {/* QR kod - directly below the poster. Links to this
                     tournament's page, server-rendered with the brand mark in
                     the centre; downloadable so the organizer can print it and
                     stick it up at the venue. */}
@@ -864,7 +864,7 @@ function DetailsReadView({
 
                 {/* The Podijeli / Ugradi / Uredi / Fullscreen actions moved
                     up to the page header (top-right). Only the admin-only
-                    controls remain here — they're rarer and don't belong in
+                    controls remain here - they're rarer and don't belong in
                     the always-visible header for non-admins. */}
                 {isAdmin && (
                     <HStack gap="2" wrap="wrap">
@@ -876,7 +876,7 @@ function DetailsReadView({
                         >
                             {t.featuredAt ? "Ukloni istaknuto" : "Istakni"}
                         </GhostButton>
-                        {/* Visibility toggle — hides the tournament from the
+                        {/* Visibility toggle - hides the tournament from the
                             public (only creator + admins keep access). */}
                         <GhostButton
                             icon={t.hidden ? <FiEye size={14} /> : <FiEyeOff size={14} />}
@@ -920,7 +920,7 @@ function DetailsReadView({
                                 <Box />
                             )}
                         </Grid>
-                        {/* Sistem igre + Web stranica — between Ekipe/Kotizacija and Lokacija. */}
+                        {/* Sistem igre + Web stranica - between Ekipe/Kotizacija and Lokacija. */}
                         {t.gameSystem && (
                             <AccentStat
                                 accent="var(--chakra-colors-pitch-500)"
@@ -1012,7 +1012,7 @@ function DetailsReadView({
                         )}
                     </VStack>
 
-                    {/* Right: Detalji — opisni tekst iznad strukture formata */}
+                    {/* Right: Detalji - opisni tekst iznad strukture formata */}
                     {(t.details || t.format || (t.additionalOptions?.length ?? 0) > 0) ? (
                         <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
                             <HStack color="fg.muted" gap="1.5" mb="3">
@@ -1040,7 +1040,7 @@ function DetailsReadView({
                     )}
                 </Grid>
 
-                {/* Nagradni fond — Mjesto / Iznos / Ostalo table. */}
+                {/* Nagradni fond - Mjesto / Iznos / Ostalo table. */}
                 {rewardRows.length > 0 && (
                     <SectionCard
                         icon={FiGift}
@@ -1125,10 +1125,10 @@ function DetailsReadView({
                                             color="fg.ink"
                                             letterSpacing="-0.01em"
                                         >
-                                            {r.amount != null ? fmtMoney(r.amount) : "—"}
+                                            {r.amount != null ? fmtMoney(r.amount) : "-"}
                                         </Text>
                                         <Text fontSize="sm" color={r.note ? "fg.ink" : "fg.muted"}>
-                                            {r.note?.trim() || "—"}
+                                            {r.note?.trim() || "-"}
                                         </Text>
                                     </Box>
                                 )

@@ -8,10 +8,10 @@ import java.util.List;
  * <p>{@code groupCount} and {@code advancePerGroup} are chosen at draw time
  * (not at tournament creation) and stored on the tournament before the draw.
  *
- * <p>{@code mode = AUTO} — the server randomly distributes registered teams
+ * <p>{@code mode = AUTO} - the server randomly distributes registered teams
  * across {@code groupCount} groups; {@code assignments} is ignored.
  *
- * <p>{@code mode = MANUAL} — the organizer supplies an explicit team→group
+ * <p>{@code mode = MANUAL} - the organizer supplies an explicit team→group
  * placement via {@code assignments}; every registered team must appear. The UI
  * sends MANUAL for both the auto-preview (it shuffles client-side, then lets
  * the organizer confirm the exact split) and the hand draw.

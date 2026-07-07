@@ -41,7 +41,7 @@ import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModa
  * "Grupe" tab on the tournament detail page (Phase E2 + E5).
  *
  * Before the draw: an empty state with a button to run the automatic draw.
- * After the draw: one card per group — the live standings table (top
+ * After the draw: one card per group - the live standings table (top
  * {@code advancePerGroup} rows highlighted as advancing) plus the group's
  * fixtures with inline result entry. Standings recompute on every save.
  *
@@ -108,12 +108,12 @@ export default function GroupsTab({
 }: {
     uuid: string
     advancePerGroup?: number | null
-    /** Configured number of groups (from the tournament) — sizes the manual
+    /** Configured number of groups (from the tournament) - sizes the manual
      *  draw assignment editor. */
     groupCount?: number | null
-    /** Registered teams — needed for the manual draw (assign each to a group). */
+    /** Registered teams - needed for the manual draw (assign each to a group). */
     teams?: TeamShort[]
-    /** Owner / admin only — controls visibility of the draw button and
+    /** Owner / admin only - controls visibility of the draw button and
      *  every match-row edit / live action. Read-only by default. */
     canEdit?: boolean
     /** Set once any match goes LIVE / FINISHED. While true, "Ponovi
@@ -139,10 +139,10 @@ export default function GroupsTab({
     /** Group whose manual-reorder dialog is open (organizer, finished group). */
     const [reorderGroupTarget, setReorderGroupTarget] = useState<Group | null>(null)
     // Half config (schedule) so the inline row clocks count UP and freeze at
-    // each half boundary, just like the dialog clock — not a free-running timer.
+    // each half boundary, just like the dialog clock - not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
-    // Group draw — group count + advance-per-group are chosen here, then the
+    // Group draw - group count + advance-per-group are chosen here, then the
     // organizer previews an auto-shuffle (or assigns by hand) and confirms it
     // before it's persisted.
     const [drawOpen, setDrawOpen] = useState(false)
@@ -167,7 +167,7 @@ export default function GroupsTab({
                 setHalfLengthMin(s.halfLengthMin ?? null)
                 setHalfCount(s.halfCount ?? null)
             })
-            .catch(() => { /* schedule may not be generated yet — clock free-runs */ })
+            .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
         return () => { cancelled = true }
     }, [uuid])
 
@@ -207,7 +207,7 @@ export default function GroupsTab({
         }
     }
 
-    /** "Resetiraj" wipes every group match + the draw — confirm in a popup modal. */
+    /** "Resetiraj" wipes every group match + the draw - confirm in a popup modal. */
     const [confirmResetGroupsOpen, setConfirmResetGroupsOpen] = useState(false)
     function confirmResetGroups() {
         setConfirmResetGroupsOpen(true)
@@ -256,7 +256,7 @@ export default function GroupsTab({
         }
     }
 
-    // Registered teams (pending self-registrations excluded — same rule the
+    // Registered teams (pending self-registrations excluded - same rule the
     // backend draw uses) and the configured group count.
     const registeredTeams = (teams ?? []).filter((tm) => !tm.pendingApproval)
     const grpLabel = (i: number) => String.fromCharCode(65 + i)
@@ -434,7 +434,7 @@ export default function GroupsTab({
 
     // The tournament's status may not flip the moment a match goes LIVE, so
     // also treat the draw as "started" once any group match is being played
-    // or finished — re-drawing then would wipe real results.
+    // or finished - re-drawing then would wipe real results.
     const anyMatchPlayed = (groups ?? []).some((g) =>
         g.matches.some((m) => m.status === "LIVE" || m.status === "FINISHED"),
     )
@@ -500,7 +500,7 @@ export default function GroupsTab({
                 }}
             >
                 <VStack align="stretch" gap="0.5">
-                    {/* Meta row — UŽIVO badge (+clock) top-left, kickoff time
+                    {/* Meta row - UŽIVO badge (+clock) top-left, kickoff time
                         centred, organizer control (Pokreni / Uživo / Rezultat /
                         Uredi) top-right. Equal flex on the side clusters keeps
                         the time centred regardless of their widths. */}
@@ -551,7 +551,7 @@ export default function GroupsTab({
                             )}
                         </Box>
 
-                        {/* Right: live clock (time + half) for LIVE matches —
+                        {/* Right: live clock (time + half) for LIVE matches -
                             shown to everyone, top-right. No stopPropagation, so an
                             organizer clicking here still opens the management modal
                             (whole live row is clickable for them). For scheduled /
@@ -591,7 +591,7 @@ export default function GroupsTab({
                         </Flex>
                     </Flex>
 
-                    {/* Teams + score — team1 right, score centre, team2 left
+                    {/* Teams + score - team1 right, score centre, team2 left
                         (mirrors the Raspored → završene utakmice layout). */}
                     <Box
                         display="grid"
@@ -606,7 +606,7 @@ export default function GroupsTab({
                             textAlign="right"
                             truncate
                         >
-                            {m.team1Name ?? "—"}
+                            {m.team1Name ?? "-"}
                         </Text>
                         {editing ? (
                             // Result typed inline where the score sits, not below.
@@ -648,7 +648,7 @@ export default function GroupsTab({
                                 textAlign="center"
                                 fontVariantNumeric="tabular-nums"
                             >
-                                {hasScore ? `${m.score1}:${m.score2}` : scoreboard ? "—" : "vs"}
+                                {hasScore ? `${m.score1}:${m.score2}` : scoreboard ? "-" : "vs"}
                             </Box>
                         )}
                         <Text
@@ -658,7 +658,7 @@ export default function GroupsTab({
                             textAlign="left"
                             truncate
                         >
-                            {m.team2Name ?? "—"}
+                            {m.team2Name ?? "-"}
                         </Text>
                     </Box>
                 </VStack>
@@ -695,7 +695,7 @@ export default function GroupsTab({
 
     return (
         <VStack align="stretch" gap="6" py="2">
-            {/* No top "Grupe" SectionCard — the group cards below carry
+            {/* No top "Grupe" SectionCard - the group cards below carry
                  their own headings ("Grupa A", "Grupa B", …) which is
                  already enough context. "Ponovi ždrijeb" lives in a
                  right-aligned row above the cards; hidden once any
@@ -781,7 +781,7 @@ export default function GroupsTab({
                     rounded="xl"
                     overflow="hidden"
                 >
-                    {/* v3 group header — green letter tile + GRUPA X + N PROLAZE pill */}
+                    {/* v3 group header - green letter tile + GRUPA X + N PROLAZE pill */}
                     <Flex
                         justify="space-between"
                         align="center"
@@ -832,7 +832,7 @@ export default function GroupsTab({
                                     {effectiveAdvance} PROLAZE
                                 </Box>
                             )}
-                            {/* Manual reorder — only the organizer, and only
+                            {/* Manual reorder - only the organizer, and only
                                 once every match in this group is finished (the
                                 override settles tiebreakers on a complete group). */}
                             {canEdit &&
@@ -850,12 +850,12 @@ export default function GroupsTab({
                         </HStack>
                     </Flex>
 
-                    {/* v3 compact standings — CSS grid, not <table>.
+                    {/* v3 compact standings - CSS grid, not <table>.
                          Columns: # | EKIPA (w/ micro W·D·L | gf:ga line) | UT | GR | BOD.
                          Mobile drops UT column for room. Advancing rows
                          get green-tint bg + 3px green left border. */}
                     <Box>
-                        {/* Column header — SofaScore-style: each stat its own
+                        {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
                             Mobile keeps the core P·N·I + BOD; md adds UT/GR/GOL/
                             Zadnjih 5. */}
@@ -924,17 +924,17 @@ export default function GroupsTab({
                                     >
                                         {idx + 1}
                                     </Text>
-                                    {/* Team name only — stats live in their own columns now */}
+                                    {/* Team name only - stats live in their own columns now */}
                                     <Text fontSize="14px" fontWeight={700} color="fg.ink" truncate minW="0">
                                         {row.teamName}
                                     </Text>
-                                    {/* UT (odigrano) — md only */}
+                                    {/* UT (odigrano) - md only */}
                                     <StNum value={row.played} mdOnly />
                                     {/* P · N · I */}
                                     <StNum value={row.won} />
                                     <StNum value={row.drawn} />
                                     <StNum value={row.lost} />
-                                    {/* GR (gol-razlika) — md only */}
+                                    {/* GR (gol-razlika) - md only */}
                                     <StNum
                                         mdOnly
                                         weight={600}
@@ -947,9 +947,9 @@ export default function GroupsTab({
                                                 : "fg.muted"
                                         }
                                     />
-                                    {/* GOL (dani:primljeni) — md only */}
+                                    {/* GOL (dani:primljeni) - md only */}
                                     <StNum value={`${row.goalsFor}:${row.goalsAgainst}`} mdOnly />
-                                    {/* Zadnjih 5 — md only */}
+                                    {/* Zadnjih 5 - md only */}
                                     <HStack
                                         display={{ base: "none", md: "flex" }}
                                         gap="1"
@@ -1012,7 +1012,7 @@ export default function GroupsTab({
             ))}
             </Box>
 
-            {/* Live-match dialog — goals, cards, finish (organizer only). */}
+            {/* Live-match dialog - goals, cards, finish (organizer only). */}
             {liveMatch && (
                 <GroupLiveMatchDialog
                     uuid={uuid}
@@ -1022,7 +1022,7 @@ export default function GroupsTab({
                 />
             )}
 
-            {/* Read-only timeline modal — opens for anyone clicking a match. */}
+            {/* Read-only timeline modal - opens for anyone clicking a match. */}
             {timelineMatch && (
                 <MatchTimelineModal
                     uuid={uuid}
@@ -1032,7 +1032,7 @@ export default function GroupsTab({
                 />
             )}
 
-            {/* Manual reorder dialog — organizer drags teams up/down to settle
+            {/* Manual reorder dialog - organizer drags teams up/down to settle
                 a tiebreaker by hand (only for a fully-finished group). */}
             {reorderGroupTarget && (
                 <GroupReorderDialog
@@ -1049,7 +1049,7 @@ export default function GroupsTab({
     )
 }
 
-/* ── GroupReorderDialog — manual standings reorder (tiebreaker override).
+/* ── GroupReorderDialog - manual standings reorder (tiebreaker override).
    The organizer moves teams up/down; saving assigns each team a manual_rank
    by its position so the standings lock to this order. ────────────────────── */
 function GroupReorderDialog({
@@ -1107,7 +1107,7 @@ function GroupReorderDialog({
                     <Dialog.Content maxW={{ base: "92%", md: "440px" }}>
                         <Dialog.Header>
                             <Dialog.Title flex="1" textAlign="center">
-                                Ručni poredak — Grupa {group.name}
+                                Ručni poredak - Grupa {group.name}
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body pb="2">
@@ -1194,7 +1194,7 @@ function GroupReorderDialog({
     )
 }
 
-/* ── LivePill — small red "UŽIVO" badge for a live match row. ─────────────── */
+/* ── LivePill - small red "UŽIVO" badge for a live match row. ─────────────── */
 function LivePill() {
     return (
         <Badge
@@ -1233,7 +1233,7 @@ export function GroupLiveMatchDialog({
     const isTimer = match.liveMode === "TIMER"
 
     const [events, setEvents] = useState<MatchEventDto[] | null>(null)
-    // Players sent off (red card) — greyed out + locked in the entry roster.
+    // Players sent off (red card) - greyed out + locked in the entry roster.
     const sentOffIds = useMemo(
         () =>
             new Set(
@@ -1248,8 +1248,8 @@ export function GroupLiveMatchDialog({
         s2: match.score2 ?? 0,
     })
     // Until the organizer adds/removes an event in this dialog the scoreboard
-    // shows the stored score (so a result-only match — entered via "Unesi
-    // samo rezultat" with no goal events — doesn't flash 0:0). After any event
+    // shows the stored score (so a result-only match - entered via "Unesi
+    // samo rezultat" with no goal events - doesn't flash 0:0). After any event
     // mutation we recompute live from the event log.
     const [scoreDirty, setScoreDirty] = useState(false)
 
@@ -1344,7 +1344,7 @@ export function GroupLiveMatchDialog({
     // Re-render every second while a TIMER match is running so `phase`
     // (and the halftime / full-time prompts below) flip the instant the
     // clock reaches the end of a half. LiveClock has its own internal tick
-    // for its own display, but the dialog needs one too — otherwise the
+    // for its own display, but the dialog needs one too - otherwise the
     // "Poluvrijeme → Započni 2. poluvrijeme" box and the full-time "Završi"
     // never appear until some unrelated state change forces a re-render.
     const [, setClockTick] = useState(0)
@@ -1368,9 +1368,9 @@ export function GroupLiveMatchDialog({
     // no app clock (SIMPLE, or no half length) the organizer keeps their own time.
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
     const twoHalves = halfCount !== 1
-    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    // "Završi 1. poluvrijeme" - only for a two-half match, while the 1st half runs.
     const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
-    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    // "Započni 2. poluvrijeme" - once the 1st half has been ended (pauza).
     const canStartSecondHalf = isTimer && phase === "HALFTIME"
     // The half whose end is the match's end (single period → 1st; else 2nd).
     const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
@@ -1526,7 +1526,7 @@ export function GroupLiveMatchDialog({
                                     )}
                                     <HStack justify="center" gap="3" align="center" w="full">
                                         <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
-                                            {match.team1Name ?? "—"}
+                                            {match.team1Name ?? "-"}
                                         </Text>
                                         <Text
                                             fontFamily="mono"
@@ -1539,7 +1539,7 @@ export function GroupLiveMatchDialog({
                                             {score.s1} : {score.s2}
                                         </Text>
                                         <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
-                                            {match.team2Name ?? "—"}
+                                            {match.team2Name ?? "-"}
                                         </Text>
                                     </HStack>
                                 </VStack>
@@ -1547,7 +1547,7 @@ export function GroupLiveMatchDialog({
                         </Dialog.Header>
                         <Dialog.Body>
                             <VStack align="stretch" gap="2.5">
-                                {/* Accumulated team fouls — compact counters
+                                {/* Accumulated team fouls - compact counters
                                     right below the scoreboard (deveterac). */}
                                 <FoulControls
                                     uuid={uuid}
@@ -1559,7 +1559,7 @@ export function GroupLiveMatchDialog({
                                     fouls2Second={match.fouls2Second}
                                 />
 
-                                {/* Add-event — fast one-tap entry. Shown for a
+                                {/* Add-event - fast one-tap entry. Shown for a
                                     finished match too so "Uredi" can fix a wrong
                                     scorer etc. (organizer-only dialog). */}
                                 {(
@@ -1581,7 +1581,7 @@ export function GroupLiveMatchDialog({
                                     />
                                 )}
 
-                                {/* Tijek utakmice — compact event log, centred,
+                                {/* Tijek utakmice - compact event log, centred,
                                     at the bottom (score + entry sit above it). */}
                                 <Box textAlign="center">
                                     <Text
@@ -1682,7 +1682,7 @@ export function GroupLiveMatchDialog({
             busy={resetting}
             danger
             title="Resetirati utakmicu?"
-            description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+            description="Utakmica se vraća na 'zakazano' - brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
             confirmLabel="Da, resetiraj"
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}

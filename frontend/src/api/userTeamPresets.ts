@@ -2,7 +2,7 @@ import { http } from "./http"
 
 /**
  * Viewer-aware preset row. Both owners (the primary creator and the
- * claimed co-owner) see the same preset — fields here are framed
+ * claimed co-owner) see the same preset - fields here are framed
  * relative to "you" so the UI doesn't need to translate roles.
  */
 export type UserTeamPreset = {
@@ -12,7 +12,7 @@ export type UserTeamPreset = {
     hidden: boolean
     /** "PRIMARY" if you created the preset, "CO_OWNER" if you claimed it via a share link. */
     myRole: "PRIMARY" | "CO_OWNER"
-    /** Display info about the OTHER owner — null until the preset is claimed. */
+    /** Display info about the OTHER owner - null until the preset is claimed. */
     partnerSlug: string | null
     partnerName: string | null
     /** Share-link token, only emitted to PRIMARY when no one's claimed yet. */
@@ -59,7 +59,7 @@ export async function setPresetVisibility(
 
 /**
  * Delete an unclaimed preset. For claimed presets the backend returns
- * 409 CO_OWNED_USE_ARCHIVE_FLOW — the UI should call requestArchive
+ * 409 CO_OWNED_USE_ARCHIVE_FLOW - the UI should call requestArchive
  * instead.
  */
 export async function deletePreset(uuid: string): Promise<void> {
@@ -77,12 +77,12 @@ export async function requestPresetArchive(uuid: string): Promise<UserTeamPreset
     const { data } = await http.post<UserTeamPreset>(
         `/user/team-presets/${uuid}/archive-request`,
         null,
-        { successMessage: "Zahtjev poslan — čeka se odgovor partnera." } as any,
+        { successMessage: "Zahtjev poslan - čeka se odgovor partnera." } as any,
     )
     return data
 }
 
-/** Accept the partner's request — archives the preset. */
+/** Accept the partner's request - archives the preset. */
 export async function confirmPresetArchive(uuid: string): Promise<void> {
     await http.post(
         `/user/team-presets/${uuid}/archive-confirm`,

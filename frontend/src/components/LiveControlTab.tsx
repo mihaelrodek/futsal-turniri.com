@@ -10,7 +10,7 @@ import { EmptyState, Loader, Panel, SectionHeader } from "../ui/primitives"
 import LiveMatchPanel, { type PanelMatch } from "./LiveMatchPanel"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   "Vođenje" — organizer-only control centre, fully inline (no modal).
+   "Vođenje" - organizer-only control centre, fully inline (no modal).
 
    Pulls every group + knockout fixture that already has a kickoff (i.e. the
    schedule is generated), surfaces the current LIVE (or next on-deck) match
@@ -26,7 +26,7 @@ const kickoffMs = (k?: string | null) =>
     k ? new Date(k).getTime() : Number.POSITIVE_INFINITY
 
 function fmtKickoff(k?: string | null): string {
-    if (!k) return "—"
+    if (!k) return "-"
     return new Date(k).toLocaleString("hr-HR", {
         day: "2-digit",
         month: "2-digit",
@@ -38,7 +38,7 @@ function fmtKickoff(k?: string | null): string {
 /** Dropdown label: a status tag (uživo / na redu), the teams, then stage + time. */
 function optionLabel(e: Entry, onDeck: boolean): string {
     const m = e.match
-    const teams = `${m.team1Name ?? "—"} — ${m.team2Name ?? "—"}`
+    const teams = `${m.team1Name ?? "-"} - ${m.team2Name ?? "-"}`
     const stage = e.kind === "group" ? "Grupa" : "Eliminacija"
     const when = m.kickoffAt ? fmtKickoff(m.kickoffAt) : ""
     const meta = [stage, when].filter(Boolean).join(" · ")
@@ -98,7 +98,7 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
     }, [groups, knockout])
 
     // Default selection = the match the schedule says is up now: the current
-    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED — same one the
+    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED - same one the
     // Raspored tab flags "Na redu"). manageable is sorted LIVE-first then by
     // kickoff, so manageable[0] is exactly that. A manual pick (selectedId)
     // overrides until that match leaves the list (finished).
@@ -126,10 +126,10 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
                     <SectionHeader
                         icon={LuRadioTower}
                         title="Zapisnik"
-                        subtitle="Vodi aktivnu utakmicu uživo — odaberi koju vodiš."
+                        subtitle="Vodi aktivnu utakmicu uživo - odaberi koju vodiš."
                     />
 
-                    {/* Match picker — dropdown. Defaults to the on-deck match;
+                    {/* Match picker - dropdown. Defaults to the on-deck match;
                         the organizer can switch to any other live/scheduled one. */}
                     {manageable.length > 1 && (
                         <VStack align="stretch" gap="1.5">

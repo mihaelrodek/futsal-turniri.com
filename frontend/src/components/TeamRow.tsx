@@ -1,2 +1,2 @@
-// DEAD FILE — team-row UI is inlined in TournamentDetailsPage. Safe to delete.
+// DEAD FILE - team-row UI is inlined in TournamentDetailsPage. Safe to delete.
 export {}

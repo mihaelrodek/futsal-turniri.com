@@ -8,7 +8,7 @@ import lombok.Setter;
 import java.time.OffsetDateTime;
 
 /**
- * One Web Push subscription — uniquely identified by the {@code endpoint}
+ * One Web Push subscription - uniquely identified by the {@code endpoint}
  * URL that the browser vendor's push service hands out. A single Firebase
  * UID can own many rows (one per browser/device); we look them all up when
  * fanning out a notification.

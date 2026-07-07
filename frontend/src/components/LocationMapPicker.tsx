@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Box, Text } from "@chakra-ui/react"
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
 import L from "leaflet"
-// Leaflet's stylesheet — required for tiles to position correctly.
+// Leaflet's stylesheet - required for tiles to position correctly.
 // MapPage imports this too but only on /karta; the create-tournament
 // page mounts LocationMapPicker directly so we must own the import
 // here, otherwise tiles render as unstyled <img> stacks at coord 0,0
@@ -55,21 +55,21 @@ export default function LocationMapPicker({
     /** Fires when the user clicks the map AND the reverse geocode resolves. */
     onPick: (picked: { displayName: string; lat: number; lng: number }) => void
     /**
-     * Chakra height value — accepts plain strings like "220px" or responsive
+     * Chakra height value - accepts plain strings like "220px" or responsive
      * objects like {@code { base: "220px", md: "100%" }}. Defaults to a
      * fixed 220px which is the right size for the mobile create-form
      * layout; the parent passes a responsive value when the map needs to
      * fill a side column on desktop.
      */
     height?: string | { base?: string; sm?: string; md?: string; lg?: string }
-    /** Optional minimum height — only needed when {@code height="100%"}
+    /** Optional minimum height - only needed when {@code height="100%"}
      *  to ensure the map doesn't collapse if its parent has no height. */
     minH?: string | number | { base?: string; sm?: string; md?: string; lg?: string }
 }) {
     const [busy, setBusy] = useState(false)
     const [err, setErr] = useState<string | null>(null)
 
-    // Single shared icon instance — divIcon is cheap to construct but
+    // Single shared icon instance - divIcon is cheap to construct but
     // keeping it stable means React's <Marker icon=...> prop doesn't
     // trip its reconciler into rebuilding the underlying L.Marker.
     const pinIcon = useMemo(() => makePickerPinIcon(), [])
@@ -114,7 +114,7 @@ export default function LocationMapPicker({
                 // +/- control buttons and pinch-zoom on touch work too.
                 scrollWheelZoom
             >
-                {/* CARTO Voyager basemap — matches the /karta page so the
+                {/* CARTO Voyager basemap - matches the /karta page so the
                     picker and the public map share one visual language
                     (warm beige land, muted blue water, clean labels)
                     instead of the harsher raw OSM tile set. */}
@@ -125,7 +125,7 @@ export default function LocationMapPicker({
                 <ClickHandler onClick={handleClick} />
                 {/* RecenterOnValue keeps the map's view in sync with the
                     pin position. Without this, react-leaflet only uses
-                    `center`/`zoom` on first mount — picking a suggestion
+                    `center`/`zoom` on first mount - picking a suggestion
                     from LocationAutocomplete would move the marker
                     off-screen and the user would have to pan manually
                     to find it. */}
@@ -135,7 +135,7 @@ export default function LocationMapPicker({
                 )}
             </MapContainer>
 
-            {/* Click-prompt overlay — small hint at the top so the user
+            {/* Click-prompt overlay - small hint at the top so the user
                 knows the map is interactive without crowding the tiles.
                 Auto-hides once a pin is set. */}
             {!value && (
@@ -217,7 +217,7 @@ function ClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void
 /**
  * Imperatively re-centres the map every time {@code value} changes. The
  * {@code <MapContainer>} `center` prop is only honoured on first mount
- * — react-leaflet specifically does NOT reactively call setView when
+ * - react-leaflet specifically does NOT reactively call setView when
  * the prop updates, to avoid fighting with user-driven pans. We get
  * around that by reaching into the map instance via {@link useMap} and
  * calling {@code setView} ourselves whenever the picked location moves.
@@ -237,7 +237,7 @@ function RecenterOnValue({ value }: { value: { lat: number; lng: number } | null
         if (!value) return
         const currentZoom = map.getZoom()
         // Keep the user's current zoom unless they're at the default
-        // "no pin yet" zoom level — then jump to a sensible street-level
+        // "no pin yet" zoom level - then jump to a sensible street-level
         // view so the marker isn't a needle in a country-wide haystack.
         const targetZoom = currentZoom < 10 ? 14 : currentZoom
         map.setView([value.lat, value.lng], targetZoom, { animate: true })

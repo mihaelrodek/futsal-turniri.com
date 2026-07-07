@@ -46,7 +46,7 @@ public class Teams {
     private boolean eliminated = false;
 
     /**
-     * Internal win/loss counters. NOT exposed in TeamDto — they exist
+     * Internal win/loss counters. NOT exposed in TeamDto - they exist
      * only so the round-draw / score-update logic in RoundService can
      * recompute each team's {@link #eliminated} flag (a team is out
      * after its first loss). Orphaned DB columns from the bela origin.
@@ -68,7 +68,7 @@ public class Teams {
     /**
      * Opaque random token embedded in the team-sharing URL
      * (/claim-team/{token}). Set when a team is self-registered or
-     * backfilled for existing teams. Stable — the same primary can
+     * backfilled for existing teams. Stable - the same primary can
      * keep sharing the same link.
      */
     @Column(name = "claim_token", length = 48, unique = true)

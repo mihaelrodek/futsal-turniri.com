@@ -17,7 +17,7 @@
  *   1. Environment variable:
  *        SEED_TOKEN="<token>" node scripts/seed-mock-data.mjs
  *
- *   2. File (scripts/seed-token.txt — one line, the raw token):
+ *   2. File (scripts/seed-token.txt - one line, the raw token):
  *        echo "ey..." > scripts/seed-token.txt
  *        node scripts/seed-mock-data.mjs
  *

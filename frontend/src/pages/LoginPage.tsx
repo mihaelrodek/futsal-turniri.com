@@ -32,7 +32,7 @@ function authErrorMessage(err: any): string {
             return "Previše pokušaja. Pokušaj ponovno kasnije."
         case "auth/popup-closed-by-user":
         case "auth/cancelled-popup-request":
-            return "" // user closed popup — not really an error
+            return "" // user closed popup - not really an error
         default:
             return err?.message ?? "Prijava nije uspjela."
     }
@@ -56,7 +56,7 @@ export default function LoginPage() {
     // bumps a "from" hint in there).
     //
     // `pickSafeNext` rejects anything that isn't a same-origin path
-    // (`//evil.tld`, `javascript:…`, backslash tricks, etc.) — without
+    // (`//evil.tld`, `javascript:…`, backslash tricks, etc.) - without
     // this guard an attacker crafting
     //     /prijava?next=//evil.tld/phish
     // could turn a real login into an open redirect onto their domain.
@@ -69,7 +69,7 @@ export default function LoginPage() {
     )
 
     /**
-     * If the user is already authenticated, /login has nothing to do —
+     * If the user is already authenticated, /login has nothing to do -
      * send them straight to the redirect target. Use {replace} so the
      * browser back button doesn't bounce them back to /login.
      */

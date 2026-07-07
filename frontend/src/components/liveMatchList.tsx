@@ -5,20 +5,20 @@ import type { LiveMatch } from "../api/live"
 import { GoalscorersPanel, LiveClock } from "./liveMatch"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LiveMatchRow — SofaScore-style live-match row used by the /uzivo page.
+   LiveMatchRow - SofaScore-style live-match row used by the /uzivo page.
 
    Changes vs original:
      a) "Detalji" toggle is CENTERED horizontally under the score.
      b) Expanded panel shows goalscorers in two columns via GoalscorersPanel
         (team1 left / right-aligned, team2 right / left-aligned).
-        LiveMatch has no teamId fields — null is passed and GoalscorersPanel
+        LiveMatch has no teamId fields - null is passed and GoalscorersPanel
         auto-detects the two teamIds from the loaded goal events.
      c) For liveMode === "TIMER" the current minute + ticking clock is shown
         ABOVE the score row, centered. Hidden for SIMPLE / null.
 
    variant:
-     "compact" — tighter padding for smaller containers.
-     "full"    — roomier padding for the dedicated /uzivo page.
+     "compact" - tighter padding for smaller containers.
+     "full"    - roomier padding for the dedicated /uzivo page.
    ────────────────────────────────────────────────────────────────────── */
 
 const RowButton = chakra("button")
@@ -62,7 +62,7 @@ export function LiveMatchRow({
                 _hover={{ bg: "bg.muted" }}
                 rounded="md"
             >
-                {/* TIMER mode: match clock — counts the cumulative match time
+                {/* TIMER mode: match clock - counts the cumulative match time
                     UP, freezing at each half boundary, and labels the phase
                     ("1. pol." / "Poluvrijeme" / "2. pol." / "Kraj"). Uses the
                     tournament half config from the /live DTO; falls back to a
@@ -129,7 +129,7 @@ export function LiveMatchRow({
                 </Flex>
             </RowButton>
 
-            {/* Expand toggle — centered directly under the score */}
+            {/* Expand toggle - centered directly under the score */}
             <Flex justify="center" mt="2">
                 <RowButton
                     type="button"

@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Match-by-match history for a single team within a single tournament.
- * Used to drill into "round 3 — vs Pero & Ivo — 4:2 (won)".
+ * Used to drill into "round 3 - vs Pero & Ivo - 4:2 (won)".
  */
 public record TeamMatchHistoryDto(
         Long teamId,

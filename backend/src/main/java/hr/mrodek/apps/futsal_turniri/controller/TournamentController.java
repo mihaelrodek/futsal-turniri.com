@@ -79,7 +79,7 @@ public class TournamentController {
      *  refetch instantly instead of waiting for their poll. */
     @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
 
-    /** Public base URL (e.g. https://futsal-turniri.com) — used to build the
+    /** Public base URL (e.g. https://futsal-turniri.com) - used to build the
      *  tournament link the QR code encodes. */
     @org.eclipse.microprofile.config.inject.ConfigProperty(
             name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
@@ -129,7 +129,7 @@ public class TournamentController {
     /**
      * Visibility gate for admin-hidden tournaments: visible to everyone when
      * not hidden; when hidden, only to the creator and admins. Works on
-     * public endpoints too — with no bearer token the identity is anonymous
+     * public endpoints too - with no bearer token the identity is anonymous
      * and this simply returns {@code !t.isHidden()}.
      */
     private boolean canView(Tournaments t) {
@@ -166,7 +166,7 @@ public class TournamentController {
 
     /**
      * Reject a request with a startAt in the past. Mirrors the frontend's
-     * {@code min} attribute and submit-time check — both layers exist
+     * {@code min} attribute and submit-time check - both layers exist
      * because either can be bypassed (custom client, slow form-fill).
      * Allows a 5-minute slack so clock skew between client and server
      * doesn't reject borderline-valid creates.
@@ -188,7 +188,7 @@ public class TournamentController {
         stampCreator(t);
         applyGeocoding(t);
         // Generate slug before save so the unique index sees it on first
-        // INSERT — the entity already has name + startAt populated by the
+        // INSERT - the entity already has name + startAt populated by the
         // mapper at this point.
         t.setSlug(tournamentSlugService.generateUnique(t, null));
         Tournaments saved = tournamentsRepo.save(t);
@@ -301,7 +301,7 @@ public class TournamentController {
         assertStartInFuture(req.startAt());
 
         // Mapper applies all updatable fields in place. Status, winner and poster
-        // are intentionally NOT touched here — they're owned by dedicated
+        // are intentionally NOT touched here - they're owned by dedicated
         // endpoints (/start, /finish, /reset, /multipart).
         String previousLocation = t.getLocation();
         String previousName = t.getName();
@@ -309,7 +309,7 @@ public class TournamentController {
 
         // Format is editable, but only while no fixtures exist yet. Once the
         // draw / schedule has produced matches, changing the format would
-        // desync the generated groups / bracket — so snapshot the current
+        // desync the generated groups / bracket - so snapshot the current
         // format config and restore it after the mapping if matches exist.
         boolean hasFixtures = matchesRepo.count("tournament.id = ?1", t.getId()) > 0;
         var prevFormat = t.getFormat();
@@ -327,12 +327,12 @@ public class TournamentController {
         }
         t.setUpdatedAt(OffsetDateTime.now());
 
-        // Re-geocode only when the location actually changed — saves Nominatim hits.
+        // Re-geocode only when the location actually changed - saves Nominatim hits.
         if (!java.util.Objects.equals(previousLocation, t.getLocation())) {
             applyGeocoding(t);
         }
 
-        // Regenerate the slug if the name or start date changed — those are the
+        // Regenerate the slug if the name or start date changed - those are the
         // only inputs that go into the slug. We pass the current id so the row's
         // existing slug doesn't trip the uniqueness check against itself.
         boolean nameChanged = !java.util.Objects.equals(previousName, t.getName());
@@ -351,7 +351,7 @@ public class TournamentController {
      * every read (lists, map, sitemap, live) while matches/teams/history stay
      * intact in the DB for a possible manual restore.
      *
-     * <p>This endpoint was missing entirely — the SPA (owner "Obriši turnir"
+     * <p>This endpoint was missing entirely - the SPA (owner "Obriši turnir"
      * and the admin dashboard) has always called {@code DELETE
      * /tournaments/{uuid}} and got 405, so deleting never worked.
      */
@@ -423,7 +423,7 @@ public class TournamentController {
         }
 
         // A tournament needs at least two approved teams to start.
-        // Pending self-registered teams are excluded from the count — the
+        // Pending self-registered teams are excluded from the count - the
         // organizer must approve them first (otherwise self-registrations
         // could let anyone start a tournament with bogus teams).
         long approvedCount = teamRepo.findByTournament_Id(t.getId()).stream()
@@ -491,9 +491,9 @@ public class TournamentController {
                             + "<p>Pogledaj konačni poredak, strijelce i statistiku na stranici turnira.</p>",
                     url, "Pogledaj rezultate");
             emailService.sendToTournamentSubscribers(
-                    t.getId(), "🏁 Turnir završen — " + t.getName(), html);
+                    t.getId(), "🏁 Turnir završen - " + t.getName(), html);
         } catch (Exception ignored) {
-            // best-effort — the tournament is already finished
+            // best-effort - the tournament is already finished
         }
 
         return Response.ok(tournamentMapper.toDetails(t)).build();
@@ -501,13 +501,13 @@ public class TournamentController {
 
     /**
      * Set the 2nd + 3rd place team names after the tournament finishes.
-     * Owner or admin only. Both body fields are nullable — a null/blank
+     * Owner or admin only. Both body fields are nullable - a null/blank
      * value clears that column, letting the organiser remove a wrongly-set
      * podium position.
      *
      * <p>Each non-blank name is matched (case-insensitive, trimmed)
      * against the tournament's own team names. Unknown names return
-     * 400 — better than silently persisting garbage that the SPA can't
+     * 400 - better than silently persisting garbage that the SPA can't
      * highlight on the Parovi tab.
      *
      * <p>Doesn't gate on tournament status. Most organisers will fill
@@ -551,7 +551,7 @@ public class TournamentController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("SAME_TEAM_FOR_SECOND_AND_THIRD").build();
         }
-        // Don't allow podium to overlap with the gold winner — a single
+        // Don't allow podium to overlap with the gold winner - a single
         // team can't simultaneously be 1st AND (2nd|3rd).
         if (t.getWinnerName() != null) {
             String winner = t.getWinnerName().trim();
@@ -593,7 +593,7 @@ public class TournamentController {
      * scorer + best player come from the goal tally (most goals, podium as
      * tiebreak); best goalkeeper is a hint pointing at the strongest-defence
      * team since the keeper player can't be inferred from the data.
-     * Organizer-or-admin only — it's part of the finish flow.
+     * Organizer-or-admin only - it's part of the finish flow.
      */
     @GET
     @Path("/{uuid}/awards/suggestions")
@@ -613,7 +613,7 @@ public class TournamentController {
             return 99;
         };
 
-        // Top scorer — most goals, podium placement as tiebreak.
+        // Top scorer - most goals, podium placement as tiebreak.
         AwardSuggestionsDto.Suggestion topScorer = null;
         var goalRows = matchEventRepo.findGoalCountsByTournament(t);
         for (Object[] row : goalRows) {
@@ -635,7 +635,7 @@ public class TournamentController {
             }
         }
 
-        // Best goalkeeper hint — fewest conceded, podium as tiebreak.
+        // Best goalkeeper hint - fewest conceded, podium as tiebreak.
         AwardSuggestionsDto.GoalkeeperHint gkHint = null;
         for (Object[] row : matchesRepo.concededGoalsByTeam(t)) {
             var team = (Teams) row[0];
@@ -649,7 +649,7 @@ public class TournamentController {
             }
         }
 
-        // best player mirrors the top scorer — goals + a deep run is the only
+        // best player mirrors the top scorer - goals + a deep run is the only
         // signal available; the organiser overrides when they disagree.
         return Response.ok(new AwardSuggestionsDto(topScorer, topScorer, gkHint)).build();
     }
@@ -713,7 +713,7 @@ public class TournamentController {
             @QueryParam("status") @DefaultValue("upcoming") String status,
             @QueryParam("offset") @DefaultValue("0") int offset,
             @QueryParam("limit") @DefaultValue("0") int limit) {
-        // "finished" means explicit TournamentStatus.FINISHED — date isn't
+        // "finished" means explicit TournamentStatus.FINISHED - date isn't
         // the source of truth (a tournament that started today and is still
         // being scored is in progress, not finished). The other bucket
         // covers DRAFT + STARTED, sorted by startAt ascending so the soonest
@@ -743,7 +743,7 @@ public class TournamentController {
                         r -> (Long) r[1]
                 ));
 
-        // Tournaments with a match in progress — drives the LIVE badge on cards.
+        // Tournaments with a match in progress - drives the LIVE badge on cards.
         Set<Long> liveTournamentIds =
                 new HashSet<>(matchesRepo.findTournamentIdsWithLiveMatch(ids));
 
@@ -751,7 +751,7 @@ public class TournamentController {
     }
 
     /**
-     * Lightweight count for paginated finished listings — the SPA hits this
+     * Lightweight count for paginated finished listings - the SPA hits this
      * once to know whether to render the "Učitaj više" button after the
      * initial page of finished tournaments.
      */
@@ -797,7 +797,7 @@ public class TournamentController {
     }
 
     /**
-     * Whether the roster is locked — i.e. the draw has been generated, so
+     * Whether the roster is locked - i.e. the draw has been generated, so
      * teams may no longer be added or removed. True once any fixtures exist
      * (KNOCKOUT_ONLY bracket / generated schedule) OR any team has been placed
      * into a group (GROUPS_KNOCKOUT draw, even before fixtures). Removing a team
@@ -810,7 +810,7 @@ public class TournamentController {
                         .anyMatch(tm -> tm.getGroup() != null);
     }
 
-    /** Public read of the roster-lock flag — drives the UI's add/remove gating. */
+    /** Public read of the roster-lock flag - drives the UI's add/remove gating. */
     @GET
     @Path("/{uuid}/roster-locked")
     public Response rosterLocked(@PathParam("uuid") String idOrSlug) {
@@ -824,7 +824,7 @@ public class TournamentController {
     public Response getById(@PathParam("uuid") String idOrSlug) {
         // Accepts either a UUID (legacy / shared URLs from before slugs landed)
         // or the new pretty slug, so existing bookmarks keep working.
-        // Admin-hidden tournaments 404 for everyone except creator/admin —
+        // Admin-hidden tournaments 404 for everyone except creator/admin -
         // indistinguishable from not existing (no visibility leak).
         return tournamentsRepo.findByUuidOrSlug(idOrSlug)
                 .filter(this::canView)
@@ -841,7 +841,7 @@ public class TournamentController {
      * that for JS-rendered routes.
      *
      * <p>Lives in TournamentController (not a dedicated resource class)
-     * so the @Path("/tournaments") root is owned by exactly one class —
+     * so the @Path("/tournaments") root is owned by exactly one class -
      * historically a second resource class with the same root path
      * shadowed every {@code /tournaments/{x}} mapping under RESTEasy's
      * URI-template matcher and produced 404 on the legitimate routes.
@@ -851,7 +851,7 @@ public class TournamentController {
      * class declared {@code @Path("/tournaments/{uuid}")} at the class level
      * and under Quarkus REST (RESTEasy Reactive) a second resource class with
      * the same {@code /tournaments/{uuid}} prefix shadows every sibling
-     * route on this controller — so /tournaments/{uuid}, /tournaments/featured,
+     * route on this controller - so /tournaments/{uuid}, /tournaments/featured,
      * /tournaments/live, etc. all started returning 404. Consolidating the
      * subscribe endpoints here ensures a single resource class owns the
      * {@code /tournaments} URI tree.
@@ -960,10 +960,10 @@ public class TournamentController {
                             "<p>Od sada pratiš <strong>" + EmailService.escapeHtml(t.getName())
                                     + "</strong>. Javit ćemo ti obavijesti o turniru (npr. konačni rezultat).</p>",
                             url, "Otvori turnir");
-                    emailService.sendHtml(email, "Pratiš turnir — " + t.getName(), html);
+                    emailService.sendHtml(email, "Pratiš turnir - " + t.getName(), html);
                 }
             } catch (Exception ignored) {
-                // best-effort — the subscription is already saved
+                // best-effort - the subscription is already saved
             }
         }
         return Response.status(Response.Status.CREATED).build();
@@ -1005,8 +1005,8 @@ public class TournamentController {
 
     /**
      * Branded QR code (PNG) that encodes this tournament's public page URL.
-     * Scanning it opens the tournament. Generated on the fly from the slug —
-     * nothing is persisted — and cached for a day since it only changes if
+     * Scanning it opens the tournament. Generated on the fly from the slug -
+     * nothing is persisted - and cached for a day since it only changes if
      * the slug changes. Public; used on the detail page (display + download).
      */
     @GET
@@ -1039,7 +1039,7 @@ public class TournamentController {
         var teams = teamRepo.findByTournament_Id(t.getId());
         // Emit claim tokens only to the primary submitter of each team
         // (so they can copy the share link) or to organizer/admin.
-        // Other viewers don't see tokens — the share link is for the
+        // Other viewers don't see tokens - the share link is for the
         // primary to hand out, not for the whole tournament to see.
         String viewerUid = (jwt != null) ? jwt.getSubject() : null;
         boolean viewerIsOrganizerOrAdmin =
@@ -1057,7 +1057,7 @@ public class TournamentController {
 
     /**
      * Build a random opaque token for the team-sharing URL. 24 bytes of
-     * SecureRandom encoded base64-url-no-padding = 32 chars — short
+     * SecureRandom encoded base64-url-no-padding = 32 chars - short
      * enough to fit in a clipboard-friendly URL, long enough that
      * brute-forcing is infeasible.
      */
@@ -1069,7 +1069,7 @@ public class TournamentController {
 
     /**
      * Bulk-load UserProfile rows for every distinct submitter UID across
-     * the given teams — both primary submitters AND co-owners that
+     * the given teams - both primary submitters AND co-owners that
      * claimed the team via the share link. Same map serves both
      * enrichment lookups in TeamMapper.toDtoEnriched.
      */
@@ -1113,7 +1113,7 @@ public class TournamentController {
                 .map(Integer::longValue)
                 .collect(Collectors.toSet());
 
-        // Once the draw exists, teams can no longer be removed — reject a save
+        // Once the draw exists, teams can no longer be removed - reject a save
         // that drops any existing team (the UI disables this; this is the
         // server-side guard against a stale client or direct API call).
         if (isRosterLocked(tournament)) {
@@ -1121,7 +1121,7 @@ public class TournamentController {
                     .anyMatch(e -> e.getId() != null && !payloadIds.contains(e.getId()));
             if (removingTeam) {
                 return Response.status(Response.Status.CONFLICT)
-                        .entity("Ždrijeb je već generiran — ekipe se više ne mogu uklanjati.")
+                        .entity("Ždrijeb je već generiran - ekipe se više ne mogu uklanjati.")
                         .build();
             }
         }
@@ -1154,7 +1154,7 @@ public class TournamentController {
         }
 
         var all = teamRepo.findByTournament_Id(tournament.getId());
-        // Same viewer-aware emission as listTeams — primary submitter
+        // Same viewer-aware emission as listTeams - primary submitter
         // of each row sees their own claim token; everyone else gets
         // null in that field.
         String viewerUid = (jwt != null) ? jwt.getSubject() : null;
@@ -1191,7 +1191,7 @@ public class TournamentController {
             return Response.status(Response.Status.CONFLICT).entity("TOURNAMENT_ALREADY_STARTED").build();
         }
 
-        // Reject duplicate name from the same self-registering user — prevents
+        // Reject duplicate name from the same self-registering user - prevents
         // the same person from accidentally re-registering the same team.
         String myUid = jwt.getSubject();
         String trimmedName = body.name().trim();
@@ -1210,7 +1210,7 @@ public class TournamentController {
         // landed yet (race between sign-in and the first self-register).
         slugService.ensureProfile(myUid, displayNameFromJwt());
 
-        // Capacity is intentionally not enforced here — the organizer can review
+        // Capacity is intentionally not enforced here - the organizer can review
         // the pending list and approve/reject to fit their tournament size.
 
         Teams p = new Teams();
@@ -1219,7 +1219,7 @@ public class TournamentController {
         p.setEliminated(false);
         p.setSubmittedByUid(jwt.getSubject());
         p.setPendingApproval(true);
-        // Generate a team-level claim token (legacy — sharing now happens
+        // Generate a team-level claim token (legacy - sharing now happens
         // at the preset level, but the column is kept for back-compat
         // with already-claimed teams).
         p.setClaimToken(generateClaimToken());
@@ -1286,7 +1286,7 @@ public class TournamentController {
         team.setPendingApproval(false);
 
         // Notify the player(s) whose team just got approved. Only push when
-        // the row was actually pending — re-approving an already-approved
+        // the row was actually pending - re-approving an already-approved
         // team would be a confusing duplicate notification. Both the
         // primary submitter and the share-link co-owner get the push.
         if (wasPending) {
@@ -1316,7 +1316,7 @@ public class TournamentController {
     }
 
     /**
-     * Delete a single team from a tournament. Owner/admin only — same gating
+     * Delete a single team from a tournament. Owner/admin only - same gating
      * as the bulk-replace PUT. Refuses to delete once the tournament has
      * started (matches reference team_id, so blowing them up would orphan
      * historical results).
@@ -1334,10 +1334,10 @@ public class TournamentController {
         assertCanEdit(t);
 
         // Once the draw exists (groups drawn / bracket / schedule generated), a
-        // team can no longer be removed — it would corrupt the structure.
+        // team can no longer be removed - it would corrupt the structure.
         if (isRosterLocked(t)) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Ždrijeb je već generiran — ekipe se više ne mogu uklanjati.")
+                    .entity("Ždrijeb je već generiran - ekipe se više ne mogu uklanjati.")
                     .build();
         }
         if (t.getStatus() == TournamentStatus.STARTED || t.getStatus() == TournamentStatus.FINISHED) {
@@ -1380,7 +1380,7 @@ public class TournamentController {
 
     /**
      * Public read of a team's roster, ordered for stable rendering.
-     * No auth — same visibility as the team list itself.
+     * No auth - same visibility as the team list itself.
      */
     @GET
     @Path("/{uuid}/teams/{teamId}/players")
@@ -1395,7 +1395,7 @@ public class TournamentController {
     /**
      * Add a player to a team's roster. Organizer-or-admin only (same
      * authorization as the other team-management endpoints). Rosters are
-     * editable at any time — no tournament-status restriction.
+     * editable at any time - no tournament-status restriction.
      */
     @POST
     @Path("/{uuid}/teams/{teamId}/players")
@@ -1478,7 +1478,7 @@ public class TournamentController {
 
     /**
      * Remove a player from a team's roster. Organizer-or-admin only.
-     * Rosters are editable at any time — no tournament-status restriction.
+     * Rosters are editable at any time - no tournament-status restriction.
      */
     @DELETE
     @Path("/{uuid}/teams/{teamId}/players/{playerId}")
@@ -1506,7 +1506,7 @@ public class TournamentController {
     /* ===================== Public live match listing ===================== */
 
     /**
-     * Public endpoint — no auth required.
+     * Public endpoint - no auth required.
      * Returns all matches currently in status LIVE across every tournament.
      * Each element carries enough tournament and team context for a
      * "live now" widget. Soft-deleted tournaments are excluded automatically
@@ -1549,7 +1549,7 @@ public class TournamentController {
     }
 
     /**
-     * Public endpoint — no auth required.
+     * Public endpoint - no auth required.
      * Returns SCHEDULED matches across every tournament that have a kickoff
      * time from now onward, soonest-first, capped at 40. Powers the
      * "Nadolazeće utakmice" stream on the /uzivo page.
@@ -1579,10 +1579,10 @@ public class TournamentController {
                 .collect(Collectors.toList());
     }
 
-    /* ===================== Public stats — goal scorers ===================== */
+    /* ===================== Public stats - goal scorers ===================== */
 
     /**
-     * Public endpoint — no auth required.
+     * Public endpoint - no auth required.
      * Returns the tournament's goal scorers ranked by number of goals,
      * highest first. Resolves the tournament by UUID or slug (same pattern
      * as all other {@code /{uuid}} endpoints) and returns 404 if not found.
@@ -1661,7 +1661,7 @@ public class TournamentController {
 
     /**
      * Mark a match as in-progress (status LIVE). Organizer-or-admin only.
-     * Idempotent — calling it on an already-live match just returns it.
+     * Idempotent - calling it on an already-live match just returns it.
      * Accepts an optional JSON body {@code { "mode": "TIMER" | "SIMPLE" }};
      * defaults to SIMPLE when the body is absent or mode is null/blank/invalid.
      */
@@ -1691,18 +1691,18 @@ public class TournamentController {
         match.setLiveStartedAt(java.time.OffsetDateTime.now());
 
         // Notify everyone who tapped the bell on this specific match that it
-        // just kicked off. Fire-and-forget — a flaky push must not abort the
+        // just kicked off. Fire-and-forget - a flaky push must not abort the
         // start.
         Tournaments t = match.getTournament();
         if (t != null) {
             try {
                 pushService.sendToMatchSubscribers(
                         match.getId(),
-                        "▶️ Utakmica počinje — " + t.getName(),
+                        "▶️ Utakmica počinje - " + t.getName(),
                         matchVersusLine(match),
                         tournamentScheduleUrl(t));
             } catch (Exception ignored) {
-                // swallowed — the match is already LIVE; push is best-effort.
+                // swallowed - the match is already LIVE; push is best-effort.
             }
         }
 
@@ -1743,7 +1743,7 @@ public class TournamentController {
             firePushMatchSafe(
                     match.getId(),
                     t.getId(),
-                    "🏁 Kraj utakmice — " + t.getName(),
+                    "🏁 Kraj utakmice - " + t.getName(),
                     matchScoreLine(match),
                     tournamentScheduleUrl(t)
             );
@@ -1756,7 +1756,7 @@ public class TournamentController {
     /**
      * Reset a match back to SCHEDULED. Organizer-or-admin only. Wipes the live
      * state (mode, kickoff instants), the score/penalties/winner, the
-     * accumulated fouls, and every recorded event — used when a match was
+     * accumulated fouls, and every recorded event - used when a match was
      * started by mistake or with a misbehaving timer and needs a clean restart.
      * The scheduled kickoff time is preserved so it can simply be started again.
      */
@@ -1834,7 +1834,7 @@ public class TournamentController {
 
     /**
      * Reset both teams' accumulated fouls for one half back to 0. Organizer/
-     * admin only — used at half-time / after a wrong entry.
+     * admin only - used at half-time / after a wrong entry.
      */
     @POST
     @Path("/{uuid}/matches/{matchId}/fouls/reset")
@@ -1865,7 +1865,7 @@ public class TournamentController {
     }
 
     /**
-     * Record the moment the 1st half was ended — the match enters the half-time
+     * Record the moment the 1st half was ended - the match enters the half-time
      * "pauza". Organizer-or-admin only; the match must be LIVE (409 otherwise).
      * Idempotent: a no-op if the 1st half was already ended.
      */
@@ -1894,7 +1894,7 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
-                    "⏸️ Poluvrijeme — " + t.getName(),
+                    "⏸️ Poluvrijeme - " + t.getName(),
                     matchVersusLine(match),
                     tournamentScheduleUrl(t)
             );
@@ -1906,7 +1906,7 @@ public class TournamentController {
 
     /**
      * Record the 2nd-half kickoff instant. Organizer-or-admin only.
-     * The match must be in status LIVE — returns 409 otherwise.
+     * The match must be in status LIVE - returns 409 otherwise.
      */
     @POST
     @Path("/{uuid}/matches/{matchId}/second-half")
@@ -1936,7 +1936,7 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
-                    "🟢 Drugo poluvrijeme — " + t.getName(),
+                    "🟢 Drugo poluvrijeme - " + t.getName(),
                     matchVersusLine(match),
                     tournamentScheduleUrl(t)
             );
@@ -1948,7 +1948,7 @@ public class TournamentController {
 
     /**
      * Public read of a match's event timeline, ordered by minute then id.
-     * No auth — same visibility as the match list itself.
+     * No auth - same visibility as the match list itself.
      */
     @GET
     @Path("/{uuid}/matches/{matchId}/events")
@@ -1999,7 +1999,7 @@ public class TournamentController {
         boolean isPenalty = type == MatchEventType.PENALTY_GOAL
                 || type == MatchEventType.PENALTY_MISSED;
         // A penalty kick OR a goal may be recorded without naming the scorer
-        // (anonymous scorer — privacy); then the side comes from teamId. The
+        // (anonymous scorer - privacy); then the side comes from teamId. The
         // goal still counts for that team. Cards always require a player.
         boolean teamOnlyAllowed = isPenalty || type == MatchEventType.GOAL;
 
@@ -2022,7 +2022,7 @@ public class TournamentController {
                     || !playerBelongsToMatch(player, match)) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("PLAYER_NOT_IN_MATCH").build();
             }
-            // A sent-off player (red card) can no longer affect the match — no
+            // A sent-off player (red card) can no longer affect the match - no
             // further goals or cards. The first red card itself is still allowed
             // (the player has no prior red at that point).
             if (matchEventRepo.playerSentOff(match.getId(), player.getId())) {
@@ -2071,7 +2071,7 @@ public class TournamentController {
                 firePushMatchSafe(
                         match.getId(),
                         t.getId(),
-                        "⚽ Gol — " + t.getName(),
+                        "⚽ Gol - " + t.getName(),
                         matchScoreLine(match),
                         tournamentScheduleUrl(t)
                 );
@@ -2120,7 +2120,7 @@ public class TournamentController {
 
     /** Push a realtime "live data changed" ping for a match, keyed on the
      *  tournament's canonical UUID (NOT the request path param, which may be a
-     *  slug — clients filter on the real uuid). */
+     *  slug - clients filter on the real uuid). */
     private void notifyLive(Matches match) {
         if (match == null || match.getTournament() == null) return;
         var t = match.getTournament();
@@ -2172,7 +2172,7 @@ public class TournamentController {
         return t1 + " " + (s1 == null ? "-" : s1) + ":" + (s2 == null ? "-" : s2) + " " + t2;
     }
 
-    /** "Team1 vs Team2" — used by the second-half kickoff push. */
+    /** "Team1 vs Team2" - used by the second-half kickoff push. */
     private static String matchVersusLine(Matches m) {
         String t1 = m.getTeam1() != null && m.getTeam1().getName() != null ? m.getTeam1().getName() : "?";
         String t2 = m.getTeam2() != null && m.getTeam2().getName() != null ? m.getTeam2().getName() : "?";
@@ -2182,7 +2182,7 @@ public class TournamentController {
     /**
      * Fire-and-forget push fan-out wrapper. Swallows every exception
      * so a flaky push service can never abort the underlying match-event
-     * write — the user-facing 201/200 response is what matters; the push
+     * write - the user-facing 201/200 response is what matters; the push
      * is a best-effort side-effect.
      */
     private void firePushSafe(Long tournamentId, String title, String body, String url) {
@@ -2201,7 +2201,7 @@ public class TournamentController {
         try {
             pushService.sendToMatchAndTournamentSubscribers(matchId, tournamentId, title, body, url);
         } catch (Exception e) {
-            // Swallowed — the event is already persisted; push is best-effort.
+            // Swallowed - the event is already persisted; push is best-effort.
         }
     }
 }

@@ -11,7 +11,7 @@
       match while it is being played. Goal events drive the match score
       (recomputed in the service layer). The FK to matches cascades on
       delete so resetting/removing a match takes its events with it.
-      The FKs to players use SET NULL guard via NO ACTION default — a
+      The FKs to players use SET NULL guard via NO ACTION default - a
       player is never deleted while referenced (rosters are edited, not
       hard-deleted mid-tournament).
     -->

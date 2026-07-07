@@ -18,9 +18,9 @@ type AuthValue = {
     loading: boolean
     /** Custom claims attached to the user (server-set via Firebase Admin SDK). */
     claims: Record<string, unknown>
-    /** Convenience flag — true when the `role` custom claim equals `"admin"`. */
+    /** Convenience flag - true when the `role` custom claim equals `"admin"`. */
     isAdmin: boolean
-    /** Slug returned by the backend after /user/me/sync — null until first sync. */
+    /** Slug returned by the backend after /user/me/sync - null until first sync. */
     mySlug: string | null
     /** Email + password sign-in. */
     signIn: (email: string, password: string) => Promise<void>
@@ -52,13 +52,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 } catch {
                     setClaims({})
                 }
-                // Fire-and-forget profile sync — pushes the Firebase displayName
+                // Fire-and-forget profile sync - pushes the Firebase displayName
                 // up so the backend can persist it + assign a public slug. We
                 // don't await this in the auth-state path because it's not
                 // critical to the user being able to use the app.
                 syncProfile(u.displayName ?? null)
                     .then((p) => setMySlug(p.slug ?? null))
-                    .catch(() => { /* best-effort — ignore */ })
+                    .catch(() => { /* best-effort - ignore */ })
             } else {
                 setClaims({})
                 setMySlug(null)

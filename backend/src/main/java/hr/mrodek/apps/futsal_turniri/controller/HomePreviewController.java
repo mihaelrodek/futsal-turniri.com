@@ -38,7 +38,7 @@ import java.util.Optional;
  *     {@code /turniri} (and its English 301 alias {@code /tournaments})
  *     for bots
  *
- * <p>The {@code -list} suffix on the second route is deliberate — the
+ * <p>The {@code -list} suffix on the second route is deliberate - the
  * existing {@link TournamentPreviewController} already owns
  * {@code /api/preview/tournaments/{idOrSlug}}, and a second resource at
  * the same root path would collide on JAX-RS path matching.
@@ -49,7 +49,7 @@ public class HomePreviewController {
     @Inject
     TournamentsRepository tournamentsRepo;
 
-    /** Branded default OG image — the "logo + text" card. Same value the
+    /** Branded default OG image - the "logo + text" card. Same value the
      *  static index.html + the other preview controllers use. */
     @ConfigProperty(name = "app.default-og-image")
     Optional<String> defaultOgImage;
@@ -72,11 +72,11 @@ public class HomePreviewController {
     @Path("/home")
     @Produces("text/html; charset=UTF-8")
     public Response home() {
-        // Crawlers are anonymous — admin-hidden tournaments never render.
+        // Crawlers are anonymous - admin-hidden tournaments never render.
         List<Tournaments> upcoming = tournamentsRepo
                 .findByStartAtGreaterThanEqualOrderByStartAtAsc(OffsetDateTime.now())
                 .stream().filter(t -> !t.isHidden()).toList();
-        // Cap the list — see UPCOMING_LIMIT comment.
+        // Cap the list - see UPCOMING_LIMIT comment.
         if (upcoming.size() > UPCOMING_LIMIT) {
             upcoming = upcoming.subList(0, UPCOMING_LIMIT);
         }
@@ -102,10 +102,10 @@ public class HomePreviewController {
 
     /**
      * Homepage HTML. Goals:
-     *   - One H1 for "Futsal turniri" (the brand) — primary ranking target.
+     *   - One H1 for "Futsal turniri" (the brand) - primary ranking target.
      *   - A short intro paragraph in real HR sentences so Google can
      *     summarise the site for SERP descriptions.
-     *   - A short list of upcoming tournaments — gives Googlebot internal
+     *   - A short list of upcoming tournaments - gives Googlebot internal
      *     links to discover detail pages (which themselves have rich
      *     bodies via {@link TournamentPreviewController}).
      *   - Nav links to /turniri, /karta, /kalendar so PageRank flows
@@ -115,7 +115,7 @@ public class HomePreviewController {
         StringBuilder sb = new StringBuilder(4096);
         appendHeadOpen(sb,
                 "Futsal turniri",
-                "Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, "
+                "Futsal turniri u Hrvatskoj - prati turnire na jednom mjestu, "
                         + "pogledaj raspored, rezultate uživo i statistiku strijelaca.",
                 "https://futsal-turniri.com/");
         // Site-wide WebSite + Organization JSON-LD is already in the static
@@ -136,7 +136,7 @@ public class HomePreviewController {
             }
             sb.append("</ul>\n</section>\n");
         } else {
-            // Empty-state copy is still indexable — the H2 itself helps
+            // Empty-state copy is still indexable - the H2 itself helps
             // Google understand the page's topic even when there are no
             // upcoming tournaments to list.
             sb.append("<section>\n<h2>Nadolazeći Futsal turniri</h2>\n");
@@ -146,7 +146,7 @@ public class HomePreviewController {
         }
 
         // Site-wide nav so Googlebot can crawl secondary pages from here.
-        // All URLs use Croatian slugs — they're the canonical paths now.
+        // All URLs use Croatian slugs - they're the canonical paths now.
         sb.append("<section>\n<h2>Istraži</h2>\n<ul>\n");
         sb.append("<li><a href=\"https://futsal-turniri.com/turniri\">Svi turniri</a></li>\n");
         sb.append("<li><a href=\"https://futsal-turniri.com/kalendar\">Kalendar turnira</a></li>\n");
@@ -168,7 +168,7 @@ public class HomePreviewController {
     private String renderTournamentsList(List<Tournaments> upcoming, List<Tournaments> finished) {
         StringBuilder sb = new StringBuilder(8192);
         appendHeadOpen(sb,
-                "Futsal turniri u Hrvatskoj — popis turnira | futsal-turniri.com",
+                "Futsal turniri u Hrvatskoj - popis turnira | futsal-turniri.com",
                 "Popis svih nadolazećih i odigranih Futsal turnira u Hrvatskoj. "
                         + "Pretraži po lokaciji, datumu i cijeni.",
                 "https://futsal-turniri.com/turniri");
@@ -220,13 +220,13 @@ public class HomePreviewController {
             summary.append(HR_DATE.format(t.getStartAt()));
         }
         if (summary.length() > 0) {
-            sb.append(" — ").append(escapeHtml(summary.toString()));
+            sb.append(" - ").append(escapeHtml(summary.toString()));
         }
         sb.append("</li>\n");
     }
 
     /**
-     * Shared {@code <head>} opener — title, description, canonical, and
+     * Shared {@code <head>} opener - title, description, canonical, and
      * basic OG tags. Stops short of {@code </head>} so callers can append
      * route-specific extras before closing it.
      */

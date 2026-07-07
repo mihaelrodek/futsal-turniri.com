@@ -17,7 +17,7 @@ import java.util.Locale;
 
 /**
  * Renders the 1200×630 PNG share card for a tournament. Pure-function
- * style (no CDI) so it can be called from anywhere — the only state is
+ * style (no CDI) so it can be called from anywhere - the only state is
  * its constants. The endpoint that exposes this lives in
  * {@code TournamentController#shareImage} to keep the {@code @Path("/tournaments")}
  * root owned by a single resource class (a second resource class
@@ -48,7 +48,7 @@ public final class ShareImageRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
 
-            // Vertical gradient background — rows of single-color rects
+            // Vertical gradient background - rows of single-color rects
             // avoid relying on GradientPaint subpixel rounding.
             for (int y = 0; y < HEIGHT; y++) {
                 float ratio = (float) y / HEIGHT;
@@ -75,7 +75,7 @@ public final class ShareImageRenderer {
 
             drawStatusPill(g, t.getStatus());
 
-            // Title — large, wrapped at column width 1000.
+            // Title - large, wrapped at column width 1000.
             String name = safe(t.getName(), "Turnir");
             int titleY = 180;
             Font titleFont = new Font(Font.SANS_SERIF, Font.BOLD, 70);
@@ -161,7 +161,7 @@ public final class ShareImageRenderer {
         g.drawString("★", x + w - 60, y + 56);
 
         g.setColor(WHITE);
-        drawWrapped(g, safe(name, "—"), x + 24, y + 100, w - 48,
+        drawWrapped(g, safe(name, "-"), x + 24, y + 100, w - 48,
                 new Font(Font.SANS_SERIF, Font.BOLD, 32), 38);
     }
 

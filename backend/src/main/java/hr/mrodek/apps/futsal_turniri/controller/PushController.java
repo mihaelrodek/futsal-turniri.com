@@ -19,15 +19,15 @@ import java.util.Map;
  * Subscription management for browser Web Push.
  *
  * <ul>
- *   <li>{@code GET /push/public-key} — unauthenticated. Frontend needs the
+ *   <li>{@code GET /push/public-key} - unauthenticated. Frontend needs the
  *       VAPID public key BEFORE the user has decided whether to subscribe,
  *       so it can be passed to {@code pushManager.subscribe()}. Public
- *       knowledge by design — the private half stays on the server.</li>
- *   <li>{@code POST /push/subscribe} — authenticated. Upserts a
+ *       knowledge by design - the private half stays on the server.</li>
+ *   <li>{@code POST /push/subscribe} - authenticated. Upserts a
  *       subscription owned by the calling Firebase UID. Endpoint URL is
  *       unique system-wide, so re-subscribing the same browser just
  *       refreshes p256dh/auth.</li>
- *   <li>{@code DELETE /push/subscribe} — authenticated. Removes a specific
+ *   <li>{@code DELETE /push/subscribe} - authenticated. Removes a specific
  *       subscription by its endpoint URL. Used when the user toggles
  *       notifications off in browser settings or in the app.</li>
  * </ul>
@@ -52,7 +52,7 @@ public class PushController {
 
     /**
      * Store (or refresh) a browser's subscription for the calling user.
-     * Idempotent — re-subscribing the same endpoint just updates the
+     * Idempotent - re-subscribing the same endpoint just updates the
      * crypto material and lastSeenAt. Returns 201 either way.
      */
     @POST
@@ -80,7 +80,7 @@ public class PushController {
             s.setUserAgent(truncate(ua, 512));
             subRepo.persist(s);
         } else if (existing.getUserUid() == null || existing.getUserUid().equals(myUid)) {
-            // Same user re-subscribing the same browser — refresh crypto
+            // Same user re-subscribing the same browser - refresh crypto
             // material and last-seen. Idempotent.
             existing.setP256dh(body.p256dh());
             existing.setAuth(body.auth());
@@ -90,7 +90,7 @@ public class PushController {
         } else {
             // The endpoint URL is already claimed by a different user.
             // We REFUSE the silent takeover that the old code performed,
-            // because endpoint URLs aren't secrets — the browser
+            // because endpoint URLs aren't secrets - the browser
             // transmits them to the push service and some implementations
             // expose them in extension contexts. Silently reassigning
             // ownership would let an attacker who learned a victim's
@@ -108,8 +108,8 @@ public class PushController {
      *
      * <p>Ownership IS enforced: the delete is scoped to rows where
      * {@code userUid = jwt.subject AND endpoint = ?}. Push endpoint URLs
-     * are not secrets — the browser transmits them to the push service
-     * and a few extension contexts can read them — so an attacker who
+     * are not secrets - the browser transmits them to the push service
+     * and a few extension contexts can read them - so an attacker who
      * learns a victim's endpoint must not be able to unsubscribe them.
      */
     @DELETE

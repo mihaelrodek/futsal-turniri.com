@@ -24,7 +24,7 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
 import { MonoLabel, PitchBackdrop, PrimaryButton, GhostButton } from "../ui/pitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Vodič / "Što nudimo" — marketing-style tour of the app, reached from the
+   Vodič / "Što nudimo" - marketing-style tour of the app, reached from the
    floating "?" button. Structure: hero (+ quick-overview panel) → five
    numbered chapters that follow the organizer's journey → final CTA.
    Purely presentational; no data fetching.
@@ -140,7 +140,7 @@ function QuickCard({ icon, title, sub }: { icon: ElementType; title: string; sub
 export default function GuidePage() {
     const navigate = useNavigate()
     useDocumentHead({
-        title: "Što nudimo — Futsal Turniri",
+        title: "Što nudimo - Futsal Turniri",
         description:
             "Sve što trebaš za futsal turnir na jednom mjestu: kreiranje, ždrijeb, raspored, vođenje uživo, rezultati, statistika, obavijesti i dijeljenje.",
     })
@@ -190,11 +190,11 @@ export default function GuidePage() {
                             mt="4"
                             mb="4"
                         >
-                            Cijeli futsal turnir —{" "}
+                            Cijeli futsal turnir -{" "}
                             <Box as="span" color="#ffd54a">
                                 od prijava do pehara
                             </Box>{" "}
-                            — na jednom mjestu
+                            - na jednom mjestu
                         </Heading>
                         <Text
                             fontSize={{ base: "15px", md: "17px" }}
@@ -203,7 +203,7 @@ export default function GuidePage() {
                             lineHeight="1.6"
                         >
                             Kreiraj turnir, izvuci ždrijeb, generiraj raspored i vodi utakmice
-                            uživo — a rezultati, tablice i statistika ažuriraju se sami, u
+                            uživo - a rezultati, tablice i statistika ažuriraju se sami, u
                             stvarnom vremenu.
                         </Text>
                         <HStack gap="3" mt="7" wrap="wrap">
@@ -236,9 +236,9 @@ export default function GuidePage() {
                             BRZI PREGLED
                         </MonoLabel>
                         <VStack align="stretch" gap="2.5">
-                            <QuickCard icon={LuShuffle} title="Ždrijeb" sub="Automatski ili ručni — grupe i eliminacija" />
+                            <QuickCard icon={LuShuffle} title="Ždrijeb" sub="Automatski ili ručni - grupe i eliminacija" />
                             <QuickCard icon={LuTimer} title="Utakmice uživo" sub="Mjerač, golovi, kartoni, prekršaji, penali" />
-                            <QuickCard icon={LuChartColumn} title="Tablice i statistika" sub="Poredak, strijelci, bracket — sve samo" />
+                            <QuickCard icon={LuChartColumn} title="Tablice i statistika" sub="Poredak, strijelci, bracket - sve samo" />
                             <QuickCard icon={LuBellRing} title="Obavijesti" sub="Push za početak, gol i kraj utakmice" />
                         </VStack>
                     </Box>
@@ -249,7 +249,7 @@ export default function GuidePage() {
             <Chapter
                 n={1}
                 title="Kreiranje i priprema"
-                intro="Sve kreće od turnira: uneseš osnovne podatke, dodaš ekipe i igrače — i spreman si za ždrijeb."
+                intro="Sve kreće od turnira: uneseš osnovne podatke, dodaš ekipe i igrače - i spreman si za ždrijeb."
             >
                 <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
                     <FeatureCard f={{ icon: LuTrophy, title: "Novi turnir u par minuta", desc: "Naziv, lokacija, termin, kotizacija i nagrade. Format po želji: grupe + eliminacija ili samo eliminacija." }} />
@@ -262,12 +262,12 @@ export default function GuidePage() {
             <Chapter
                 n={2}
                 title="Raspored bez ručnog računanja"
-                intro="Odaberi trajanje poluvremena i pauze — termini svih utakmica izračunaju se sami."
+                intro="Odaberi trajanje poluvremena i pauze - termini svih utakmica izračunaju se sami."
             >
                 <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuCalendarClock, title: "Automatski termini", desc: "Satnica za cijeli turnir jednim klikom — grupe pa eliminacija, redom po terenu." }} />
-                    <FeatureCard f={{ icon: LuMove, title: "Povuci i ispravi", desc: "Preslaguj utakmice drag & drop-om (radi i na mobitelu) — satnica se sama preračuna." }} />
-                    <FeatureCard f={{ icon: LuListOrdered, title: "Kalendar za ekipe", desc: "Svaka utakmica ima 'Dodaj u kalendar' — igrači dobiju termin u svoj mobitel." }} />
+                    <FeatureCard f={{ icon: LuCalendarClock, title: "Automatski termini", desc: "Satnica za cijeli turnir jednim klikom - grupe pa eliminacija, redom po terenu." }} />
+                    <FeatureCard f={{ icon: LuMove, title: "Povuci i ispravi", desc: "Preslaguj utakmice drag & drop-om (radi i na mobitelu) - satnica se sama preračuna." }} />
+                    <FeatureCard f={{ icon: LuListOrdered, title: "Kalendar za ekipe", desc: "Svaka utakmica ima 'Dodaj u kalendar' - igrači dobiju termin u svoj mobitel." }} />
                 </Grid>
             </Chapter>
 
@@ -275,12 +275,12 @@ export default function GuidePage() {
             <Chapter
                 n={3}
                 title="Vođenje utakmica uživo"
-                intro="Zapisnik na mobitelu umjesto papira: sve što upišeš odmah vide svi — kod kuće, u dvorani i na velikom ekranu."
+                intro="Zapisnik na mobitelu umjesto papira: sve što upišeš odmah vide svi - kod kuće, u dvorani i na velikom ekranu."
             >
                 <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
                     <FeatureCard f={{ icon: LuTimer, title: "Mjerač po poluvremenima", desc: "1. poluvrijeme → pauza → 2. poluvrijeme → kraj. Sat se zaustavlja na isteku i čeka tebe." }} />
-                    <FeatureCard f={{ icon: LuRadioTower, title: "Golovi i događaji", desc: "Gol jednim dodirom na igrača — minuta se upiše sama. Žuti/crveni kartoni, prekršaji (deveterac) i penali." }} />
-                    <FeatureCard f={{ icon: LuMonitorPlay, title: "TV / semafor prikaz", desc: "Fullscreen semafor za dvoranu: veliki rezultat, mjerač, prekršaji i strijelci — uživo." }} />
+                    <FeatureCard f={{ icon: LuRadioTower, title: "Golovi i događaji", desc: "Gol jednim dodirom na igrača - minuta se upiše sama. Žuti/crveni kartoni, prekršaji (deveterac) i penali." }} />
+                    <FeatureCard f={{ icon: LuMonitorPlay, title: "TV / semafor prikaz", desc: "Fullscreen semafor za dvoranu: veliki rezultat, mjerač, prekršaji i strijelci - uživo." }} />
                 </Grid>
             </Chapter>
 
@@ -288,12 +288,12 @@ export default function GuidePage() {
             <Chapter
                 n={4}
                 title="Rezultati, tablice i statistika"
-                intro="Nakon svakog sudačkog zvižduka sve je već izračunato — bez Excela i ručnog zbrajanja."
+                intro="Nakon svakog sudačkog zvižduka sve je već izračunato - bez Excela i ručnog zbrajanja."
             >
                 <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
                     <FeatureCard f={{ icon: LuChartColumn, title: "Tablice i bracket", desc: "Poredak grupa (bodovi, razlika, međusobni), eliminacijski bracket i tijek svake utakmice." }} />
-                    <FeatureCard f={{ icon: LuBellRing, title: "Obavijesti (zvonce)", desc: "Prati turnir ili utakmicu — push obavijest kad počne, kad padne gol i kad završi." }} />
-                    <FeatureCard f={{ icon: LuMap, title: "Karta i pretraga", desc: "Svi turniri na karti — filtriraj po blizini, datumu i kotizaciji. Statistika strijelaca kroz sve turnire." }} />
+                    <FeatureCard f={{ icon: LuBellRing, title: "Obavijesti (zvonce)", desc: "Prati turnir ili utakmicu - push obavijest kad počne, kad padne gol i kad završi." }} />
+                    <FeatureCard f={{ icon: LuMap, title: "Karta i pretraga", desc: "Svi turniri na karti - filtriraj po blizini, datumu i kotizaciji. Statistika strijelaca kroz sve turnire." }} />
                 </Grid>
             </Chapter>
 
@@ -304,7 +304,7 @@ export default function GuidePage() {
                 intro="Neka se za turnir čuje: sve je spremno za objavu i ugradnju gdje god trebaš."
             >
                 <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuQrCode, title: "QR kod i plakat", desc: "Isprintaj QR kod dvorane — gledatelji skeniraju i prate rezultate. Plakat turnira uz jedan klik." }} />
+                    <FeatureCard f={{ icon: LuQrCode, title: "QR kod i plakat", desc: "Isprintaj QR kod dvorane - gledatelji skeniraju i prate rezultate. Plakat turnira uz jedan klik." }} />
                     <FeatureCard f={{ icon: LuShare2, title: "Podijeli i ugradi", desc: "Podijeli bracket kao sliku ili ugradi rezultate (embed) u klupsku stranicu ili portal." }} />
                     <FeatureCard f={{ icon: LuDownload, title: "Instaliraj kao aplikaciju", desc: "Dodaj na početni zaslon (iPhone i Android) i koristi kao pravu aplikaciju." }} />
                 </Grid>
@@ -330,7 +330,7 @@ export default function GuidePage() {
                     Spreman za turnir bez stresa?
                 </Heading>
                 <Text fontSize="15px" color="fg.muted" maxW="480px" mx="auto" mt="2">
-                    Besplatno je i traje par minuta — ostalo aplikacija odradi za tebe.
+                    Besplatno je i traje par minuta - ostalo aplikacija odradi za tebe.
                 </Text>
                 <HStack gap="3" wrap="wrap" justify="center" mt="6">
                     <PrimaryButton icon={<LuTrophy size={16} />} onClick={() => navigate("/turniri/novi")}>

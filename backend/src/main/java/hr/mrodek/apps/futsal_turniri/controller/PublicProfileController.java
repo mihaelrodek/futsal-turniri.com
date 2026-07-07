@@ -34,8 +34,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Anonymous-readable profile pages. Anyone can hit these — there is no
- * {@code @Authenticated} on the class — because the product decision is
+ * Anonymous-readable profile pages. Anyone can hit these - there is no
+ * {@code @Authenticated} on the class - because the product decision is
  * that profile *pages* are publicly visible (so people can share a link to
  * their tournament history).
  *
@@ -44,8 +44,8 @@ import java.util.Set;
  * the full profile.
  *
  * Routes:
- *   GET /public/users/{slug}                              — profile + teams + tournaments
- *   GET /public/users/{slug}/teams/{teamId}/matches       — match-by-match history for one team
+ *   GET /public/users/{slug}                              - profile + teams + tournaments
+ *   GET /public/users/{slug}/teams/{teamId}/matches       - match-by-match history for one team
  */
 @Path("/public/users")
 @Produces(MediaType.APPLICATION_JSON)
@@ -64,7 +64,7 @@ public class PublicProfileController {
      *
      * We check {@code jwt.getSubject()} instead of
      * {@code identity.isAnonymous()} because Quarkus OIDC runs in
-     * non-proactive mode (proactive=false) — under that setting,
+     * non-proactive mode (proactive=false) - under that setting,
      * SecurityIdentity stays anonymous on endpoints without
      * {@code @Authenticated} even when a valid bearer token is in the
      * request. Injecting JsonWebToken and reading the subject DOES force
@@ -82,8 +82,8 @@ public class PublicProfileController {
 
         String uid = profile.getUserUid();
 
-        // Load every preset the profile owner is a party to — primary OR
-        // co-owner — across BOTH active and archived rows. We need the
+        // Load every preset the profile owner is a party to - primary OR
+        // co-owner - across BOTH active and archived rows. We need the
         // archived set to filter participations, the active+claimed set
         // to attach partner info to each team summary, and the legacy
         // by-name list for the participations query fallback.
@@ -92,12 +92,12 @@ public class PublicProfileController {
                 uid
         );
 
-        // Archived names — hidden from EVERYONE (owner + visitors).
+        // Archived names - hidden from EVERYONE (owner + visitors).
         // Once both owners agreed to archive, the team is "gone" from
         // public-facing UI even though the underlying Teams rows stay
         // for tournament-side history.
         Set<String> archivedLowered = new HashSet<>();
-        // Hidden names — only filtered for non-owner viewers.
+        // Hidden names - only filtered for non-owner viewers.
         Set<String> hiddenLowered = new HashSet<>();
         // Map of name → partner profile, used to enrich TeamSummary so
         // the UI can show a clickable "Partner: X" on each chip.
@@ -190,7 +190,7 @@ public class PublicProfileController {
         String phoneCountry = anon ? null : profile.getPhoneCountry();
         String phone = anon ? null : profile.getPhone();
 
-        // Avatar — proxied URL pattern, same as posters. Public per product
+        // Avatar - proxied URL pattern, same as posters. Public per product
         // decision (the page itself is anonymous-readable). Touching the
         // lazy association requires an active transaction; the surrounding
         // request scope provides one.
@@ -223,7 +223,7 @@ public class PublicProfileController {
         var team = teamRepo.findByIdOptional(teamId)
                 .orElseThrow(() -> new NotFoundException("Par nije pronađen: " + teamId));
 
-        // Make sure this team actually belongs to that profile — either by uid
+        // Make sure this team actually belongs to that profile - either by uid
         // or by preset-name fallback. Prevents anyone from drilling into other
         // people's teams by guessing teamId via someone else's slug.
         boolean ownsByUid = team.getSubmittedByUid() != null
@@ -236,7 +236,7 @@ public class PublicProfileController {
                     .anyMatch(n -> n != null && n.trim().toLowerCase(Locale.ROOT).equals(teamName));
         }
         if (!ownsByUid && !ownsByPreset) {
-            // Treat as missing — same shape as a wrong slug so we don't leak
+            // Treat as missing - same shape as a wrong slug so we don't leak
             // existence-by-id.
             throw new NotFoundException("Par nije pronađen za ovaj profil.");
         }
@@ -275,7 +275,7 @@ public class PublicProfileController {
     }
 
     /**
-     * Aggregate career stats — totals across every team this profile owns.
+     * Aggregate career stats - totals across every team this profile owns.
      *
      * <p>The endpoint runs the same ownership/archive/hide filtering as
      * {@link #getBySlug(String)} so the numbers shown on a profile match
@@ -290,7 +290,7 @@ public class PublicProfileController {
 
         String uid = profile.getUserUid();
 
-        // Mirror the archive filter from getBySlug — archived teams don't
+        // Mirror the archive filter from getBySlug - archived teams don't
         // belong in stats either.
         var ownedPresets = presetRepo.list("userUid = ?1 or coOwnerUid = ?1", uid);
         Set<String> archivedLowered = new HashSet<>();
@@ -321,11 +321,11 @@ public class PublicProfileController {
         int goalsFor = 0;
         int goalsAgainst = 0;
 
-        // Top-team aggregation — by normalized name.
+        // Top-team aggregation - by normalized name.
         Map<String, int[]> teamPlays = new HashMap<>();
         Map<String, String> teamPretty = new HashMap<>();
 
-        // Recent — collect (Teams ref, Tournament) so we can re-sort by date.
+        // Recent - collect (Teams ref, Tournament) so we can re-sort by date.
         record Recent(Teams team, Tournaments tournament) {}
         List<Recent> recents = new ArrayList<>();
 
@@ -384,7 +384,7 @@ public class PublicProfileController {
             }
         }
 
-        // 6 most recent tournaments. Freshest first by startAt — fall
+        // 6 most recent tournaments. Freshest first by startAt - fall
         // back to id-stable order when startAt is null.
         recents.sort((a, b) -> {
             var aT = a.tournament().getStartAt();

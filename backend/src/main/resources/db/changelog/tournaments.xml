@@ -7,7 +7,7 @@
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
     <!--
-        Tournaments — the central entity. Full consolidated definition
+        Tournaments - the central entity. Full consolidated definition
         (pre-launch baseline): every column lives here instead of being
         layered on by a chain of addColumn migrations.
     -->

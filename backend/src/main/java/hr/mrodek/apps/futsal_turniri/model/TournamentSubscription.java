@@ -11,11 +11,11 @@ import java.time.OffsetDateTime;
  * One user's opt-in to receive Web Push notifications for a single
  * tournament's live events (goals, second-half kickoff, finished matches).
  *
- * <p>Identity is the {@code (user_uid, tournament_id)} pair — a uniqueness
+ * <p>Identity is the {@code (user_uid, tournament_id)} pair - a uniqueness
  * constraint on those two columns makes the subscribe endpoint idempotent
  * regardless of how many times the bell is tapped. Cascade-deleted with
  * the parent tournament; {@code user_uid} is the Firebase UID (plain
- * string, no FK — see {@code push_subscriptions} for the same convention).
+ * string, no FK - see {@code push_subscriptions} for the same convention).
  */
 @Entity
 @Table(name = "tournament_subscriptions")

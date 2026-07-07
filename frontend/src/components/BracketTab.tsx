@@ -57,23 +57,23 @@ import { toPng } from "html-to-image"
    in round R+1. The library handles all column layout + SVG connectors
    from there; we just provide identity + ordering.
 
-   Round titles come straight from our backend (BracketRound.title) — set
+   Round titles come straight from our backend (BracketRound.title) - set
    on the lib via `tournamentRoundText` which the lib renders as the column
    heading. State maps PLAYED/RUNNING/SCHEDULED so the lib's hover and
    "winner" styles can fire (though our custom matchComponent ignores
    most of them in favour of the BracketMatch).
 
-   The 3rd-place fixture is intentionally NOT in this list — it stays as a
+   The 3rd-place fixture is intentionally NOT in this list - it stays as a
    separate Panel below the bracket. Putting it in the chain would force
    the lib to draw a spurious connector to the Finale.
    ────────────────────────────────────────────────────────────────────── */
-/* Pitch-themed bracket theme — what the library uses for round-header
+/* Pitch-themed bracket theme - what the library uses for round-header
    pills, connector lines, the SVG canvas background, and the default
    text colour. We pass it via the `theme` prop; without it the library
    falls back to its dark "g-loot" theme (the navy/black round headers
    in the bug screenshot).
 
-   Note: the public ThemeType in the lib's typings is slightly stale —
+   Note: the public ThemeType in the lib's typings is slightly stale -
    it declares `roundHeaders.background`, but the actual createTheme
    implementation reads `roundHeader.backgroundColor` (singular,
    no `s`). The cast to `any` here lets us pass the real schema. */
@@ -163,7 +163,7 @@ function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
 }
 
 /**
- * "Eliminacija" tab — the knockout bracket.
+ * "Eliminacija" tab - the knockout bracket.
  *
  * Before generation: EmptyState with a "generate" button.
  * After: rounds as scrollable columns, podium banner, third-place section,
@@ -176,7 +176,7 @@ function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
  */
 type EditForm = { s1: string; s2: string; p1: string; p2: string }
 
-/** First opaque background colour walking up from a node — used as the
+/** First opaque background colour walking up from a node - used as the
  *  backdrop for the shared bracket image so card gaps aren't transparent
  *  (and it matches the current light/dark theme). */
 function resolveBackdrop(el: HTMLElement | null): string {
@@ -207,7 +207,7 @@ function useDragPan() {
         // click, so it can't wrongly swallow this press's click.
         drag.current.moved = false
         // Don't start a pan when pressing an interactive control (Start menu,
-        // result inputs, edit buttons, links…) — otherwise the swallow-click
+        // result inputs, edit buttons, links…) - otherwise the swallow-click
         // logic below eats their click and e.g. the "Start" menu never opens.
         // Pan only from the empty bracket background / non-interactive areas.
         const target = e.target as HTMLElement | null
@@ -230,7 +230,7 @@ function useDragPan() {
         }
         // NOTE: do NOT setDragging(true) here. A press that turns out to be a
         // plain click must not trigger a re-render between pointerdown and the
-        // click — the library re-renders each match inside an SVG foreignObject,
+        // click - the library re-renders each match inside an SVG foreignObject,
         // which would replace the card's DOM node and the browser would then
         // never fire the click (so "open timeline" silently failed on desktop;
         // touch was unaffected because it returns early above). Flip to the
@@ -271,11 +271,11 @@ function useDragPan() {
     }
 }
 
-/** `canEdit` — true when the viewer is the tournament owner or an admin.
+/** `canEdit` - true when the viewer is the tournament owner or an admin.
  *  Drives all mutating UI: regenerate bracket, enter result, start a live
  *  match. When false the tab is read-only and the toolbar is collapsed.
  *
- *  `tournamentStarted` — set once any match goes LIVE or FINISHED. When
+ *  `tournamentStarted` - set once any match goes LIVE or FINISHED. When
  *  true, "Ponovno generiraj" is removed from the toolbar (regenerating a
  *  bracket mid-tournament would wipe live scores). canEdit controls
  *  visibility of result entry on individual matches; tournamentStarted
@@ -293,7 +293,7 @@ export default function BracketTab({
     tournamentStarted?: boolean
     /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
-    /** Tournament format — the manual-seed (nositelji) ordering UI is only
+    /** Tournament format - the manual-seed (nositelji) ordering UI is only
      *  shown for KNOCKOUT_ONLY, where the bracket is seeded directly from the
      *  team list instead of group standings. */
     format?: string | null
@@ -311,27 +311,27 @@ export default function BracketTab({
     /** Match whose read-only timeline modal is open (any viewer can open it). */
     const [timelineMatch, setTimelineMatch] = useState<BracketMatch | null>(null)
     // Half config (schedule) so inline row clocks count UP + freeze at each
-    // half boundary, like the dialog clock — not a free-running timer.
+    // half boundary, like the dialog clock - not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
-    // Manual draw — organizer arranges teams into the bracket's first-round slots.
+    // Manual draw - organizer arranges teams into the bracket's first-round slots.
     const [manualOpen, setManualOpen] = useState(false)
     const [slots, setSlots] = useState<(number | null)[]>([])
     const [generatingManual, setGeneratingManual] = useState(false)
     const [resetting, setResetting] = useState(false)
-    // Manual seeds (nositelji) — KNOCKOUT_ONLY only. The organizer orders the
+    // Manual seeds (nositelji) - KNOCKOUT_ONLY only. The organizer orders the
     // teams; the auto draw then produces the same bracket every time.
     const [seedsOpen, setSeedsOpen] = useState(false)
     const [seedOrder, setSeedOrder] = useState<BracketCandidate[]>([])
     const [savingSeeds, setSavingSeeds] = useState(false)
-    // Bye picker — when the qualifier count isn't a power of two, the organizer
+    // Bye picker - when the qualifier count isn't a power of two, the organizer
     // chooses which teams advance directly (round-one bye) before generating.
     const [byeOpen, setByeOpen] = useState(false)
     const [byeIds, setByeIds] = useState<Set<number>>(new Set())
     /** Which destructive bracket action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "reset" | "regenerate">(null)
     // Eligible teams for the bracket (group qualifiers / all teams) + whether
-    // the group stage is finished — both come from the qualifiers endpoint.
+    // the group stage is finished - both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
     const [groupStageComplete, setGroupStageComplete] = useState(true)
 
@@ -348,14 +348,14 @@ export default function BracketTab({
                 setHalfLengthMin(s.halfLengthMin ?? null)
                 setHalfCount(s.halfCount ?? null)
             })
-            .catch(() => { /* schedule may not be generated yet — clock free-runs */ })
+            .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
         fetchBracketQualifiers(uuid)
             .then((q) => {
                 if (cancelled) return
                 setQualifiers(q.teams)
                 setGroupStageComplete(q.groupStageComplete)
             })
-            .catch(() => { /* leave defaults — manual draw stays gated */ })
+            .catch(() => { /* leave defaults - manual draw stays gated */ })
         return () => { cancelled = true }
     }, [uuid])
 
@@ -460,7 +460,7 @@ export default function BracketTab({
         }
     }
 
-    /** "Resetiraj" wipes every elimination match — confirm in a popup modal. */
+    /** "Resetiraj" wipes every elimination match - confirm in a popup modal. */
     function confirmResetBracket() {
         setConfirmAction("reset")
     }
@@ -485,7 +485,7 @@ export default function BracketTab({
         }
     }
 
-    /* ── Library bridge + auto-scroll — every hook here MUST run on
+    /* ── Library bridge + auto-scroll - every hook here MUST run on
        every render regardless of the loading / no-bracket early
        returns below. React's "Rules of Hooks" rejects any render where
        the hook count changes from the previous render, which is what
@@ -505,7 +505,7 @@ export default function BracketTab({
     }, [safeRounds])
 
     /* Auto-scroll to the currently-LIVE match. Falls back to null
-       when the bracket isn't loaded yet — the effect early-returns
+       when the bracket isn't loaded yet - the effect early-returns
        on null so the scroll only fires after data + DOM both exist. */
     const liveMatchId = useMemo(() => {
         for (const r of safeRounds) {
@@ -597,7 +597,7 @@ export default function BracketTab({
                         title: tournamentName ?? "Eliminacijska ljestvica",
                     })
                 } catch {
-                    /* user cancelled the share sheet — no-op */
+                    /* user cancelled the share sheet - no-op */
                 }
             } else {
                 // No file-share support (most desktops) → download the image.
@@ -622,7 +622,7 @@ export default function BracketTab({
     // Place the 3rd-place card directly under the Finale. The library centres
     // the final vertically, so we measure the final card's actual position
     // (relative to the scroll content) and pin the 3rd-place card just below it
-    // — anchoring to the bracket bottom would drift far away on tall brackets.
+    // - anchoring to the bracket bottom would drift far away on tall brackets.
     const contentRef = useRef<HTMLDivElement>(null)
     const finalCardRef = useRef<HTMLDivElement>(null)
     const [thirdPos, setThirdPos] = useState<
@@ -662,7 +662,7 @@ export default function BracketTab({
         }
     }, [bracket, editingId, startingId, liveMatch])
 
-    // ─── Manual draw — organizer arranges teams into first-round slots ───
+    // ─── Manual draw - organizer arranges teams into first-round slots ───
     const nextPow2 = (x: number) => {
         let p = 2
         while (p < x) p <<= 1
@@ -672,13 +672,13 @@ export default function BracketTab({
     const pool = qualifiers
     const bracketN = pool.length >= 2 ? nextPow2(pool.length) : 2
     const matchCount = bracketN / 2
-    // How many teams get a round-one bye (direct advance) — only when the
+    // How many teams get a round-one bye (direct advance) - only when the
     // qualifier count isn't already a power of two.
     const byesNeeded = pool.length >= 2 ? bracketN - pool.length : 0
 
     function openManualBracket() {
-        // Put the teams that advance directly (byes) FIRST, at the top — each in
-        // its own match with an empty opponent — then pair up the rest below.
+        // Put the teams that advance directly (byes) FIRST, at the top - each in
+        // its own match with an empty opponent - then pair up the rest below.
         const seed: (number | null)[] = new Array(bracketN).fill(null)
         for (let i = 0; i < byesNeeded; i++) seed[2 * i] = pool[i]?.id ?? null
         let slot = byesNeeded * 2
@@ -729,7 +729,7 @@ export default function BracketTab({
                     setSlot(idx, e.target.value === "" ? null : Number(e.target.value))
                 }
             >
-                <option value="">— prazno (prolaz) —</option>
+                <option value="">- prazno (prolaz) -</option>
                 {pool.map((tm) => (
                     <option key={tm.id} value={tm.id}>
                         {tm.name?.trim() || "Bez imena"}
@@ -744,7 +744,7 @@ export default function BracketTab({
             <VStack align="stretch" gap="3">
                 <HStack justify="space-between" align="center">
                     <Text fontWeight="bold" fontSize="sm">
-                        Ručni ždrijeb — složi parove
+                        Ručni ždrijeb - složi parove
                     </Text>
                     <Button
                         size="xs"
@@ -793,7 +793,7 @@ export default function BracketTab({
         </Panel>
     )
 
-    // ─── Manual seeds (nositelji) — KNOCKOUT_ONLY deterministic ordering ───
+    // ─── Manual seeds (nositelji) - KNOCKOUT_ONLY deterministic ordering ───
     const isKnockoutOnly = format === "KNOCKOUT_ONLY"
 
     function openSeeds() {
@@ -830,7 +830,7 @@ export default function BracketTab({
             <VStack align="stretch" gap="3">
                 <HStack justify="space-between" align="center">
                     <Text fontWeight="bold" fontSize="sm">
-                        Nosioci — posloži redoslijed
+                        Nosioci - posloži redoslijed
                     </Text>
                     <Button
                         size="xs"
@@ -843,7 +843,7 @@ export default function BracketTab({
                 </HStack>
                 <Text fontSize="xs" color="fg.muted">
                     Redoslijed određuje parove (1. protiv zadnjeg, itd.). Isti redoslijed
-                    uvijek daje istu ljestvicu — kao na Challongeu.
+                    uvijek daje istu ljestvicu - kao na Challongeu.
                 </Text>
                 <VStack align="stretch" gap="1.5">
                     {seedOrder.map((tm, idx) => (
@@ -900,7 +900,7 @@ export default function BracketTab({
         </Panel>
     )
 
-    // ─── Bye picker — choose who advances directly when not a power of two ───
+    // ─── Bye picker - choose who advances directly when not a power of two ───
     function openByePicker() {
         setByeIds(new Set(pool.slice(0, byesNeeded).map((tm) => tm.id)))
         setByeOpen(true)
@@ -1017,7 +1017,7 @@ export default function BracketTab({
                             : !groupStageComplete
                                 ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
                                 : isKnockoutOnly
-                                    ? "Posloži nosioce pa generiraj — ista ljestvica svaki put. Ili ručno složi parove."
+                                    ? "Posloži nosioce pa generiraj - ista ljestvica svaki put. Ili ručno složi parove."
                                     : "Generiraj automatski iz kvalifikanata ili ručno složi parove sam."
                     }
                     action={
@@ -1063,7 +1063,7 @@ export default function BracketTab({
     const editB = parseInt(form.s2, 10)
     const showPenaltyRow = Number.isFinite(editA) && Number.isFinite(editB) && editA === editB
 
-    // Podium — derived from the decided final and third-place matches.
+    // Podium - derived from the decided final and third-place matches.
     const finalMatch = bracket.rounds.find((r) => r.stage === "FINAL")?.matches[0]
     const champion =
         finalMatch && finalMatch.winnerTeamId != null
@@ -1087,10 +1087,10 @@ export default function BracketTab({
 
     const roundCount = bracket.rounds.length
 
-    // Once a real ELIMINATION match is played the draw is locked — re-drawing
-    // would wipe results — so the draw buttons disappear. Based only on bracket
+    // Once a real ELIMINATION match is played the draw is locked - re-drawing
+    // would wipe results - so the draw buttons disappear. Based only on bracket
     // matches (NOT the tournament status). A bye match is auto-FINISHED on
-    // generation (one team, no game) — it must NOT count as "played", otherwise
+    // generation (one team, no game) - it must NOT count as "played", otherwise
     // a freshly-drawn bracket with byes would hide the reset button.
     const started =
         [...bracket.rounds.flatMap((r) => r.matches), ...(bracket.thirdPlace ? [bracket.thirdPlace] : [])]
@@ -1101,7 +1101,7 @@ export default function BracketTab({
             )
 
     // `libraryMatches` + `matchById` are computed above (before the
-    // early returns) — re-aliasing here for readability only. Each
+    // early returns) - re-aliasing here for readability only. Each
     // matchComponent invocation looks up the ORIGINAL BracketMatch by
     // id to recover all the live state the lib doesn't carry (score,
     // liveStartedAt, status, etc.).
@@ -1121,7 +1121,7 @@ export default function BracketTab({
         // (`width` × `boxHeight` from options.style) and draws bracket
         // connectors from BOX-CENTER to next BOX-CENTER. If our card
         // renders shorter than the foreignObject (e.g. an empty card
-        // with just two "— —" placeholder rows), it sits at the TOP of
+        // with just two "- -" placeholder rows), it sits at the TOP of
         // the box and the connector line visually misses it.
         //
         // Wrapping the card in a flex container that fills the
@@ -1175,7 +1175,7 @@ export default function BracketTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Owner draw controls — right-aligned. "Ponovno (auto)" wipes the
+            {/* Owner draw controls - right-aligned. "Ponovno (auto)" wipes the
                 bracket so it asks for confirmation first. Both hidden once any
                 match is LIVE/FINISHED (re-drawing would destroy real results).
                 The "Podijeli bracket" button now floats at the bottom (below). */}
@@ -1227,7 +1227,7 @@ export default function BracketTab({
                 }}
             />
 
-            {/* Manual draw editor — shown above the bracket when opened. */}
+            {/* Manual draw editor - shown above the bracket when opened. */}
             {canEdit && !started && manualOpen && manualBracketPanel}
 
             {/* ── Podium banner ──────────────────────────────────────────── */}
@@ -1275,13 +1275,13 @@ export default function BracketTab({
                 </Panel>
             )}
 
-            {/* ── Bracket — driven by @g-loot/react-tournament-brackets.
+            {/* ── Bracket - driven by @g-loot/react-tournament-brackets.
                  The library renders the SVG layout + connectors; our
                  custom matchComponent feeds each match into the same
                  MatchCard we used before, so the Pitch theme (yellow
                  Finale, live red border, edit / Pokreni uživo buttons)
                  stays visually identical. The 3rd-place fixture renders
-                 in its own Panel BELOW the bracket — keeping it out of
+                 in its own Panel BELOW the bracket - keeping it out of
                  the matches[] array prevents the lib from drawing a
                  spurious connector to the Finale. */}
             <Panel p="0" overflow="hidden" position="relative">
@@ -1319,7 +1319,7 @@ export default function BracketTab({
                                             fontFamily:
                                                 "'JetBrains Mono', ui-monospace, monospace",
                                             // Override the lib's
-                                            // "Round {N}" default — return
+                                            // "Round {N}" default - return
                                             // OUR backend round titles
                                             // ("Četvrtfinale", "Polufinale",
                                             // "Finale", …). 1-indexed.
@@ -1356,7 +1356,7 @@ export default function BracketTab({
                         )
                     })()}
 
-                    {/* 3rd-place playoff sits directly under the Finale —
+                    {/* 3rd-place playoff sits directly under the Finale -
                         positioned from the measured final-card geometry
                         (thirdPos). Until measured it falls back to the
                         bottom-right corner. Kept out of the lib's match chain so
@@ -1421,7 +1421,7 @@ export default function BracketTab({
                     </Box>
                 </Box>
 
-                {/* Floating action bar — anchored to the bottom-centre of the
+                {/* Floating action bar - anchored to the bottom-centre of the
                     bracket panel itself (not the viewport), floating over the
                     bracket. "Na redu" jumps to the LIVE (or next scheduled)
                     match; "Podijeli" shares the bracket image. */}
@@ -1470,7 +1470,7 @@ export default function BracketTab({
                 </Flex>
             </Panel>
 
-            {/* ── Live-match dialog — goals, cards, finish. ──────────────── */}
+            {/* ── Live-match dialog - goals, cards, finish. ──────────────── */}
             {liveMatch && (
                 <BracketLiveMatchDialog
                     uuid={uuid}
@@ -1480,7 +1480,7 @@ export default function BracketTab({
                 />
             )}
 
-            {/* Read-only timeline modal — opens for anyone clicking a match. */}
+            {/* Read-only timeline modal - opens for anyone clicking a match. */}
             {timelineMatch && (
                 <MatchTimelineModal
                     uuid={uuid}
@@ -1500,7 +1500,7 @@ export default function BracketTab({
    ────────────────────────────────────────────────────────────────────────── */
 type MatchCardProps = {
     match: BracketMatch
-    /** Owner / admin only — controls visibility of every mutating action
+    /** Owner / admin only - controls visibility of every mutating action
      *  (result entry, start-live, open-live management). When false the
      *  card is purely informational. */
     canEdit: boolean
@@ -1511,10 +1511,10 @@ type MatchCardProps = {
     starting: boolean
     isFinal?: boolean
     isThirdPlace?: boolean
-    /** Tournament half config — drives the inline TIMER clock countdown. */
+    /** Tournament half config - drives the inline TIMER clock countdown. */
     halfLengthMin?: number | null
     halfCount?: number | null
-    /** Tournament uuid — needed to persist the optional penalty shooter. */
+    /** Tournament uuid - needed to persist the optional penalty shooter. */
     uuid: string
     onEdit: (m: BracketMatch) => void
     onSave: (m: BracketMatch) => void
@@ -1523,7 +1523,7 @@ type MatchCardProps = {
     onFormChange: (updater: (prev: EditForm) => EditForm) => void
     onStartLive: (m: BracketMatch, mode: MatchLiveMode) => void
     onOpenLive: (m: BracketMatch) => void
-    /** Open the read-only timeline (tijek) — clicking the match result. */
+    /** Open the read-only timeline (tijek) - clicking the match result. */
     onOpenTimeline: (m: BracketMatch) => void
 }
 
@@ -1587,7 +1587,7 @@ function MatchCard({
                 onOpenTimeline(m)
             }}
         >
-            {/* Card top strip — final badge / live indicator */}
+            {/* Card top strip - final badge / live indicator */}
             {(isFinal || isThirdPlace || isLive) && (
                 <Flex
                     align="center"
@@ -1671,7 +1671,7 @@ function MatchCard({
                     />
                 </Box>
 
-                {/* Scheduled kickoff — when this match is set to be played. */}
+                {/* Scheduled kickoff - when this match is set to be played. */}
                 {m.kickoffAt && !editing && (
                     <HStack
                         gap="1.5"
@@ -1709,7 +1709,7 @@ function MatchCard({
                         />
                     )}
 
-                    {/* Action buttons — for a level score the shootout above
+                    {/* Action buttons - for a level score the shootout above
                         does the saving, so only show "Spremi" for a decisive
                         result. */}
                     <HStack gap="2">
@@ -1737,7 +1737,7 @@ function MatchCard({
             ) : (
                 // Action stack only renders when the viewer is the
                 // organizer / admin. Anonymous and regular-user viewers
-                // get a read-only scoreboard — no "Unesi rezultat",
+                // get a read-only scoreboard - no "Unesi rezultat",
                 // "Pokreni" or live-management controls leak through.
                 canEdit && editable && (
                     <VStack align="stretch" gap="1.5" mt="2">
@@ -1811,7 +1811,7 @@ function TeamRow({
     pen: number | null
     winner: boolean
     loser: boolean
-    /** When set, the score slot becomes an input (entering a result) — so the
+    /** When set, the score slot becomes an input (entering a result) - so the
      *  score is typed right where the "–" sits, not in a separate row. */
     edit?: { value: string; onChange: (v: string) => void }
 }) {
@@ -1840,7 +1840,7 @@ function TeamRow({
                 flex="1"
                 minW="0"
             >
-                {name ?? "—"}
+                {name ?? "-"}
             </Text>
             {edit ? (
                 <Input
@@ -1883,7 +1883,7 @@ function TeamRow({
     )
 }
 
-/* ── LivePill — small red "UŽIVO" badge for a live match. ─────────────────── */
+/* ── LivePill - small red "UŽIVO" badge for a live match. ─────────────────── */
 function LivePill() {
     return (
         <Badge
@@ -1922,7 +1922,7 @@ export function BracketLiveMatchDialog({
     const isFinished = match.status === "FINISHED"
     const isTimer = match.liveMode === "TIMER"
     // A knockout match decided by penalties: the regulation flow (goals) is
-    // locked — the result lives in the penalty shootout. The organizer can
+    // locked - the result lives in the penalty shootout. The organizer can
     // re-do the penalties, or tick "penali se nisu igrali" to unlock the goal
     // editing (e.g. the shootout was entered by mistake).
     const decidedOnPenalties =
@@ -1933,7 +1933,7 @@ export function BracketLiveMatchDialog({
     const lockGoals = decidedOnPenalties && !editGoals
 
     const [events, setEvents] = useState<MatchEventDto[] | null>(null)
-    // Players sent off (red card) — greyed out + locked in the entry roster.
+    // Players sent off (red card) - greyed out + locked in the entry roster.
     const sentOffIds = useMemo(
         () =>
             new Set(
@@ -1948,7 +1948,7 @@ export function BracketLiveMatchDialog({
         s2: match.score2 ?? 0,
     })
     // Show the stored score until the organizer edits an event in this dialog
-    // (then recompute from the event log) — keeps a result-only match from
+    // (then recompute from the event log) - keeps a result-only match from
     // flashing 0:0 when opened via "Uredi rezultat".
     const [scoreDirty, setScoreDirty] = useState(false)
 
@@ -1969,7 +1969,7 @@ export function BracketLiveMatchDialog({
     const [startingHalf, setStartingHalf] = useState(false)
 
     const [finishing, setFinishing] = useState(false)
-    /** True once the organizer hits "Završi" on a level knockout match —
+    /** True once the organizer hits "Završi" on a level knockout match -
      *  shows the guided penalty shootout instead of finishing as a draw. */
     const [shootout, setShootout] = useState(false)
     /** eventId currently being deleted. */
@@ -2046,7 +2046,7 @@ export function BracketLiveMatchDialog({
 
     // Re-render every second while a TIMER match is running so `phase`
     // (and the halftime / full-time prompts) flip the instant the clock
-    // reaches the end of a half — LiveClock ticks its own display, but the
+    // reaches the end of a half - LiveClock ticks its own display, but the
     // dialog needs its own tick to recompute `phase`.
     const [, setClockTick] = useState(0)
     useEffect(() => {
@@ -2069,9 +2069,9 @@ export function BracketLiveMatchDialog({
     // (SIMPLE, or no half length) the organizer keeps their own time.
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
     const twoHalves = halfCount !== 1
-    // "Završi 1. poluvrijeme" — only for a two-half match, while the 1st half runs.
+    // "Završi 1. poluvrijeme" - only for a two-half match, while the 1st half runs.
     const canEndFirstHalf = isTimer && twoHalves && phase === "FIRST_HALF"
-    // "Započni 2. poluvrijeme" — once the 1st half has been ended (pauza).
+    // "Započni 2. poluvrijeme" - once the 1st half has been ended (pauza).
     const canStartSecondHalf = isTimer && phase === "HALFTIME"
     // The half whose end is the match's end (single period → 1st; else 2nd).
     const inFinalHalf = phase === (twoHalves ? "SECOND_HALF" : "FIRST_HALF")
@@ -2129,7 +2129,7 @@ export function BracketLiveMatchDialog({
     }
 
     async function handleFinish() {
-        // Knockout matches can't end level — a draw goes to penalties. Record
+        // Knockout matches can't end level - a draw goes to penalties. Record
         // through recordKnockoutResult (not the generic finish) so the winner
         // advances the bracket.
         if (score.s1 === score.s2) {
@@ -2177,7 +2177,7 @@ export function BracketLiveMatchDialog({
         void handleFinish()
     }
 
-    /** Penalty shootout decided — persist the level score + penalty result
+    /** Penalty shootout decided - persist the level score + penalty result
      *  (the backend sets the winner and advances the bracket). */
     async function confirmShootout(pen1: number, pen2: number) {
         setFinishing(true)
@@ -2256,7 +2256,7 @@ export function BracketLiveMatchDialog({
                                     )}
                                     <HStack justify="center" gap="3" align="center" w="full">
                                         <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
-                                            {match.team1Name ?? "—"}
+                                            {match.team1Name ?? "-"}
                                         </Text>
                                         <Text
                                             fontFamily="mono"
@@ -2269,7 +2269,7 @@ export function BracketLiveMatchDialog({
                                             {score.s1} : {score.s2}
                                         </Text>
                                         <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
-                                            {match.team2Name ?? "—"}
+                                            {match.team2Name ?? "-"}
                                         </Text>
                                     </HStack>
                                 </VStack>
@@ -2277,7 +2277,7 @@ export function BracketLiveMatchDialog({
                         </Dialog.Header>
                         <Dialog.Body>
                             <VStack align="stretch" gap="2.5">
-                                {/* Accumulated team fouls — compact counters
+                                {/* Accumulated team fouls - compact counters
                                     right below the scoreboard (deveterac). */}
                                 {!shootout && (
                                     <FoulControls
@@ -2291,7 +2291,7 @@ export function BracketLiveMatchDialog({
                                     />
                                 )}
 
-                                {/* Penalty shootout — a level knockout match
+                                {/* Penalty shootout - a level knockout match
                                     is decided here (guided, alternating kicks). */}
                                 {shootout && (
                                     <PenaltyShootout
@@ -2307,7 +2307,7 @@ export function BracketLiveMatchDialog({
                                     />
                                 )}
 
-                                {/* Decided on penalties — the two parts of the
+                                {/* Decided on penalties - the two parts of the
                                     match are edited separately: "Uredi penale"
                                     (the shootout) and "Uredi utakmicu" (goals). */}
                                 {decidedOnPenalties && !shootout && (
@@ -2347,7 +2347,7 @@ export function BracketLiveMatchDialog({
                                     </Box>
                                 )}
 
-                                {/* Add-event — fast one-tap entry. Shown for a
+                                {/* Add-event - fast one-tap entry. Shown for a
                                     finished match too so "Uredi rezultat" can fix
                                     a wrong scorer. Locked when the match was
                                     decided on penalties (the regulation flow is
@@ -2371,7 +2371,7 @@ export function BracketLiveMatchDialog({
                                     />
                                 )}
 
-                                {/* Tijek utakmice — compact event log, centred,
+                                {/* Tijek utakmice - compact event log, centred,
                                     at the bottom (score + entry sit above it). */}
                                 <Box textAlign="center">
                                     <Text
@@ -2469,7 +2469,7 @@ export function BracketLiveMatchDialog({
             busy={resetting}
             danger
             title="Resetirati utakmicu?"
-            description="Utakmica se vraća na 'zakazano' — brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
+            description="Utakmica se vraća na 'zakazano' - brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
             confirmLabel="Da, resetiraj"
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}

@@ -23,7 +23,7 @@ type ToastOpts = {
     /**
      * Suppress the auto-generated error toast for certain failures without
      * suppressing success toasts on the happy path. Useful when the caller
-     * already shows its own context-aware UI for specific status codes —
+     * already shows its own context-aware UI for specific status codes -
      * e.g. starting a tournament returns 409 INSUFFICIENT_TEAMS and the page
      * shows its own error UI; a generic red toast on top would be noise.
      *
@@ -48,16 +48,16 @@ export const http = axios.create({
  * The Firebase SDK caches and auto-refreshes the token internally, so calling
  * `getIdToken()` is cheap and always returns a fresh, unexpired JWT.
  *
- * Anonymous traffic (no signed-in user) is left as-is — the backend's permission
+ * Anonymous traffic (no signed-in user) is left as-is - the backend's permission
  * policies allow GETs without auth and only require it on writes.
  */
 http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-    // Firebase is lazy-loaded (see firebase.ts) — awaiting here is a no-op
+    // Firebase is lazy-loaded (see firebase.ts) - awaiting here is a no-op
     // after the first call thanks to the cached promise.
     const { auth } = await getFirebase()
     // Wait for the persisted session to be restored before reading
     // currentUser. On a cold page load currentUser is null for a moment even
-    // for a signed-in user — the very first requests then went out WITHOUT
+    // for a signed-in user - the very first requests then went out WITHOUT
     // the bearer, so auth-dependent reads (e.g. the tournaments list with an
     // admin-hidden row) intermittently returned the anonymous variant.
     // Resolves immediately once known; guests resolve to null just as fast.
@@ -69,7 +69,7 @@ http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
             config.headers = config.headers ?? {}
             ;(config.headers as Record<string, string>)["Authorization"] = `Bearer ${token}`
         } catch {
-            // Token fetch failed — let the request go without auth header
+            // Token fetch failed - let the request go without auth header
             // (server will reject with 401 if the endpoint requires auth, which
             // the UI already handles).
         }
@@ -79,7 +79,7 @@ http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 
 /**
  * Mutation methods get success toasts; reads stay quiet to avoid noise.
- * The set is intentional — adding HEAD/OPTIONS would not be useful, and
+ * The set is intentional - adding HEAD/OPTIONS would not be useful, and
  * GETs that fail still surface as error toasts via the response interceptor.
  */
 const TOAST_ON_SUCCESS = new Set(["post", "put", "patch", "delete"])

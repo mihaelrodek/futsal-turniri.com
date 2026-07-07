@@ -19,12 +19,12 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
         return list("match.id", Sort.by("minute").ascending().and("id").ascending(), matchId);
     }
 
-    /** Every event of the given type for a match — used to recompute the score from goals. */
+    /** Every event of the given type for a match - used to recompute the score from goals. */
     public List<MatchEvent> findByMatch_IdAndType(Long matchId, MatchEventType type) {
         return list("match.id = ?1 and type = ?2", matchId, type);
     }
 
-    /** True if the player has already been sent off (red card) in this match —
+    /** True if the player has already been sent off (red card) in this match -
      *  a sent-off player can't score or otherwise affect the match. */
     public boolean playerSentOff(Long matchId, Long playerId) {
         return count("match.id = ?1 and player.id = ?2 and type = ?3",

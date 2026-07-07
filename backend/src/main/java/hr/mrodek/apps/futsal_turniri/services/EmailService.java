@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * Transactional-email sender (Brevo SMTP via quarkus-mailer).
  *
- * <p>Every send is <em>fire-and-forget</em> and swallows failures — exactly
+ * <p>Every send is <em>fire-and-forget</em> and swallows failures - exactly
  * like {@link PushService}: a flaky mail server must never break the request
  * that triggered the notification. When SMTP credentials aren't configured
  * ({@code MAIL_SMTP_LOGIN} empty) {@link #isReady()} is false and every send is
@@ -33,7 +33,7 @@ public class EmailService {
     @Inject UserProfileRepository profileRepo;
 
     /** Absent when SMTP isn't configured → sending is skipped. Optional, NOT a
-     *  defaultValue="" String — SmallRye Config treats an empty string as a
+     *  defaultValue="" String - SmallRye Config treats an empty string as a
      *  missing value and fails the injection at boot. */
     @ConfigProperty(name = "quarkus.mailer.username")
     java.util.Optional<String> smtpUser;

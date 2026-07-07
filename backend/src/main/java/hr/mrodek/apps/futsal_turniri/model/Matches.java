@@ -23,7 +23,7 @@ public class Matches {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "round_id", nullable = false)
     private Rounds round;
 
-    /** Which stage this match belongs to — GROUP or a knockout round. */
+    /** Which stage this match belongs to - GROUP or a knockout round. */
     @Enumerated(EnumType.STRING)
     @Column(name = "stage", length = 20, nullable = false)
     private MatchStage stage = MatchStage.GROUP;
@@ -62,7 +62,7 @@ public class Matches {
     @Column(name = "next_slot")
     private Integer nextSlot;
 
-    /** Penalty-shootout score — set only when a knockout match is level after regulation. */
+    /** Penalty-shootout score - set only when a knockout match is level after regulation. */
     @Column(name = "penalties1")
     private Integer penalties1;
 
@@ -73,7 +73,7 @@ public class Matches {
      * Accumulated team fouls per half. Reset implicitly by reading the half's
      * own column. From a team's 5th foul in a half the opponent earns a
      * "deveterac" (10 m free kick); each further foul is another one. The kick
-     * isn't stored — only the running count, shown on the fullscreen display.
+     * isn't stored - only the running count, shown on the fullscreen display.
      */
     @Column(name = "fouls1_first")
     private Integer fouls1First = 0;
@@ -92,7 +92,7 @@ public class Matches {
     private MatchStatus status = MatchStatus.SCHEDULED;
 
     /**
-     * How this match is run while LIVE — a counting {@code TIMER} or a
+     * How this match is run while LIVE - a counting {@code TIMER} or a
      * {@code SIMPLE} manual scoreboard. Null until the match is started.
      */
     @Enumerated(EnumType.STRING)
@@ -107,7 +107,7 @@ public class Matches {
      * Wall-clock instant the organizer ended the 1st half (match entered the
      * half-time "pauza"). Null until set. Together with {@link #liveStartedAt},
      * {@link #secondHalfStartedAt} and {@link #status} this makes the live half
-     * flow an explicit state machine — the phase is no longer inferred from the
+     * flow an explicit state machine - the phase is no longer inferred from the
      * running clock, so the clock freezes at the end of a half and waits.
      */
     @Column(name = "first_half_ended_at")

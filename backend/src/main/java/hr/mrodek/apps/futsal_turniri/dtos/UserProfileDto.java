@@ -9,7 +9,7 @@ public record UserProfileDto(
         @Size(max = 50, message = "phone must be at most 50 characters")
         String phone,
 
-        // Read-only fields — populated via /user/me/sync. Returned alongside
+        // Read-only fields - populated via /user/me/sync. Returned alongside
         // contact info so the frontend can link straight to /profile/{slug}.
         String displayName,
         String slug,
@@ -24,7 +24,7 @@ public record UserProfileDto(
         /**
          * Per-user theme preference. Accepts "light" or "dark" on PUT;
          * other values get ignored server-side. Null means the user
-         * hasn't picked one yet — frontend falls back to its own default.
+         * hasn't picked one yet - frontend falls back to its own default.
          */
         @Size(max = 10, message = "colorMode must be at most 10 characters")
         String colorMode

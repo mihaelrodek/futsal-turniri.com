@@ -3,7 +3,7 @@ import { toaster } from "../toaster"
 
 /**
  * Renders the actual toast UI for our shared toaster instance. Chakra v3's
- * <Toaster> is a render-prop wrapper — it owns the viewport positioning and
+ * <Toaster> is a render-prop wrapper - it owns the viewport positioning and
  * lifecycle, but each individual toast is laid out by this child function.
  *
  * Mounted once at the app root in main.tsx; the toaster instance lives in

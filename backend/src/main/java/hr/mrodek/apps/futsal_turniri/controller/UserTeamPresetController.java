@@ -25,7 +25,7 @@ import java.util.UUID;
 /**
  * Per-user team-name presets.
  *
- * Each preset can be viewed by two users — the primary (creator) and a
+ * Each preset can be viewed by two users - the primary (creator) and a
  * claimed co-owner. Both see the same row in their Moji parovi list.
  * Edit + visibility-toggle are open to either owner. Delete on a
  * co-owned preset goes through the archive-request flow:
@@ -61,7 +61,7 @@ public class UserTeamPresetController {
         String partnerUid = iAmPrimary ? p.getCoOwnerUid() : p.getUserUid();
         UserProfile partner = partnerUid == null ? null : profileRepo.findByUid(partnerUid).orElse(null);
 
-        // Token only goes to the primary when no one's claimed yet — that's
+        // Token only goes to the primary when no one's claimed yet - that's
         // the only state where sharing is meaningful.
         boolean unclaimed = p.getCoOwnerUid() == null || p.getCoOwnerUid().isBlank();
         String token = (iAmPrimary && unclaimed) ? p.getClaimToken() : null;
@@ -139,7 +139,7 @@ public class UserTeamPresetController {
     @Path("/{uuid}")
     @Transactional
     public Response delete(@PathParam("uuid") UUID uuid) {
-        // Only the primary can hit this — co-owner gets 404. Once
+        // Only the primary can hit this - co-owner gets 404. Once
         // co-owned, deletion must go through the archive-request flow.
         var p = repo.findByUuidAndUserUid(uuid, currentUid()).orElse(null);
         if (p == null) return Response.status(Response.Status.NOT_FOUND).build();
@@ -166,13 +166,13 @@ public class UserTeamPresetController {
         var p = repo.findByUuidForOwnerOrCoOwner(uuid, me).orElse(null);
         if (p == null) return Response.status(Response.Status.NOT_FOUND).build();
         if (p.getCoOwnerUid() == null || p.getCoOwnerUid().isBlank()) {
-            // Not co-owned — nothing to archive. UI should never hit this,
+            // Not co-owned - nothing to archive. UI should never hit this,
             // but return 409 with a code instead of crashing.
             return Response.status(Response.Status.CONFLICT)
                     .entity("NOT_CO_OWNED").build();
         }
         if (p.getArchiveRequestByUid() != null) {
-            // Already pending — idempotent.
+            // Already pending - idempotent.
             return Response.ok(toDto(p)).build();
         }
         p.setArchiveRequestByUid(me);
@@ -193,7 +193,7 @@ public class UserTeamPresetController {
     }
 
     /**
-     * Confirm the request — sets archived=true and pushes the requester
+     * Confirm the request - sets archived=true and pushes the requester
      * that their request was accepted. Caller must be the OTHER owner
      * (the one who didn't file the request).
      */
@@ -209,7 +209,7 @@ public class UserTeamPresetController {
                     .entity("NO_REQUEST_PENDING").build();
         }
         if (Objects.equals(p.getArchiveRequestByUid(), me)) {
-            // The requester is trying to confirm their own request — wrong side.
+            // The requester is trying to confirm their own request - wrong side.
             return Response.status(Response.Status.CONFLICT)
                     .entity("OWN_REQUEST_CANNOT_CONFIRM").build();
         }

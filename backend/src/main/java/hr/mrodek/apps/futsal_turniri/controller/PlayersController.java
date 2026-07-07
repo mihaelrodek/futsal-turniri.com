@@ -16,15 +16,15 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Cross-tournament player endpoints — distinct from the per-team roster
+ * Cross-tournament player endpoints - distinct from the per-team roster
  * endpoints under {@code /tournaments/{uuid}/teams/{teamId}/players}.
  *
  * <ul>
- *   <li>{@code GET /players/search?q=} — autocomplete of existing player
+ *   <li>{@code GET /players/search?q=} - autocomplete of existing player
  *       names (authenticated; only used while editing a roster). Lets the
  *       organiser reuse an existing name so the same person's goals
  *       aggregate on the all-time scorer list.</li>
- *   <li>{@code GET /players/scorers} — the all-time scorer list
+ *   <li>{@code GET /players/scorers} - the all-time scorer list
  *       ("vječna lista strijelaca"). Public.</li>
  * </ul>
  */

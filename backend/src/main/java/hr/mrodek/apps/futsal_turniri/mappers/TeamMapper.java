@@ -42,7 +42,7 @@ public interface TeamMapper {
      */
     @Mappings({
             // id & tournament are managed by the controller/repo; do not touch
-            // wins/losses are internal entity-only counters — never set from a DTO
+            // wins/losses are internal entity-only counters - never set from a DTO
             @Mapping(target = "name",                source = "name"),
             @Mapping(target = "eliminated",          source = "isEliminated"),
             @Mapping(target = "wins",                ignore = true),
@@ -60,7 +60,7 @@ public interface TeamMapper {
      * Enrich an entity into a DTO that also carries submitter + co-owner
      * display name + slug for clickable "Prijavio: …" / co-owner links.
      * Pass a pre-fetched profile map (UID → UserProfile) to avoid N+1
-     * queries — see TournamentController#fetchSubmitterProfiles which
+     * queries - see TournamentController#fetchSubmitterProfiles which
      * already collects both submittedByUid and coSubmittedByUid.
      *
      * Pass {@code includeClaimToken=true} only when the caller has
@@ -92,7 +92,7 @@ public interface TeamMapper {
         );
     }
 
-    /** Backwards-compat overload — never includes the claim token. */
+    /** Backwards-compat overload - never includes the claim token. */
     default TeamDto toDtoEnriched(Teams e, Map<String, UserProfile> profilesByUid) {
         return toDtoEnriched(e, profilesByUid, false);
     }

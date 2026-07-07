@@ -30,7 +30,7 @@ import java.util.Optional;
  * {@code /profile/<slug>}, which 301s to the Croatian one) here for
  * crawlers; real users keep getting the SPA.
  *
- * <p>Phone numbers are deliberately NOT included in the preview meta —
+ * <p>Phone numbers are deliberately NOT included in the preview meta -
  * crawlers cache the meta indefinitely and we don't want phone numbers
  * sitting in WhatsApp / Slack message scrollback. The same redaction
  * is enforced for anonymous JSON reads in {@link PublicProfileController}.
@@ -45,7 +45,7 @@ public class ProfilePreviewController {
     @ConfigProperty(name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
     String publicBaseUrl;
 
-    // Optional<> rather than a defaulted String — Quarkus refuses to register
+    // Optional<> rather than a defaulted String - Quarkus refuses to register
     // an empty defaultValue, so a non-Optional String would crash boot when
     // APP_DEFAULT_OG_IMAGE isn't set in the environment.
     @ConfigProperty(name = "app.default-og-image")
@@ -91,7 +91,7 @@ public class ProfilePreviewController {
         // comment in TournamentPreviewController for the same rationale.
         String spaUrl = base + "/profil/" + slug;
 
-        // Prefer the user's own avatar as og:image / schema.org image —
+        // Prefer the user's own avatar as og:image / schema.org image -
         // falls back to the app-default og image when missing. This makes
         // shared profile links look personalised in WhatsApp/Telegram
         // previews and gives Google a unique image for the Person rich
@@ -109,13 +109,13 @@ public class ProfilePreviewController {
     /* ───────────────────── helpers ───────────────────── */
 
     /**
-     * "{name} — {total} turnira, {wins} pobjeda na futsal-turniri.com".
+     * "{name} - {total} turnira, {wins} pobjeda na futsal-turniri.com".
      * Uses Croatian noun-form rules for "turnir" / "pobjeda" so the
      * preview reads naturally for 1, 2-4, and 5+ counts.
      */
     String buildDescription(String displayName, int totalTournaments, int wins) {
         return displayName
-                + " — "
+                + " - "
                 + totalTournaments + " " + plurariseTurnir(totalTournaments)
                 + ", "
                 + wins + " " + plurarisePobjeda(wins)
@@ -131,7 +131,7 @@ public class ProfilePreviewController {
         return "turnira";
     }
 
-    /** Same idea for "pobjeda" — 1=pobjeda, 2-4=pobjede, 5+=pobjeda (genitive plural). */
+    /** Same idea for "pobjeda" - 1=pobjeda, 2-4=pobjede, 5+=pobjeda (genitive plural). */
     private static String plurarisePobjeda(int n) {
         int mod10 = n % 10;
         int mod100 = n % 100;
@@ -146,7 +146,7 @@ public class ProfilePreviewController {
         sb.append("<html lang=\"hr\">\n<head>\n");
         sb.append("<meta charset=\"UTF-8\">\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-        sb.append("<title>").append(escapeHtml(name)).append(" — futsal-turniri.com</title>\n");
+        sb.append("<title>").append(escapeHtml(name)).append(" - futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
 
@@ -175,7 +175,7 @@ public class ProfilePreviewController {
         // schema.org Person JSON-LD. Gives Google enough structure to
         // surface the profile as a rich knowledge-panel-style result for
         // "{name} futsal" branded queries. We omit any field whose source is
-        // empty (no contact info, no DOB) — Google warns on null values
+        // empty (no contact info, no DOB) - Google warns on null values
         // but ignores missing ones.
         sb.append("<script type=\"application/ld+json\">")
                 .append(buildPersonJsonLd(name, slug, description, image, spaUrl, totalTournaments, wins))
@@ -196,7 +196,7 @@ public class ProfilePreviewController {
      * <ol>
      *   <li><b>Rank for "{name} futsal".</b> The H1 + JSON-LD knowsAbout
      *       combo gives Google a strong signal that this page is about
-     *       a person who plays futsal — exactly what someone Googling
+     *       a person who plays futsal - exactly what someone Googling
      *       "{name} futsal" is looking for.</li>
      *   <li><b>Match the SPA's public-profile data.</b> Stats and
      *       tournament list are sourced from the same record the SPA
@@ -214,7 +214,7 @@ public class ProfilePreviewController {
         if (image != null && !image.isBlank()) {
             sb.append("<p><img src=\"").append(escapeAttr(image))
                     .append("\" alt=\"").append(escapeAttr(name))
-                    .append(" — profilna slika\"></p>\n");
+                    .append(" - profilna slika\"></p>\n");
         }
         sb.append("<p>").append(escapeHtml(description)).append("</p>\n");
 
@@ -233,7 +233,7 @@ public class ProfilePreviewController {
                 <!doctype html>
                 <html lang="hr"><head>
                 <meta charset="UTF-8">
-                <title>Profil nije pronađen — futsal-turniri.com</title>
+                <title>Profil nije pronađen - futsal-turniri.com</title>
                 <meta name="description" content="Traženi profil ne postoji.">
                 </head><body><p>Profil nije pronađen.</p></body></html>
                 """;
@@ -246,7 +246,7 @@ public class ProfilePreviewController {
      * match generic name-only queries unrelated to the sport.
      *
      * <p>The win/total counts are surfaced as a single {@code description}
-     * string rather than as separate properties — there is no
+     * string rather than as separate properties - there is no
      * schema.org-blessed "wins" field on Person, and we get richer SERP
      * snippets by keeping the counts inside the human-readable description.
      */
@@ -266,7 +266,7 @@ public class ProfilePreviewController {
         if (image != null && !image.isBlank()) {
             j.append("\"image\":\"").append(jsonEscape(image)).append("\",");
         }
-        // knowsAbout pins the topical context to futsal — improves
+        // knowsAbout pins the topical context to futsal - improves
         // search relevance for queries like "{name} futsal" or "{name} mali nogomet".
         j.append("\"knowsAbout\":[\"Futsal\",\"Mali nogomet\",\"Nogomet\"],");
         // interactionStatistic gives Google a hook into structured win/total

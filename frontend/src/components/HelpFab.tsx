@@ -4,14 +4,14 @@ import { useNavigate } from "react-router-dom"
 import { FiX } from "react-icons/fi"
 
 /**
- * Floating help button — a small circular "?" pinned to the bottom-right of
+ * Floating help button - a small circular "?" pinned to the bottom-right of
  * the viewport. Tapping it opens the /vodic tour of the app. Sits above the
  * mobile bottom nav (which is ~92px tall + iOS safe-area) on small screens,
  * and a normal corner offset on desktop.
  *
  * First visit only, a small coach-mark bubble appears above the button with
  * an arrow pointing at it ("Novi ovdje? …"). Dismissed by its X, by opening
- * the guide, or by clicking the button itself — persisted in localStorage so
+ * the guide, or by clicking the button itself - persisted in localStorage so
  * it never shows again.
  */
 
@@ -29,7 +29,7 @@ function persistHintDismissed() {
     try {
         window.localStorage.setItem(HINT_KEY, "1")
     } catch {
-        /* private mode — hint may show again next visit, harmless */
+        /* private mode - hint may show again next visit, harmless */
     }
 }
 
@@ -56,7 +56,7 @@ export default function HelpFab() {
 
     return (
         <>
-            {/* Coach mark — anchored just above the FAB, arrow pointing down at it. */}
+            {/* Coach mark - anchored just above the FAB, arrow pointing down at it. */}
             {hintOpen && (
                 <Box
                     position="fixed"
@@ -105,7 +105,7 @@ export default function HelpFab() {
                             <FiX size={15} />
                         </chakra.button>
                     </HStack>
-                    {/* Arrow — a rotated square peeking from the bubble's bottom
+                    {/* Arrow - a rotated square peeking from the bubble's bottom
                         edge, horizontally aligned with the FAB's centre. */}
                     <Box
                         position="absolute"
@@ -124,8 +124,8 @@ export default function HelpFab() {
 
             <chakra.button
                 type="button"
-                aria-label="Vodič — što nudi aplikacija"
-                title="Vodič — što nudi aplikacija"
+                aria-label="Vodič - što nudi aplikacija"
+                title="Vodič - što nudi aplikacija"
                 onClick={openGuide}
                 position="fixed"
                 zIndex={20}

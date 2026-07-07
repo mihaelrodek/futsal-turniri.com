@@ -10,7 +10,7 @@ import jakarta.ws.rs.ext.Provider;
  * Defense-in-depth security headers on every response.
  *
  * <p>The intent is that the reverse proxy (nginx / Cloudflare / whatever sits
- * in front of the Quarkus app in prod) will also set these — but mistakes happen,
+ * in front of the Quarkus app in prod) will also set these - but mistakes happen,
  * proxies get reconfigured, and it's cheap to add them at the application
  * boundary so they're applied no matter what's in front.
  *
@@ -56,7 +56,7 @@ public class SecurityHeadersFilter implements ContainerResponseFilter {
         putIfAbsent(h, "Referrer-Policy", "strict-origin-when-cross-origin");
         putIfAbsent(h, "Permissions-Policy", PERMISSIONS_POLICY);
 
-        // HSTS only for HTTPS — sending it over plain HTTP is a no-op per
+        // HSTS only for HTTPS - sending it over plain HTTP is a no-op per
         // RFC 6797, but some browsers warn about it in dev. Easier to skip.
         String scheme = req.getUriInfo() != null
                 ? req.getUriInfo().getRequestUri().getScheme()

@@ -22,7 +22,7 @@ export type ScheduledMatch = {
     score2: number | null
     kickoffAt: string | null
     status: string
-    /** Knockout only — team that advanced (decides win/loss); null for groups. */
+    /** Knockout only - team that advanced (decides win/loss); null for groups. */
     winnerTeamId?: number | null
     /** Penalty-shootout score (knockout level after regulation). */
     penalties1?: number | null

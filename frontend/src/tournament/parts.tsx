@@ -10,7 +10,7 @@ import type {
 import type { RoundDto, MatchDto } from "../types/round"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Tournament detail — shared bits.
+   Tournament detail - shared bits.
 
    Small, tournament-specific helpers, types and components used across the
    redesigned Detalji / Ekipe / Ždrijeb sections and the shell.
@@ -39,7 +39,7 @@ export type SectionKey =
 
 /* ---------- Small formatting helpers ---------- */
 export function formatDate(iso?: string | null) {
-    if (!iso) return "—"
+    if (!iso) return "-"
     const d = new Date(iso)
     return new Intl.DateTimeFormat("hr-HR", {
         weekday: "short",
@@ -50,13 +50,13 @@ export function formatDate(iso?: string | null) {
 }
 
 export function formatTime(iso?: string | null) {
-    if (!iso) return "—"
+    if (!iso) return "-"
     const d = new Date(iso)
     return new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit" }).format(d)
 }
 
 export function fmtMoney(n?: number | null) {
-    if (typeof n !== "number" || !isFinite(n)) return "—"
+    if (typeof n !== "number" || !isFinite(n)) return "-"
     const s = n.toFixed(2)
     return (s.endsWith(".00") ? s.slice(0, -3) : s) + "€"
 }
@@ -91,7 +91,7 @@ export function StatusPill({ status }: { status?: string | null }) {
 /* ---------- Live badge ---------- */
 /**
  * SofaScore-style pulsating "UŽIVO" badge. A small red pill with a gentle
- * CSS pulse animation — used on tournament cards and the tournament page
+ * CSS pulse animation - used on tournament cards and the tournament page
  * header whenever a tournament has a match in progress. The keyframes are
  * injected once on first render via a module-level <style> tag so the
  * animation works regardless of Chakra's theme setup.
@@ -198,7 +198,7 @@ export function TeamAvatar({ name, eliminated }: { name: string; eliminated?: bo
 
 /* ---------- Share button ---------- */
 /**
- * Share button — uses the native Web Share sheet (mobile gets the OS's
+ * Share button - uses the native Web Share sheet (mobile gets the OS's
  * full app picker). On desktop browsers without `navigator.share`, falls
  * back to copying the link to clipboard and briefly showing "Kopirano!".
  */
@@ -218,7 +218,7 @@ export function ShareButton({
             try {
                 await (navigator as any).share({ title, url })
             } catch {
-                /* user cancelled — no-op */
+                /* user cancelled - no-op */
             }
             return
         }
@@ -241,7 +241,7 @@ export function ShareButton({
 
 /* ---------- DetailTile (read-mode info tile) ---------- */
 /**
- * Compact bordered "tile" for a single piece of tournament info — tiny
+ * Compact bordered "tile" for a single piece of tournament info - tiny
  * uppercase muted label on top, prominent value below. Designed to fit
  * several per row in a responsive grid.
  */
@@ -452,7 +452,7 @@ export type EditForm = {
     // Format (editable while no fixtures exist yet). Group count / advancement
     // are chosen at draw time, not here.
     format: TournamentFormat
-    // Percent/fixed toggle removed — always FIXED. Each place: amount + note.
+    // Percent/fixed toggle removed - always FIXED. Each place: amount + note.
     rewardType: "FIXED" | "PERCENTAGE"
     rewardFirst: string
     rewardFirstNote: string
@@ -494,7 +494,7 @@ export function buildEditForm(t: TournamentDetails): EditForm {
 
 export function editFormToPayload(f: EditForm): CreateTournamentPayload {
     const maxTeams = parseInt(f.maxTeams || "0", 10)
-    // Empty field means "no cap" — pass null through. Backend treats null
+    // Empty field means "no cap" - pass null through. Backend treats null
     // as an open-entry tournament; the UI hides the X/Y counter in that case.
     const maxTeamsSafe: number | null =
         Number.isFinite(maxTeams) && maxTeams >= 2 ? maxTeams : null

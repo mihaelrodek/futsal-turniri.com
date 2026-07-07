@@ -43,7 +43,7 @@ import PlayerNameAutocomplete from "../components/PlayerNameAutocomplete"
 import { EmptyState, Panel } from "../ui/primitives"
 import { TeamAvatar } from "./parts"
 
-/* "Ekipe" section — team management as a master-detail.
+/* "Ekipe" section - team management as a master-detail.
    LEFT pane = the full list of teams (rename / approve / remove
    controls on each row, plus a "Dodaj ekipu" / "Spremi promjene" toolbar
    above the list). Clicking a team opens, on the RIGHT pane, that team's
@@ -59,7 +59,7 @@ type TeamsSectionProps = {
     canEdit: boolean
     userUid: string | null | undefined
     tournamentAlready: boolean
-    /** True once the draw (groups / bracket) is generated — locks the roster
+    /** True once the draw (groups / bracket) is generated - locks the roster
      *  so teams can no longer be added or removed. */
     drawGenerated: boolean
     teamRequestsCollapsed: boolean
@@ -133,7 +133,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
     const overCapacity = capacity != null && teams.length > capacity
     const userAlreadyRegistered =
         !!userUid && teams.some((p) => p.submittedByUid === userUid)
-    // Self-register flow is intentionally hidden from the UI for now —
+    // Self-register flow is intentionally hidden from the UI for now -
     // the backend side of "a regular user adds their own team to a
     // tournament" needs more work (rate-limit, anti-spam, organiser
     // approval flow). All the client-side wiring (dialog, presets,
@@ -158,7 +158,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
 
     // "Dodaj ekipu" persists immediately and then opens the new team so it's
     // ready to rename (RosterPanel mounts in edit mode before the tournament
-    // starts — see its `editMode` default).
+    // starts - see its `editMode` default).
     const handleAddTeam = useCallback(async () => {
         const created = await addTeam()
         if (created && typeof created.id === "number" && created.id > 0) {
@@ -466,7 +466,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             </Button>
                         )}
                         {/* Once the tournament has started, registration is
-                             frozen — the button is hidden entirely. Adding a
+                             frozen - the button is hidden entirely. Adding a
                              team persists immediately (PUT) and opens it for
                              renaming, so there's no separate "Spremi promjene". */}
                         {!tournamentLocked && !tournamentAlready && !drawGenerated && canEdit && (
@@ -586,7 +586,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
     )
 }
 
-/* RosterPanel — the RIGHT pane: a single team's player roster.
+/* RosterPanel - the RIGHT pane: a single team's player roster.
    Loads players on mount, supports add / edit / delete and "make
    captain". All destructive / mutating affordances (edit, delete,
    captain toggle, team-name rename) are hidden by default and only
@@ -608,17 +608,17 @@ function RosterPanel({
     team: TeamShort
     canEdit: boolean
     /** When false (tournament has started), the team-name input is
-     *  hidden even inside edit mode — renaming a team mid-tournament
+     *  hidden even inside edit mode - renaming a team mid-tournament
      *  would corrupt match-history references. */
     canEditTeamName: boolean
     /** Once the tournament has started, per-player edit / delete /
      *  captain controls are hidden by default and only surfaced after
      *  the organiser presses "Uredi". Before start the controls stay
-     *  inline — there's no risk of corrupting match data yet, and
+     *  inline - there's no risk of corrupting match data yet, and
      *  rapid roster editing during signup is the expected flow. */
     tournamentStarted: boolean
     onBack: () => void
-    /** Local optimistic rename — parent flushes via replaceTeams. */
+    /** Local optimistic rename - parent flushes via replaceTeams. */
     onRenameTeam: (next: string) => void
     /** Persist the current local name to the backend (replaceTeams).
      *  Fired on the rename input's blur so the user doesn't have to
@@ -629,10 +629,10 @@ function RosterPanel({
     onDeleteTeam: () => void
 }) {
     // Master toggle. Two distinct gates depend on it:
-    //   1. Team-name input + team-delete trash (always — these are the
+    //   1. Team-name input + team-delete trash (always - these are the
     //      destructive team-level actions the user wants hidden by
     //      default no matter when).
-    //   2. Per-player edit/delete/captain — ONLY when the tournament
+    //   2. Per-player edit/delete/captain - ONLY when the tournament
     //      has started. Before start these stay inline because rapid
     //      roster editing is normal during signup.
     // Before the tournament starts, a selected team opens straight into edit
@@ -740,7 +740,7 @@ function RosterPanel({
                 number: p.number,
                 captain: true,
             })
-            // Exactly one captain — clear the flag on everyone else locally.
+            // Exactly one captain - clear the flag on everyone else locally.
             setPlayers((ps) =>
                 ps.map((x) =>
                     x.id === updated.id ? updated : { ...x, captain: false },
@@ -788,12 +788,12 @@ function RosterPanel({
                         <TeamAvatar name={team.name} eliminated={team.isEliminated} />
                         <Box minW="0" flex="1">
                             {editMode ? (
-                                /* Inline rename — surfaced whenever the
+                                /* Inline rename - surfaced whenever the
                                    organiser opens edit mode, regardless of
                                    whether the tournament has already
                                    started. (Team DELETE stays gated on
                                    `canEditTeamName` below because it's
-                                   destructive — renaming just updates the
+                                   destructive - renaming just updates the
                                    display label and backend match rows
                                    keep their own denormalised name on
                                    already-played fixtures.) Blur flushes
@@ -810,7 +810,7 @@ function RosterPanel({
                                 />
                             ) : (
                                 <Text fontWeight="semibold" lineHeight="short" truncate>
-                                    {team.name || "—"}
+                                    {team.name || "-"}
                                 </Text>
                             )}
                             <Text fontSize="xs" color="fg.muted">
@@ -880,7 +880,7 @@ function RosterPanel({
                     >
                         <VStack align="stretch" gap="2">
                             <HStack gap="2" wrap="wrap" align="flex-start">
-                                {/* Autocomplete of existing players — picking
+                                {/* Autocomplete of existing players - picking
                                     one reuses that name so the same person's
                                     goals aggregate on the all-time scorer
                                     list. Typing a new full name adds a new
@@ -1062,7 +1062,7 @@ function RosterPanel({
                                         fontSize="sm"
                                         flexShrink={0}
                                     >
-                                        {p.number != null ? p.number : "—"}
+                                        {p.number != null ? p.number : "-"}
                                     </Box>
 
                                     <Text fontWeight="medium" flex="1" minW="0" truncate>
@@ -1080,7 +1080,7 @@ function RosterPanel({
                                          time roster edits are quick. Once
                                          a match is played, they hide and
                                          only return after the organiser
-                                         explicitly presses "Uredi" — same
+                                         explicitly presses "Uredi" - same
                                          opt-in pattern as the team-name +
                                          team-delete affordances. */}
                                     {showPlayerActions && (

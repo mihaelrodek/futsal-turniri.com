@@ -14,7 +14,7 @@ import java.text.Normalizer;
  * non-alphanumerics collapse to a single dash, and the result is lower-cased.
  *
  * Collisions are resolved with {@code -2}, {@code -3}, … suffixes per the
- * product decision (we don't add hashes — just plain numbers).
+ * product decision (we don't add hashes - just plain numbers).
  */
 @ApplicationScoped
 public class SlugService {
@@ -24,7 +24,7 @@ public class SlugService {
     /** Hard fallback when displayName / email are both empty. */
     private static final String DEFAULT_BASE = "igrac";
 
-    /** Normalize a free-form name into a slug base — never returns blank. */
+    /** Normalize a free-form name into a slug base - never returns blank. */
     public String baseSlug(String displayName) {
         String src = displayName == null ? "" : displayName.trim();
         if (src.isBlank()) return DEFAULT_BASE;
@@ -55,11 +55,11 @@ public class SlugService {
     public String allocateUniqueSlug(String displayName, String forUid) {
         String base = baseSlug(displayName);
         // The user might already own `base` (or a numbered variant) from a
-        // previous sync — we shouldn't bump them to base-2 just because they
+        // previous sync - we shouldn't bump them to base-2 just because they
         // re-synced.
         var existing = profileRepo.findByUid(forUid).map(p -> p.getSlug()).orElse(null);
         if (existing != null && !existing.isBlank() && existing.startsWith(base)) {
-            // Confirm it's still free or owned by us — if some race left a
+            // Confirm it's still free or owned by us - if some race left a
             // duplicate we'd rather notice now than at insert time.
             if (!profileRepo.slugTaken(existing)
                     || profileRepo.findBySlug(existing)
@@ -75,7 +75,7 @@ public class SlugService {
             candidate = base + "-" + n;
             n++;
             if (n > 9999) {
-                // Defensive — shouldn't ever happen.
+                // Defensive - shouldn't ever happen.
                 throw new IllegalStateException("Unable to allocate slug for: " + displayName);
             }
         }
@@ -85,7 +85,7 @@ public class SlugService {
     /**
      * Make sure the user has a {@link UserProfile} row with a slug. Called
      * from any path where we expect to enrich team / tournament results with
-     * submitter info — covers users whose front-end {@code /user/me/sync}
+     * submitter info - covers users whose front-end {@code /user/me/sync}
      * call hasn't landed yet (or failed silently).
      *
      * Updates {@code displayName} on the row only when the supplied value is

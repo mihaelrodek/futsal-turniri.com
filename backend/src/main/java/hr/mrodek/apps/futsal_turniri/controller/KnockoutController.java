@@ -24,15 +24,15 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * Knockout-bracket endpoints for a tournament (Phase E3).
  *
  * <pre>
- *   GET  /tournaments/{uuid}/bracket                      — anonymous OK
- *   POST /tournaments/{uuid}/bracket/generate             — owner/admin
- *   POST /tournaments/{uuid}/bracket/matches/{id}/result  — owner/admin
+ *   GET  /tournaments/{uuid}/bracket                      - anonymous OK
+ *   POST /tournaments/{uuid}/bracket/generate             - owner/admin
+ *   POST /tournaments/{uuid}/bracket/matches/{id}/result  - owner/admin
  * </pre>
  *
  * <p>Reads are open. Generate / record-result require a Firebase OIDC
  * token AND the caller must be either the tournament's creator or an
  * admin. Same pattern as {@link RoundController}. Until 2026-06 these
- * writes were left open under a "OIDC temporarily disabled" comment —
+ * writes were left open under a "OIDC temporarily disabled" comment -
  * a security audit flagged it as the highest-blast-radius gap in the
  * codebase (anyone could wipe brackets / alter scores for any
  * tournament), so the gate is now enforced.
@@ -63,7 +63,7 @@ public class KnockoutController {
         return t;
     }
 
-    /** The knockout bracket — empty rounds before it is generated. */
+    /** The knockout bracket - empty rounds before it is generated. */
     @GET
     public BracketDto bracket(@PathParam("uuid") String uuid) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid)

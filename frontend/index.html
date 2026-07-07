@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo/mark-green.svg" />
-    <!-- Apple touch icon — 180x180 PNG with white padding so iOS doesn't
+    <!-- Apple touch icon - 180x180 PNG with white padding so iOS doesn't
          clip the suits when it rounds the corners on the home screen. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b6b3a" />
 
     <!-- Pitch theme typography triad:
-           • Inter      — body/UI text
-           • Bricolage  — display headings, team names, big numerics
-           • JetBrains  — mono labels, scoreboards, clocks
+           • Inter      - body/UI text
+           • Bricolage  - display headings, team names, big numerics
+           • JetBrains  - mono labels, scoreboards, clocks
          All loaded from Google Fonts with display=swap so first paint
          never blocks on the font; the theme falls back to the system
          stack while it loads (and permanently, offline). -->
@@ -34,7 +34,7 @@
     <script>
       try { fetch("/api/tournaments?status=upcoming").catch(function(){}); } catch (e) {}
     </script>
-    <!-- Async font CSS — `media="print"` makes the browser fetch it without
+    <!-- Async font CSS - `media="print"` makes the browser fetch it without
          blocking first paint (print styles don't block rendering); onload
          flips it to `all` and the fonts swap in. Saves ~1s of mobile
          render-block vs a plain stylesheet link; display=swap keeps text
@@ -68,10 +68,10 @@
     <meta name="apple-mobile-web-app-title" content="Futsal Turniri" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="description" content="Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca." />
+    <meta name="description" content="Futsal turniri u Hrvatskoj - prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca." />
 
     <!-- Open Graph / link previews. og:image must be a raster format
-         (PNG/JPEG) — WhatsApp and Facebook crawlers silently drop SVG
+         (PNG/JPEG) - WhatsApp and Facebook crawlers silently drop SVG
          and the share renders without a thumbnail. The app icons are
          rendered from public/logo/mark-green.svg via
          scripts/gen-pwa-icons.mjs and checked into public/.
@@ -84,10 +84,10 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Futsal turniri" />
     <meta property="og:title" content="Futsal turniri" />
-    <meta property="og:description" content="Futsal turniri u Hrvatskoj — prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca." />
+    <meta property="og:description" content="Futsal turniri u Hrvatskoj - prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca." />
     <!-- og:url is the canonical URL of this page. Facebook's scraper flags
          it as a missing required property when absent. The static value
-         here is the root URL — useDocumentHead overrides it per-route
+         here is the root URL - useDocumentHead overrides it per-route
          (tournament/profile pages) for JS-aware crawlers; the
          /api/preview/* SSR fallback emits a route-specific og:url too. -->
     <meta property="og:url" content="https://futsal-turniri.com/" />
@@ -101,10 +101,10 @@
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Futsal Turniri — futsal-turniri.com" />
+    <meta property="og:image:alt" content="Futsal Turniri - futsal-turniri.com" />
     <meta property="og:locale" content="hr_HR" />
     <!-- fb:app_id is "recommended" by Facebook but not strictly required
-         — its absence triggers a warning in the FB sharing debugger but
+         - its absence triggers a warning in the FB sharing debugger but
          doesn't block previews from rendering. To silence the warning,
          create a Facebook App at https://developers.facebook.com/apps
          and replace YOUR_APP_ID below (then uncomment the line). An
@@ -113,7 +113,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://futsal-turniri.com/api/og/default.png" />
 
-    <title>Futsal Turniri — futsal-turniri.com</title>
+    <title>Futsal Turniri - futsal-turniri.com</title>
 
     <!-- ── schema.org JSON-LD ─────────────────────────────────────────────
          Two records keyed off the site root, picked up by Googlebot on
@@ -121,14 +121,14 @@
          document head). Reasons they're worth their weight in bytes:
 
          • WebSite + potentialAction=SearchAction enables the sitelinks
-           search box for branded "futsal turniri" queries — a search input
+           search box for branded "futsal turniri" queries - a search input
            rendered directly inside the Google result that targets our
            /tournaments?q= endpoint. Google ignores this on small sites
            it doesn't recognise yet, but the markup is the prerequisite
            and costs us nothing.
 
          • Organization gives Google's knowledge graph a canonical logo,
-           name, and homepage URL — used for the favicon/brand chip next
+           name, and homepage URL - used for the favicon/brand chip next
            to results and for Google Business-style entity panels.
 
          Per-route Event/Person JSON-LD is emitted from the backend SSR
@@ -166,8 +166,8 @@
     </script>
 
     <!-- Reserve the vertical-scrollbar gutter unconditionally. Without this
-         rule a route swap from a short page (Kalendar — fits in viewport,
-         no scrollbar) to a tall page (Kreiraj turnir — scrollbar appears)
+         rule a route swap from a short page (Kalendar - fits in viewport,
+         no scrollbar) to a tall page (Kreiraj turnir - scrollbar appears)
          shifts every centred element ~17px left, which the user spots as a
          jarring layout jump. `scrollbar-gutter: stable` keeps the gutter
          present always, even when content fits, so the content area's
@@ -175,7 +175,7 @@
          browsers (no jump, just the original behaviour). -->
     <style>
       html { scrollbar-gutter: stable; }
-      /* Pitch theme — the live/now pulsing dot animation. Used by the
+      /* Pitch theme - the live/now pulsing dot animation. Used by the
          `PulseDot`, `StatusChip` (live variant), `FilterChip` (with
          pulse=true), and the live navbar item. Defining it as a global
          keyframe keeps it usable from inline `css={{ animation }}`
@@ -184,7 +184,7 @@
         0%, 100% { opacity: 1; }
         50%      { opacity: 0.4; }
       }
-      /* Live-tournament map marker — expanding "radar ping" ring that
+      /* Live-tournament map marker - expanding "radar ping" ring that
          emanates from the pin head. Rendered inside the Leaflet DivIcon
          HTML (see MapPage.makePinIcon) on tournaments with a live match
          so they visibly stand out from upcoming/finished pins. */

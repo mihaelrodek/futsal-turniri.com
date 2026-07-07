@@ -3,7 +3,7 @@ import { Link as RouterLink } from "react-router-dom"
 import { Logo } from "./Logo"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Footer — slim sticky brand bar pinned to the bottom of the viewport.
+   Footer - slim sticky brand bar pinned to the bottom of the viewport.
 
    It's intentionally short (single row) so it stays visible while scrolling
    without eating content height. Dark pitch-green ground so it reads as a
@@ -21,7 +21,7 @@ export default function Footer() {
         <Box
             as="footer"
             // Desktop only. On mobile the fixed bottom nav already owns the
-            // bottom edge, so a sticky footer there just fought it — per
+            // bottom edge, so a sticky footer there just fought it - per
             // product request the footer is web-only.
             display={{ base: "none", md: "block" }}
             position="sticky"

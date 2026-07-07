@@ -3,10 +3,10 @@ import { PageTitle } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   PrivacyPage — "Pravila privatnosti" (/privatnost).
+   PrivacyPage - "Pravila privatnosti" (/privatnost).
 
    Plain content page covering the basics a public EU/HR site with login +
-   push notifications should disclose (GDPR). This is a sensible template —
+   push notifications should disclose (GDPR). This is a sensible template -
    review/adjust the wording (especially the contact + data-controller
    details) for your exact setup before relying on it legally.
    ────────────────────────────────────────────────────────────────────── */
@@ -37,9 +37,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PrivacyPage() {
     useDocumentHead({
-        title: "Pravila privatnosti — futsal-turniri.com",
+        title: "Pravila privatnosti - futsal-turniri.com",
         description:
-            "Kako futsal-turniri.com prikuplja i obrađuje osobne podatke — prijava, turniri, obavijesti i prava korisnika.",
+            "Kako futsal-turniri.com prikuplja i obrađuje osobne podatke - prijava, turniri, obavijesti i prava korisnika.",
         canonical: "https://futsal-turniri.com/privatnost",
     })
 
@@ -67,14 +67,14 @@ export default function PrivacyPage() {
                 <Text>• <b>Prijava (Google / Firebase):</b> ime, e-mail adresa i profilna slika koje dijeli tvoj Google račun.</Text>
                 <Text>• <b>Profil:</b> prikazno ime i, ako ga sam upišeš, broj telefona.</Text>
                 <Text>• <b>Sadržaj turnira:</b> nazivi turnira, ekipa i igrača, rezultati, rasporedi te plakati/slike koje učitaš.</Text>
-                <Text>• <b>Obavijesti (push):</b> tehnički identifikator tvog preglednika za slanje obavijesti — samo ako ih izričito odobriš.</Text>
+                <Text>• <b>Obavijesti (push):</b> tehnički identifikator tvog preglednika za slanje obavijesti - samo ako ih izričito odobriš.</Text>
                 <Text>• <b>Tehnički podaci:</b> IP adresa i zapisi poslužitelja, nužni za rad i sigurnost stranice.</Text>
             </Section>
 
             <Section title="3. Svrha i pravna osnova">
                 <Text>
                     Podatke obrađujemo radi pružanja usluge (organizacija i
-                    praćenje futsal turnira) — pravna osnova je izvršenje
+                    praćenje futsal turnira) - pravna osnova je izvršenje
                     usluge koju koristiš. Push obavijesti se šalju isključivo
                     na temelju tvoje privole, koju u svakom trenutku možeš
                     povući isključivanjem obavijesti.
@@ -82,8 +82,8 @@ export default function PrivacyPage() {
             </Section>
 
             <Section title="4. Tko ima pristup (izvršitelji obrade)">
-                <Text>• <b>Google Firebase</b> — autentikacija (prijava).</Text>
-                <Text>• <b>Hetzner Online GmbH</b> — poslužitelj (hosting) u EU (Finska).</Text>
+                <Text>• <b>Google Firebase</b> - autentikacija (prijava).</Text>
+                <Text>• <b>Hetzner Online GmbH</b> - poslužitelj (hosting) u EU (Finska).</Text>
                 <Text>
                     Podatke ne prodajemo niti dijelimo s trećim stranama u
                     marketinške svrhe.

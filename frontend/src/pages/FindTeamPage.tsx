@@ -51,7 +51,7 @@ import {
 } from "../api/teamRequests"
 import { getProfile } from "../api/userMe"
 
-/** Country dial codes — kept in sync with ProfilePage / CreateTournamentPage. */
+/** Country dial codes - kept in sync with ProfilePage / CreateTournamentPage. */
 const PHONE_COUNTRIES = [
     { value: "+385", label: "🇭🇷 +385" },
     { value: "+386", label: "🇸🇮 +386" },
@@ -173,7 +173,7 @@ export default function FindTeamPage() {
                     if (p.phoneCountry) setPhoneCountry(p.phoneCountry)
                 }
             } catch {
-                /* non-fatal — leave fields blank */
+                /* non-fatal - leave fields blank */
             }
         })()
         return () => { cancelled = true }
@@ -338,7 +338,7 @@ export default function FindTeamPage() {
 
     return (
         <VStack align="stretch" gap="4">
-            {/* Action bar — title removed; just the toggle button.
+            {/* Action bar - title removed; just the toggle button.
                 Anonymous users get bounced to /login on click; logged-in
                 users toggle the form open. */}
             <HStack justify="flex-end" gap="3" wrap="wrap">
@@ -354,7 +354,7 @@ export default function FindTeamPage() {
                             return
                         }
                         if (formOpen) {
-                            // Closing the form — also drops any in-progress edit.
+                            // Closing the form - also drops any in-progress edit.
                             resetForm()
                             setFormOpen(false)
                         } else {
@@ -425,7 +425,7 @@ export default function FindTeamPage() {
                                     </NativeSelect.Root>
                                     {editingUuid && (
                                         <Field.HelperText>
-                                            Turnir nije moguće promijeniti — obriši zahtjev i kreiraj novi za drugi turnir.
+                                            Turnir nije moguće promijeniti - obriši zahtjev i kreiraj novi za drugi turnir.
                                         </Field.HelperText>
                                     )}
                                     {selectedTournament && (
@@ -483,7 +483,7 @@ export default function FindTeamPage() {
                                                 pattern="[0-9 ]*"
                                                 placeholder="91 234 5678"
                                                 value={phone}
-                                                // Digits + spaces only — country dial code lives
+                                                // Digits + spaces only - country dial code lives
                                                 // in the adjacent select.
                                                 onChange={(e) => setPhone(e.target.value.replace(/[^\d\s]/g, ""))}
                                             />
@@ -658,7 +658,7 @@ export default function FindTeamPage() {
                         </Text>
                         <Text color="fg.muted" fontSize="sm" textAlign="center">
                             {requests.length === 0
-                                ? "Budi prvi koji traži ekipu — klikni \"Objavi zahtjev\" gore."
+                                ? "Budi prvi koji traži ekipu - klikni \"Objavi zahtjev\" gore."
                                 : "Nijedan zahtjev ne odgovara odabranim filterima."}
                         </Text>
                     </VStack>

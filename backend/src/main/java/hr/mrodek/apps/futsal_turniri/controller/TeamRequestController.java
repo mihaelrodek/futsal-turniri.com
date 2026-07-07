@@ -26,11 +26,11 @@ import java.util.UUID;
  * any upcoming tournament; other players see them and can mark themselves as matched.
  *
  * Routes:
- *   POST   /team-requests/by-tournament/{tournamentUuid}        — create
- *   GET    /team-requests                                       — list (optional ?status=open|matched)
- *   GET    /team-requests/by-tournament/{tournamentUuid}        — list for one tournament
- *   POST   /team-requests/{requestUuid}/match                   — mark as matched
- *   DELETE /team-requests/{requestUuid}                         — remove
+ *   POST   /team-requests/by-tournament/{tournamentUuid}        - create
+ *   GET    /team-requests                                       - list (optional ?status=open|matched)
+ *   GET    /team-requests/by-tournament/{tournamentUuid}        - list for one tournament
+ *   POST   /team-requests/{requestUuid}/match                   - mark as matched
+ *   DELETE /team-requests/{requestUuid}                         - remove
  */
 @Path("/team-requests")
 @Produces(MediaType.APPLICATION_JSON)
@@ -84,7 +84,7 @@ public class TeamRequestController {
             @Valid CreateTeamRequestRequest body
     ) {
         // The path segment can be either a UUID (legacy clients) or the new
-        // tournament slug — both resolve via findByUuidOrSlug.
+        // tournament slug - both resolve via findByUuidOrSlug.
         var t = tournamentsRepo.findByUuidOrSlug(tournamentIdOrSlug).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
 
@@ -123,7 +123,7 @@ public class TeamRequestController {
 
     /**
      * Edit name/phone/note on a team-finding request. Only the original poster
-     * (or an admin) may edit; tournament cannot be changed — that's a delete +
+     * (or an admin) may edit; tournament cannot be changed - that's a delete +
      * create flow if the user wants to switch tournaments.
      */
     @PUT

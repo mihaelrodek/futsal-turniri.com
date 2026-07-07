@@ -6,7 +6,7 @@ import { fetchLiveMatches } from "../api/live"
 import { usePolling } from "../hooks/usePolling"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   MobileBottomNav — v3 5-tab bottom navigation with a centred FAB.
+   MobileBottomNav - v3 5-tab bottom navigation with a centred FAB.
 
    Layout (left → right):
      1. Turniri        (list icon)
@@ -15,10 +15,10 @@ import { usePolling } from "../hooks/usePolling"
      4. Karta          (map pin)
      5. Statistika     (bar-chart icon)
 
-   Profil isn't a bottom tab on mobile — it lives behind the avatar in the
-   top bar — so the four flanking tabs stay balanced 2+2 around the FAB.
+   Profil isn't a bottom tab on mobile - it lives behind the avatar in the
+   top bar - so the four flanking tabs stay balanced 2+2 around the FAB.
 
-   The FAB is the only visual focal point — it shouldn't disappear into a
+   The FAB is the only visual focal point - it shouldn't disappear into a
    row of equally-weighted icons. The remaining four tabs share the row
    evenly around it.
 
@@ -36,7 +36,7 @@ type Item = {
     livePoll?: boolean
 }
 
-// Four flanking items — Kreiraj is rendered separately as a FAB between the
+// Four flanking items - Kreiraj is rendered separately as a FAB between the
 // 2nd and 3rd entries below.
 const SIDE_ITEMS: Item[] = [
     { to: "/turniri", label: "Turniri", icon: FiList, exact: true },
@@ -173,13 +173,13 @@ function CreateFab() {
 export default function MobileBottomNav() {
     const [liveCount, setLiveCount] = useState(0)
 
-    // 30s polling — same cadence as LiveNavItem so the live dot stays in
+    // 30s polling - same cadence as LiveNavItem so the live dot stays in
     // sync. usePolling pauses while the tab is hidden.
     usePolling(() => {
         fetchLiveMatches()
             .then((l) => setLiveCount(l.length))
             .catch(() => {
-                /* offline — treat as nothing live */
+                /* offline - treat as nothing live */
             })
     }, 30000)
 
@@ -206,7 +206,7 @@ export default function MobileBottomNav() {
             borderColor="rgba(255, 255, 255, 0.6)"
             // z-index high enough to beat Leaflet panes (Leaflet container
             // is typically 400, controls 800). Also stays above Chakra
-            // toasts (zIndex ~1700) is NOT what we want — toasts must be
+            // toasts (zIndex ~1700) is NOT what we want - toasts must be
             // visible on top of the nav. So we sit at 1100, below toast
             // (1500-1900 by Chakra default) and above Leaflet (which we
             // also explicitly clamp via the .leaflet-container CSS rule
@@ -217,12 +217,12 @@ export default function MobileBottomNav() {
                 backdropFilter: "saturate(180%) blur(18px)",
                 WebkitBackdropFilter: "saturate(180%) blur(18px)",
                 // Subtle inner highlight at the very top to sell the
-                // glass edge — same trick Apple's translucent toolbars
+                // glass edge - same trick Apple's translucent toolbars
                 // use. Pure CSS, no extra DOM.
                 boxShadow:
                     "inset 0 1px 0 rgba(255,255,255,0.5), 0 -8px 24px rgba(14,31,21,0.05)",
                 // Bottom padding strategy:
-                //   1. safe-area-inset-bottom — covers iOS PWA home
+                //   1. safe-area-inset-bottom - covers iOS PWA home
                 //      indicator (≈ 34px on modern iPhones).
                 //   2. In Safari on iOS, the browser's URL bar slides
                 //      OUT (small height) when scrolling down, then

@@ -17,9 +17,9 @@ import java.time.OffsetDateTime;
 /**
  * Preset-level claim flow ("share with partner").
  *
- *   GET   /teams-name/claim/{token}/preview  — public read of the preset
+ *   GET   /teams-name/claim/{token}/preview  - public read of the preset
  *                                              + primary submitter info
- *   POST  /teams-name/claim/{token}          — auth-required claim; sets
+ *   POST  /teams-name/claim/{token}          - auth-required claim; sets
  *                                              preset.coOwnerUid AND
  *                                              backfills coSubmittedByUid
  *                                              on every existing Team
@@ -82,7 +82,7 @@ public class PresetClaimController {
      * Side effect: every existing Team submitted by the primary with
      * this name (case-insensitive trim) gets its coSubmittedByUid set
      * to the claimer's UID. This propagates equal-participant view to
-     * old teams too — profile listing, push notifications, bill access.
+     * old teams too - profile listing, push notifications, bill access.
      */
     @POST
     @Authenticated
@@ -122,7 +122,7 @@ public class PresetClaimController {
 
         // Backfill: every Team the primary submitted under this name
         // that doesn't already have a co-owner gets the claimer set.
-        // Plain bulk UPDATE via JPQL — touches only matching rows.
+        // Plain bulk UPDATE via JPQL - touches only matching rows.
         em.createQuery("""
                 update Teams p
                 set p.coSubmittedByUid = :coUid

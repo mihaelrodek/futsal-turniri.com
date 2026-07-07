@@ -27,7 +27,7 @@ export type TournamentCard = {
      *  list sorts featured tournaments first (before live ones). */
     featuredAt?: string | null;
     /** Admin-set "not publicly visible". Only the creator/admin ever receive
-     *  hidden rows — the card renders greyed-out with a badge. */
+     *  hidden rows - the card renders greyed-out with a badge. */
     hidden?: boolean;
 };
 
@@ -84,7 +84,7 @@ export type TournamentDetails = {
     bestPlayerName?: string | null;
     bestScorerName?: string | null;
 
-    // Creator info — populated server-side from the verified Firebase ID token.
+    // Creator info - populated server-side from the verified Firebase ID token.
     createdByUid?: string | null;
     createdByName?: string | null;
 
@@ -97,7 +97,7 @@ export type TournamentDetails = {
     featuredAt?: string | null;
 
     /** Admin-set "not publicly visible". Only the creator/admin ever see a
-     *  hidden tournament — the details page shows a banner + greyed page. */
+     *  hidden tournament - the details page shows a banner + greyed page. */
     hidden?: boolean;
 };
 
@@ -131,7 +131,7 @@ export type CreateTournamentPayload = {
     gameSystem?: string | null;
     websiteUrl?: string | null;
 
-    // rewards — each place has an amount + optional free-text note ("Ostalo").
+    // rewards - each place has an amount + optional free-text note ("Ostalo").
     // rewardType is legacy; always "FIXED" now (percent/fixed toggle removed).
     rewardType?: RewardType | null;
     rewardFirst?: number | null;

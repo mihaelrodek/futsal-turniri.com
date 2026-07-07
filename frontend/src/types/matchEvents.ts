@@ -13,15 +13,15 @@ export type MatchStatus = "SCHEDULED" | "LIVE" | "FINISHED"
 
 /**
  * How a LIVE match is being tracked:
- *  - TIMER  — a running match clock (elapsed time from {@code liveStartedAt}).
- *  - SIMPLE — just marked live; the organizer uses their own external timer.
+ *  - TIMER  - a running match clock (elapsed time from {@code liveStartedAt}).
+ *  - SIMPLE - just marked live; the organizer uses their own external timer.
  */
 export type MatchLiveMode = "TIMER" | "SIMPLE"
 
 /** The kind of thing that happened during a live match. PENALTY_GOAL /
  *  PENALTY_MISSED record an individual knockout penalty-shootout kick (who
  *  shot + whether it scored); they never affect the match score or scorer
- *  stats — the shootout total lives in the match's penalties1/2. */
+ *  stats - the shootout total lives in the match's penalties1/2. */
 export type MatchEventType =
     | "GOAL"
     | "YELLOW_CARD"
@@ -50,9 +50,9 @@ export type CreateMatchEventRequest = {
     /** Required for goals/cards; may be null for an unattributed penalty kick. */
     playerId: number | null
     /** Required (instead of playerId) when recording a penalty kick with no
-     *  named taker — names the side. Ignored when playerId is set. */
+     *  named taker - names the side. Ignored when playerId is set. */
     teamId?: number | null
     minute: number
-    /** Optional — only meaningful for GOAL events. */
+    /** Optional - only meaningful for GOAL events. */
     assistPlayerId?: number | null
 }

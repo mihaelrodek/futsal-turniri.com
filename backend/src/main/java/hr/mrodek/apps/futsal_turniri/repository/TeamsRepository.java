@@ -34,7 +34,7 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
      * is still considered unclaimed here, since the preset is a soft link the
      * admin might want to override.
      *
-     * <p>Pending self-registrations are excluded — the admin shouldn't be
+     * <p>Pending self-registrations are excluded - the admin shouldn't be
      * reassigning a team the organiser hasn't approved yet.
      */
     public List<Teams> findUnclaimedByTournamentId(Long tournamentId) {
@@ -76,7 +76,7 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
      *     case-insensitive.
      *
      * The by-name fallback covers tournaments that finished before self-register
-     * existed, plus organizers who add their own team via "Dodaj par" — they
+     * existed, plus organizers who add their own team via "Dodaj par" - they
      * still want to see those in their personal history.
      *
      * Pass an empty list of presets to skip the by-name OR clause entirely.
@@ -91,11 +91,11 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
                         .map(s -> s.trim().toLowerCase())
                         .toList();
 
-        // Build the JPQL dynamically — the OR-by-name clause is only added
+        // Build the JPQL dynamically - the OR-by-name clause is only added
         // when the user has saved team-name presets. Stays on Panache:
         // entity-shaped result, full "from" prefix tells Panache this is
         // a complete query, named params via Parameters builder.
-        // Co-owned teams (claimed via the share link) also count — they
+        // Co-owned teams (claimed via the share link) also count - they
         // show on the claimer's profile just like their own self-registrations.
         StringBuilder jpql = new StringBuilder("""
                 from Teams p
@@ -115,7 +115,7 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
 
     /**
      * Returns rows of {@code [tournamentId, count]} for the given tournament
-     * ids. Tuple-shaped projection — Panache {@code find()} is entity-shaped
+     * ids. Tuple-shaped projection - Panache {@code find()} is entity-shaped
      * and can't return {@code Object[]} from GROUP BY, so this goes through
      * the injected EntityManager.
      */

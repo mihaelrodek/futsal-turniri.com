@@ -2,7 +2,7 @@ import { Box, HStack, Text, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Logo — brand lockup for the "Futsal Turniri" identity.
+   Logo - brand lockup for the "Futsal Turniri" identity.
 
    Composes the SVG mark (net-frame + green futsal ball) with live web-font
    text rather than baking the wordmark into the SVG, so the type uses the
@@ -101,7 +101,7 @@ export function Logo({
             align="center"
             _hover={{ textDecoration: "none" }}
         >
-            <RouterLink to={to} aria-label="Futsal Turniri — početna">
+            <RouterLink to={to} aria-label="Futsal Turniri - početna">
                 {inner}
             </RouterLink>
         </HStack>

@@ -34,7 +34,7 @@ public class TournamentCardDto {
      *  list sorts featured tournaments to the very front (before live ones). */
     private OffsetDateTime featuredAt;
     /** Admin-set "not publicly visible". Only ever true for the creator/admin
-     *  (public readers never receive hidden rows) — the SPA greys the card out
+     *  (public readers never receive hidden rows) - the SPA greys the card out
      *  and badges it. */
     private boolean hidden;
 }

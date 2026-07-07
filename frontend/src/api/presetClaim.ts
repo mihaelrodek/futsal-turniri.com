@@ -15,7 +15,7 @@ export type PresetClaimResultDto = {
     presetUuid: string
 }
 
-/** Public — used by the claim landing page to preview the preset. */
+/** Public - used by the claim landing page to preview the preset. */
 export async function fetchPresetClaimPreview(
     token: string,
 ): Promise<PresetClaimPreviewDto> {
@@ -28,16 +28,16 @@ export async function fetchPresetClaimPreview(
 
 /**
  * Auth required. Conflict statuses:
- *   - 409 OWNER_SAME      — viewer is the primary owner
- *   - 409 ALREADY_CLAIMED — claimed by a different user
- *   - 404                 — token unknown
+ *   - 409 OWNER_SAME      - viewer is the primary owner
+ *   - 409 ALREADY_CLAIMED - claimed by a different user
+ *   - 404                 - token unknown
  */
 export async function claimPreset(token: string): Promise<PresetClaimResultDto> {
     const { data } = await http.post<PresetClaimResultDto>(
         `/teams-name/claim/${encodeURIComponent(token)}`,
         null,
         {
-            successMessage: "Ekipa preuzeta — pojavit će se na tvojem profilu.",
+            successMessage: "Ekipa preuzeta - pojavit će se na tvojem profilu.",
             silentErrorStatuses: [409],
         } as any,
     )

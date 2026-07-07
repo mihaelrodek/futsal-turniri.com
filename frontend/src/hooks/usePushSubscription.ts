@@ -10,17 +10,17 @@ import {
  * Auto-subscribe the current user to Web Push as soon as we have:
  *  1. a logged-in user (Firebase uid)
  *  2. browser support for service workers + push
- *  3. notification permission granted (or default — we'll ask)
+ *  3. notification permission granted (or default - we'll ask)
  *  4. an active service worker registration
  *
- * "On by default for everyone" — per product decision — so this hook
+ * "On by default for everyone" - per product decision - so this hook
  * actively requests permission on first login.
  *
  * iOS Safari quirk: even inside a PWA installed to the home screen,
  * `Notification.requestPermission()` only works when called *inside a
  * user gesture handler*. Calling it from a `useEffect` silently
  * resolves to "default" forever. So when the current permission is
- * `default`, we don't prompt eagerly — we attach a one-shot listener
+ * `default`, we don't prompt eagerly - we attach a one-shot listener
  * for the next pointer/touch/click on the document and run the prompt
  * from there. Android tolerates either path; iOS requires the gesture.
  *
@@ -46,10 +46,10 @@ export function usePushSubscription() {
         if (!("PushManager" in window)) return
         if (!("Notification" in window)) return
 
-        // Bail if the user previously denied — we can't reprompt
+        // Bail if the user previously denied - we can't reprompt
         // without them changing the browser setting themselves.
         if (Notification.permission === "denied") {
-            console.info("[push] permission denied — skipping")
+            console.info("[push] permission denied - skipping")
             return
         }
 
@@ -58,15 +58,15 @@ export function usePushSubscription() {
         const runSubscribeFlow = async () => {
             try {
                 // Wait for the SW to be ready (it registers in main.tsx
-                // after `load`). If it never registers — e.g. in dev
-                // mode where the SW is intentionally not shipped — we
+                // after `load`). If it never registers - e.g. in dev
+                // mode where the SW is intentionally not shipped - we
                 // bail without warning.
                 const reg = await navigator.serviceWorker.ready
                 if (cancelled) return
 
                 // Ask for permission only if not already decided. On
                 // iOS this MUST be called from inside a user gesture
-                // (see the listener wiring further down) — by the time
+                // (see the listener wiring further down) - by the time
                 // we get here, we're already inside that gesture.
                 if (Notification.permission === "default") {
                     const result = await Notification.requestPermission()
@@ -93,12 +93,12 @@ export function usePushSubscription() {
                 }
 
                 // Fresh subscription. Need the VAPID public key the
-                // backend serves — converted from base64url to the
+                // backend serves - converted from base64url to the
                 // Uint8Array that pushManager.subscribe expects.
                 const { publicKey, ready } = await fetchPushPublicKey()
                 if (cancelled) return
                 if (!ready || !publicKey) {
-                    console.warn("[push] backend not configured — skipping")
+                    console.warn("[push] backend not configured - skipping")
                     return
                 }
                 const applicationServerKey = urlBase64ToUint8Array(publicKey)
@@ -116,12 +116,12 @@ export function usePushSubscription() {
                 // Permission flow can throw for all kinds of reasons:
                 // user denied, autoplay-style "must be in user gesture"
                 // restrictions, network failure on the public-key fetch.
-                // None of these are fatal — log for the curious and move on.
+                // None of these are fatal - log for the curious and move on.
                 console.warn("[push] subscription failed:", err)
             }
         }
 
-        // If permission is already granted, run immediately — no
+        // If permission is already granted, run immediately - no
         // gesture needed, and we want to re-sync the endpoint with
         // the backend on every login (cheap idempotent upsert).
         if (Notification.permission === "granted") {

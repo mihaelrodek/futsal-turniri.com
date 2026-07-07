@@ -2,7 +2,7 @@ package hr.mrodek.apps.futsal_turniri.dtos;
 
 import java.time.OffsetDateTime;
 
-/** One fixture within a group — used for the group's match list / result entry. */
+/** One fixture within a group - used for the group's match list / result entry. */
 public record GroupMatchDto(
         Long matchId,
         Long team1Id,

@@ -7,7 +7,7 @@ import java.util.List;
  * UI so the organizer can only place teams that actually advanced.
  *
  * <p>{@code groupStageComplete} is false for a GROUPS_KNOCKOUT tournament
- * whose group fixtures aren't all finished yet — the UI uses it to keep the
+ * whose group fixtures aren't all finished yet - the UI uses it to keep the
  * "generate bracket" actions disabled. For KNOCKOUT_ONLY it is always true and
  * {@code teams} is the full registered field.
  */

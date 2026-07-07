@@ -37,7 +37,7 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- ZXing — QR code generation for tournament share links. -->
+        <!-- ZXing - QR code generation for tournament share links. -->
         <dependency>
             <groupId>com.google.zxing</groupId>
             <artifactId>core</artifactId>
@@ -106,7 +106,7 @@
         </dependency>
 
         <!-- Image downscale/recompress on upload (pure-Java, no natives).
-             Posters arrived as 3-6 MB camera JPEGs and were served verbatim —
+             Posters arrived as 3-6 MB camera JPEGs and were served verbatim -
              the single biggest mobile LCP cost. See StorageService.recompress. -->
         <dependency>
             <groupId>net.coobird</groupId>
@@ -191,7 +191,7 @@
                  The <executions> block is what binds Quarkus's `build` and
                  `generate-code` goals to the Maven `package` phase. Without
                  these executions, `mvn package` runs only the standard jar
-                 plugin and `target/quarkus-app/` is never produced — the
+                 plugin and `target/quarkus-app/` is never produced - the
                  docker build fails to find it. -->
             <plugin>
                 <groupId>io.quarkus.platform</groupId>

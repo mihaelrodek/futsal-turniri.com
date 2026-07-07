@@ -3,9 +3,9 @@
 # Quarkus JVM-mode image for the futsal-turniri.com backend.
 #
 # Two stages:
-#   1. `build` — Maven on Eclipse Temurin 21, downloads deps then packages
+#   1. `build` - Maven on Eclipse Temurin 21, downloads deps then packages
 #      the Quarkus fast-jar layout into target/quarkus-app/.
-#   2. runtime — Temurin 21 JRE only, copies the fast-jar layout, runs as
+#   2. runtime - Temurin 21 JRE only, copies the fast-jar layout, runs as
 #      non-root. ~200 MB final image.
 #
 # Build context: the `backend/` directory.
@@ -20,7 +20,7 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
 # Copy pom first so dependency download is cached as long as pom doesn't
-# change. This makes incremental builds fast — only the source changes
+# change. This makes incremental builds fast - only the source changes
 # trigger a rebuild of the application layer.
 COPY pom.xml ./
 RUN mvn -B -e -ntp dependency:go-offline
@@ -48,7 +48,7 @@ RUN groupadd --system --gid 1001 quarkus \
 WORKDIR /deployments
 
 # Copy the entire Quarkus fast-jar layout in one go. This is more robust
-# than splitting into four separate COPYs (lib/, *.jar, app/, quarkus/) —
+# than splitting into four separate COPYs (lib/, *.jar, app/, quarkus/) -
 # if any subdirectory is missing, a single COPY just copies what's there
 # rather than failing the whole build.
 COPY --from=build --chown=1001:1001 /workspace/target/quarkus-app/ ./

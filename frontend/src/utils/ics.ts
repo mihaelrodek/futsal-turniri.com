@@ -2,7 +2,7 @@
    Tiny RFC-5545 .ics builder for "add a match to your calendar".
 
    Output is a one-event VCALENDAR string that iOS Safari, Android Chrome,
-   Outlook and Google Calendar all import on click — no calendar-specific
+   Outlook and Google Calendar all import on click - no calendar-specific
    APIs, no platform forks. The blob download trick (see `downloadIcs`)
    is the same pattern the avatar uploader uses for client-side files.
 
@@ -12,10 +12,10 @@
    ────────────────────────────────────────────────────────────────────── */
 
 export type IcsEvent = {
-    /** Stable UID for the event — typically `match-{id}@futsal-turniri.com`.
+    /** Stable UID for the event - typically `match-{id}@futsal-turniri.com`.
      *  Calendar clients use this to dedupe re-imports of the same match. */
     uid: string
-    /** Required. Localised free-text title — "Team A vs Team B". */
+    /** Required. Localised free-text title - "Team A vs Team B". */
     summary: string
     /** Optional venue / address text. */
     location?: string | null
@@ -48,7 +48,7 @@ function fmtUtc(d: Date): string {
     )
 }
 
-/** Escape per RFC-5545 §3.3.11 — commas, semicolons and backslashes get
+/** Escape per RFC-5545 §3.3.11 - commas, semicolons and backslashes get
  *  prefixed, hard newlines become literal "\n". Required or calendar
  *  clients refuse to parse the whole event. */
 function esc(s: string): string {

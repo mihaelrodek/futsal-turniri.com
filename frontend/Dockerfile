@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# "Edge" image — builds the Vite SPA and serves it via Caddy.
+# "Edge" image - builds the Vite SPA and serves it via Caddy.
 # Caddy also reverse-proxies /api/* to the backend container, terminates
 # TLS via Let's Encrypt, and routes crawler User-Agents to the SSR preview
 # endpoints. One container, one config file, no cross-volume gymnastics.
@@ -11,7 +11,7 @@
 #   docker build -t futsal-edge -f frontend/Dockerfile .
 #
 # Required build args (Vite inlines them at build time):
-#   VITE_API_URL                — defaults to /api (same-origin via Caddy)
+#   VITE_API_URL                - defaults to /api (same-origin via Caddy)
 #   VITE_FIREBASE_API_KEY
 #   VITE_FIREBASE_AUTH_DOMAIN
 #   VITE_FIREBASE_PROJECT_ID
@@ -22,7 +22,7 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
-# Cache npm install — separate layer, only invalidates when package*.json change.
+# Cache npm install - separate layer, only invalidates when package*.json change.
 COPY frontend/package.json frontend/package-lock.json* ./
 # --legacy-peer-deps: @g-loot/react-tournament-brackets declares a React 18
 # peer but runs fine on React 19. The local install + lockfile were built

@@ -32,7 +32,7 @@ public class StorageService {
     private static final long MAX_POSTER_BYTES = 6L * 1024 * 1024;
 
     /**
-     * Hard cap on avatar size (bytes). Same intent as MAX_POSTER_BYTES — a
+     * Hard cap on avatar size (bytes). Same intent as MAX_POSTER_BYTES - a
      * profile picture has no reason to be larger than a few MB.
      */
     private static final long MAX_AVATAR_BYTES = 5L * 1024 * 1024;
@@ -42,12 +42,12 @@ public class StorageService {
     private static final int MAX_POSTER_DIM = 1600;
     private static final int MAX_AVATAR_DIM = 512;
 
-    /** Tournament poster upload — keyed under {@code posters/...}. */
+    /** Tournament poster upload - keyed under {@code posters/...}. */
     public Resources uploadPoster(org.jboss.resteasy.reactive.multipart.FileUpload file) {
         return uploadImage(file, "poster", "posters", MAX_POSTER_BYTES, MAX_POSTER_DIM);
     }
 
-    /** User avatar upload — keyed under {@code avatars/...}. */
+    /** User avatar upload - keyed under {@code avatars/...}. */
     public Resources uploadAvatar(org.jboss.resteasy.reactive.multipart.FileUpload file) {
         return uploadImage(file, "avatar", "avatars", MAX_AVATAR_BYTES, MAX_AVATAR_DIM);
     }
@@ -55,8 +55,8 @@ public class StorageService {
     /**
      * Shared upload pipeline. The caller picks a {@code kind} (recorded in
      * metadata), an object-key {@code prefix} (e.g. {@code posters},
-     * {@code avatars}), and a max-size cap. Everything else — content-type
-     * validation, magic-byte / extension safety, MinIO put — is identical.
+     * {@code avatars}), and a max-size cap. Everything else - content-type
+     * validation, magic-byte / extension safety, MinIO put - is identical.
      */
     private Resources uploadImage(
             org.jboss.resteasy.reactive.multipart.FileUpload file,
@@ -82,7 +82,7 @@ public class StorageService {
             }
 
             java.nio.file.Path path = file.uploadedFile();
-            // Magic-byte sniff — reject before we open a streaming
+            // Magic-byte sniff - reject before we open a streaming
             // upload to MinIO. Stops a `evil.exe.jpg` renamed file from
             // landing in the bucket and being served with an image
             // content-type. nosniff blocks browser execution anyway, but
@@ -100,7 +100,7 @@ public class StorageService {
                 String ext = magicExt;
 
                 // Downscale + recompress before storing. A phone-camera JPEG is
-                // 3-6 MB / 4000 px but renders at ≤800 CSS px — serving it
+                // 3-6 MB / 4000 px but renders at ≤800 CSS px - serving it
                 // verbatim was the single biggest mobile LCP cost. WebP inputs
                 // are passed through (ImageIO can't decode WebP without native
                 // plugins, and they're already efficiently encoded).
@@ -110,7 +110,7 @@ public class StorageService {
                 } else {
                     byte[] recompressed = recompress(path, ext, maxDim);
                     byte[] original = java.nio.file.Files.readAllBytes(path);
-                    // Keep whichever is smaller — recompressing an already-tiny
+                    // Keep whichever is smaller - recompressing an already-tiny
                     // image can inflate it.
                     body = (recompressed != null && recompressed.length < original.length)
                             ? recompressed
@@ -120,7 +120,7 @@ public class StorageService {
                 String objectKey = buildObjectKey(prefix, ext);
 
                 // SECURITY: derive the stored Content-Type from the validated extension
-                // — never trust the client-supplied file.contentType().
+                // - never trust the client-supplied file.contentType().
                 String safeContentType = contentTypeForExt(ext);
 
                 var put = io.minio.PutObjectArgs.builder()
@@ -156,7 +156,7 @@ public class StorageService {
         } catch (MinioException me) {
             throw new RuntimeException("MinIO error: " + me.getMessage(), me);
         } catch (IllegalArgumentException iae) {
-            // Don't wrap — let the IllegalArgumentExceptionMapper turn this into 400.
+            // Don't wrap - let the IllegalArgumentExceptionMapper turn this into 400.
             throw iae;
         } catch (Exception e) {
             throw new RuntimeException("Failed to upload " + kind, e);
@@ -167,7 +167,7 @@ public class StorageService {
      * Downscale to {@code maxDim} on the longest edge and re-encode (JPEG at
      * quality 0.85; PNG stays PNG to preserve alpha). Returns {@code null} on
      * any decode/encode failure so the caller falls back to the original bytes
-     * — a picture we can't decode is stored verbatim rather than rejected.
+     * - a picture we can't decode is stored verbatim rather than rejected.
      */
     private byte[] recompress(java.nio.file.Path path, String ext, int maxDim) {
         try {
@@ -189,7 +189,7 @@ public class StorageService {
      * "webp") or {@code null} when the content is not an accepted image.
      *
      * <p>Why this matters: previously we trusted the filename extension
-     * only — an attacker could upload {@code evil.exe} renamed to
+     * only - an attacker could upload {@code evil.exe} renamed to
      * {@code evil.jpg}, the bucket would store the EXE blob with
      * {@code Content-Type: image/jpeg}, and downstream consumers
      * (browsers under nosniff are safe, but social-media link preview
@@ -230,7 +230,7 @@ public class StorageService {
             case "jpg" -> "image/jpeg";
             case "png" -> "image/png";
             case "webp" -> "image/webp";
-            // Should be unreachable — uploadImage() rejects "bin" before this point.
+            // Should be unreachable - uploadImage() rejects "bin" before this point.
             default -> "application/octet-stream";
         };
     }

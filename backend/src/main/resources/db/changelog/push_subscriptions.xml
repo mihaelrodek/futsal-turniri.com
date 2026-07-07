@@ -6,10 +6,10 @@
           https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
 
     <!--
-        Web Push subscriptions — one row per (user, browser). A user may
+        Web Push subscriptions - one row per (user, browser). A user may
         have many: phone Chrome, desktop Edge, iPad Safari, etc. The
         endpoint URL is opaque (each browser vendor has its own format)
-        and is itself the routing token — duplicates can't exist so we put
+        and is itself the routing token - duplicates can't exist so we put
         the unique constraint there.
 
         p256dh + auth are the per-subscription crypto material that the
@@ -17,7 +17,7 @@
         push service can't read them.
 
         ON DELETE CASCADE for the user-uid index would be ideal, but
-        Firebase UIDs aren't a FK to anything — we store them as plain
+        Firebase UIDs aren't a FK to anything - we store them as plain
         strings everywhere. Cleanup of dead subscriptions happens lazily
         in PushService when a send returns 410 Gone.
     -->

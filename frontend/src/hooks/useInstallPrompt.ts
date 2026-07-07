@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
  * preventDefault() (so the browser doesn't show its own banner), stash the
  * event, and call .prompt() later from a user gesture (button click).
  *
- * iOS Safari does NOT support this API — install only works through the
+ * iOS Safari does NOT support this API - install only works through the
  * Share -> "Add to Home Screen" menu. The hook detects that case so the UI
  * can show step-by-step instructions instead of a working button.
  *
@@ -31,12 +31,12 @@ export type InstallPromptState = {
     /**
      * Trigger the browser install dialog. Resolves to true if the user
      * accepted, false otherwise. Throws if no prompt is currently available
-     * — callers should gate on canInstall.
+     * - callers should gate on canInstall.
      */
     install: () => Promise<boolean>
 }
 
-/** UA-sniff for iOS — necessary because Safari has no API to detect installability. */
+/** UA-sniff for iOS - necessary because Safari has no API to detect installability. */
 function detectIos(): boolean {
     if (typeof navigator === "undefined") return false
     const ua = navigator.userAgent
@@ -100,7 +100,7 @@ export function useInstallPrompt(): InstallPromptState {
         if (!prompt) return false
         await prompt.prompt()
         const { outcome } = await prompt.userChoice
-        // The prompt can only be used once — clear it so the button hides.
+        // The prompt can only be used once - clear it so the button hides.
         setPrompt(null)
         return outcome === "accepted"
     }

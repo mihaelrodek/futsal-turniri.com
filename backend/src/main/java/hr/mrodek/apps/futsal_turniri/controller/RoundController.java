@@ -32,7 +32,7 @@ public class RoundController {
 
     /** Throws 403 if the current user is neither the tournament's creator nor an admin. */
     private void assertCanEdit(String idOrSlug) {
-        // Accept slug or UUID — the URL the user is on may be either form
+        // Accept slug or UUID - the URL the user is on may be either form
         // because tournaments now expose a pretty slug.
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
         if (t == null) throw new NotFoundException();
@@ -60,7 +60,7 @@ public class RoundController {
     }
 
     /**
-     * Manual round generation — the organiser supplies the exact list of
+     * Manual round generation - the organiser supplies the exact list of
      * pairings. Used in the late stage of a small bracket (≤ 4 active
      * teams) where the automatic random draw would produce awkward
      * pairings. Validation on the body (team belongs to tournament, not

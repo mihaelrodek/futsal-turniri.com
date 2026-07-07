@@ -3,7 +3,7 @@ import { Box, Input, VStack } from "@chakra-ui/react"
 import { searchPlayers } from "../api/players"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   PlayerNameAutocomplete — name input that suggests existing players.
+   PlayerNameAutocomplete - name input that suggests existing players.
 
    As the organiser types, we query /players/search for distinct existing
    (uppercase) player names and show them in a dropdown. Picking one reuses
@@ -57,7 +57,7 @@ export default function PlayerNameAutocomplete({
                 .then((names) => {
                     if (cancelled) return
                     // Hide a suggestion that exactly equals the current input
-                    // (nothing to pick — they've already typed it).
+                    // (nothing to pick - they've already typed it).
                     const filtered = names.filter(
                         (n) => n.toUpperCase() !== q.toUpperCase(),
                     )

@@ -22,7 +22,7 @@ import { adminListAllUsers, type AdminUserDto } from "../api/admin"
  * <p>Sister tab to {@link AdminDashboardTab}; both gated on the
  * Firebase {@code role: "admin"} custom claim. Where Dashboard is for
  * cross-entity admin actions (attach teams, transfer tournaments),
- * this tab is the simplest possible "browse all profiles" view —
+ * this tab is the simplest possible "browse all profiles" view -
  * useful when the admin wants to spot-check a user's history or hand
  * out a link to someone.
  *
@@ -65,7 +65,7 @@ export default function AdminPlayersListTab() {
                     <Box>
                         <Text fontSize="lg" fontWeight="semibold">Popis igrača</Text>
                         <Text fontSize="sm" color="fg.muted">
-                            Svi registrirani igrači — klikni "Otvori profil" za
+                            Svi registrirani igrači - klikni "Otvori profil" za
                             navigaciju na korisničku stranicu.
                         </Text>
                     </Box>
@@ -141,7 +141,7 @@ export default function AdminPlayersListTab() {
                                             navigation client-side (SPA route)
                                             and inherits the colour palette. The
                                             disabled-fallback handles edge-case
-                                            profiles with no slug — those are
+                                            profiles with no slug - those are
                                             usually freshly-imported legacy users
                                             whose slug hasn't been backfilled
                                             yet; the admin can't directly link

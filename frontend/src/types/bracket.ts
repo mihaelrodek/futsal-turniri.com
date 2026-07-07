@@ -15,7 +15,7 @@ export type BracketMatch = {
     penalties2: number | null
     winnerTeamId: number | null
     status: string
-    /** Set while/after the match is LIVE — which live mode was chosen. */
+    /** Set while/after the match is LIVE - which live mode was chosen. */
     liveMode?: MatchLiveMode | null
     /** ISO timestamp the match was started LIVE; drives the TIMER clock. */
     liveStartedAt?: string | null

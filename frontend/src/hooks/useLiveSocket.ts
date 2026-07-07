@@ -15,7 +15,7 @@ export type LiveUpdate = {
  *
  * The socket reconnects with backoff and cleans up on unmount. Polling is kept
  * elsewhere as a fallback, so if the socket can't connect (old browser, proxy
- * stripping the upgrade) the page still updates — just a few seconds slower.
+ * stripping the upgrade) the page still updates - just a few seconds slower.
  *
  * The path `/ws/live` is independent of the `/api` REST root: Caddy proxies
  * `/ws/*` in production and the Vite dev server proxies it in development.

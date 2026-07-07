@@ -18,7 +18,7 @@ export default function ColorModeToggle({ size = "sm" }: { size?: "xs" | "sm" | 
         toggleColorMode()
         if (user) {
             updateColorMode(next).catch(() => {
-                /* best-effort — local toggle already applied */
+                /* best-effort - local toggle already applied */
             })
         }
     }

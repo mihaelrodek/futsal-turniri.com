@@ -15,13 +15,13 @@ import IosInstallSteps from "./IosInstallSteps"
 
 /**
  * Compact icon-only install affordance. Renders a circular IconButton with
- * just the download glyph — no text label — so it tucks neatly between the
+ * just the download glyph - no text label - so it tucks neatly between the
  * auth area and the color-mode toggle without bloating the navbar.
  *
  * Visibility:
  *   - the app is not yet installed (display-mode != standalone), AND
  *   - either the browser fired beforeinstallprompt (Chrome / Edge / Android),
- *     OR we're on iOS Safari (no API available — show step instructions).
+ *     OR we're on iOS Safari (no API available - show step instructions).
  *
  * On all other browsers (already installed, or Firefox desktop, etc.) it
  * renders nothing, so the parent layout is unaffected. The aria-label and
@@ -39,8 +39,8 @@ export function InstallAppButton({
 }: {
     size?: "xs" | "sm" | "md"
     /**
-     * "icon" — circular icon-only IconButton (desktop top bar).
-     * "labeled" — full-width Button with text label + download glyph
+     * "icon" - circular icon-only IconButton (desktop top bar).
+     * "labeled" - full-width Button with text label + download glyph
      *             (mobile drawer / menu where it sits among other items).
      */
     variant?: "icon" | "labeled"
@@ -56,7 +56,7 @@ export function InstallAppButton({
     const label = "Instaliraj aplikaciju"
 
     // Always open the explanatory dialog (not the bare native prompt) so the
-    // user sees what they're installing — the app icon + how-to steps.
+    // user sees what they're installing - the app icon + how-to steps.
     function handleClick() {
         setDialogOpen(true)
     }
@@ -64,7 +64,7 @@ export function InstallAppButton({
     function handleNativeInstall() {
         install()
             .catch(() => {
-                /* user dismissed or browser refused — no-op */
+                /* user dismissed or browser refused - no-op */
             })
             .finally(() => setDialogOpen(false))
     }
@@ -86,7 +86,7 @@ export function InstallAppButton({
                     // theirs, which read as broken alignment on a phone.
                     justifyContent="center"
                     // gap controls the spacing between the icon and the
-                    // text — Chakra's default is fine, but pinning it
+                    // text - Chakra's default is fine, but pinning it
                     // makes the gap consistent across font-rendering
                     // platforms (iOS Safari tends to render the icon
                     // closer to the text than Chrome does).
@@ -139,7 +139,7 @@ export function InstallAppButton({
                                             ? "Dodaj aplikaciju na svoj iPhone u 3 koraka:"
                                             : "Spremi Futsal Turniri kao aplikaciju i otvori je jednim klikom s početnog zaslona."}
                                     </Text>
-                                    {/* iOS has no JS install API — show the manual
+                                    {/* iOS has no JS install API - show the manual
                                         Share → Add to Home Screen walkthrough. */}
                                     {isIos && <IosInstallSteps />}
                                 </VStack>

@@ -19,7 +19,7 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
     /**
      * CDI-injected {@link EntityManager} for the rare scalar/projection query
      * Panache's entity-shaped {@code find()} can't express. Same EM instance
-     * Panache uses internally — preferred over {@code Panache.getEntityManager()}
+     * Panache uses internally - preferred over {@code Panache.getEntityManager()}
      * because injection is the standard Quarkus + Hibernate ORM pattern and
      * is easier to mock if we ever add tests against this repo.
      */
@@ -76,7 +76,7 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
 
     /**
      * Tournament ids (from the given set) that have at least one match
-     * currently {@link MatchStatus#LIVE}. Distinct, scalar projection —
+     * currently {@link MatchStatus#LIVE}. Distinct, scalar projection -
      * powers the {@code liveMatch} badge on tournament cards without an
      * N+1 over the listing. Returns an empty list for a null/empty input.
      */
@@ -95,13 +95,13 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
 
     /**
      * Every match the given team was on either side of, ordered by round
-     * number then table number — i.e. how the day actually played out.
+     * number then table number - i.e. how the day actually played out.
      * Eager-fetches round + the opponents so the caller doesn't N+1 when
      * rendering history rows.
      */
     public List<Matches> findByTeamId(Long teamId) {
         if (teamId == null) return List.of();
-        // Full JPQL via Panache's list(...) — entity-shaped, so we can stay
+        // Full JPQL via Panache's list(...) - entity-shaped, so we can stay
         // on Panache rather than dropping to EntityManager. The "from" prefix
         // tells Panache this is a complete query, not a where-clause shortcut.
         return list("""
@@ -201,7 +201,7 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
      * to a DTO without N+1. Soft-deleted tournaments are excluded by the
      * {@code @Where(is_deleted=false)} clause on Tournaments.
      *
-     * <p>Matches with no assigned kickoff are skipped — they can't be placed
+     * <p>Matches with no assigned kickoff are skipped - they can't be placed
      * on a "starting soon" timeline. The result is capped by {@code limit}.
      */
     @SuppressWarnings("unchecked")

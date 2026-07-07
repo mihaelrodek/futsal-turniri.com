@@ -22,7 +22,7 @@ import { GhostButton, MonoLabel, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Schedule tab — match scheduling.
+   Schedule tab - match scheduling.
 
    Behaviour:
      a) Matches sorted: LIVE first, SCHEDULED second, FINISHED last.
@@ -50,7 +50,7 @@ function kickoffMs(m: ScheduledMatch): number {
     return m.kickoffAt ? new Date(m.kickoffAt).getTime() : Number.POSITIVE_INFINITY
 }
 
-// Half count is fixed at 2 (a futsal match is always two halves) — no config.
+// Half count is fixed at 2 (a futsal match is always two halves) - no config.
 const HALF_COUNT = 2
 
 type Cfg = {
@@ -159,7 +159,7 @@ function CfgField({
                     fontWeight="semibold"
                     px="7"
                     value={value}
-                    // Digits only — strips any sign / letter so negatives and the
+                    // Digits only - strips any sign / letter so negatives and the
                     // "-" / "e" characters can never be entered.
                     onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ""))}
                 />
@@ -224,23 +224,23 @@ function MatchRow({
 }: {
     match: ScheduledMatch
     tournamentUuid: string
-    /** Half length (min) — splits the expanded timeline into 1./2. poluvrijeme. */
+    /** Half length (min) - splits the expanded timeline into 1./2. poluvrijeme. */
     halfLengthMin?: number | null
     /** Surfaced into the ICS SUMMARY so the calendar entry reads
-     *  "Team A vs Team B — Tournament name". */
+     *  "Team A vs Team B - Tournament name". */
     tournamentName: string
     /** Optional venue carried into the ICS LOCATION field. */
     tournamentLocation?: string | null
     /** Slug used to build the deep-link back to the match page in the
      *  ICS URL + DESCRIPTION. */
     tournamentSlug?: string | null
-    /** Total slot duration in minutes — used as the calendar event's
+    /** Total slot duration in minutes - used as the calendar event's
      *  default end time when the schedule has no explicit one. */
     slotMinutes: number
     onTimeChange: (m: ScheduledMatch, localValue: string) => void
-    /** Owner / admin only — kickoff time editor goes read-only when false. */
+    /** Owner / admin only - kickoff time editor goes read-only when false. */
     canEdit: boolean
-    /** True for the single next-to-start (earliest scheduled) match — gets a
+    /** True for the single next-to-start (earliest scheduled) match - gets a
      *  red border so the organizer sees what's on deck. */
     isNext?: boolean
 }) {
@@ -252,7 +252,7 @@ function MatchRow({
     // that hasn't kicked off yet can't be expanded.
     const canExpand = isLive || isFinished
     // Scoreboard layout (team-left / score / team-right) for both LIVE
-    // and FINISHED — mirrors the LivePage card design so the user has
+    // and FINISHED - mirrors the LivePage card design so the user has
     // one consistent mental model across the two screens.
     const scoreboard = isLive || isFinished
 
@@ -260,14 +260,14 @@ function MatchRow({
         if (!match.kickoffAt) return
         const start = new Date(match.kickoffAt)
         const end = new Date(start.getTime() + Math.max(slotMinutes, 30) * 60 * 1000)
-        const t1 = match.team1Name ?? "—"
-        const t2 = match.team2Name ?? "—"
+        const t1 = match.team1Name ?? "-"
+        const t2 = match.team2Name ?? "-"
         const url = tournamentSlug
             ? `${window.location.origin}/turniri/${tournamentSlug}`
             : `${window.location.origin}/turniri/${tournamentUuid}`
         const ics = buildMatchIcs({
             uid: `match-${match.matchId}@futsal-turniri.com`,
-            summary: `${t1} vs ${t2} — ${tournamentName}`,
+            summary: `${t1} vs ${t2} - ${tournamentName}`,
             location: tournamentLocation ?? undefined,
             description: `${tournamentName}`,
             url,
@@ -286,7 +286,7 @@ function MatchRow({
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
             <VStack align="stretch" gap="1">
-                {/* Meta header — one compact row: stage badge (+live) on the
+                {/* Meta header - one compact row: stage badge (+live) on the
                     left, kickoff time/editor centred, "Dodaj u kalendar" on
                     the right. Equal flex on the two side clusters keeps the
                     time visually centred regardless of badge width. */}
@@ -319,7 +319,7 @@ function MatchRow({
                         )}
                     </HStack>
 
-                    {/* Center: kickoff time / editor — shrinks to fit. */}
+                    {/* Center: kickoff time / editor - shrinks to fit. */}
                     <Box flex="1" minW="0">
                         {canEdit ? (
                             <chakra.input
@@ -358,7 +358,7 @@ function MatchRow({
                                 <Box>
                                     {(() => {
                                         const v = isoToLocal(match.kickoffAt)
-                                        if (!v) return "—"
+                                        if (!v) return "-"
                                         // YYYY-MM-DDTHH:MM → "DD.MM.YYYY HH:MM"
                                         const [d, t] = v.split("T")
                                         const [y, m, day] = d.split("-")
@@ -408,7 +408,7 @@ function MatchRow({
                     </Flex>
                 </Flex>
 
-                {/* Teams + score — one fixed 3-column grid used for EVERY
+                {/* Teams + score - one fixed 3-column grid used for EVERY
                     row (live, finished, scheduled). team1 is right-aligned
                     to the centre score box, team2 left-aligned, so the
                     score column lines up perfectly straight down the list.
@@ -428,7 +428,7 @@ function MatchRow({
                         textAlign="right"
                         truncate
                     >
-                        {match.team1Name ?? "—"}
+                        {match.team1Name ?? "-"}
                     </Text>
                     <Box
                         fontFamily="mono"
@@ -447,7 +447,7 @@ function MatchRow({
                         {hasScore
                             ? `${match.score1}:${match.score2}`
                             : scoreboard
-                                ? "—"
+                                ? "-"
                                 : "vs"}
                     </Box>
                     <Text
@@ -457,12 +457,12 @@ function MatchRow({
                         textAlign="left"
                         truncate
                     >
-                        {match.team2Name ?? "—"}
+                        {match.team2Name ?? "-"}
                     </Text>
                 </Box>
             </VStack>
 
-            {/* Expand toggle — centered, only for LIVE and FINISHED */}
+            {/* Expand toggle - centered, only for LIVE and FINISHED */}
             {canExpand && (
                 <Flex justify="center" mt="2">
                     <RowButton
@@ -507,7 +507,7 @@ function MatchRow({
 }
 
 /* -- Main export --------------------------------------------------------- */
-/** `canEdit` — owner/admin gate for the mutating actions: format config
+/** `canEdit` - owner/admin gate for the mutating actions: format config
  *  inputs, generate-schedule button, and per-match kickoff edits. When
  *  false the user sees a read-only schedule. */
 export default function ScheduleTab({
@@ -527,7 +527,7 @@ export default function ScheduleTab({
      *  match list. */
     format?: string | null
     /** Surfaced into the per-match ICS export. The tournament name lands
-     *  in the SUMMARY ("Team A vs Team B — Open Split 2026"), the
+     *  in the SUMMARY ("Team A vs Team B - Open Split 2026"), the
      *  location in LOCATION, and the slug in URL so the calendar entry
      *  links back to the match's tournament page. */
     tournamentName?: string
@@ -544,10 +544,10 @@ export default function ScheduleTab({
     const [clearing, setClearing] = useState(false)
     /** Which destructive schedule action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
-    /** GROUPS_KNOCKOUT only — true once groups have been drawn (so the schedule
+    /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
-    /** "Uredi raspored" — after the tournament starts, lets the organizer edit
+    /** "Uredi raspored" - after the tournament starts, lets the organizer edit
      *  times + reorder matches that haven't started yet. */
     const [editScheduleMode, setEditScheduleMode] = useState(false)
     /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
@@ -590,13 +590,13 @@ export default function ScheduleTab({
                 if (!cancelled) setLoading(false)
             })
         // For GROUPS_KNOCKOUT, fixtures are created only when the schedule is
-        // generated — so right after the group draw there are 0 matches. Detect
+        // generated - so right after the group draw there are 0 matches. Detect
         // "draw done" from the groups instead, so "Generiraj raspored" unlocks
         // as soon as the groups are drawn.
         if (format === "GROUPS_KNOCKOUT") {
             fetchGroups(uuid)
                 .then((gs) => { if (!cancelled) setGroupsDrawn(gs.length > 0) })
-                .catch(() => { /* leave default — stays gated */ })
+                .catch(() => { /* leave default - stays gated */ })
         } else {
             setGroupsDrawn(false)
         }
@@ -613,7 +613,7 @@ export default function ScheduleTab({
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
     }, [focusMatchId, loading, schedule])
 
-    // Pointer-based drag reorder — works with BOTH mouse and touch. While a row
+    // Pointer-based drag reorder - works with BOTH mouse and touch. While a row
     // is dragged we track the row under the pointer (elementFromPoint) and
     // commit the new order on release. orderRef holds the current draggable ids.
     useEffect(() => {
@@ -699,7 +699,7 @@ export default function ScheduleTab({
         }
     }
 
-    /** Persist a new play order — the backend keeps the time slots fixed and
+    /** Persist a new play order - the backend keeps the time slots fixed and
      *  reassigns them to the matches in this order (so a move swaps times). */
     async function commitReorder(orderedIds: number[]) {
         try {
@@ -725,7 +725,7 @@ export default function ScheduleTab({
 
     const rawMatches = schedule?.matches ?? []
 
-    // Sort strictly by kickoff time (play order) — matches without a time go
+    // Sort strictly by kickoff time (play order) - matches without a time go
     // to the bottom. Array.sort is stable, so equal/no-time rows keep the
     // backend's original order.
     const byKickoff = [...rawMatches]
@@ -820,7 +820,7 @@ export default function ScheduleTab({
     }
 
     // Tournament has started once a REAL match is played. A knockout bye is
-    // auto-FINISHED on generation (one team, no game) and must NOT count —
+    // auto-FINISHED on generation (one team, no game) and must NOT count -
     // otherwise drawing an elimination with byes would hide the schedule
     // controls (generate / reorder) before anything has actually been played.
     const tournamentStarted = rawMatches.some(
@@ -834,7 +834,7 @@ export default function ScheduleTab({
     // Matches without a kickoff (e.g. knockout drawn after the group schedule).
     const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
     // The organizer sees the editable config card (only before the start); the
-    // read-only summary is for everyone else — and for organizers after start.
+    // read-only summary is for everyone else - and for organizers after start.
     const showEditableConfig = canEdit && !tournamentStarted
     // A schedule can be generated once the draw is done. For KNOCKOUT_ONLY that
     // means the bracket exists (→ matches exist); for GROUPS_KNOCKOUT the group
@@ -846,11 +846,11 @@ export default function ScheduleTab({
     // first-time "Generiraj raspored".
     const scheduleLaidOut = rawMatches.some((m) => m.kickoffAt != null)
     // The schedule is freely editable before the tournament starts. Once it
-    // starts it's read-only UNLESS the organizer turns on "Uredi raspored" —
+    // starts it's read-only UNLESS the organizer turns on "Uredi raspored" -
     // which re-enables editing kickoff times + reorder for matches that haven't
     // started yet (SCHEDULED only).
     const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode)
-    // Drag-and-drop reorder — only SCHEDULED (not-yet-played) matches, and not
+    // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, and not
     // while a team filter is active (the visible subset isn't the real order).
     const reorderEnabled = scheduleEditable && scheduleLaidOut && !teamFilter
     // Keep the current draggable order in a ref the pointer listeners can read.
@@ -862,7 +862,7 @@ export default function ScheduleTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Read-only format summary — visible to everyone once the schedule
+            {/* Read-only format summary - visible to everyone once the schedule
                 is generated, so all viewers see how long halves/breaks are. */}
             {scheduleHasConfig && !showEditableConfig && (
                 <SectionCard
@@ -870,8 +870,8 @@ export default function ScheduleTab({
                     title="Postavke rasporeda"
                     subtitle={
                         editScheduleMode
-                            ? "Uređivanje uključeno — promijeni termin ili povuci utakmicu koja još nije počela"
-                            : "Format utakmice — vrijedi za sve utakmice"
+                            ? "Uređivanje uključeno - promijeni termin ili povuci utakmicu koja još nije počela"
+                            : "Format utakmice - vrijedi za sve utakmice"
                     }
                     padding="4"
                     action={
@@ -901,7 +901,7 @@ export default function ScheduleTab({
 
             {/* Some matches have no kickoff (typically the knockout drawn after
                 the group schedule). Let the organizer re-confirm so they get a
-                slot — useful for day-split tournaments. */}
+                slot - useful for day-split tournaments. */}
             {canEdit && unscheduledCount > 0 && (
                 <Flex
                     align="center"
@@ -934,11 +934,11 @@ export default function ScheduleTab({
                 </Flex>
             )}
 
-            {/* ── Format utakmice — Pitch SectionCard ─────────────────────
+            {/* ── Format utakmice - Pitch SectionCard ─────────────────────
                  5-col grid of mini-stat inputs + computed slot footer +
                  Generiraj raspored CTA in the card header. Hidden once
                  the tournament has started (any match LIVE/FINISHED), and
-                 also hidden for non-organizers — schedule generation is a
+                 also hidden for non-organizers - schedule generation is a
                  destructive owner-only action. */}
             {showEditableConfig && (
                 <SectionCard
@@ -1036,7 +1036,7 @@ export default function ScheduleTab({
                 </SectionCard>
             )}
 
-            {/* Filter the schedule down to a single team's matches — centred,
+            {/* Filter the schedule down to a single team's matches - centred,
                 in a noticeable box that lights up when a filter is active. */}
             {teamOptions.length > 1 && (
                 <Flex justify="center">
@@ -1098,7 +1098,7 @@ export default function ScheduleTab({
                 </Flex>
             )}
 
-            {/* Match list — upcoming (the schedule) first, finished at the bottom. */}
+            {/* Match list - upcoming (the schedule) first, finished at the bottom. */}
             {rawMatches.length === 0 ? (
                 <Panel>
                     <EmptyState
@@ -1134,7 +1134,7 @@ export default function ScheduleTab({
                                         >
                                             <LuGripVertical size={14} />
                                         </Box>{" "}
-                                        za promjenu rasporeda — satnica se ažurira automatski
+                                        za promjenu rasporeda - satnica se ažurira automatski
                                     </>
                                 ) : undefined
                             }
@@ -1151,11 +1151,11 @@ export default function ScheduleTab({
                                                 onPointerDown={(e) => {
                                                     e.preventDefault()
                                                     // Capture the pointer so the drag keeps tracking even
-                                                    // when the finger/cursor leaves the small handle — this
+                                                    // when the finger/cursor leaves the small handle - this
                                                     // is what makes touch drag-and-drop work on phones.
                                                     try {
                                                         ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                                                    } catch { /* not supported — falls back to window listeners */ }
+                                                    } catch { /* not supported - falls back to window listeners */ }
                                                     setDragId(m.matchId)
                                                     overIdRef.current = m.matchId
                                                 }}
@@ -1204,7 +1204,7 @@ export default function ScheduleTab({
                 title={confirmAction === "clear" ? "Očistiti raspored?" : "Ponovno postaviti raspored?"}
                 description={
                     confirmAction === "clear"
-                        ? "Svi termini utakmica bit će obrisani. Utakmice (grupe / eliminacija) ostaju, ali bez termina — možeš ih kasnije ponovno postaviti ili unijeti ručno."
+                        ? "Svi termini utakmica bit će obrisani. Utakmice (grupe / eliminacija) ostaju, ali bez termina - možeš ih kasnije ponovno postaviti ili unijeti ručno."
                         : "Termini svih utakmica bit će ponovno postavljeni prema trenutnim postavkama formata. Ručno upisani termini bit će prepisani."
                 }
                 confirmLabel={confirmAction === "clear" ? "Da, očisti" : "Da, ponovno postavi"}

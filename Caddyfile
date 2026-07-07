@@ -35,8 +35,8 @@ futsal-turniri.com, www.futsal-turniri.com {
 	# Retry-After (Google treats 503 as temporary and does NOT de-index).
 	#
 	# The flag lives on a host bind-mount (see docker-compose.prod.yaml),
-	# so the deploy script toggles it with a plain `touch` / `rm` — no image
-	# rebuild, no Caddy reload (the matcher stat()s the file per request) —
+	# so the deploy script toggles it with a plain `touch` / `rm` - no image
+	# rebuild, no Caddy reload (the matcher stat()s the file per request) -
 	# and it survives an edge-container restart mid-deploy.
 	#
 	# This handle is listed first, so it wins over the API / bot / SPA
@@ -59,7 +59,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 		}
 	}
 
-	# ─── 1. API — pass through to backend ─────────────────────────────
+	# ─── 1. API - pass through to backend ─────────────────────────────
 	# lb_try_duration makes Caddy keep retrying the backend for a few
 	# seconds when it's briefly unreachable (cold start right after a
 	# deploy, or a container restart) instead of immediately returning 502
@@ -76,7 +76,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	#
 	# NOTE: quarkus-websockets-next registers its endpoints UNDER
 	# quarkus.http.root-path (/api), so the backend actually serves the
-	# socket at /api/ws/live — the bare /ws/live returned 404 and every
+	# socket at /api/ws/live - the bare /ws/live returned 404 and every
 	# client silently fell back to polling. Keep the public URL /ws/live
 	# (clients + SW already use it) and rewrite here.
 	handle /ws/* {
@@ -103,7 +103,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	#
 	# 301 (permanent) so Google consolidates ranking signal under the
 	# Croatian URL. Anything that was already shared on WhatsApp/Slack
-	# using the English URL keeps working — one redirect hop, then the
+	# using the English URL keeps working - one redirect hop, then the
 	# bot or browser lands on the canonical path.
 	#
 	# Specific paths come before regex catch-alls, because Caddy uses
@@ -142,15 +142,15 @@ futsal-turniri.com, www.futsal-turniri.com {
 	@old_claim_name path_regexp old_cn ^/claim-name/(.+)$
 	redir @old_claim_name /preuzmi-ime/{re.old_cn.1} permanent
 
-	# Crawler UA matchers — shared regex for the bots we want to serve
+	# Crawler UA matchers - shared regex for the bots we want to serve
 	# pre-rendered HTML to. Two buckets:
 	#   - INDEXING bots (googlebot, bingbot, duckduckbot, applebot,
-	#     yandexbot) — we want these to read our preview HTML so the
+	#     yandexbot) - we want these to read our preview HTML so the
 	#     SPA's empty index.html doesn't get indexed instead. These
 	#     are case-insensitive and matched against User-Agent.
 	#   - LINK-PREVIEW bots (facebookexternalhit, whatsapp, telegrambot,
 	#     slackbot, twitterbot, linkedinbot, discordbot, pinterest,
-	#     skypeuripreview) — these read <head> only for OG previews.
+	#     skypeuripreview) - these read <head> only for OG previews.
 	# We hit both with the same rewrite because the preview controllers
 	# serve content that's correct for either purpose: rich <head> for
 	# link-preview, full <body> for indexing.
@@ -195,7 +195,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	# /api/preview/tournaments/{idOrSlug} endpoint accepts both.
 	#
 	# Caddy uses Go's RE2 regex engine, which does NOT support negative
-	# lookaheads — that's why `/turniri/novi` is excluded with a
+	# lookaheads - that's why `/turniri/novi` is excluded with a
 	# separate `not path` matcher rather than `(?!novi$)` inline.
 	@tournament_for_bot {
 		path_regexp tournament_slug ^/turniri/([a-z0-9][a-z0-9-]*)$
@@ -204,7 +204,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	}
 	handle @tournament_for_bot {
 		# Backend preview API still lives under /api/preview/tournaments/
-		# (English) — that's an internal contract URL, not user-facing,
+		# (English) - that's an internal contract URL, not user-facing,
 		# so we don't translate it. Just remap path here.
 		rewrite * /api/preview/tournaments/{re.tournament_slug.1}
 		reverse_proxy backend:8085
@@ -212,7 +212,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 
 	# ─── 6. Profile SSR preview for crawlers ──────────────────────────
 	# SPA route is /profil/<slug> (singular); backend endpoint is
-	# /api/preview/profiles/<slug> (plural English) — see comment above
+	# /api/preview/profiles/<slug> (plural English) - see comment above
 	# about backend API paths staying English.
 	@profile_for_bot {
 		path_regexp profile ^/profil/([a-z0-9][a-z0-9-]*)$
@@ -252,12 +252,12 @@ futsal-turniri.com, www.futsal-turniri.com {
 	# ─── Cache policy for static assets ────────────────────────────────
 	# Vite emits content-hashed files under /assets/ (e.g. index-AbC123.js).
 	# The hash changes whenever the content does, so these are safe to cache
-	# forever — the browser never has to re-validate them.
+	# forever - the browser never has to re-validate them.
 	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-	# Non-hashed static images (logos, PWA icons, favicons). Not immutable —
-	# they keep their filenames across redesigns — but they change rarely, so
+	# Non-hashed static images (logos, PWA icons, favicons). Not immutable -
+	# they keep their filenames across redesigns - but they change rarely, so
 	# a week of caching kills the repeated re-fetches Lighthouse flags
 	# (ttl=0 on /logo/*.svg, /icon-192.png). A redesign that must show up
 	# instantly should rename the file instead of relying on cache expiry.

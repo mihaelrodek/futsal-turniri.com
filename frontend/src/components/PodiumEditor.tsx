@@ -10,10 +10,10 @@ import type { TournamentDetails } from "../types/tournaments"
  * on FINISHED tournaments and PATCHes the server on each change. Teams
  * already at gold position (winnerName) are excluded from both lists so
  * the organiser can't accidentally set the same team to two podium
- * slots — backend rejects this anyway, but the UI dropdown prevents
+ * slots - backend rejects this anyway, but the UI dropdown prevents
  * the round-trip.
  *
- * <p>Each dropdown clears with the "—" option, which sends null to the
+ * <p>Each dropdown clears with the "-" option, which sends null to the
  * server and unsets that podium column. Toaster surfaces backend errors
  * (rare, mostly the "name doesn't match a team" branch which the
  * dropdown should prevent).
@@ -97,7 +97,7 @@ export default function PodiumEditor({
                                     value={secondPlaceName ?? ""}
                                     onChange={(e) => changeSecond(e.target.value)}
                                 >
-                                    <option value="">— nije postavljeno —</option>
+                                    <option value="">- nije postavljeno -</option>
                                     {candidateNames
                                         .filter((n) => norm(n) !== norm(thirdPlaceName))
                                         .map((n) => (
@@ -117,7 +117,7 @@ export default function PodiumEditor({
                                     value={thirdPlaceName ?? ""}
                                     onChange={(e) => changeThird(e.target.value)}
                                 >
-                                    <option value="">— nije postavljeno —</option>
+                                    <option value="">- nije postavljeno -</option>
                                     {candidateNames
                                         .filter((n) => norm(n) !== norm(secondPlaceName))
                                         .map((n) => (

@@ -15,10 +15,10 @@ import { showError } from "../toaster"
    unsubscribe.
 
    Notification permission is requested lazily on first click. If the user
-   denies, we surface an explanation toast and DO NOT call the backend —
+   denies, we surface an explanation toast and DO NOT call the backend -
    pushes wouldn't reach them anyway.
 
-   Anonymous viewers see nothing — login first.
+   Anonymous viewers see nothing - login first.
    ────────────────────────────────────────────────────────────────────── */
 
 export default function TournamentNotificationBell({
@@ -30,7 +30,7 @@ export default function TournamentNotificationBell({
     const [subscribed, setSubscribed] = useState<boolean | null>(null)
     const [busy, setBusy] = useState(false)
 
-    // Initial check — does this user already subscribe?
+    // Initial check - does this user already subscribe?
     useEffect(() => {
         if (authLoading) return
         if (!user) {
@@ -46,7 +46,7 @@ export default function TournamentNotificationBell({
         }
     }, [uuid, user, authLoading])
 
-    // Anonymous — hide. Login flow handles the rest if they click in.
+    // Anonymous - hide. Login flow handles the rest if they click in.
     if (!user) return null
 
     async function toggle() {
@@ -63,7 +63,7 @@ export default function TournamentNotificationBell({
             }
             return
         }
-        // Subscribing — request Notification permission first. If the
+        // Subscribing - request Notification permission first. If the
         // user blocks it, calling the backend is pointless.
         try {
             setBusy(true)
@@ -100,7 +100,7 @@ export default function TournamentNotificationBell({
 
     const Icon = subscribed ? FiBell : FiBellOff
     const label = subscribed
-        ? "Primaš obavijesti o turniru — klikni za isključi"
+        ? "Primaš obavijesti o turniru - klikni za isključi"
         : "Primaj obavijesti o turniru (golovi, kraj utakmice)"
 
     return (

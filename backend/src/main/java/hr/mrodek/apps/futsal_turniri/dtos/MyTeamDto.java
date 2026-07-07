@@ -23,6 +23,6 @@ public record MyTeamDto(
         String primarySlug,
         String coOwnerName,
         String coOwnerSlug,
-        /** Only emitted when {@code isPrimary} — the viewer's share link. */
+        /** Only emitted when {@code isPrimary} - the viewer's share link. */
         String claimToken
 ) {}

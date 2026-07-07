@@ -27,7 +27,7 @@ import java.util.List;
  * Admin-only endpoints for the "Dashboard" tab on the profile page.
  *
  * <p>The dashboard lets an admin attach a tournament team to a registered
- * user retroactively — typically for legacy/organiser-added teams from
+ * user retroactively - typically for legacy/organiser-added teams from
  * tournaments that finished before the player signed up. After attaching,
  * the team shows up on that user's public profile the same way a
  * self-registered team would.
@@ -52,7 +52,7 @@ public class AdminController {
     @Inject UserProfileRepository profileRepo;
     @Inject UserTeamPresetRepository presetRepo;
 
-    /** Cap on user-search results — see UserProfileRepository.searchByDisplayName. */
+    /** Cap on user-search results - see UserProfileRepository.searchByDisplayName. */
     private static final int USER_SEARCH_LIMIT = 25;
 
     /** ──────────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ public class AdminController {
     /** ──────────────────────────────────────────────────────────────────
      * Unclaimed teams for the selected tournament. "Unclaimed" =
      * neither submittedByUid nor coSubmittedByUid is set. Pending
-     * self-registrations are excluded — they need to be approved or
+     * self-registrations are excluded - they need to be approved or
      * rejected by the organiser through the normal flow.
      * ──────────────────────────────────────────────────────────────── */
     @GET
@@ -126,7 +126,7 @@ public class AdminController {
 
     /** ──────────────────────────────────────────────────────────────────
      * Full list of all registered users, alphabetically. Backs the
-     * admin "Popis igrača" tab — distinct from {@link #searchUsers}
+     * admin "Popis igrača" tab - distinct from {@link #searchUsers}
      * (which caps at {@link #USER_SEARCH_LIMIT} for the dropdown
      * picker) because here we want every profile, not the top-N
      * search hits.
@@ -145,7 +145,7 @@ public class AdminController {
      * Attach a team to a user. Two side-effects (both wrapped in a
      * single transaction so a half-attached team never persists):
      *
-     *   1. {@code team.submittedByUid = userUid} — this single field is
+     *   1. {@code team.submittedByUid = userUid} - this single field is
      *      what {@code findMyParticipations} matches on, so the team
      *      starts appearing on the target user's profile immediately.
      *   2. If the user doesn't already have a {@code UserTeamPreset}
@@ -156,7 +156,7 @@ public class AdminController {
      *      {@link hr.mrodek.apps.futsal_turniri.repository.TeamsRepository#findMyParticipations}.
      *
      * Refuses to attach when the team is already claimed (either
-     * submitter slot filled) — the UI filters those out, but a parallel
+     * submitter slot filled) - the UI filters those out, but a parallel
      * request could race in, so we re-check here as well.
      * ──────────────────────────────────────────────────────────────── */
     @POST
@@ -171,7 +171,7 @@ public class AdminController {
         Teams team = teamsRepo.findById(teamId);
         if (team == null) return Response.status(Response.Status.NOT_FOUND).build();
 
-        // Defensive — the UI hides claimed teams but a parallel admin
+        // Defensive - the UI hides claimed teams but a parallel admin
         // attaching at the same time would otherwise silently overwrite.
         if (team.getSubmittedByUid() != null || team.getCoSubmittedByUid() != null) {
             return Response.status(Response.Status.CONFLICT)
@@ -221,17 +221,17 @@ public class AdminController {
      * teams, edit details, finish rounds, etc.
      *
      * <p>Two fields are updated on the tournament:
-     *   - {@code createdByUid} — drives all owner-only authorisation
+     *   - {@code createdByUid} - drives all owner-only authorisation
      *     checks ({@code canEditTournament}, team-management endpoints,
      *     the "Uredi" / "Završi turnir" / "Manualno generiraj kolo" UI
      *     gates). After this call the target user is treated exactly as
      *     if they had created the tournament themselves.
-     *   - {@code createdByName} — copied from the target's UserProfile
+     *   - {@code createdByName} - copied from the target's UserProfile
      *     displayName so all "created by" labels in the UI match the
      *     new owner without us having to look up the profile every time
      *     the tournament is rendered.
      *
-     * <p>Idempotent — transferring to the same user again is a no-op
+     * <p>Idempotent - transferring to the same user again is a no-op
      * (returns 200 with the same payload). We don't reject transfers
      * across status (DRAFT / PUBLISHED / FINISHED) because legacy
      * imports often arrive as FINISHED and the whole point of transfer
@@ -269,14 +269,14 @@ public class AdminController {
     }
 
     /** ──────────────────────────────────────────────────────────────────
-     * Feature a tournament as the "tournament of the day" — surfaces it
+     * Feature a tournament as the "tournament of the day" - surfaces it
      * in the daily hero on /uzivo. Idempotent: calling it on an already-
      * featured tournament just refreshes the timestamp (effectively
      * "bumping" it back to the top of any future ordering decisions).
      *
      * <p>Selection rule on the public lookup is "most-recently featured
      * row that hasn't finished yet". So clearing the feature is a DELETE
-     * on the same URL — see {@link #unfeatureTournament}.
+     * on the same URL - see {@link #unfeatureTournament}.
      * ──────────────────────────────────────────────────────────────── */
     @POST
     @Path("/tournaments/{uuid}/feature")
@@ -295,7 +295,7 @@ public class AdminController {
                 t.getFeaturedAt())).build();
     }
 
-    /** Inverse of {@link #featureTournament} — clears the feature flag. */
+    /** Inverse of {@link #featureTournament} - clears the feature flag. */
     @DELETE
     @Path("/tournaments/{uuid}/feature")
     @Transactional
@@ -312,10 +312,10 @@ public class AdminController {
 
     /**
      * Mark a tournament as "not publicly visible". While hidden it vanishes
-     * from every public read (lists, details, sitemap, live, previews) —
+     * from every public read (lists, details, sitemap, live, previews) -
      * only its creator and admins still see it (greyed out in the SPA) and
      * can open/edit it. Works for upcoming AND finished tournaments.
-     * Reversible — see {@link #unhideTournament}.
+     * Reversible - see {@link #unhideTournament}.
      */
     @POST
     @Path("/tournaments/{uuid}/hidden")
@@ -333,7 +333,7 @@ public class AdminController {
         return Response.noContent().build();
     }
 
-    /** Inverse of {@link #hideTournament} — makes the tournament public again. */
+    /** Inverse of {@link #hideTournament} - makes the tournament public again. */
     @DELETE
     @Path("/tournaments/{uuid}/hidden")
     @Transactional
@@ -350,14 +350,14 @@ public class AdminController {
 
     /** ──────────────────────────────────────────────────────────────────
      * Admin raw status override. Differs from {@code /tournaments/{uuid}/start}
-     * which gates on business rules (INSUFFICIENT_TEAMS, etc.) — this
+     * which gates on business rules (INSUFFICIENT_TEAMS, etc.) - this
      * bypasses every rule and writes the requested status verbatim.
      * Use only from the admin dashboard for legacy / stuck tournaments
      * where the normal flow can't recover.
      *
      * <p>Accepts: {@code DRAFT}, {@code STARTED}, {@code FINISHED}.
      * Returns 400 for anything else. Does NOT touch winner / podium
-     * fields — those have their own dedicated endpoints.
+     * fields - those have their own dedicated endpoints.
      * ──────────────────────────────────────────────────────────────── */
     @POST
     @Path("/tournaments/{uuid}/status")

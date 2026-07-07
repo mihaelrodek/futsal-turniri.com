@@ -13,7 +13,7 @@ import org.jboss.logging.Logger;
  * customChange because the slug logic lives in Java.
  *
  * <p>Each row gets its slug computed and persisted in the same transaction.
- * If two replicas start at once, both might attempt to backfill — the unique
+ * If two replicas start at once, both might attempt to backfill - the unique
  * index on {@code slug} would force the loser to retry with a numeric suffix,
  * which is fine.
  */
@@ -27,7 +27,7 @@ public class TournamentSlugBackfill {
 
     @Transactional
     public void onStart(@jakarta.enterprise.event.Observes io.quarkus.runtime.StartupEvent ev) {
-        // Use Panache's stream so we don't materialize the whole table — this
+        // Use Panache's stream so we don't materialize the whole table - this
         // matters once the count grows. The {@code @Where} filter on
         // Tournaments excludes soft-deleted rows automatically.
         var pending = tournamentsRepo.find("slug is null").list();

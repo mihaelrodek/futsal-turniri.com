@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * A team-name preset saved by an end user. Each row is scoped to a single
- * Firebase UID — the controller filters by that on every read/write so users
+ * Firebase UID - the controller filters by that on every read/write so users
  * never see each other's presets.
  */
 @Entity
@@ -37,7 +37,7 @@ public class UserTeamPreset {
     /**
      * When true, public profile views (anyone other than the owner)
      * skip tournaments where this user played as a team with this name.
-     * The owner viewing their own profile still sees everything —
+     * The owner viewing their own profile still sees everything -
      * it's a display-time visibility knob, not a delete.
      */
     @Column(name = "hidden", nullable = false)
@@ -45,7 +45,7 @@ public class UserTeamPreset {
 
     /**
      * Opaque random token embedded in the share URL
-     * (/claim-name/{token}). Stable for the preset's lifetime — same
+     * (/claim-name/{token}). Stable for the preset's lifetime - same
      * link works forever. Set when the row is created and on backfill
      * for pre-sharing presets.
      */
@@ -57,7 +57,7 @@ public class UserTeamPreset {
      * share link. When set, every tournament where the primary
      * played as a team with this name shows up on the partner's
      * profile too (via the widened findMyParticipations query).
-     * Locks the preset against unilateral deletion — use the
+     * Locks the preset against unilateral deletion - use the
      * archive-request flow instead.
      */
     @Column(name = "co_owner_uid", length = 64)

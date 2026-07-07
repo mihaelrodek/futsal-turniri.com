@@ -22,7 +22,7 @@ export type ClaimResultDto = {
  * Fetch the preview info shown on the claim landing page so the partner
  * can see what they're about to claim before they tap Preuzmi.
  *
- * Public — no auth needed.
+ * Public - no auth needed.
  */
 export async function fetchClaimPreview(token: string): Promise<ClaimPreviewDto> {
     const { data } = await http.get<ClaimPreviewDto>(
@@ -34,10 +34,10 @@ export async function fetchClaimPreview(token: string): Promise<ClaimPreviewDto>
 
 /**
  * Claim co-ownership. Backend returns:
- *   200 — success (or idempotent re-claim by the same user)
- *   409 OWNER_SAME — viewer is the primary submitter (can't claim own team)
- *   409 ALREADY_CLAIMED — claimed by a different user
- *   404 — token unknown
+ *   200 - success (or idempotent re-claim by the same user)
+ *   409 OWNER_SAME - viewer is the primary submitter (can't claim own team)
+ *   409 ALREADY_CLAIMED - claimed by a different user
+ *   404 - token unknown
  *
  * Auth required.
  */
@@ -46,7 +46,7 @@ export async function claimTeam(token: string): Promise<ClaimResultDto> {
         `/teams/claim/${encodeURIComponent(token)}`,
         null,
         {
-            successMessage: "Ekipa preuzeta — pojavit će se na tvojem profilu.",
+            successMessage: "Ekipa preuzeta - pojavit će se na tvojem profilu.",
             // Custom UI in the page handles 409 with explicit copy.
             silentErrorStatuses: [409],
         } as any,

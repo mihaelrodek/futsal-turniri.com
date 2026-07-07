@@ -34,7 +34,7 @@ public class Groups {
     @JoinColumn(name = "tournament_id", nullable = false)
     private Tournaments tournament;
 
-    /** Display label — "A", "B", "C", … */
+    /** Display label - "A", "B", "C", … */
     @Column(name = "name", length = 10, nullable = false)
     private String name;
 

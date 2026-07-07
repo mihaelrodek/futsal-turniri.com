@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  *
  * <p>Responsibilities:
  * <ul>
- *   <li>draw registered teams into groups — random ({@code AUTO}) or from an
+ *   <li>draw registered teams into groups - random ({@code AUTO}) or from an
  *       organizer-supplied placement ({@code MANUAL});</li>
  *   <li>generate single round-robin fixtures within each group via the
  *       circle method, laid out into shared matchdays;</li>
@@ -56,7 +56,7 @@ public class GroupStageService {
     /* ───────────────────────── draw + fixtures ───────────────────────── */
 
     /**
-     * Draw the registered teams into groups — groups + team placement ONLY,
+     * Draw the registered teams into groups - groups + team placement ONLY,
      * no fixtures. The group matches are created later, when the organizer
      * generates the schedule on the Raspored tab ({@link #generateFixtures}).
      * Re-runnable: wipes any existing groups, group-stage matches and matchday
@@ -109,11 +109,11 @@ public class GroupStageService {
         }
 
         assignTeams(teams, groups, req);
-        // Fixtures are intentionally NOT generated here — see generateFixtures.
+        // Fixtures are intentionally NOT generated here - see generateFixtures.
     }
 
     /**
-     * Undo the group draw — deletes every group-stage match, removes the
+     * Undo the group draw - deletes every group-stage match, removes the
      * now-empty matchday rounds, clears each team's group assignment and
      * deletes the groups. The knockout bracket (if already generated) is left
      * untouched. Backs the "Resetiraj" action on the Grupe tab.
@@ -134,7 +134,7 @@ public class GroupStageService {
 
     /**
      * Delete the generated group-stage fixtures (and their now-empty matchday
-     * rounds) but KEEP the groups / draw — so "Očisti raspored" returns to the
+     * rounds) but KEEP the groups / draw - so "Očisti raspored" returns to the
      * groups-drawn state and the schedule can be regenerated. Only not-yet-
      * played matches are removed.
      */
@@ -160,13 +160,13 @@ public class GroupStageService {
     public void generateFixtures(Tournaments t) {
         long existing = matchesRepo.count(
                 "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
-        if (existing > 0) return; // already generated — keep results intact
+        if (existing > 0) return; // already generated - keep results intact
         List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(t.getId());
         if (groups.isEmpty()) return; // not drawn yet (or KNOCKOUT_ONLY)
         buildGroupFixtures(t, groups);
     }
 
-    /** Places teams into groups — manual placement or a random auto draw. */
+    /** Places teams into groups - manual placement or a random auto draw. */
     private void assignTeams(List<Teams> teams, List<Groups> groups, DrawRequest req) {
         boolean manual = req != null
                 && req.mode() == DrawRequest.Mode.MANUAL
@@ -191,7 +191,7 @@ public class GroupStageService {
                 }
             }
         } else {
-            // AUTO — shuffle, then spread round-robin so group sizes differ
+            // AUTO - shuffle, then spread round-robin so group sizes differ
             // by at most one (13 teams, 4 groups → 4+3+3+3).
             List<Teams> shuffled = new ArrayList<>(teams);
             Collections.shuffle(shuffled);
@@ -305,7 +305,7 @@ public class GroupStageService {
 
             // Manual override: once the organizer has reordered the group by hand
             // (all teams carry a manual_rank), respect that order instead of the
-            // computed points/H2H ranking — used to settle tiebreakers.
+            // computed points/H2H ranking - used to settle tiebreakers.
             boolean allManual = !teams.isEmpty()
                     && teams.stream().allMatch(t -> t.getManualRank() != null);
             if (allManual) {
@@ -425,9 +425,9 @@ public class GroupStageService {
 
     /**
      * Rank the rows in place. Primary key is points; teams level on points
-     * are ordered by the UEFA head-to-head rule — a mini-table built from
+     * are ordered by the UEFA head-to-head rule - a mini-table built from
      * only the matches among the tied teams (H2H points, then H2H goal
-     * difference, then H2H goals scored) — falling back to overall goal
+     * difference, then H2H goals scored) - falling back to overall goal
      * difference and goals scored.
      */
     private void rankRows(List<Row> rows, List<Matches> finished) {

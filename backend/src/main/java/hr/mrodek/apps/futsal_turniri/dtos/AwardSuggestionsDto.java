@@ -6,10 +6,10 @@ package hr.mrodek.apps.futsal_turniri.dtos;
  * tournament's results. The organiser can accept or override any of them.
  *
  * <ul>
- *   <li>{@code bestScorer} / {@code bestPlayer} — the top scorer (most goals,
+ *   <li>{@code bestScorer} / {@code bestPlayer} - the top scorer (most goals,
  *       podium placement as tiebreak). bestPlayer mirrors the scorer since
  *       goals + a deep run is the only signal we have.</li>
- *   <li>{@code bestGoalkeeperTeam} — the team that conceded the fewest goals
+ *   <li>{@code bestGoalkeeperTeam} - the team that conceded the fewest goals
  *       (preferring podium teams). We can't identify the keeper player from
  *       the data, so this is a hint; the organiser fills the actual name.</li>
  * </ul>

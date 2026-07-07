@@ -17,7 +17,7 @@ import IosInstallSteps from "./IosInstallSteps"
  * One-time coach mark that nudges first-time visitors toward the install
  * flow.
  *
- * Visibility rules — all must hold for the dialog to appear:
+ * Visibility rules - all must hold for the dialog to appear:
  *   1. App is not already installed (display-mode != standalone).
  *   2. The browser is install-capable (Chrome/Edge/Android fired
  *      beforeinstallprompt) OR we're on iOS Safari (instructions path).
@@ -26,11 +26,11 @@ import IosInstallSteps from "./IosInstallSteps"
  * On Chrome/Android the dialog has a primary "Instaliraj" button that
  * fires the browser's install prompt directly. On iOS the steps are shown
  * INLINE in the same dialog (instead of routing the user to a separate
- * navbar dialog) — that's the whole point of the popup, and pointing at
+ * navbar dialog) - that's the whole point of the popup, and pointing at
  * a navbar icon as a follow-up is just an extra click for no reason.
  *
  * Auto-shows after a short delay so the SPA has time to paint and the
- * beforeinstallprompt event has time to fire — opening it instantly
+ * beforeinstallprompt event has time to fire - opening it instantly
  * risks the prompt not being captured yet.
  */
 
@@ -49,7 +49,7 @@ function persistDismissed() {
     try {
         window.localStorage.setItem(STORAGE_KEY, "1")
     } catch {
-        /* private mode / quota — non-fatal, hint just shows again next visit */
+        /* private mode / quota - non-fatal, hint just shows again next visit */
     }
 }
 
@@ -80,11 +80,11 @@ export default function FirstRunInstallPrompt() {
     async function onInstallClick() {
         if (canInstall) {
             await install().catch(() => {
-                /* user dismissed or browser refused — close anyway */
+                /* user dismissed or browser refused - close anyway */
             })
             dismiss()
         }
-        // For iOS there is no programmatic install — we don't reach here
+        // For iOS there is no programmatic install - we don't reach here
         // because the iOS dialog has a different button (see render below).
     }
 
@@ -105,7 +105,7 @@ export default function FirstRunInstallPrompt() {
                 <Dialog.Positioner>
                     {/* aria-label: this dialog has no Dialog.Title (the heading
                         is body copy), so name it explicitly for screen readers
-                        — also fixes Lighthouse's aria-dialog-name audit. */}
+                        - also fixes Lighthouse's aria-dialog-name audit. */}
                     <Dialog.Content maxW={{ base: "92%", md: "md" }} aria-label="Instaliraj Futsal Turniri">
                         <Dialog.Body py="5" px={{ base: "4", md: "6" }}>
                             <VStack align="stretch" gap="4">
@@ -132,7 +132,7 @@ export default function FirstRunInstallPrompt() {
 
                                 {/* iOS gets the inline three-step walkthrough.
                                     No "Instaliraj" button on iOS because Safari
-                                    has no JS API for it — the user must do
+                                    has no JS API for it - the user must do
                                     Share -> Add to Home Screen themselves. */}
                                 {isIos && <IosInstallSteps />}
 

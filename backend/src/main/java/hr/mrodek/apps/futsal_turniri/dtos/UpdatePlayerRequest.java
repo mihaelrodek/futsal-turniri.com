@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Body for editing an existing roster player. {@code number} (jersey
- * number) is optional. {@code captain} is nullable — a null value leaves
+ * number) is optional. {@code captain} is nullable - a null value leaves
  * the captain flag unchanged; {@code true} makes this player the team's
  * sole captain (clearing it on every other player).
  */

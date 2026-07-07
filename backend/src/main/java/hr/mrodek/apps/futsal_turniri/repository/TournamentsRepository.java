@@ -62,7 +62,7 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
             UUID uuid = UUID.fromString(idOrSlug);
             return findByUuid(uuid);
         } catch (IllegalArgumentException ignored) {
-            // Not a UUID — fall through to slug lookup.
+            // Not a UUID - fall through to slug lookup.
         }
         return findBySlug(idOrSlug);
     }
@@ -82,7 +82,7 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     /**
      * "Finished" listing is gated on explicit {@code status == FINISHED} now,
      * not on the start date. A tournament's clock can pass {@code startAt}
-     * while the organizer is still entering results — those rows belong in
+     * while the organizer is still entering results - those rows belong in
      * the in-progress bucket, not under "Završeni". Paged so the SPA can
      * lazy-load older results behind a "Učitaj više" button.
      */
@@ -99,7 +99,7 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     }
 
     /**
-     * "Upcoming / in progress" listing — anything not yet {@code FINISHED}.
+     * "Upcoming / in progress" listing - anything not yet {@code FINISHED}.
      * Mirrors the user's mental model where any tournament not explicitly
      * marked finished is treated as still alive, regardless of whether its
      * scheduled start has passed.
@@ -113,7 +113,7 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     /**
      * Currently-featured tournament for the /uzivo hero. Returns the row
      * with the highest {@code featured_at} that hasn't been marked
-     * FINISHED — finished tournaments shouldn't keep appearing in the
+     * FINISHED - finished tournaments shouldn't keep appearing in the
      * "tournament of the day" slot even if an admin forgot to unfeature.
      *
      * <p>Backed by the partial index {@code idx_tournaments_featured_at}

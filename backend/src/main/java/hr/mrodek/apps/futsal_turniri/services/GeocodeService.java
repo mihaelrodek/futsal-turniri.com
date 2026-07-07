@@ -26,7 +26,7 @@ import java.util.Optional;
  *   - a valid User-Agent identifying this application
  *   - no bulk geocoding
  * <p>
- * We satisfy this by geocoding lazily — once per tournament create/update,
+ * We satisfy this by geocoding lazily - once per tournament create/update,
  * and via a manual backfill endpoint that yields between requests.
  */
 @ApplicationScoped

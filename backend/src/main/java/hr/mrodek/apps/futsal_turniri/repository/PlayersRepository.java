@@ -49,7 +49,7 @@ public class PlayersRepository implements AppRepository<Player, Long> {
     /**
      * All-time goal tally per player, grouped by the (uppercase) name so the
      * same person scoring across multiple tournaments/teams aggregates into
-     * one row — the "vječna lista strijelaca". Each element is an
+     * one row - the "vječna lista strijelaca". Each element is an
      * {@code Object[3]}: [String name, Long goals, Long tournamentsPlayed].
      * Ordered goals-desc; the controller applies the best-scorer-award
      * tiebreaker afterwards.

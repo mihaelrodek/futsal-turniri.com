@@ -12,8 +12,8 @@ import org.jboss.logging.Logger;
 
 /**
  * Pushes "this tournament's live data changed" pings to every connected
- * {@link LiveSocket} client. The payload is intentionally tiny — clients
- * refetch the real data over the existing REST endpoints — which keeps this
+ * {@link LiveSocket} client. The payload is intentionally tiny - clients
+ * refetch the real data over the existing REST endpoints - which keeps this
  * decoupled from every DTO and lets the same fetch/render path drive both the
  * polled fallback and the instant push.
  *
@@ -34,7 +34,7 @@ public class LiveBroadcaster {
 
     /**
      * Notify all live viewers that a match in the given tournament changed.
-     * Safe to call from inside a {@code @Transactional} method — the actual
+     * Safe to call from inside a {@code @Transactional} method - the actual
      * send waits for commit. {@code matchId} may be null for tournament-wide
      * changes.
      */
@@ -69,7 +69,7 @@ public class LiveBroadcaster {
             try {
                 c.sendText(json).subscribe().with(item -> { }, failure -> { });
             } catch (Exception e) {
-                // Connection is closing/closed — skip it.
+                // Connection is closing/closed - skip it.
             }
         }
     }

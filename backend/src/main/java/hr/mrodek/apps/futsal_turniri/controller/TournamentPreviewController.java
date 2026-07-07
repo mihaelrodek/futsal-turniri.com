@@ -54,7 +54,7 @@ public class TournamentPreviewController {
     @ConfigProperty(name = "app.public-base-url", defaultValue = "https://futsal-turniri.com")
     String publicBaseUrl;
 
-    // Optional<> rather than a defaulted String — Quarkus refuses to register
+    // Optional<> rather than a defaulted String - Quarkus refuses to register
     // an empty defaultValue, so a non-Optional String here would crash boot
     // when APP_DEFAULT_OG_IMAGE isn't set in the environment.
     @ConfigProperty(name = "app.default-og-image")
@@ -70,7 +70,7 @@ public class TournamentPreviewController {
     public Response preview(@PathParam("idOrSlug") String idOrSlug) {
         // Accept either UUID (legacy share URLs) or pretty slug (new format).
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
-        // Admin-hidden tournaments 404 for crawlers too — this endpoint is
+        // Admin-hidden tournaments 404 for crawlers too - this endpoint is
         // anonymous, so hidden == not found (keeps them out of link previews
         // and search indexes).
         if (t == null || t.isHidden()) {
@@ -86,12 +86,12 @@ public class TournamentPreviewController {
         String base = publicBaseUrl.replaceAll("/+$", "");
         // Canonical SPA URL is Croatian (/turniri/...). English /tournaments/...
         // still works as a 301 alias via Caddy, but we never emit it from
-        // server-side rendering or canonical links — Google would otherwise
+        // server-side rendering or canonical links - Google would otherwise
         // index the alias instead of the canonical URL.
         String spaUrl = base + "/turniri/" + idOrSlug;
 
 
-        // og:image must be an absolute URL — bots fetch it directly from
+        // og:image must be an absolute URL - bots fetch it directly from
         // wherever they are. Priority:
         //   1. Finished tournament with a winner → server-rendered share
         //      card (podium + status). Composes much better in WhatsApp
@@ -132,7 +132,7 @@ public class TournamentPreviewController {
             sb.append(formatHrDateTime(t.getStartAt())).append(" • ");
         }
 
-        // Entry price — default is 0.
+        // Entry price - default is 0.
         BigDecimal entry = t.getEntryPrice() != null ? t.getEntryPrice() : BigDecimal.ZERO;
         sb.append("Kotizacija ").append(formatEur(entry)).append(" €");
 
@@ -162,7 +162,7 @@ public class TournamentPreviewController {
         sb.append("<html lang=\"hr\">\n<head>\n");
         sb.append("<meta charset=\"UTF-8\">\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-        sb.append("<title>").append(escapeHtml(name)).append(" — futsal-turniri.com</title>\n");
+        sb.append("<title>").append(escapeHtml(name)).append(" - futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
 
@@ -188,7 +188,7 @@ public class TournamentPreviewController {
             sb.append("<meta name=\"twitter:image\" content=\"").append(escapeAttr(image)).append("\">\n");
         }
 
-        // schema.org Event JSON-LD — the highest-leverage SEO addition.
+        // schema.org Event JSON-LD - the highest-leverage SEO addition.
         // Google uses this to render rich Event cards in SERPs (date,
         // location, price chip) and surfaces tournaments in its dedicated
         // Events experience on mobile. Required props (name, startDate,
@@ -234,13 +234,13 @@ public class TournamentPreviewController {
      */
     private void appendTournamentBody(StringBuilder sb, Tournaments t, String name,
                                       String description, String image, String spaUrl) {
-        // Article wrapper — gives screen readers and Google a clear page
+        // Article wrapper - gives screen readers and Google a clear page
         // outline. The class names aren't styled (no CSS is shipped here)
         // but they're useful when the HTML is inspected during debugging.
         sb.append("<article>\n");
         sb.append("<h1>").append(escapeHtml(name)).append("</h1>\n");
         if (image != null && !image.isBlank()) {
-            // alt text is the tournament name — descriptive and accurate.
+            // alt text is the tournament name - descriptive and accurate.
             // width/height left unset so the browser/crawler renders at
             // the natural resource size.
             sb.append("<p><img src=\"").append(escapeAttr(image))
@@ -248,7 +248,7 @@ public class TournamentPreviewController {
         }
         sb.append("<p>").append(escapeHtml(description)).append("</p>\n");
 
-        // Details section — date, location, format, kotizacija. Built as a
+        // Details section - date, location, format, kotizacija. Built as a
         // semantic dl so each fact has a label crawlers can associate with
         // its value, instead of a free-floating paragraph.
         sb.append("<section>\n<h2>Detalji turnira</h2>\n<dl>\n");
@@ -276,7 +276,7 @@ public class TournamentPreviewController {
 
         // Free-text description from the organiser. Kept as a separate
         // section because the field is optional and often the longest
-        // block of original Croatian text on the page — exactly what
+        // block of original Croatian text on the page - exactly what
         // Google needs to rank for long-tail queries.
         if (t.getDetails() != null && !t.getDetails().isBlank()) {
             sb.append("<section>\n<h2>Opis</h2>\n");
@@ -290,7 +290,7 @@ public class TournamentPreviewController {
             sb.append("</section>\n");
         }
 
-        // Rewards section — only when at least one tier has a value.
+        // Rewards section - only when at least one tier has a value.
         BigDecimal r1 = t.getRewardFirst(), r2 = t.getRewardSecond(), r3 = t.getRewardThird();
         boolean hasReward = (r1 != null && r1.compareTo(BigDecimal.ZERO) > 0)
                 || (r2 != null && r2.compareTo(BigDecimal.ZERO) > 0)
@@ -306,7 +306,7 @@ public class TournamentPreviewController {
             sb.append("</ul>\n</section>\n");
         }
 
-        // Participants — list approved teams. For a FINISHED tournament,
+        // Participants - list approved teams. For a FINISHED tournament,
         // highlight the winner up top. We deliberately skip pending /
         // rejected teams because those aren't part of the public record
         // and would be confusing in a search snippet.
@@ -333,7 +333,7 @@ public class TournamentPreviewController {
             // down the preview entirely. Log and skip the section.
         }
 
-        // Status banner — finished tournaments are still useful for SEO
+        // Status banner - finished tournaments are still useful for SEO
         // ("futsal turnir Zagreb 2024 rezultati") so we don't hide them.
         // Just label clearly so the snippet doesn't mislead users.
         if (t.getStatus() == TournamentStatus.FINISHED) {
@@ -342,7 +342,7 @@ public class TournamentPreviewController {
             sb.append("<p><em>Status: Turnir je u tijeku.</em></p>\n");
         }
 
-        // Footer call-to-action — single trusted link back to the SPA so
+        // Footer call-to-action - single trusted link back to the SPA so
         // anyone (including the rare human who lands on this URL directly)
         // can jump to the interactive version. Also tells Google the
         // canonical destination if it crawls this URL outside the rewrite.
@@ -357,7 +357,7 @@ public class TournamentPreviewController {
                 <!doctype html>
                 <html lang="hr"><head>
                 <meta charset="UTF-8">
-                <title>Turnir nije pronađen — futsal-turniri.com</title>
+                <title>Turnir nije pronađen - futsal-turniri.com</title>
                 <meta name="description" content="Traženi turnir ne postoji ili je uklonjen.">
                 </head><body><p>Turnir nije pronađen.</p></body></html>
                 """;
@@ -379,18 +379,18 @@ public class TournamentPreviewController {
      *     RESTEasy stack.
      *
      * <p>Schema choices:
-     *   - {@code @type=Event} (not SportsEvent) — the JSON-LD models the
+     *   - {@code @type=Event} (not SportsEvent) - the JSON-LD models the
      *     tournament as a whole, which has no single homeTeam/awayTeam
      *     pairing, and Event renders the same rich result in SERPs.
      *   - {@code eventStatus} defaults to EventScheduled; we don't model
      *     cancellations, so there's no need to branch on TournamentStatus.
-     *   - {@code eventAttendanceMode=OfflineEventAttendanceMode} — every
+     *   - {@code eventAttendanceMode=OfflineEventAttendanceMode} - every
      *     futsal tournament is in-person.
      *   - {@code offers.availability=InStock} as long as the event hasn't
      *     started; once {@code startAt} is in the past we omit offers
      *     entirely (Google will flag past-dated offers as invalid).
      *   - {@code endDate} is set to {@code startAt + 6h} as a reasonable
-     *     default — Google requires endDate to be after startDate when
+     *     default - Google requires endDate to be after startDate when
      *     present, and most tournaments wrap within a single evening.
      */
     private String buildEventJsonLd(Tournaments t, String name, String description, String image, String spaUrl) {
@@ -406,7 +406,7 @@ public class TournamentPreviewController {
         j.append("\"eventAttendanceMode\":\"https://schema.org/OfflineEventAttendanceMode\",");
 
         if (t.getStartAt() != null) {
-            // ISO-8601 with offset — Google's parser handles "2026-05-24T18:00:00+02:00".
+            // ISO-8601 with offset - Google's parser handles "2026-05-24T18:00:00+02:00".
             j.append("\"startDate\":\"").append(jsonEscape(t.getStartAt().toString())).append("\",");
             // endDate is required by Google when startDate is present for some
             // rich-result eligibility paths; default to +6h since we don't
@@ -415,7 +415,7 @@ public class TournamentPreviewController {
             j.append("\"endDate\":\"").append(jsonEscape(end.toString())).append("\",");
         }
 
-        // Location — required. If we have a textual location we ship it as
+        // Location - required. If we have a textual location we ship it as
         // Place.name + address.addressLocality. Without it we fall back to
         // Place.name="Hrvatska" so the structured-data validator doesn't
         // reject the whole record for a missing required field.
@@ -457,7 +457,7 @@ public class TournamentPreviewController {
                     .append("},");
         }
 
-        // Offers — only when the event hasn't started yet AND we have a
+        // Offers - only when the event hasn't started yet AND we have a
         // non-zero entry price. Past-dated offers and price=0 entries both
         // produce structured-data warnings in Search Console.
         BigDecimal entry = t.getEntryPrice() != null ? t.getEntryPrice() : BigDecimal.ZERO;
@@ -470,7 +470,7 @@ public class TournamentPreviewController {
                     .append("\"price\":\"").append(formatEur(entry)).append("\",")
                     .append("\"priceCurrency\":\"EUR\",")
                     .append("\"availability\":\"https://schema.org/InStock\",")
-                    // validFrom: now — Google uses this to know when the
+                    // validFrom: now - Google uses this to know when the
                     // offer becomes purchasable. Empty/missing is allowed.
                     .append("\"validFrom\":\"").append(jsonEscape(OffsetDateTime.now().toString())).append("\"")
                     .append("},");
@@ -485,7 +485,7 @@ public class TournamentPreviewController {
     /**
      * JSON string escaping per RFC 8259. Also escapes {@code /} after {@code <}
      * so that {@code </script>} cannot appear inside the JSON payload while
-     * it is embedded in an HTML {@code <script>} tag — without that, a
+     * it is embedded in an HTML {@code <script>} tag - without that, a
      * tournament name containing the literal "&lt;/script&gt;" would prematurely
      * close the script element.
      */

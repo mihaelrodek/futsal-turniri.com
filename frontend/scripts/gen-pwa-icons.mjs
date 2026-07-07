@@ -5,15 +5,15 @@
  * (public/logo/mark-green.svg) so the PWA install prompt, home-screen icon,
  * push notifications and structured-data logo all show the SAME current logo.
  *
- * Run (sharp is the only dependency — install if missing):
+ * Run (sharp is the only dependency - install if missing):
  *   npm install --no-save sharp && node scripts/gen-pwa-icons.mjs
  *
  * Outputs (public/):
- *   icon-192.png            192  — manifest "any"      (transparent rounded)
- *   icon-512.png            512  — manifest "any"
- *   icon-512-maskable.png   512  — manifest "maskable"  (full-bleed green)
- *   apple-touch-icon.png    180  — iOS home screen      (opaque green)
- *   futsal-turniri-symbol.png 512 — push / structured-data logo (opaque green)
+ *   icon-192.png            192  - manifest "any"      (transparent rounded)
+ *   icon-512.png            512  - manifest "any"
+ *   icon-512-maskable.png   512  - manifest "maskable"  (full-bleed green)
+ *   apple-touch-icon.png    180  - iOS home screen      (opaque green)
+ *   futsal-turniri-symbol.png 512 - push / structured-data logo (opaque green)
  */
 import sharp from "sharp"
 import { readFileSync } from "node:fs"

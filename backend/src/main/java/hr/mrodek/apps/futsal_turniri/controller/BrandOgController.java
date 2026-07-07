@@ -17,7 +17,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 
 /**
- * Branded default OG/social-share image — a 1200×630 "logo + text" card used
+ * Branded default OG/social-share image - a 1200×630 "logo + text" card used
  * as the link preview for the whole site (anything that isn't a specific
  * tournament/profile, which have their own images). This is what shows up
  * when someone shares the homepage / a generic page on WhatsApp, Messenger,
@@ -47,7 +47,7 @@ public class BrandOgController {
     public Response defaultImage() {
         try {
             return Response.ok(render())
-                    // Effectively static between deploys — cache for a day.
+                    // Effectively static between deploys - cache for a day.
                     .header("Cache-Control", "public, max-age=86400, s-maxage=86400")
                     .build();
         } catch (Exception e) {
@@ -71,7 +71,7 @@ public class BrandOgController {
             g.setColor(new Color(PITCH_LIGHT.getRed(), PITCH_LIGHT.getGreen(), PITCH_LIGHT.getBlue(), 28));
             g.fillOval(W - 420, H - 420, 720, 720);
 
-            // ── Brand mark — green rounded tile with white goal frame + ball.
+            // ── Brand mark - green rounded tile with white goal frame + ball.
             int tile = 220;
             int tx = 110;
             int ty = (H - tile) / 2 - 20;
@@ -90,7 +90,7 @@ public class BrandOgController {
             g.drawLine(gx, gy, gx + gw, gy);
             g.drawLine(gx + gw, gy, gx + gw, gy + gh);
 
-            // Net hint — faint vertical/horizontal lines inside the frame.
+            // Net hint - faint vertical/horizontal lines inside the frame.
             g.setStroke(new BasicStroke(2f));
             g.setColor(new Color(255, 255, 255, 90));
             for (int i = 1; i < 4; i++) {
@@ -102,7 +102,7 @@ public class BrandOgController {
                 g.drawLine(gx, ly, gx + gw, ly);
             }
 
-            // Ball — white circle with a small green pentagon, bottom-centre.
+            // Ball - white circle with a small green pentagon, bottom-centre.
             int ballR = 40;
             int bcx = tx + tile / 2;
             int bcy = ty + tile - 56;

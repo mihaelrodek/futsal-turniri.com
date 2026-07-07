@@ -5,14 +5,14 @@ import { syncProfile } from "../api/userMe"
 
 // NB: everything from "firebase/auth" is imported DYNAMICALLY (inside the
 // effect / sign-in handlers) so the Firebase SDK stays out of the critical
-// first-paint bundle — see firebase.ts. Only the `User` type is imported
+// first-paint bundle - see firebase.ts. Only the `User` type is imported
 // statically (type-only, erased at compile time).
 
 /**
  * Whether to use the full-page redirect flow instead of a popup for Google
  * sign-in. On mobile (and installed PWAs / in-app browsers) a "popup" is
  * really a new browser tab that, thanks to Cross-Origin-Opener-Policy, can't
- * close itself afterwards — so the user gets stranded on the Google tab
+ * close itself afterwards - so the user gets stranded on the Google tab
  * instead of returning to the app. signInWithRedirect navigates the same tab
  * to Google and back, which behaves correctly everywhere on mobile.
  */
@@ -33,9 +33,9 @@ type AuthValue = {
     loading: boolean
     /** Custom claims attached to the user (server-set via Firebase Admin SDK). */
     claims: Record<string, unknown>
-    /** Convenience flag — true when the `role` custom claim equals `"admin"`. */
+    /** Convenience flag - true when the `role` custom claim equals `"admin"`. */
     isAdmin: boolean
-    /** Slug returned by the backend after /user/me/sync — null until first sync. */
+    /** Slug returned by the backend after /user/me/sync - null until first sync. */
     mySlug: string | null
     /** Email + password sign-in. */
     signIn: (email: string, password: string) => Promise<void>
@@ -79,13 +79,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     } catch {
                         setClaims({})
                     }
-                    // Fire-and-forget profile sync — pushes the Firebase displayName
+                    // Fire-and-forget profile sync - pushes the Firebase displayName
                     // up so the backend can persist it + assign a public slug. We
                     // don't await this in the auth-state path because it's not
                     // critical to the user being able to use the app.
                     syncProfile(u.displayName ?? null)
                         .then((p) => setMySlug(p.slug ?? null))
-                        .catch(() => { /* best-effort — ignore */ })
+                        .catch(() => { /* best-effort - ignore */ })
                 } else {
                     setClaims({})
                     setMySlug(null)

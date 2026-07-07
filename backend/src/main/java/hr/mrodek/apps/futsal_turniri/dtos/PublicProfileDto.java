@@ -3,7 +3,7 @@ package hr.mrodek.apps.futsal_turniri.dtos;
 import java.util.List;
 
 /**
- * Everything a public profile page needs in one shot. Phone is nullable —
+ * Everything a public profile page needs in one shot. Phone is nullable -
  * the user may not have set it, but when present it's deliberately exposed
  * (per product decision: profiles are publicly visible). Anonymous reads
  * receive null phone fields per {@code PublicProfileController#redactForAnonymous}.

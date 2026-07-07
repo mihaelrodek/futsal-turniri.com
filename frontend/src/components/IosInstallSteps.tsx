@@ -5,9 +5,9 @@ import { FiShare, FiPlusSquare } from "react-icons/fi"
  * Shared three-step "Add to Home Screen" walkthrough for iOS Safari.
  *
  * Re-used by:
- *   - FirstRunInstallPrompt — shows the steps inline in the auto-popup so
+ *   - FirstRunInstallPrompt - shows the steps inline in the auto-popup so
  *     iPhone users get instructions on first visit without an extra click.
- *   - InstallAppButton — opens these steps in its own iOS dialog when the
+ *   - InstallAppButton - opens these steps in its own iOS dialog when the
  *     navbar download icon is tapped.
  *
  * Pure presentation, no state. Wraps each step number in a circular blue

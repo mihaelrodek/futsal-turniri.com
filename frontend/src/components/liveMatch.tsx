@@ -46,10 +46,10 @@ function formatClock(totalSecs: number): string {
 
 /**
  * Which phase a TIMER-mode match is in.
- *  - "FIRST_HALF"  — 1st half running.
- *  - "HALFTIME"    — 1st half ended ("pauza"), 2nd half not yet started.
- *  - "SECOND_HALF" — 2nd half running.
- *  - "FULL_TIME"   — the running half's clock has run out (finish-ready / "Kraj").
+ *  - "FIRST_HALF"  - 1st half running.
+ *  - "HALFTIME"    - 1st half ended ("pauza"), 2nd half not yet started.
+ *  - "SECOND_HALF" - 2nd half running.
+ *  - "FULL_TIME"   - the running half's clock has run out (finish-ready / "Kraj").
  */
 export type MatchPhase = "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "FULL_TIME"
 
@@ -86,7 +86,7 @@ export function matchPhase({
     // halfCount must NOT collapse the match to one half (futsal default = 2).
     const halves = halfCount === 1 ? 1 : 2
 
-    // 2nd half running — full time once its clock expires (still manual finish).
+    // 2nd half running - full time once its clock expires (still manual finish).
     if (secondHalfStartedAt) {
         if (halfSecs != null && elapsedSeconds(secondHalfStartedAt) >= halfSecs) return "FULL_TIME"
         return "SECOND_HALF"
@@ -142,7 +142,7 @@ export function LiveClock({
         return () => clearInterval(id)
     }, [])
 
-    // Free-running clock — no half config supplied.
+    // Free-running clock - no half config supplied.
     if (halfLengthMin == null || halfLengthMin <= 0) {
         return (
             <Text
@@ -169,7 +169,7 @@ export function LiveClock({
     // Match-clock behaviour: the clock COUNTS UP the cumulative match minute and
     // freezes at each half boundary. 1st half runs 0:00 → the half length; at
     // half-time it holds on the half length; the 2nd half continues from there
-    // → 2× the half length. It never advances past a boundary on its own — it
+    // → 2× the half length. It never advances past a boundary on its own - it
     // waits for the organizer (end 1st half / start 2nd half / finish).
     let elapsedInHalf = 0 // seconds into the currently running half (amber warning)
     let shownSecs: number
@@ -231,7 +231,7 @@ export function LiveClock({
 }
 
 /**
- * The "Start" control — a menu offering the two live-tracking modes plus an
+ * The "Start" control - a menu offering the two live-tracking modes plus an
  * "enter result only" shortcut (folds in the old separate "Rezultat" button).
  */
 export function StartLivePopover({
@@ -240,7 +240,7 @@ export function StartLivePopover({
     loading,
 }: {
     onStart: (mode: MatchLiveMode) => void
-    /** Optional — adds an "Unesi samo rezultat" item that opens the score
+    /** Optional - adds an "Unesi samo rezultat" item that opens the score
      *  editor directly, without going live. */
     onEnterResult?: () => void
     loading?: boolean
@@ -257,11 +257,11 @@ export function StartLivePopover({
                     <Menu.Content minW="60">
                         <Menu.Item value="timer" onClick={() => onStart("TIMER")}>
                             <FiClock />
-                            <Text ml="2">Uživo — s mjeračem vremena</Text>
+                            <Text ml="2">Uživo - s mjeračem vremena</Text>
                         </Menu.Item>
                         <Menu.Item value="simple" onClick={() => onStart("SIMPLE")}>
                             <FiPlay />
-                            <Text ml="2">Uživo — bez mjerača (vlastiti sat)</Text>
+                            <Text ml="2">Uživo - bez mjerača (vlastiti sat)</Text>
                         </Menu.Item>
                         {onEnterResult && (
                             <Menu.Item value="result" onClick={onEnterResult}>
@@ -277,7 +277,7 @@ export function StartLivePopover({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LiveEventRow — one row of the organizer's live-entry "tijek utakmice".
+   LiveEventRow - one row of the organizer's live-entry "tijek utakmice".
 
    Laid out left/right by team (team1 on the LEFT half, team2 on the RIGHT) to
    mirror the public GoalscorersPanel timeline, with an organizer-only delete
@@ -426,7 +426,7 @@ export function LiveEventRow({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   GoalscorersPanel — shared between LiveMatchRow and ScheduleTab.
+   GoalscorersPanel - shared between LiveMatchRow and ScheduleTab.
 
    Lazy-loads ALL match events (goals + cards) and renders them as a
    SofaScore-style vertical timeline:
@@ -470,7 +470,7 @@ export function GoalscorersPanel({
     matchId: number
     team1Id: number | null
     team2Id: number | null
-    /** Half length (min) — splits the regulation timeline into "1./2.
+    /** Half length (min) - splits the regulation timeline into "1./2.
      *  poluvrijeme" sections (an event's half = minute < / >= this). When
      *  absent the regulation events render as a single section. */
     halfLengthMin?: number | null
@@ -479,14 +479,14 @@ export function GoalscorersPanel({
      *  the static "finished match" timeline. */
     pollMs?: number
     /** Render nothing (instead of "Još nema događaja.") when there are no
-     *  events — used for finished matches (e.g. a 0:0) where the hint reads
+     *  events - used for finished matches (e.g. a 0:0) where the hint reads
      *  as a mistake rather than "events still to come". */
     hideEmpty?: boolean
-    /** Optional message shown when there are no events at all — overrides both
+    /** Optional message shown when there are no events at all - overrides both
      *  `hideEmpty` and the default "Još nema događaja." Used for a finished
      *  match where the organizer entered only the final score, no scorers. */
     emptyNote?: string
-    /** Bump this (from a WebSocket live-update) to refetch immediately — the
+    /** Bump this (from a WebSocket live-update) to refetch immediately - the
      *  instant path; polling above is the fallback. */
     refreshSignal?: number
 }) {
@@ -497,7 +497,7 @@ export function GoalscorersPanel({
             if (!silent) setState({ status: "loading" })
             fetchMatchEvents(tournamentUuid, matchId)
                 .then((all) => {
-                    // Keep ALL events — goals/cards and penalty-shootout kicks;
+                    // Keep ALL events - goals/cards and penalty-shootout kicks;
                     // the render splits them into the regulation timeline and a
                     // separate "Penali" section.
                     let t1Id = team1Id
@@ -515,7 +515,7 @@ export function GoalscorersPanel({
                 })
                 .catch(() => {
                     // On poll, keep previous data on screen instead of
-                    // flashing the error state — transient 5xx shouldn't
+                    // flashing the error state - transient 5xx shouldn't
                     // wipe a live timeline.
                     if (!silent) setState({ status: "error" })
                 })
@@ -525,7 +525,7 @@ export function GoalscorersPanel({
 
     // Instant refetch when a WebSocket live-update bumps refreshSignal. A ref
     // holds the latest `load` so this fires ONLY on the signal change (not on
-    // mount, and not when `load`'s deps shift — the poll effect covers those).
+    // mount, and not when `load`'s deps shift - the poll effect covers those).
     const loadRef = useRef(load)
     loadRef.current = load
     const signalReady = useRef(false)
@@ -608,7 +608,7 @@ export function GoalscorersPanel({
                 if (first.length) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
                 if (second.length) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
             } else {
-                // No half boundary known — one headerless timeline section (the
+                // No half boundary known - one headerless timeline section (the
                 // parent already labels the whole thing "Tijek utakmice").
                 sections.push({ key: "reg", title: "", events: regulation })
             }
@@ -637,7 +637,7 @@ export function GoalscorersPanel({
                 <VStack align="stretch" gap="0" w="full" position="relative" zIndex={1}>
                 {sections.map((sec) => (
                     <Box key={sec.key} w="full">
-                        {/* Section header — centred, masks the line behind it. */}
+                        {/* Section header - centred, masks the line behind it. */}
                         {sec.title && (
                             <Flex justify="center" py="2">
                                 <Text
@@ -748,7 +748,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
 
     return (
         <Box display="grid" gridTemplateColumns="1fr 28px 1fr" w="full" alignItems="stretch">
-            {/* Left cell (team1) — pushed toward the centre line. */}
+            {/* Left cell (team1) - pushed toward the centre line. */}
             <Flex align="center" justify="flex-end" gap="1.5" pr="2" py="1.5" minW="0" overflow="hidden">
                 {isLeft && (
                     <>
@@ -763,7 +763,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
             <Flex align="center" justify="center">
                 <Box boxSize="10px" rounded="full" bg={dotColor} />
             </Flex>
-            {/* Right cell (team2) — pushed toward the centre line. */}
+            {/* Right cell (team2) - pushed toward the centre line. */}
             <Flex align="center" justify="flex-start" gap="1.5" pl="2" py="1.5" minW="0" overflow="hidden">
                 {!isLeft && (
                     <>
@@ -778,11 +778,11 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LiveGoalEntry — fast goal/card entry for the organizer's live dialog.
+   LiveGoalEntry - fast goal/card entry for the organizer's live dialog.
 
    Layout: a type toggle (⚽ Gol · 🟨 · 🟥) + a minute field on top, then the
    two teams' rosters side by side. One tap on a player records the selected
-   event for that player at the shown minute — so a goal is a single tap.
+   event for that player at the shown minute - so a goal is a single tap.
 
    Minute: for TIMER matches it auto-tracks the live match minute (still
    editable; "Sada" re-syncs after a manual change). For SIMPLE / no-clock
@@ -791,7 +791,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
    ────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Current cumulative football minute of a TIMER match — matches the count-up
+ * Current cumulative football minute of a TIMER match - matches the count-up
  * clock, capped at each half boundary (1st half ≤ half length, 2nd half ≤ 2×).
  */
 function liveMatchMinute(args: {
@@ -823,7 +823,7 @@ function liveMatchMinute(args: {
 }
 
 /**
- * Feature flag for the "Nepoznati strijelac" (unknown scorer) button — records
+ * Feature flag for the "Nepoznati strijelac" (unknown scorer) button - records
  * a goal for the team with no named scorer. Flip to false to hide it.
  */
 const ANON_GOAL_ENABLED = true
@@ -857,7 +857,7 @@ export function LiveGoalEntry({
     halfLengthMin: number | null
     halfCount: number | null
     onAdded: () => Promise<void> | void
-    /** Players sent off (red card) in this match — greyed out and not
+    /** Players sent off (red card) in this match - greyed out and not
      *  selectable, since they can't score or otherwise affect play. */
     sentOffPlayerIds?: Set<number>
 }) {
@@ -892,7 +892,7 @@ export function LiveGoalEntry({
 
     // Auto-follow the live match minute (TIMER): the "Min" field tracks the
     // running clock every second so a goal is stamped with the current minute
-    // without any extra tap — until the organizer types a manual value, when
+    // without any extra tap - until the organizer types a manual value, when
     // following stops; "Sada" resumes it.
     useEffect(() => {
         if (!isTimer || !autoMinute) return
@@ -914,7 +914,7 @@ export function LiveGoalEntry({
 
     async function pick(p: PlayerDto) {
         if (!minuteValid || addingId != null) return
-        if (sentOffPlayerIds?.has(p.id)) return // sent off — can't affect play
+        if (sentOffPlayerIds?.has(p.id)) return // sent off - can't affect play
         setAddingId(p.id)
         try {
             await addMatchEvent(uuid, matchId, {
@@ -931,7 +931,7 @@ export function LiveGoalEntry({
         }
     }
 
-    // Anonymous goal — counts for the team, no named scorer (privacy). Recorded
+    // Anonymous goal - counts for the team, no named scorer (privacy). Recorded
     // with teamId instead of playerId; the timeline shows just the goal icon.
     async function pickAnon(teamId: number) {
         if (!minuteValid || addingId != null || addingAnon != null) return
@@ -987,7 +987,7 @@ export function LiveGoalEntry({
                         value={minute}
                         onChange={(e) => {
                             setMinute(e.target.value)
-                            setAutoMinute(false) // manual override — stop auto-follow
+                            setAutoMinute(false) // manual override - stop auto-follow
                         }}
                     />
                     {isTimer && (
@@ -1010,7 +1010,7 @@ export function LiveGoalEntry({
                 </Text>
             )}
 
-            {/* Two rosters side by side — tap a player to record the event. */}
+            {/* Two rosters side by side - tap a player to record the event. */}
             <Grid templateColumns="1fr 1fr" gap="2">
                 <PlayerPickColumn
                     teamName={team1Name}
@@ -1062,7 +1062,7 @@ function PlayerPickColumn({
     disabled: boolean
     sentOffPlayerIds?: Set<number>
     onPick: (p: PlayerDto) => void
-    /** Show the "Nepoznati strijelac" button first, above the roster — records
+    /** Show the "Nepoznati strijelac" button first, above the roster - records
      *  a goal for the team with no named scorer. Goals only. */
     showAnonGoal?: boolean
     addingAnon?: number | null
@@ -1080,9 +1080,9 @@ function PlayerPickColumn({
                 textAlign={align}
                 truncate
             >
-                {teamName ?? "—"}
+                {teamName ?? "-"}
             </Text>
-            {/* Unknown scorer — goal counts for the team, no named scorer.
+            {/* Unknown scorer - goal counts for the team, no named scorer.
                 Shown first, above the players. */}
             {showAnonGoal && teamId != null && (
                 <Button
@@ -1135,10 +1135,10 @@ function PlayerPickColumn({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   PenaltyShootout — guided knockout penalty shootout.
+   PenaltyShootout - guided knockout penalty shootout.
 
    Rules: best-of-3, teams alternate with team1 first each round. The shootout
-   ends as soon as it's mathematically decided (e.g. 2-0 after two rounds —
+   ends as soon as it's mathematically decided (e.g. 2-0 after two rounds -
    the trailing team can't catch up). Level after 3 each → sudden death: one
    pair of kicks at a time until a complete round ends with a different score.
    Calls onConfirm(pen1, pen2) with the made-counts once decided.
@@ -1207,7 +1207,7 @@ export function PenaltyShootout({
      *  (re-editing a finished match). Cleared and re-recorded on confirm so the
      *  prior history is preserved/edited rather than duplicated. */
     const [loadedEventIds, setLoadedEventIds] = useState<number[]>([])
-    /** Player selected for the upcoming kick (optional — "tko je pucao"). */
+    /** Player selected for the upcoming kick (optional - "tko je pucao"). */
     const [shooterId, setShooterId] = useState<string>("")
     const [persisting, setPersisting] = useState(false)
 
@@ -1278,7 +1278,7 @@ export function PenaltyShootout({
     }
 
     // Edit a recorded kick in place (scored ✓/✗ and/or its shooter) by tapping
-    // it — no need to undo back to it.
+    // it - no need to undo back to it.
     function editKick(idx: number, patch: Partial<PenaltyKick>) {
         if (busy) return
         setKicks((prev) => prev.map((k, i) => (i === idx ? { ...k, ...patch } : k)))
@@ -1291,7 +1291,7 @@ export function PenaltyShootout({
     async function handleConfirm() {
         // Persist every kick as a penalty event (silent so we don't stack a
         // toast per kick), then hand the made-count totals to the parent which
-        // records the result. A kick with no named taker is still recorded —
+        // records the result. A kick with no named taker is still recorded -
         // its side comes from teamId and the timeline shows "(gol)"/"(promašaj)".
         setPersisting(true)
         try {
@@ -1301,7 +1301,7 @@ export function PenaltyShootout({
                 try {
                     await deleteMatchEvent(uuid, matchId, id, { silent: true })
                 } catch {
-                    /* best-effort — the totals below remain authoritative */
+                    /* best-effort - the totals below remain authoritative */
                 }
             }
             for (const k of kicks) {
@@ -1337,7 +1337,7 @@ export function PenaltyShootout({
                 </Text>
             </Flex>
 
-            {/* Per-team kick lists (team1 top, team2 bottom — same order as the
+            {/* Per-team kick lists (team1 top, team2 bottom - same order as the
                 header). Tap a kick to edit its result and shooter. */}
             <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden" mb="3">
                 <TeamKickRow
@@ -1376,7 +1376,7 @@ export function PenaltyShootout({
             ) : (
                 <VStack gap="2">
                     <Text fontSize="xs" color="fg.muted" textAlign="center">
-                        {st.inSudden ? "Sudden death" : `Serija ${Math.min(st.round, 3)} / 3`} — puca:{" "}
+                        {st.inSudden ? "Sudden death" : `Serija ${Math.min(st.round, 3)} / 3`} - puca:{" "}
                         <Box as="span" fontWeight={700} color="fg.ink">
                             {st.nextTeam === 1 ? t1 : t2}
                         </Box>
@@ -1389,7 +1389,7 @@ export function PenaltyShootout({
                                 value={shooterId}
                                 onChange={(e) => setShooterId(e.target.value)}
                             >
-                                <option value="">— tko je pucao (neobavezno) —</option>
+                                <option value="">- tko je pucao (neobavezno) -</option>
                                 {currentRoster.map((p) => (
                                     <option key={p.id} value={p.id}>
                                         {p.number != null ? `${p.number}. ` : ""}
@@ -1447,7 +1447,7 @@ function TeamKickRow({
             <HStack gap="1.5" flex="1" minW="0" wrap="wrap" justify="center">
                 {kicks.length === 0 ? (
                     <Text fontSize="2xs" color="fg.subtle">
-                        —
+                        -
                     </Text>
                 ) : (
                     kicks.map(({ k, i }) => (
@@ -1559,7 +1559,7 @@ function KickChip({
                                                 onEdit({ playerId: p?.id, playerName: p?.name })
                                             }}
                                         >
-                                            <option value="">— bez igrača —</option>
+                                            <option value="">- bez igrača -</option>
                                             {roster.map((p) => (
                                                 <option key={p.id} value={p.id}>
                                                     {p.number != null ? `${p.number}. ` : ""}
@@ -1580,7 +1580,7 @@ function KickChip({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   MatchTimelineModal — small read-only modal showing one match's timeline
+   MatchTimelineModal - small read-only modal showing one match's timeline
    (goals / cards). Opened by clicking a match (group OR knockout); available
    to every visitor, including logged-out ones. Centred vertical scoreboard
    (team1 / score1 / score2 / team2) above the event timeline.
@@ -1604,7 +1604,7 @@ export function MatchTimelineModal({
 }: {
     uuid: string
     match: TimelineMatch
-    /** Half length (min) — splits the timeline into 1./2. poluvrijeme. */
+    /** Half length (min) - splits the timeline into 1./2. poluvrijeme. */
     halfLengthMin?: number | null
     onClose: () => void
 }) {
@@ -1642,7 +1642,7 @@ export function MatchTimelineModal({
                                         </Box>
                                     )}
                                     <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
-                                        {match.team1Name ?? "—"}
+                                        {match.team1Name ?? "-"}
                                     </Text>
                                     {hasScore ? (
                                         <>
@@ -1671,7 +1671,7 @@ export function MatchTimelineModal({
                                         </Text>
                                     )}
                                     <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
-                                        {match.team2Name ?? "—"}
+                                        {match.team2Name ?? "-"}
                                     </Text>
                                 </VStack>
                             </Dialog.Title>
@@ -1716,12 +1716,12 @@ export function MatchTimelineModal({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   FoulControls — accumulated team fouls for the live-entry dialog.
+   FoulControls - accumulated team fouls for the live-entry dialog.
 
    Futsal rule: from a team's 5th accumulated foul in a half the opponent gets
    a "deveterac" (10 m direct free kick); each further foul is another one.
    Fouls don't record who committed them (just the team count) and reset every
-   half — the half is derived from secondHalfStartedAt by the parent dialog.
+   half - the half is derived from secondHalfStartedAt by the parent dialog.
    ────────────────────────────────────────────────────────────────────────── */
 export function FoulControls({
     uuid,
@@ -1738,7 +1738,7 @@ export function FoulControls({
     team1Name?: string | null
     team2Name?: string | null
     /** Which half the counts are recorded to (derived from secondHalfStartedAt
-     *  by the parent). Not shown — the organizer resets manually. */
+     *  by the parent). Not shown - the organizer resets manually. */
     half: 1 | 2
     fouls1First?: number | null
     fouls1Second?: number | null

@@ -30,7 +30,7 @@ import { GhostButton, MonoLabel, PulseDot } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   MapPage — "Pitch" theme /karta.
+   MapPage - "Pitch" theme /karta.
 
    Behaviour:
      • Geolocated tournaments are pinned on a Leaflet map (CARTO Voyager
@@ -84,7 +84,7 @@ function makePinIcon(color: string, isUser = false, live = false): L.DivIcon {
                 <text text-anchor="middle" y="3" font-size="9" fill="#fff" font-weight="800">!</text>
            </g>`
         : ""
-    // Pulsing "radar ping" ring behind the pin head — only for live
+    // Pulsing "radar ping" ring behind the pin head - only for live
     // tournaments. Sits under the SVG (z-index/order) so the pin stays crisp.
     const livePing = live ? `<span class="map-live-ping"></span>` : ""
     const html = isUser
@@ -123,7 +123,7 @@ function classify(startAt?: string | null, live?: boolean): Bucket {
 }
 
 function formatDateShort(iso?: string | null): string {
-    if (!iso) return "—"
+    if (!iso) return "-"
     return new Intl.DateTimeFormat("hr-HR", {
         weekday: "short",
         day: "2-digit",
@@ -139,7 +139,7 @@ function formatTime(iso?: string | null): string {
 }
 
 /**
- * Camera controller — runs inside <MapContainer> via `useMap`. Two phases:
+ * Camera controller - runs inside <MapContainer> via `useMap`. Two phases:
  *
  * 1. Initial focus (once): if the user's location is available, centre on it
  *    at zoom 10. Otherwise, fit to all visible pins. Past this point the
@@ -185,7 +185,7 @@ function MapController({
         }
     }, [userPos, allPoints, map])
 
-    // Selection follow — fly to the chosen tournament with a smooth animation.
+    // Selection follow - fly to the chosen tournament with a smooth animation.
     useEffect(() => {
         if (!selectedTournament) return
         map.flyTo(
@@ -229,7 +229,7 @@ function circleBoxCorners(center: [number, number], radiusKm: number): [number, 
 
 const MAP_RADIUS_MAX_KM = 100
 
-/** Desktop sidebar list item — coloured pin glyph + name + city/date + chev. */
+/** Desktop sidebar list item - coloured pin glyph + name + city/date + chev. */
 function SidebarItem({
     t,
     active,
@@ -307,7 +307,7 @@ function SidebarItem({
     )
 }
 
-/** Mobile chip — compact pill the user scrolls through above the map. */
+/** Mobile chip - compact pill the user scrolls through above the map. */
 function MobileChip({
     t,
     active,
@@ -348,7 +348,7 @@ function MobileChip({
 
 export default function MapPage() {
     useDocumentHead({
-        title: "Karta turnira — futsal-turniri.com",
+        title: "Karta turnira - futsal-turniri.com",
         description: "Pregled svih nadolazećih futsal turnira u Hrvatskoj na karti.",
         canonical: "https://futsal-turniri.com/karta",
     })
@@ -413,7 +413,7 @@ export default function MapPage() {
 
     // Open the selected tournament's popup whenever selection changes. The
     // marker may not exist yet on first render (Leaflet mounts asynchronously),
-    // so we retry with a short timeout — once on the same tick, then again
+    // so we retry with a short timeout - once on the same tick, then again
     // after 100ms in case the marker registered after the effect ran.
     useEffect(() => {
         if (!selectedUuid) return
@@ -432,14 +432,14 @@ export default function MapPage() {
     const radiusDisabled = !userPos
 
     function selectTournament(uuid: string) {
-        // Toggle off when tapping the already-selected entry — gives the user
+        // Toggle off when tapping the already-selected entry - gives the user
         // a way to clear the focus without zooming out manually.
         setSelectedUuid((cur) => (cur === uuid ? null : uuid))
     }
 
     return (
         <VStack align="stretch" gap="3">
-            {/* Compact filter bar — replaces the previous PageTitle hero
+            {/* Compact filter bar - replaces the previous PageTitle hero
                 + separate filter row. Product feedback: drop the kicker /
                 title / subtitle entirely and pull the "Moja lokacija"
                 button into the radius row so the whole control bar is
@@ -474,7 +474,7 @@ export default function MapPage() {
                         </Box>
                         <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW="50px" textAlign="right">
                             {radiusDisabled
-                                ? "—"
+                                ? "-"
                                 : radiusKm >= MAP_RADIUS_MAX_KM
                                     ? "Sve"
                                     : `${radiusKm} km`}
@@ -558,9 +558,9 @@ export default function MapPage() {
                 </Box>
             )}
 
-            {/* ── Main split — sidebar + map on desktop, full-width map on mobile ── */}
+            {/* ── Main split - sidebar + map on desktop, full-width map on mobile ── */}
             <Grid templateColumns={{ base: "1fr", md: "340px 1fr" }} gap="5">
-                {/* Sidebar — desktop only */}
+                {/* Sidebar - desktop only */}
                 <Box display={{ base: "none", md: "block" }}>
                     <Flex justify="flex-end" align="center" mb="2" minH="20px">
                         {selectedUuid && (

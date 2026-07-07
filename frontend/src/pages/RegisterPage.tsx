@@ -61,7 +61,7 @@ export default function RegisterPage() {
     )
 
     /**
-     * If the user is already signed in, /register has nothing to do —
+     * If the user is already signed in, /register has nothing to do -
      * bounce them to the redirect target with {replace} so the back
      * button doesn't loop here.
      */

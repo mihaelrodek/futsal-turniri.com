@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Loud warnings at boot if a required prod env var is missing or still set
- * to its dev default. The app will still start — these are nudges, not gates,
+ * to its dev default. The app will still start - these are nudges, not gates,
  * because failing to boot in prod is worse than booting with bad config.
  *
  * <p>Currently checks:
@@ -22,7 +22,7 @@ import java.util.List;
  *   <li>{@code FIREBASE_PROJECT_ID} is set when running in prod (otherwise
  *       the OIDC issuer points at the dev Firebase project).</li>
  *   <li>{@code APP_PUBLIC_BASE_URL} is set in prod (used by sitemap / preview
- *       links — wrong value here ships broken share URLs).</li>
+ *       links - wrong value here ships broken share URLs).</li>
  *   <li>{@code MINIO_ENDPOINT} doesn't reference {@code localhost} in prod
  *       (would mean the backend can't reach MinIO from inside the container
  *       network).</li>
@@ -46,7 +46,7 @@ public class StartupSanityCheck {
     String minioEndpoint;
 
     void onStart(@Observes StartupEvent ev) {
-        // Only nag in prod — dev/test profiles legitimately use localhost and
+        // Only nag in prod - dev/test profiles legitimately use localhost and
         // the default project id.
         if (LaunchMode.current() != LaunchMode.NORMAL) return;
 
@@ -97,7 +97,7 @@ public class StartupSanityCheck {
 
         // Loud, single block so it's hard to miss in the boot log.
         LOG.warn("====================================================================");
-        LOG.warn("STARTUP SANITY CHECK — review before serving real traffic:");
+        LOG.warn("STARTUP SANITY CHECK - review before serving real traffic:");
         for (String w : warnings) {
             LOG.warnf("  • %s", w);
         }

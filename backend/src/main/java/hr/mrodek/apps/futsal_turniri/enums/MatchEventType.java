@@ -9,7 +9,7 @@ package hr.mrodek.apps.futsal_turniri.enums;
  *
  * <p>{@code PENALTY_GOAL} / {@code PENALTY_MISSED} record one kick in a
  * knockout penalty shootout (who shot, and whether it went in). They are
- * NOT goals — the score recompute and the scorer stats both filter on
+ * NOT goals - the score recompute and the scorer stats both filter on
  * {@code GOAL}, so penalty kicks never affect either. The shootout result
  * itself lives in {@code matches.penalties1/2}.
  */

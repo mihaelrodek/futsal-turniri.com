@@ -10,7 +10,7 @@
 *.iml
 *.log
 
-# Secrets — never let these leak into an image even by accident.
+# Secrets - never let these leak into an image even by accident.
 .env
 .env.*
 !.env.example

@@ -59,7 +59,7 @@ public record CreateTournamentRequest(
         @Size(max = 500, message = "websiteUrl must be at most 500 characters")
         String websiteUrl,
 
-        // Legacy — the percent/fixed toggle was removed; always FIXED now.
+        // Legacy - the percent/fixed toggle was removed; always FIXED now.
         RewardType rewardType,                 // FIXED | PERCENTAGE
 
         // Each place: amount + optional free-text note ("Ostalo").

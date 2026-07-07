@@ -1,5 +1,5 @@
 /*
- * Minimal service worker — exists primarily so Chrome / Edge / Samsung Internet
+ * Minimal service worker - exists primarily so Chrome / Edge / Samsung Internet
  * fire the `beforeinstallprompt` event. Without an SW the browser refuses to
  * surface the install prompt at all, even with a perfect manifest.
  *
@@ -7,7 +7,7 @@
  *   - Lets every request go to the network normally (no caching surprises).
  *   - Falls back to the cached app shell when the network is unreachable, so
  *     a tournament organizer at a venue with flaky Wi-Fi can still open the
- *     installed app and see *something* (just the SPA shell — API data still
+ *     installed app and see *something* (just the SPA shell - API data still
  *     needs the network).
  *
  * Keeping the worker tiny is deliberate: a richer cache strategy is easy to
@@ -41,7 +41,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
     const req = event.request;
-    // Only intercept GETs — POST/PUT/PATCH/DELETE go straight to the network.
+    // Only intercept GETs - POST/PUT/PATCH/DELETE go straight to the network.
     if (req.method !== "GET") return;
 
     const url = new URL(req.url);
@@ -49,7 +49,7 @@ self.addEventListener("fetch", (event) => {
     // the browser. The SW only owns top-level navigations (so an offline /
     // mid-deploy launch still boots the SPA shell). Hashed assets under
     // /assets/* are already cached by the browser's HTTP cache (Caddy serves
-    // them `immutable`), so the SW doesn't need to touch them — and not
+    // them `immutable`), so the SW doesn't need to touch them - and not
     // touching them avoids the class of bug where a failed fetch + cache miss
     // resolved to `undefined` and crashed the worker with
     // "Failed to convert value to 'Response'".
@@ -59,7 +59,7 @@ self.addEventListener("fetch", (event) => {
 
     // SPA navigation: network-first, fall back to the cached shell, and as a
     // last resort a tiny offline page. respondWith ALWAYS resolves to a real
-    // Response — never undefined — so a 502 / offline never breaks navigation.
+    // Response - never undefined - so a 502 / offline never breaks navigation.
     event.respondWith(
         (async () => {
             try {
@@ -121,7 +121,7 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
     const targetUrl = (event.notification.data && event.notification.data.url) || "/";
-    // Resolve to an absolute URL — clients.navigate and url comparison
+    // Resolve to an absolute URL - clients.navigate and url comparison
     // both want the full form.
     //
     // Origin guard: the push payload's `url` is server-controlled today,
@@ -161,7 +161,7 @@ self.addEventListener("notificationclick", (event) => {
             // Bring the existing PWA window to focus regardless of path.
             try { await client.focus(); } catch (_) {}
 
-            // Already at the target URL — nothing more to do.
+            // Already at the target URL - nothing more to do.
             if (client.url === targetAbs) return;
 
             // Same path, just different query (e.g. /tournaments/X →
@@ -176,7 +176,7 @@ self.addEventListener("notificationclick", (event) => {
             // Different path. On iOS cold-start the window is freshly
             // launched at start_url and React isn't mounted yet, so a
             // postMessage would race with the listener wiring. Use
-            // client.navigate(targetAbs) instead — that forces the URL
+            // client.navigate(targetAbs) instead - that forces the URL
             // to update before React mounts, so our useState initializer
             // sees the deep-link params on first render. Falls back to
             // postMessage if navigate() isn't supported.
@@ -192,7 +192,7 @@ self.addEventListener("notificationclick", (event) => {
             return;
         }
 
-        // No existing window — open one at the target URL. iOS PWAs
+        // No existing window - open one at the target URL. iOS PWAs
         // honour this on a notificationclick gesture.
         await self.clients.openWindow(targetUrl);
     })());

@@ -73,7 +73,7 @@ import {
 } from "../tournament/dialogs"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   TournamentDetailsPage — the shell.
+   TournamentDetailsPage - the shell.
 
    Route component for /turniri/:uuid. Owns the shared state (tournament,
    teams, team-requests, auth, refreshAll) and the section navigation.
@@ -94,7 +94,7 @@ registerLocale("hr", hr)
 /** Sub-tabs inside the Ždrijeb tab. */
 type DrawSubKey = "grupe" | "eliminacija"
 
-/** Compact header action button — icon always shown; label collapses on
+/** Compact header action button - icon always shown; label collapses on
  *  small screens to keep the cluster on one row next to the title. */
 function HeaderAction({
     icon,
@@ -148,7 +148,7 @@ export default function TournamentDetailsPage() {
     const [, setError] = useState<string | null>(null)
     const [t, setT] = useState<TournamentDetails | null>(null)
     const [teams, setTeams] = useState<TeamShort[]>([])
-    // True once the draw (groups / bracket) has been generated — locks the
+    // True once the draw (groups / bracket) has been generated - locks the
     // roster so teams can no longer be added or removed. Refetched on the
     // Ekipe tab so a fresh draw on another tab is reflected immediately.
     const [rosterLocked, setRosterLocked] = useState(false)
@@ -164,7 +164,7 @@ export default function TournamentDetailsPage() {
      *
      * Initial state is read from the URL (once, at mount). Updates are
      * pushed back via `setSearchParams({ replace: true })` so they don't
-     * stack history entries — clicking tabs feels like a panel switch,
+     * stack history entries - clicking tabs feels like a panel switch,
      * not a navigation. */
     const [searchParams, setSearchParams] = useSearchParams()
     const SECTION_KEYS: SectionKey[] = ["details", "live", "teams", "bracket", "raspored", "stats"]
@@ -177,7 +177,7 @@ export default function TournamentDetailsPage() {
         const s = searchParams.get("sub")
         return (s && (DRAW_SUB_KEYS as string[]).includes(s)) ? (s as DrawSubKey) : "grupe"
     })()
-    // ?match=<id> — set when arriving from a "Nadolazeće utakmice" click on
+    // ?match=<id> - set when arriving from a "Nadolazeće utakmice" click on
     // /uzivo so the Raspored tab can scroll to + highlight that match.
     const focusMatchId = ((): number | null => {
         const m = searchParams.get("match")
@@ -202,7 +202,7 @@ export default function TournamentDetailsPage() {
             next.delete("sub")
         }
         // Only call setSearchParams if the serialised form actually
-        // changes — re-setting to the same string triggers a re-render
+        // changes - re-setting to the same string triggers a re-render
         // loop in some react-router builds.
         if (next.toString() !== searchParams.toString()) {
             setSearchParams(next, { replace: true })
@@ -236,13 +236,13 @@ export default function TournamentDetailsPage() {
     const [historyMatch, setHistoryMatch] = useState<ScheduledMatch | null>(null)
 
     // Load the full match list for the team-info history dialog the moment a
-    // team's info is opened (lazy — most visits never open it).
+    // team's info is opened (lazy - most visits never open it).
     useEffect(() => {
         if (!uuid || infoTeamId == null) return
         let cancelled = false
         fetchSchedule(uuid)
             .then((s) => { if (!cancelled) setInfoMatches(s.matches) })
-            .catch(() => { /* leave previous — dialog shows the empty state */ })
+            .catch(() => { /* leave previous - dialog shows the empty state */ })
         return () => { cancelled = true }
     }, [uuid, infoTeamId])
 
@@ -313,8 +313,8 @@ export default function TournamentDetailsPage() {
        SEO meta + JSON-LD
        ────────────────────────────────────────────────────────────────────── */
     const headTitle = t?.name
-        ? `${t.name}${t.location ? `, ${t.location}` : ""} — futsal-turniri.com`
-        : "Turnir — futsal-turniri.com"
+        ? `${t.name}${t.location ? `, ${t.location}` : ""} - futsal-turniri.com`
+        : "Turnir - futsal-turniri.com"
     const headDesc = (() => {
         const raw = t?.details?.trim()
         const start = t?.startAt ? new Date(t.startAt).toLocaleDateString("hr-HR") : null
@@ -322,7 +322,7 @@ export default function TournamentDetailsPage() {
         if (t?.name) {
             const parts: string[] = [`Futsal turnir ${t.name}`]
             if (t.location) parts.push(`u ${t.location}`)
-            if (start) parts.push(`— ${start}`)
+            if (start) parts.push(`- ${start}`)
             return parts.join(" ")
         }
         return undefined
@@ -416,7 +416,7 @@ export default function TournamentDetailsPage() {
         ogDescription: headDesc,
         // For finished tournaments we prefer the server-generated 1200x630
         // share card (podium + status badge) over the user-uploaded banner
-        // — it composes better in WhatsApp / Discord previews and adds
+        // - it composes better in WhatsApp / Discord previews and adds
         // free context to the link. Falls back to the banner for live /
         // draft tournaments where the podium card would be empty.
         ogImage:
@@ -463,7 +463,7 @@ export default function TournamentDetailsPage() {
         }
     }, [uuid, authLoading, user?.uid])
 
-    // Keep the draw sub-tab valid for the tournament's format — a
+    // Keep the draw sub-tab valid for the tournament's format - a
     // KNOCKOUT_ONLY tournament has no group stage, so it always shows
     // the Eliminacija sub-tab.
     useEffect(() => {
@@ -573,7 +573,7 @@ export default function TournamentDetailsPage() {
        Teams: local editing
        ────────────────────────────────────────────────────────────────────── */
     // Add a team and persist it immediately (PUT). No more "Spremi
-    // promjene" — the team lands on the backend with a sensible default
+    // promjene" - the team lands on the backend with a sensible default
     // name and is returned so the UI can open it straight into edit mode
     // for renaming.
     async function addTeam(): Promise<TeamShort | null> {
@@ -700,7 +700,7 @@ export default function TournamentDetailsPage() {
     // Top-level section nav.
     const sections: Array<{ key: SectionKey; label: string }> = [
         { key: "details", label: "Detalji" },
-        // "Zapisnik" — organizer/admin only: run whatever match is on now.
+        // "Zapisnik" - organizer/admin only: run whatever match is on now.
         ...(canEdit ? [{ key: "live" as SectionKey, label: "Zapisnik" }] : []),
         { key: "teams", label: "Ekipe" },
         { key: "bracket", label: "Ždrijeb" },
@@ -721,7 +721,7 @@ export default function TournamentDetailsPage() {
 
     if (!t) {
         // Friendly branded panel instead of the raw axios error string
-        // ("Request failed with status code 404") — this is what a visitor
+        // ("Request failed with status code 404") - this is what a visitor
         // sees when opening a link to a deleted tournament or a dead slug.
         return (
             <NotFoundView
@@ -737,7 +737,7 @@ export default function TournamentDetailsPage() {
     // takes precedence over the underlying STARTED so a live match in
     // progress reads as "UŽIVO" in the header.
     //
-    // "Nacrt" (draft) is deliberately NOT surfaced as a chip — it added
+    // "Nacrt" (draft) is deliberately NOT surfaced as a chip - it added
     // visual noise on every newly-created tournament and the header now
     // carries the action buttons instead. We only show a chip for the
     // meaningful live / finished / in-progress states.
@@ -759,7 +759,7 @@ export default function TournamentDetailsPage() {
     /** Top-right header actions: edit, back, share, embed, fullscreen + bell. */
     const headerActions = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
-            {/* "Uredi" only appears on the Detalji tab — otherwise it would
+            {/* "Uredi" only appears on the Detalji tab - otherwise it would
                 open the edit form (which lives in the details view) "in the
                 background" while another tab is showing. */}
             {canEdit && t.status !== "FINISHED" && !editingDetails && section === "details" && (
@@ -804,7 +804,7 @@ export default function TournamentDetailsPage() {
                         .then(() =>
                             showSuccess(
                                 "Kopirano",
-                                "iframe kod je u clipboardu — zalijepi ga u svoju web stranicu.",
+                                "iframe kod je u clipboardu - zalijepi ga u svoju web stranicu.",
                             ),
                         )
                         .catch(() => window.prompt("Kopiraj ovaj kod:", snippet))
@@ -828,7 +828,7 @@ export default function TournamentDetailsPage() {
         <VStack
             align="stretch"
             gap="4"
-            // Hidden tournament (visible only to creator/admin) — the whole
+            // Hidden tournament (visible only to creator/admin) - the whole
             // page is desaturated so it's unmistakably "not public", plus the
             // banner below spells it out.
             css={t.hidden ? { filter: "grayscale(0.55)" } : undefined}
@@ -846,13 +846,13 @@ export default function TournamentDetailsPage() {
                 >
                     <Text fontSize="16px" lineHeight="1">🔒</Text>
                     <Text fontSize="sm" color="fg.soft" fontWeight={600}>
-                        Turnir nije javno vidljiv — vide ga samo organizator i administratori.
+                        Turnir nije javno vidljiv - vide ga samo organizator i administratori.
                     </Text>
                 </HStack>
             )}
             {/* Back is now an arrow button inside the header action cluster
                 (top-right), so the standalone "Natrag na popis" link is
-                gone — frees up the vertical space above the title. */}
+                gone - frees up the vertical space above the title. */}
             <PageTitle
                 title={t.name}
                 status={statusKind ?? undefined}
@@ -860,7 +860,7 @@ export default function TournamentDetailsPage() {
                 action={headerActions}
             />
 
-            {/* ── Section nav — pill tab bar ──────────────────────────── */}
+            {/* ── Section nav - pill tab bar ──────────────────────────── */}
             <PillTabBar
                 tabs={sectionLabels}
                 active={activeLabel}
@@ -913,7 +913,7 @@ export default function TournamentDetailsPage() {
                             }
                         }}
                         onToggleHidden={async () => {
-                            // Admin-only visibility toggle — same refetch
+                            // Admin-only visibility toggle - same refetch
                             // pattern as the feature toggle above.
                             if (!uuid) return
                             try {
@@ -939,7 +939,7 @@ export default function TournamentDetailsPage() {
                     />
                 )}
 
-                {/* Individual awards — only on the Detalji tab, and only
+                {/* Individual awards - only on the Detalji tab, and only
                     when the tournament is finished (or the organizer wants
                     to fill them in). The component self-hides for visitors
                     when nothing is set. */}
@@ -985,7 +985,7 @@ export default function TournamentDetailsPage() {
 
                 {section === "bracket" && (
                     <VStack align="stretch" gap="4">
-                        {/* Ždrijeb sub-tabs — only shown when the format has a
+                        {/* Ždrijeb sub-tabs - only shown when the format has a
                             group stage. KNOCKOUT_ONLY jumps straight to the
                             bracket with no sub-tab bar. */}
                         {hasGroupStage && (
@@ -1032,7 +1032,7 @@ export default function TournamentDetailsPage() {
                         {(() => {
                             // Once the tournament has started (status moved
                             // past DRAFT), destructive draw/regenerate
-                            // actions inside Ždrijeb / Grupe get hidden —
+                            // actions inside Ždrijeb / Grupe get hidden -
                             // re-running them would wipe live scores.
                             const tournamentStarted =
                                 (t.status as string) === "STARTED" ||

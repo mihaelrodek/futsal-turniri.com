@@ -8,7 +8,7 @@ import { http } from "./http"
    sends a Web Push to every subscriber. See PushService.sendToTournament-
    Subscribers on the backend.
 
-   Endpoints — all under /tournaments/{uuid}:
+   Endpoints - all under /tournaments/{uuid}:
      GET  /subscription  →  { subscribed: boolean }   (authenticated)
      POST /subscribe                                   (authenticated)
      DEL  /subscribe                                   (authenticated)

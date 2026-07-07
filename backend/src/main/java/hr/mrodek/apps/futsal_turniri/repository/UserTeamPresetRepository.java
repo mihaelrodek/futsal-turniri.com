@@ -12,7 +12,7 @@ import java.util.UUID;
 public class UserTeamPresetRepository implements AppRepository<UserTeamPreset, Long> {
 
     /**
-     * All non-archived presets the user is a party to — either as the
+     * All non-archived presets the user is a party to - either as the
      * primary or as the claimed co-owner. The Moji parovi list uses this
      * so both owners see the same set after a claim.
      */
@@ -34,7 +34,7 @@ public class UserTeamPresetRepository implements AppRepository<UserTeamPreset, L
     }
 
     /**
-     * Lookup used by mutation endpoints — either owner (primary or
+     * Lookup used by mutation endpoints - either owner (primary or
      * co-owner) can edit / archive-request / etc. The controller decides
      * which subset of actions to allow.
      */

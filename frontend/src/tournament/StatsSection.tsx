@@ -11,31 +11,31 @@ import {
 } from "../ui/pitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   "Statistika" section — Pitch theme.
+   "Statistika" section - Pitch theme.
 
    Layout:
      1. 4-tile headline strip: Utakmica / Golova / Najviše u utakmici /
         Najbrži gol. The latter two are derived only from data we currently
-        have access to; missing inputs fall back to "—".
+        have access to; missing inputs fall back to "-".
      2. Two-column body:
         • Left: ScorerRow stack (medal gradient for top 3, jersey number
           dark tile, team color dot, mono UTAK/ASIST stats, big goal
           number w/ ball icon).
-        • Right: standings table — # / EKIPA / UT / P / N / I / GOL / PTS.
+        • Right: standings table - # / EKIPA / UT / P / N / I / GOL / PTS.
 
    Falls back to an empty state ("Još nema golova") when the scorers list
-   is empty — the standings panel is suppressed in that case because the
+   is empty - the standings panel is suppressed in that case because the
    underlying group-standings endpoint isn't wired here yet.
    ────────────────────────────────────────────────────────────────────── */
 
-/** Deterministic jersey number 1–99 from a player id. Visual cue only — the
+/** Deterministic jersey number 1–99 from a player id. Visual cue only - the
  *  backend's `ScorerDto` doesn't expose a jersey number today. */
 function jerseyNumber(seed: number): string {
     const n = ((seed * 31) % 99) + 1
     return String(n)
 }
 
-/** Deterministic team-color from name — mirrors the colour ladder used in
+/** Deterministic team-color from name - mirrors the colour ladder used in
  *  the live page so the same team reads as the same colour everywhere. */
 const TEAM_COLORS = [
     "#dc2626",
@@ -154,7 +154,7 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         }
     }, [uuid])
 
-    // Derived headline stats — currently from the scorers payload only.
+    // Derived headline stats - currently from the scorers payload only.
     const totalGoals = useMemo(
         () => scorers.reduce((n, s) => n + s.goals, 0),
         [scorers],
@@ -243,7 +243,7 @@ export default function StatsSection({ uuid }: { uuid: string }) {
                     accent="var(--chakra-colors-accent-amber)"
                     icon={<FiAward size={12} />}
                     label={<MonoLabel>najviše golova ekipa</MonoLabel>}
-                    value={topTeam?.name ?? "—"}
+                    value={topTeam?.name ?? "-"}
                     hint={
                         topTeam
                             ? `${topTeam.goals} ${topTeam.goals === 1 ? "gol" : "golova"}`

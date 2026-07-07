@@ -43,7 +43,7 @@ public class UserProfileRepository implements PanacheRepositoryBase<UserProfile,
 
     /**
      * Free-text search by displayName for the admin dashboard's user
-     * picker. Case-insensitive substring match — short and forgiving so
+     * picker. Case-insensitive substring match - short and forgiving so
      * the admin doesn't have to type the exact casing or full name.
      *
      * <p>The {@code limit} cap is enforced because the admin dashboard
@@ -71,7 +71,7 @@ public class UserProfileRepository implements PanacheRepositoryBase<UserProfile,
      * Used by the admin "Popis igrača" tab which wants every user the
      * admin can navigate to, not just the top-N search hits.
      *
-     * <p>No pagination yet — the user base is small enough that one page
+     * <p>No pagination yet - the user base is small enough that one page
      * fits comfortably; revisit if/when it grows to thousands.
      */
     public List<UserProfile> listAllByDisplayName() {

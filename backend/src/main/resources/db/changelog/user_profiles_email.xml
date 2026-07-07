@@ -8,7 +8,7 @@
 
     <!--
         User email, mirrored from the Firebase ID token on /user/me/sync so the
-        backend can send tournament-notification emails. Nullable — backfilled
+        backend can send tournament-notification emails. Nullable - backfilled
         naturally the next time each user logs in and the SPA calls sync.
     -->
     <changeSet id="2026-07-06-user-profiles-email" author="mrodek">

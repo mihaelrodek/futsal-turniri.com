@@ -10,7 +10,7 @@ public record TournamentDetailsResponse(
         UUID uuid,
         /**
          * Pretty URL slug (e.g. {@code "1-futsal-open-22-04-2026"}). May be null
-         * for legacy rows that haven't been backfilled yet — frontend should
+         * for legacy rows that haven't been backfilled yet - frontend should
          * fall back to {@code uuid} when null.
          */
         String slug,
@@ -21,7 +21,7 @@ public record TournamentDetailsResponse(
         String bannerUrl,
         String status,
 
-        // Not persisted yet in your model — keep nullable in response
+        // Not persisted yet in your model - keep nullable in response
         BigDecimal entryPrice,
         Integer maxTeams,
 
@@ -35,7 +35,7 @@ public record TournamentDetailsResponse(
         String contactPhone,
 
         // Futsal play system ("4+1" | "5+1" | "3vs3" | custom) and an external
-        // organizer link — both optional, shown on the detail page.
+        // organizer link - both optional, shown on the detail page.
         String gameSystem,
         String websiteUrl,
 
@@ -54,7 +54,7 @@ public record TournamentDetailsResponse(
         List<TeamShortDto> teams,       // empty until teams are implemented
         String winnerName,              // gold-place team name (set on FINISH)
         // Silver + bronze podium positions. Set by the organiser through
-        // the dedicated /podium endpoint after FINISH. Both nullable —
+        // the dedicated /podium endpoint after FINISH. Both nullable -
         // the organiser may leave them blank.
         String secondPlaceName,
         String thirdPlaceName,
@@ -76,7 +76,7 @@ public record TournamentDetailsResponse(
         java.time.OffsetDateTime featuredAt,
 
         // Admin-set "not publicly visible". Only creator/admin ever receive a
-        // hidden tournament (public readers get 404) — drives the greyed-out
+        // hidden tournament (public readers get 404) - drives the greyed-out
         // treatment + banner on the details page and the admin toggle label.
         boolean hidden
 ) {}

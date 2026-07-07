@@ -56,14 +56,14 @@ import { matchPhase } from "../components/liveMatch"
 import HelpFab from "../components/HelpFab"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Turniri (listing) — "Pitch" theme.
+   Turniri (listing) - "Pitch" theme.
 
    Layout:
      1. Live scoreboard hero        (rendered when a live match exists)
      2. Search + filter toolbar     (Filteri, view switcher, kotizacija slider)
      3. Status filter chips         (Svi turniri / Uživo / Nadolazeći / …)
-     4. "Predstojeći turniri" grid  — 3-column tournament cards
-     5. "Završeni turniri" section  — same card layout, finished variant
+     4. "Predstojeći turniri" grid  - 3-column tournament cards
+     5. "Završeni turniri" section  - same card layout, finished variant
    ────────────────────────────────────────────────────────────────────── */
 
 type TournamentCardWithUuid = TournamentCard & { uuid: string }
@@ -75,7 +75,7 @@ const HR_MONTHS_SHORT = [
 const HR_WEEKDAYS_SHORT = ["NED", "PON", "UTO", "SRI", "ČET", "PET", "SUB"]
 
 function formatTime(iso?: string | null) {
-    if (!iso) return "—"
+    if (!iso) return "-"
     const d = new Date(iso)
     return new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit" }).format(d)
 }
@@ -126,7 +126,7 @@ function classifyStatus(
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Live scoreboard hero — the dark gradient panel that opens the page when
+   Live scoreboard hero - the dark gradient panel that opens the page when
    at least one match is live. Pulls the highest-watching live match and
    renders the 78px score block.
    ────────────────────────────────────────────────────────────────────── */
@@ -222,7 +222,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                             lineHeight={1.1}
                             mt="0.5"
                         >
-                            {match.team1Name ?? "—"}
+                            {match.team1Name ?? "-"}
                         </Box>
                     </Box>
                     <Flex
@@ -305,7 +305,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                             lineHeight={1.1}
                             mt="0.5"
                         >
-                            {match.team2Name ?? "—"}
+                            {match.team2Name ?? "-"}
                         </Box>
                     </Box>
                 </HStack>
@@ -363,7 +363,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
 /* Normalised location string for card display.
  *
  * Geocoded addresses come back from Nominatim as the full reverse-geocode
- * tail — e.g. "Žarovnica, Grad Lepoglava, Varaždinska županija, 42250,
+ * tail - e.g. "Žarovnica, Grad Lepoglava, Varaždinska županija, 42250,
  * Hrvatska". Showing all five segments makes one card look "fuller" than a
  * sibling that only has a city name and creates an inconsistent visual
  * rhythm across the listing grid.
@@ -371,7 +371,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
  * Rule: keep the first 1-2 comma segments (venue + city in most cases),
  * drop county / postal code / country. Strip pure numeric segments (postal
  * codes) and the country tail. Final string is then hard-capped to 38
- * characters with an ellipsis — guarantees the row never wraps even at
+ * characters with an ellipsis - guarantees the row never wraps even at
  * the narrowest mobile viewport (~320px). */
 const COUNTRY_TAIL = new Set([
     "hrvatska",
@@ -396,7 +396,7 @@ function shortLocation(loc: string | null | undefined): string {
         .filter((p) => !/^\d[\d\s]*$/.test(p))
         .filter((p) => !COUNTRY_TAIL.has(p.toLowerCase()))
     if (parts.length === 0) return loc.trim()
-    // Take first two meaningful segments — typically "Venue, City" or
+    // Take first two meaningful segments - typically "Venue, City" or
     // just "City". A third "County" segment is dropped so cards stay
     // visually balanced.
     const head = parts.slice(0, 2).join(", ")
@@ -405,7 +405,7 @@ function shortLocation(loc: string | null | undefined): string {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Tournament card — full Pitch redesign with overlay date stamp, status
+   Tournament card - full Pitch redesign with overlay date stamp, status
    badge, capacity progress bar and pitch-tinted "Detalji →" pill.
    ────────────────────────────────────────────────────────────────────── */
 function TournamentCardView({
@@ -415,7 +415,7 @@ function TournamentCardView({
 }: {
     t: TournamentCardWithUuid
     variant: "upcoming" | "finished"
-    /** True for the first (above-the-fold, likely-LCP) card — its poster
+    /** True for the first (above-the-fold, likely-LCP) card - its poster
      *  loads eagerly with fetchpriority=high; the rest lazy-load. */
     priority?: boolean
 }) {
@@ -423,7 +423,7 @@ function TournamentCardView({
     const status = classifyStatus(t, variant)
     // Fill ratio for the popunjenost bar. With a real cap it's the actual
     // ratio; with no cap (unlimited, shown as "x/∞") we SIMULATE progress with
-    // an asymptotic curve n/(n+5) — grows with each signup, never reaches
+    // an asymptotic curve n/(n+5) - grows with each signup, never reaches
     // full (an unlimited tournament can't be "full").
     const reg = typeof t.registeredTeams === "number" ? t.registeredTeams : 0
     const fill =
@@ -468,7 +468,7 @@ function TournamentCardView({
                 // greyed-out + dashed border so it visibly differs from public.
                 css={t.hidden ? { filter: "grayscale(0.7)", opacity: 0.75 } : undefined}
             >
-                {/* Poster area — shorter on mobile so the card stays compact
+                {/* Poster area - shorter on mobile so the card stays compact
                      and the body remains the focus. */}
                 <Box position="relative" h={{ base: "140px", md: "180px" }}>
                     <TournamentPoster
@@ -524,7 +524,7 @@ function TournamentCardView({
                     ) : null}
                 </Box>
 
-                {/* Body — flex column with FIXED-HEIGHT title and location
+                {/* Body - flex column with FIXED-HEIGHT title and location
                      rows so every card in a grid row has identical body
                      dimensions regardless of content length. The progress
                      block flows naturally and the footer is pinned to the
@@ -538,7 +538,7 @@ function TournamentCardView({
                     flex="1"
                     minW="0"
                 >
-                    {/* Title + location bundled — fixed heights so a
+                    {/* Title + location bundled - fixed heights so a
                          one-line name and a two-line name both occupy the
                          same vertical space, and a long address truncates
                          to one line with ellipsis instead of wrapping. */}
@@ -557,7 +557,7 @@ function TournamentCardView({
                                 WebkitLineClamp: 2,
                                 overflow: "hidden",
                                 wordBreak: "break-word",
-                                // Lock to exactly two line-heights — one-line
+                                // Lock to exactly two line-heights - one-line
                                 // and two-line titles take identical space.
                                 height: "calc(2 * 17px * 1.25)",
                             }}
@@ -658,7 +658,7 @@ function TournamentCardView({
                         borderColor="border"
                         mt="auto"
                     >
-                        {/* Kotizacija + ukupna nagrada — one row, separated by
+                        {/* Kotizacija + ukupna nagrada - one row, separated by
                             a thin divider dot; wraps gracefully on narrow cards. */}
                         <HStack gap="2" align="baseline" wrap="wrap" minW="0">
                             <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px" align="baseline">
@@ -772,7 +772,7 @@ function EmptyState({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   List view (by month) — moved here from /uzivo. Renders the upcoming
+   List view (by month) - moved here from /uzivo. Renders the upcoming
    tournaments as compact rows grouped first by month, then by day. The
    grid view stays the default; this is the alternate, calendar-style read.
    ────────────────────────────────────────────────────────────────────── */
@@ -803,7 +803,7 @@ function dayHeading(d: Date, today: Date): string {
     return `${HR_WEEKDAYS[d.getDay()]}, ${d.getDate()}. ${HR_MONTHS_GEN[d.getMonth()]}`
 }
 function timeLabel(iso?: string | null): string {
-    if (!iso) return "—"
+    if (!iso) return "-"
     return new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso))
 }
 
@@ -874,7 +874,7 @@ function ListRow({ t }: { t: TournamentCard }) {
                 bg="bg.panel"
                 transition="background 0.15s"
                 _hover={{ bg: "bg.surfaceTint" }}
-                // Admin-hidden — greyed out, visible only to creator/admin.
+                // Admin-hidden - greyed out, visible only to creator/admin.
                 css={t.hidden ? { filter: "grayscale(0.7)", opacity: 0.75 } : undefined}
             >
                 <Flex
@@ -953,7 +953,7 @@ function ViewToggleButton({
         <Box
             as="button"
             onClick={onClick}
-            // The text label is hidden on phones (icon-only) — without an
+            // The text label is hidden on phones (icon-only) - without an
             // aria-label the button has NO accessible name there (PSI
             // "button-name" fail). Set it always; harmless on desktop.
             aria-label={label}
@@ -1047,7 +1047,7 @@ const RADIUS_MAX_KM = 100
 
    Comparator helpers normalise missing values: a tournament without a date
    sorts to the END of any date-based ordering, a missing entryPrice sorts to
-   the END of the cheapest-first ordering, and so on — the user shouldn't
+   the END of the cheapest-first ordering, and so on - the user shouldn't
    see "unknown" rows interleaved with sorted ones.
    ────────────────────────────────────────────────────────────────── */
 type SortMode = "date_asc" | "date_desc" | "price_asc" | "popular" | "name_asc"
@@ -1062,7 +1062,7 @@ function sortTournaments(
     list: TournamentCardWithUuid[],
     mode: SortMode,
 ): TournamentCardWithUuid[] {
-    // Always operate on a copy — the `filtered` array comes straight from a
+    // Always operate on a copy - the `filtered` array comes straight from a
     // .filter() and mutating it would also mutate the upstream state-derived
     // memo on re-render.
     const arr = [...list]
@@ -1101,7 +1101,7 @@ function sortTournaments(
 
 export default function TournamentsPage() {
     useDocumentHead({
-        title: "Futsal turniri u Hrvatskoj — futsal-turniri.com",
+        title: "Futsal turniri u Hrvatskoj - futsal-turniri.com",
         description:
             "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji. Pretraži po lokaciji, datumu i cijeni.",
         ogTitle: "Futsal turniri u Hrvatskoj",
@@ -1125,7 +1125,7 @@ export default function TournamentsPage() {
     // ---- Search + filters ----
     const [filtersOpen, setFiltersOpen] = useState(false)
     // Upcoming-section view mode: "grid" (cards, default) or "list"
-    // (compact rows grouped by month — the calendar moved here from /uzivo).
+    // (compact rows grouped by month - the calendar moved here from /uzivo).
     const [upcomingView, setUpcomingView] = useState<"grid" | "list">("grid")
     const [sortMode, setSortMode] = useState<SortMode>("date_asc")
     const [search, setSearch] = useState("")
@@ -1254,7 +1254,7 @@ export default function TournamentsPage() {
             } else if (min != null || max != null) {
                 return false
             }
-            // Total prize fund — same missing-value convention as kotizacija:
+            // Total prize fund - same missing-value convention as kotizacija:
             // a tournament without a prize fund only survives when neither
             // bound is set.
             if (typeof t.prizeTotal === "number") {
@@ -1271,7 +1271,7 @@ export default function TournamentsPage() {
         })
         const sorted = sortTournaments(filtered, sortMode)
         // A featured tournament always comes first, then live ones, then the
-        // rest — preserving the chosen sort within each group (stable sort).
+        // rest - preserving the chosen sort within each group (stable sort).
         const rank = (t: TournamentCardWithUuid) => (t.featuredAt ? 2 : t.liveMatch ? 1 : 0)
         return [...sorted].sort((a, b) => rank(b) - rank(a))
     }, [upcoming, search, locationFilter, priceMin, priceMax, prizeMin, prizeMax, userPos, radiusKm, sortMode])
@@ -1342,7 +1342,7 @@ export default function TournamentsPage() {
                             )}
                         </Box>
                     </Box>
-                    {/* Filter controls — kept on a single row on mobile too
+                    {/* Filter controls - kept on a single row on mobile too
                         (no wrap), with slightly smaller buttons so Filteri +
                         Sortiraj + the grid/list toggle all fit one line. */}
                     <HStack
@@ -1381,7 +1381,7 @@ export default function TournamentsPage() {
                             {filtersOpen ? <FiChevronUp /> : <FiChevronDown />}
                         </Button>
 
-                        {/* Sort menu — sits between Filteri and Kreiraj
+                        {/* Sort menu - sits between Filteri and Kreiraj
                              turnir. The current option is shown inline on
                              desktop ("Sortiraj: Najraniji prvi") and
                              collapsed to just the icon on narrow screens
@@ -1403,7 +1403,7 @@ export default function TournamentsPage() {
                                     <Box as="span" display={{ base: "none", md: "inline" }}>
                                         Sortiraj:{" "}
                                         <Box as="span" color="pitch.500" fontWeight={700}>
-                                            {SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? "—"}
+                                            {SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? "-"}
                                         </Box>
                                     </Box>
                                     <Box as="span" display={{ base: "inline", md: "none" }}>
@@ -1465,7 +1465,7 @@ export default function TournamentsPage() {
                             </Portal>
                         </Menu.Root>
 
-                        {/* Grid / list view switcher — replaces the old
+                        {/* Grid / list view switcher - replaces the old
                             "Kreiraj turnir" button (creating a tournament
                             already lives in the top nav, so a second button
                             here was redundant). Grid is the default card
@@ -1573,7 +1573,7 @@ export default function TournamentsPage() {
                                         ? radiusKm >= RADIUS_MAX_KM
                                             ? "Sve"
                                             : `${radiusKm} km`
-                                        : "—"}
+                                        : "-"}
                                 </Text>
                                 {!userPos && (
                                     <Button

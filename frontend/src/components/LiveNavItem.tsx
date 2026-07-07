@@ -29,7 +29,7 @@ export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
         fetchLiveMatches()
             .then((l) => setLiveCount(l.length))
             .catch(() => {
-                /* offline / endpoint down — treat as nothing live */
+                /* offline / endpoint down - treat as nothing live */
             })
     }, 30000)
 

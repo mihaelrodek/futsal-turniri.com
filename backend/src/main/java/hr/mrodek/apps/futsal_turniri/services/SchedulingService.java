@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Match scheduler (Phase E4). One court — every match is played sequentially.
+ * Match scheduler (Phase E4). One court - every match is played sequentially.
  *
  * <p>Each match occupies a fixed slot whose length is
  * {@code halfCount*halfLength + halftimeBreak + breakBetweenMatches + buffer}
@@ -45,7 +45,7 @@ public class SchedulingService {
 
     /**
      * Sort rank for a stage. Mirrors the enum order EXCEPT the third-place
-     * playoff is placed right BEFORE the final — it's played first, so the
+     * playoff is placed right BEFORE the final - it's played first, so the
      * final stays the closing match of the tournament. (The enum ordinal
      * keeps THIRD_PLACE last for other purposes, so we don't reorder it.)
      */
@@ -65,7 +65,7 @@ public class SchedulingService {
             throw new BadRequestException("Tournament has no start time");
         }
 
-        // Generating the schedule is what creates the group fixtures — the
+        // Generating the schedule is what creates the group fixtures - the
         // draw only places teams into groups. No-op if already generated, or
         // for KNOCKOUT_ONLY (which has no group matches).
         if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
@@ -74,7 +74,7 @@ public class SchedulingService {
 
         t.setHalfCount(cfg.halfCount() != null ? cfg.halfCount() : 2);
         // A half length is mandatory for the TIMER clock to cap/freeze at the
-        // end of a half — never store null/0; fall back to the futsal default.
+        // end of a half - never store null/0; fall back to the futsal default.
         t.setHalfLengthMin(
                 cfg.halfLengthMin() != null && cfg.halfLengthMin() > 0
                         ? cfg.halfLengthMin()
@@ -99,9 +99,9 @@ public class SchedulingService {
     }
 
     /**
-     * Assign kickoff times to matches that don't have one yet — e.g. the
+     * Assign kickoff times to matches that don't have one yet - e.g. the
      * knockout matches generated after the group schedule was already laid
-     * out — continuing right after the last already-scheduled match. Existing
+     * out - continuing right after the last already-scheduled match. Existing
      * kickoffs are left untouched, so manual edits and a day-split layout
      * (group stage day 1, knockout day 2) survive; the organizer can then
      * shift the freshly-scheduled matches to the right time/day by hand.
@@ -123,7 +123,7 @@ public class SchedulingService {
         if (missing.isEmpty()) return;
 
         int slot = slotLength(t);
-        if (slot <= 0) slot = 30; // no stored config yet — sensible default
+        if (slot <= 0) slot = 30; // no stored config yet - sensible default
 
         OffsetDateTime cursor = lastKickoff != null
                 ? lastKickoff.plusMinutes(slot)
@@ -198,7 +198,7 @@ public class SchedulingService {
 
     /**
      * Clear the laid-out schedule. The generated group fixtures (created by
-     * generating the schedule) are DELETED — keeping the groups/draw — so the
+     * generating the schedule) are DELETED - keeping the groups/draw - so the
      * tournament returns to the pre-schedule state and can be regenerated. Any
      * other matches (e.g. an elimination bracket, which is generated elsewhere)
      * just lose their kickoff slot. Played matches are left untouched.
@@ -216,7 +216,7 @@ public class SchedulingService {
     }
 
     /**
-     * Reorder the schedule by drag-and-drop. The time slots stay fixed — we
+     * Reorder the schedule by drag-and-drop. The time slots stay fixed - we
      * take the existing kickoff times of the reordered matches, sort them
      * ascending, and hand the i-th slot to the match now in the i-th position.
      * Moving a match up therefore swaps its kickoff with the one above it.
@@ -253,7 +253,7 @@ public class SchedulingService {
         m.setKickoffAt(kickoffAt);
     }
 
-    /** The full schedule — config, slot length, and every match in play order. */
+    /** The full schedule - config, slot length, and every match in play order. */
     @Transactional
     public ScheduleDto schedule(Tournaments t) {
         List<Matches> all = matchesRepo.findByTournament_Id(t.getId());
