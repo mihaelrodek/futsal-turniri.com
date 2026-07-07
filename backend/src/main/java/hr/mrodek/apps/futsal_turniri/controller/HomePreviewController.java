@@ -72,8 +72,10 @@ public class HomePreviewController {
     @Path("/home")
     @Produces("text/html; charset=UTF-8")
     public Response home() {
+        // Crawlers are anonymous — admin-hidden tournaments never render.
         List<Tournaments> upcoming = tournamentsRepo
-                .findByStartAtGreaterThanEqualOrderByStartAtAsc(OffsetDateTime.now());
+                .findByStartAtGreaterThanEqualOrderByStartAtAsc(OffsetDateTime.now())
+                .stream().filter(t -> !t.isHidden()).toList();
         // Cap the list — see UPCOMING_LIMIT comment.
         if (upcoming.size() > UPCOMING_LIMIT) {
             upcoming = upcoming.subList(0, UPCOMING_LIMIT);
@@ -86,11 +88,13 @@ public class HomePreviewController {
     @Produces("text/html; charset=UTF-8")
     public Response tournamentsList() {
         List<Tournaments> upcoming = tournamentsRepo
-                .findByStartAtGreaterThanEqualOrderByStartAtAsc(OffsetDateTime.now());
+                .findByStartAtGreaterThanEqualOrderByStartAtAsc(OffsetDateTime.now())
+                .stream().filter(t -> !t.isHidden()).toList();
         if (upcoming.size() > UPCOMING_LIMIT) {
             upcoming = upcoming.subList(0, UPCOMING_LIMIT);
         }
-        List<Tournaments> finished = tournamentsRepo.findFinishedPaged(0, FINISHED_LIMIT);
+        List<Tournaments> finished = tournamentsRepo.findFinishedPaged(0, FINISHED_LIMIT)
+                .stream().filter(t -> !t.isHidden()).toList();
         return Response.ok(renderTournamentsList(upcoming, finished)).build();
     }
 

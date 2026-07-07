@@ -217,48 +217,48 @@ const config = defineConfig({
                 // survives the flip. Toggle lives in the navbar; next-themes
                 // sets the `dark` class that Chakra's `_dark` condition reads.
                 bg: {
-                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#131c16" } },
-                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#0c1310" } },
-                    panel: { value: { base: "{colors.surface.base}", _dark: "#131c16" } },
-                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#17221b" } },
-                    muted: { value: { base: "{colors.surface.tint}", _dark: "#1c2a21" } },
-                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#1c2a21" } },
-                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#17221b" } },
+                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#1c2721" } },
+                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#141d18" } },
+                    panel: { value: { base: "{colors.surface.base}", _dark: "#1c2721" } },
+                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#212e26" } },
+                    muted: { value: { base: "{colors.surface.tint}", _dark: "#28372e" } },
+                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#28372e" } },
+                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#212e26" } },
                 },
                 fg: {
-                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#e6ede7" } },
-                    ink: { value: { base: "{colors.ink}", _dark: "#e6ede7" } },
-                    soft: { value: { base: "{colors.ink.soft}", _dark: "#b3c0b6" } },
-                    muted: { value: { base: "{colors.ink.mute}", _dark: "#8a988e" } },
-                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#77857b" } },
+                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#eaf0eb" } },
+                    ink: { value: { base: "{colors.ink}", _dark: "#eaf0eb" } },
+                    soft: { value: { base: "{colors.ink.soft}", _dark: "#bccac0" } },
+                    muted: { value: { base: "{colors.ink.mute}", _dark: "#95a399" } },
+                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#829087" } },
                 },
                 border: {
-                    DEFAULT: { value: { base: "{colors.line}", _dark: "#263427" } },
-                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#35473a" } },
-                    subtle: { value: { base: "{colors.line}", _dark: "#202c23" } },
-                    strong: { value: { base: "{colors.line.strong}", _dark: "#35473a" } },
+                    DEFAULT: { value: { base: "{colors.line}", _dark: "#324438" } },
+                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#41574a" } },
+                    subtle: { value: { base: "{colors.line}", _dark: "#2b3b31" } },
+                    strong: { value: { base: "{colors.line.strong}", _dark: "#41574a" } },
                 },
                 // Make `colorPalette="pitch"` fully wired. Dark: solid pops a
                 // step brighter, fg goes light-green for text/links, subtle/
                 // muted become deep green fills instead of near-white ones.
                 pitch: {
-                    solid: { value: { base: "{colors.pitch.500}", _dark: "#148f4e" } },
+                    solid: { value: { base: "{colors.pitch.500}", _dark: "#17a05a" } },
                     contrast: { value: "#ffffff" },
-                    fg: { value: { base: "{colors.pitch.500}", _dark: "#4cc088" } },
-                    muted: { value: { base: "{colors.pitch.200}", _dark: "#1b4028" } },
-                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#12281c" } },
-                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#2c6644" } },
-                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#3aa56b" } },
+                    fg: { value: { base: "{colors.pitch.500}", _dark: "#58cb93" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#265238" } },
+                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#1b3527" } },
+                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#38784f" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#4cb37e" } },
                 },
                 // Alias.
                 brand: {
-                    solid: { value: { base: "{colors.pitch.500}", _dark: "#148f4e" } },
+                    solid: { value: { base: "{colors.pitch.500}", _dark: "#17a05a" } },
                     contrast: { value: "#ffffff" },
-                    fg: { value: { base: "{colors.pitch.500}", _dark: "#4cc088" } },
-                    muted: { value: { base: "{colors.pitch.200}", _dark: "#1b4028" } },
-                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#12281c" } },
-                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#2c6644" } },
-                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#3aa56b" } },
+                    fg: { value: { base: "{colors.pitch.500}", _dark: "#58cb93" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#265238" } },
+                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#1b3527" } },
+                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#38784f" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#4cb37e" } },
                 },
                 // Status accents — slightly brighter in dark so they keep
                 // their pop on the deep-green surfaces. Referenced directly
@@ -267,7 +267,11 @@ const config = defineConfig({
                 // token that references a plain token at the SAME path would
                 // resolve to itself and cycle.
                 accent: {
-                    amber: { value: { base: "#d97706", _dark: "#f59e0b" } },
+                    // Light amber darkened #d97706 → #b45309: the old value was
+                    // ~3.4:1 against white (WCAG fail for the 14-16px prize/date
+                    // texts, flagged by PSI); #b45309 clears 4.5:1 and still
+                    // reads amber. Dark-mode value unchanged.
+                    amber: { value: { base: "#b45309", _dark: "#f59e0b" } },
                     red: { value: { base: "#dc2626", _dark: "#f05252" } },
                     goal: { value: { base: "#f5b921", _dark: "#fbc934" } },
                 },

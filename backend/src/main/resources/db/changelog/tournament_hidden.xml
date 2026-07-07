@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Admin-set "not publicly visible" flag. Hidden tournaments are excluded
+        from every public read; only the creator and admins can still see,
+        open and edit them (shown greyed-out in the SPA). Reversible, unlike
+        the is_deleted soft delete.
+    -->
+    <changeSet id="2026-07-07-tournament-hidden" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="is_hidden" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

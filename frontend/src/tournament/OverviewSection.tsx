@@ -29,6 +29,8 @@ import {
     FiInfo,
     FiMapPin,
     FiPhone,
+    FiEye,
+    FiEyeOff,
     FiStar,
     FiTrash2,
     FiUser,
@@ -103,6 +105,8 @@ type OverviewSectionProps = {
      *  Visible in the read view as the "Istakni za dan" / "Ukloni
      *  istaknuto" GhostButton next to Uredi / Obriši. */
     onToggleFeature: () => void
+    /** Admin-only: flip the tournament's "not publicly visible" flag. */
+    onToggleHidden: () => void
     // poster state + handlers
     posterFile: File | null
     posterPreviewUrl: string | null
@@ -136,6 +140,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
         editStartInPast,
         onDeleteTournament,
         onToggleFeature,
+        onToggleHidden,
         posterFile,
         posterPreviewUrl,
         posterRemove,
@@ -668,6 +673,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
         teamCount={teamCount}
         onDeleteTournament={onDeleteTournament}
         onToggleFeature={onToggleFeature}
+        onToggleHidden={onToggleHidden}
     />
 }
 
@@ -682,12 +688,14 @@ function DetailsReadView({
     teamCount,
     onDeleteTournament,
     onToggleFeature,
+    onToggleHidden,
 }: {
     t: TournamentDetails
     isAdmin: boolean
     teamCount: number
     onDeleteTournament: () => void
     onToggleFeature: () => void
+    onToggleHidden: () => void
 }) {
     // Prize fund — up to 4 places, each an amount + optional note ("Ostalo").
     // A place is shown only if it has an amount or a note. Medal-tint for the
@@ -806,6 +814,7 @@ function DetailsReadView({
                         seed={t.uuid}
                         downloadable
                         natural
+                        priority
                     />
                 </Box>
 
@@ -866,6 +875,14 @@ function DetailsReadView({
                             onClick={onToggleFeature}
                         >
                             {t.featuredAt ? "Ukloni istaknuto" : "Istakni za dan"}
+                        </GhostButton>
+                        {/* Visibility toggle — hides the tournament from the
+                            public (only creator + admins keep access). */}
+                        <GhostButton
+                            icon={t.hidden ? <FiEye size={14} /> : <FiEyeOff size={14} />}
+                            onClick={onToggleHidden}
+                        >
+                            {t.hidden ? "Učini javnim" : "Sakrij od javnosti"}
                         </GhostButton>
                         <GhostButton
                             danger

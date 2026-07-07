@@ -324,3 +324,22 @@ export async function unfeatureTournament(uuid: string): Promise<void> {
         { successMessage: "Istaknuto uklonjeno." } as any,
     )
 }
+
+/** Admin: mark a tournament as NOT publicly visible — only the creator and
+ *  admins keep seeing/opening it (greyed out); everyone else gets 404 and it
+ *  drops out of lists, live, sitemap and link previews. Reversible. */
+export async function hideTournament(uuid: string): Promise<void> {
+    await http.post(
+        `/admin/tournaments/${uuid}/hidden`,
+        undefined,
+        { successMessage: "Turnir je sakriven od javnosti." } as any,
+    )
+}
+
+/** Admin: make a hidden tournament publicly visible again. */
+export async function unhideTournament(uuid: string): Promise<void> {
+    await http.delete(
+        `/admin/tournaments/${uuid}/hidden`,
+        { successMessage: "Turnir je ponovno javno vidljiv." } as any,
+    )
+}

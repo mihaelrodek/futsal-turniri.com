@@ -232,6 +232,16 @@ public class Tournaments {
     private boolean deleted = false;
 
     /**
+     * Admin-set "not publicly visible" flag. A hidden tournament is excluded
+     * from every public read (lists, details, sitemap, live, previews) for
+     * everyone EXCEPT its creator and admins, who see it flagged and greyed
+     * out in the SPA. Unlike {@link #deleted} this is reversible curation,
+     * not removal — set via POST/DELETE /admin/tournaments/{uuid}/hidden.
+     */
+    @Column(name = "is_hidden", nullable = false)
+    private boolean hidden = false;
+
+    /**
      * Admin-curated "tournament of the day" highlight. When non-null, this
      * is the timestamp at which an admin promoted the tournament to the
      * daily hero shown on /uzivo. The public lookup picks the row with

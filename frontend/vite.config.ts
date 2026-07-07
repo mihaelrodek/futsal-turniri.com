@@ -78,6 +78,12 @@ export default defineConfig({
                     if (id.includes("node_modules/leaflet/")) {
                         return "vendor-map"
                     }
+                    // Firebase is only referenced through dynamic imports
+                    // (firebase.ts getFirebase) and touches no React — safe as
+                    // its own async chunk, loaded after first paint.
+                    if (id.includes("node_modules/firebase/") || id.includes("node_modules/@firebase/")) {
+                        return "vendor-firebase"
+                    }
                     return "vendor"
                 },
             },

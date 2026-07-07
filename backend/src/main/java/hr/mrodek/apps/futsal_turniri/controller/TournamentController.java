@@ -126,6 +126,20 @@ public class TournamentController {
         }
     }
 
+    /**
+     * Visibility gate for admin-hidden tournaments: visible to everyone when
+     * not hidden; when hidden, only to the creator and admins. Works on
+     * public endpoints too — with no bearer token the identity is anonymous
+     * and this simply returns {@code !t.isHidden()}.
+     */
+    private boolean canView(Tournaments t) {
+        if (!t.isHidden()) return true;
+        boolean admin = identity != null && identity.hasRole("admin");
+        if (admin) return true;
+        String me = jwt != null ? jwt.getSubject() : null;
+        return me != null && me.equals(t.getCreatedByUid());
+    }
+
     /** Resolve location → lat/lng on create / update. Failure is non-fatal. */
     private void applyGeocoding(Tournaments t) {
         var loc = t.getLocation();
@@ -328,6 +342,33 @@ public class TournamentController {
         }
 
         return Response.ok(tournamentMapper.toDetails(t)).build();
+    }
+
+    /**
+     * Soft-delete a tournament. Owner-or-admin (same gate as every other
+     * mutation). Flips {@code is_deleted}; combined with the class-level
+     * {@code @Where(is_deleted = false)} the row instantly disappears from
+     * every read (lists, map, sitemap, live) while matches/teams/history stay
+     * intact in the DB for a possible manual restore.
+     *
+     * <p>This endpoint was missing entirely — the SPA (owner "Obriši turnir"
+     * and the admin dashboard) has always called {@code DELETE
+     * /tournaments/{uuid}} and got 405, so deleting never worked.
+     */
+    @DELETE
+    @Path("/{uuid}")
+    @Authenticated
+    @Transactional
+    public Response delete(@PathParam("uuid") String uuid) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        assertCanEdit(t);
+
+        t.setDeleted(true);
+        t.setUpdatedAt(OffsetDateTime.now());
+        // A deleted tournament must not linger as the daily highlight.
+        t.setFeaturedAt(null);
+        return Response.noContent().build();
     }
 
     /**
@@ -689,9 +730,13 @@ public class TournamentController {
             items = tournamentsRepo.findNotFinishedOrderByStartAtAsc();
         }
 
-        if (items.isEmpty()) return List.of();
+        // Admin-hidden tournaments stay in the list only for their creator
+        // and admins (the SPA greys them out); everyone else never sees them.
+        List<Tournaments> visible = items.stream().filter(this::canView).toList();
 
-        List<Long> ids = items.stream().map(Tournaments::getId).toList();
+        if (visible.isEmpty()) return List.of();
+
+        List<Long> ids = visible.stream().map(Tournaments::getId).toList();
         Map<Long, Long> counts = teamRepo.countByTournamentIds(ids).stream()
                 .collect(Collectors.toMap(
                         r -> (Long) r[0],
@@ -702,7 +747,7 @@ public class TournamentController {
         Set<Long> liveTournamentIds =
                 new HashSet<>(matchesRepo.findTournamentIdsWithLiveMatch(ids));
 
-        return tournamentMapper.toCardList(items, counts, liveTournamentIds);
+        return tournamentMapper.toCardList(visible, counts, liveTournamentIds);
     }
 
     /**
@@ -733,6 +778,7 @@ public class TournamentController {
     @Path("/featured")
     public Response getFeatured() {
         return tournamentsRepo.findCurrentlyFeatured()
+                .filter(t -> !t.isHidden()) // a hidden tournament can't be the public hero
                 .map(t -> {
                     long count = teamRepo.countByTournamentIds(java.util.List.of(t.getId()))
                             .stream()
@@ -778,7 +824,10 @@ public class TournamentController {
     public Response getById(@PathParam("uuid") String idOrSlug) {
         // Accepts either a UUID (legacy / shared URLs from before slugs landed)
         // or the new pretty slug, so existing bookmarks keep working.
+        // Admin-hidden tournaments 404 for everyone except creator/admin —
+        // indistinguishable from not existing (no visibility leak).
         return tournamentsRepo.findByUuidOrSlug(idOrSlug)
+                .filter(this::canView)
                 .map(tournamentMapper::toDetails)
                 .map(dto -> Response.ok(dto).build())
                 .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
@@ -1469,6 +1518,8 @@ public class TournamentController {
     public List<LiveMatchDto> listLiveMatches() {
         return matchesRepo.findAllLiveMatches()
                 .stream()
+                // Hidden tournaments never stream to the public live widgets.
+                .filter(m -> m.getTournament() == null || !m.getTournament().isHidden())
                 .map(m -> {
                     var t = m.getTournament();
                     return new LiveMatchDto(
@@ -1508,6 +1559,8 @@ public class TournamentController {
     public List<UpcomingMatchDto> listUpcomingMatches() {
         return matchesRepo.findUpcomingMatches(OffsetDateTime.now(), 40)
                 .stream()
+                // Hidden tournaments never surface on the public upcoming feed.
+                .filter(m -> m.getTournament() == null || !m.getTournament().isHidden())
                 .map(m -> {
                     var t = m.getTournament();
                     return new UpcomingMatchDto(

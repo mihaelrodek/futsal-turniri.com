@@ -73,5 +73,10 @@ public record TournamentDetailsResponse(
         // Admin-curated "tournament of the day" timestamp. Non-null when
         // featured; cleared back to null when unfeatured. Drives the
         // admin toggle button label + the /uzivo hero block visibility.
-        java.time.OffsetDateTime featuredAt
+        java.time.OffsetDateTime featuredAt,
+
+        // Admin-set "not publicly visible". Only creator/admin ever receive a
+        // hidden tournament (public readers get 404) — drives the greyed-out
+        // treatment + banner on the details page and the admin toggle label.
+        boolean hidden
 ) {}

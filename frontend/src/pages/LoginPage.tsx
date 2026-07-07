@@ -12,8 +12,7 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { FcGoogle } from "react-icons/fc"
-import { sendPasswordResetEmail } from "firebase/auth"
-import { auth } from "../firebase"
+import { getFirebase } from "../firebase"
 import { useAuth } from "../auth/AuthContext"
 import { pickSafeNext } from "../utils/safeNextPath"
 
@@ -120,6 +119,8 @@ export default function LoginPage() {
             return
         }
         try {
+            const [{ auth }, { sendPasswordResetEmail }] =
+                await Promise.all([getFirebase(), import("firebase/auth")])
             await sendPasswordResetEmail(auth, email.trim())
             setResetMsg("Poslali smo ti link za promjenu lozinke. Provjeri email.")
         } catch (e: any) {

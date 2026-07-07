@@ -588,6 +588,7 @@ export function TournamentPoster({
     seed,
     downloadable = false,
     natural = false,
+    priority = false,
 }: {
     name: string
     bannerUrl?: string | null
@@ -601,30 +602,33 @@ export function TournamentPoster({
      *  the details page where a tall portrait poster must not be cut off.
      *  `height` is ignored in this mode. */
     natural?: boolean
+    /** True for the likely-LCP poster (first card / details hero): loads
+     *  eagerly with fetchpriority=high. Everything else lazy-loads. */
+    priority?: boolean
 }) {
     if (bannerUrl) {
+        // A real <img> (not a CSS background) so the preload scanner discovers
+        // the LCP image during HTML/early parse — PSI's "LCP request discovery"
+        // flagged the old bgImage approach (only discovered after CSSOM+layout).
         return (
             <Box
                 position="relative"
                 overflow="hidden"
                 {...(natural
                     ? {}
-                    : {
-                          h: `${typeof height === "number" ? `${height}px` : height}`,
-                          bgImage: `url(${bannerUrl})`,
-                          bgSize: "cover",
-                          css: { backgroundPosition: "center" },
-                      })}
+                    : { h: `${typeof height === "number" ? `${height}px` : height}` })}
             >
-                {natural && (
-                    <chakra.img
-                        src={bannerUrl}
-                        alt={`Plakat — ${name}`}
-                        display="block"
-                        w="full"
-                        h="auto"
-                    />
-                )}
+                <chakra.img
+                    src={bannerUrl}
+                    alt={`Plakat — ${name}`}
+                    display="block"
+                    w="full"
+                    loading={priority ? "eager" : "lazy"}
+                    fetchPriority={priority ? "high" : "auto"}
+                    {...(natural
+                        ? { h: "auto" }
+                        : { h: "full", objectFit: "cover", objectPosition: "center" })}
+                />
                 {downloadable && (
                     <chakra.a
                         href={bannerUrl}

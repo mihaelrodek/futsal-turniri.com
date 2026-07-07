@@ -26,6 +26,9 @@ export type TournamentCard = {
     /** Set when an admin featured this tournament; null otherwise. The home
      *  list sorts featured tournaments first (before live ones). */
     featuredAt?: string | null;
+    /** Admin-set "not publicly visible". Only the creator/admin ever receive
+     *  hidden rows — the card renders greyed-out with a badge. */
+    hidden?: boolean;
 };
 
 export type TournamentDetails = {
@@ -92,6 +95,10 @@ export type TournamentDetails = {
      *  "tournament of the day" daily highlight on /uzivo. {@code null}
      *  when not featured. Admin UI uses it to label the toggle button. */
     featuredAt?: string | null;
+
+    /** Admin-set "not publicly visible". Only the creator/admin ever see a
+     *  hidden tournament — the details page shows a banner + greyed page. */
+    hidden?: boolean;
 };
 
 export type CreateTournamentPayload = {

@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from "axios"
-import { auth } from "../firebase"
+import { getFirebase } from "../firebase"
 import { showError, showSuccess, statusFallback } from "../toaster"
 
 const baseURL = import.meta.env.VITE_API_URL ?? "/api"
@@ -52,6 +52,9 @@ export const http = axios.create({
  * policies allow GETs without auth and only require it on writes.
  */
 http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+    // Firebase is lazy-loaded (see firebase.ts) — awaiting here is a no-op
+    // after the first call thanks to the cached promise.
+    const { auth } = await getFirebase()
     const u = auth.currentUser
     if (u) {
         try {

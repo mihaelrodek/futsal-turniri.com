@@ -36,6 +36,7 @@ public interface TournamentMapper {
                     expression = "java(teamCountsByTournamentId.getOrDefault(t.getId(), 0L).intValue())"),
             @Mapping(target = "liveMatch",
                     expression = "java(liveTournamentIds.contains(t.getId()))"),
+            @Mapping(target = "hidden", source = "hidden"),
     })
     TournamentCardDto toCard(Tournaments t,
                              @Context Map<Long, Long> teamCountsByTournamentId,
@@ -89,6 +90,7 @@ public interface TournamentMapper {
             // so the admin button can label itself "Istakni" vs "Ukloni
             // istaknuto" without a second fetch.
             @Mapping(target = "featuredAt", source = "featuredAt"),
+            @Mapping(target = "hidden", source = "hidden"),
     })
     TournamentDetailsResponse toDetails(Tournaments t);
 

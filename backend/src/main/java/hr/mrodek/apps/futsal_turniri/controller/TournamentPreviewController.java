@@ -70,7 +70,10 @@ public class TournamentPreviewController {
     public Response preview(@PathParam("idOrSlug") String idOrSlug) {
         // Accept either UUID (legacy share URLs) or pretty slug (new format).
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
-        if (t == null) {
+        // Admin-hidden tournaments 404 for crawlers too — this endpoint is
+        // anonymous, so hidden == not found (keeps them out of link previews
+        // and search indexes).
+        if (t == null || t.isHidden()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .type("text/html; charset=UTF-8")
                     .entity(notFoundHtml())

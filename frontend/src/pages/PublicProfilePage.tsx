@@ -18,8 +18,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { updateProfile as fbUpdateProfile } from "firebase/auth"
-import { auth } from "../firebase"
+import { getFirebase } from "../firebase"
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom"
 import { FaTrophy } from "react-icons/fa"
 import {
@@ -809,6 +808,8 @@ function EditProfileDialog({
             // Firebase displayName is the source of truth — update it first
             // so any subsequent token refresh carries the new name. The
             // backend mirror lands via /user/me/sync.
+            const [{ auth }, { updateProfile: fbUpdateProfile }] =
+                await Promise.all([getFirebase(), import("firebase/auth")])
             const fbUser = auth.currentUser
             if (fbUser && fbUser.displayName !== trimmed) {
                 await fbUpdateProfile(fbUser, { displayName: trimmed })

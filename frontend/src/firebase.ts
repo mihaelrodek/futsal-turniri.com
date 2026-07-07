@@ -1,5 +1,4 @@
-import { initializeApp, type FirebaseOptions } from "firebase/app"
-import { getAuth, GoogleAuthProvider } from "firebase/auth"
+import type { Auth, GoogleAuthProvider } from "firebase/auth"
 
 /**
  * Firebase Web SDK config. These values are public by design — Firebase's
@@ -11,15 +10,31 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth"
  *   VITE_FIREBASE_AUTH_DOMAIN=...
  *   VITE_FIREBASE_PROJECT_ID=...
  *   VITE_FIREBASE_APP_ID=...
+ *
+ * LAZY INIT: the SDK (~100 kB gzip) used to be a static import in the
+ * critical bundle even though nothing needs it before first paint. It now
+ * loads through a cached dynamic import — callers `await getFirebase()`
+ * (plus `await import("firebase/auth")` for the helper functions, which
+ * resolves to the same split chunk). PSI's "unused JavaScript" flagged the
+ * old static version as the biggest offender in the vendor chunk.
  */
-const firebaseConfig: FirebaseOptions = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+
+export type Firebase = { auth: Auth; googleProvider: GoogleAuthProvider }
+
+let cached: Promise<Firebase> | null = null
+
+/** Load + initialize Firebase exactly once; every caller shares the promise. */
+export function getFirebase(): Promise<Firebase> {
+    cached ??= (async () => {
+        const [{ initializeApp }, { getAuth, GoogleAuthProvider: Provider }] =
+            await Promise.all([import("firebase/app"), import("firebase/auth")])
+        const app = initializeApp({
+            apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+            appId: import.meta.env.VITE_FIREBASE_APP_ID,
+        })
+        return { auth: getAuth(app), googleProvider: new Provider() }
+    })()
+    return cached
 }
-
-const app = initializeApp(firebaseConfig)
-
-export const auth = getAuth(app)
-export const googleProvider = new GoogleAuthProvider()

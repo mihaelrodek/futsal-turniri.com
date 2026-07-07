@@ -411,16 +411,27 @@ function shortLocation(loc: string | null | undefined): string {
 function TournamentCardView({
     t,
     variant,
+    priority = false,
 }: {
     t: TournamentCardWithUuid
     variant: "upcoming" | "finished"
+    /** True for the first (above-the-fold, likely-LCP) card — its poster
+     *  loads eagerly with fetchpriority=high; the rest lazy-load. */
+    priority?: boolean
 }) {
     const ds = decomposeDate(t.startAt)
     const status = classifyStatus(t, variant)
+    // Fill ratio for the popunjenost bar. With a real cap it's the actual
+    // ratio; with no cap (unlimited, shown as "x/∞") we SIMULATE progress with
+    // an asymptotic curve n/(n+5) — grows with each signup, never reaches
+    // full (an unlimited tournament can't be "full").
+    const reg = typeof t.registeredTeams === "number" ? t.registeredTeams : 0
     const fill =
-        typeof t.registeredTeams === "number" && typeof t.maxTeams === "number" && t.maxTeams > 0
-            ? Math.min(1, t.registeredTeams / t.maxTeams)
-            : 0
+        typeof t.maxTeams === "number" && t.maxTeams > 0
+            ? Math.min(1, reg / t.maxTeams)
+            : reg > 0
+                ? reg / (reg + 5)
+                : 0
     const accent =
         status.status === "live"
             ? "accent.red"
@@ -446,12 +457,16 @@ function TournamentCardView({
                 overflow="hidden"
                 borderWidth="1px"
                 borderColor="border"
+                borderStyle={t.hidden ? "dashed" : "solid"}
                 h="full"
                 display="flex"
                 flexDirection="column"
                 transition="transform .15s, box-shadow .15s"
                 _hover={{ transform: "translateY(-2px)", shadow: "md" }}
                 cursor="pointer"
+                // Admin-hidden tournament (only its creator/admin receive it):
+                // greyed-out + dashed border so it visibly differs from public.
+                css={t.hidden ? { filter: "grayscale(0.7)", opacity: 0.75 } : undefined}
             >
                 {/* Poster area — shorter on mobile so the card stays compact
                      and the body remains the focus. */}
@@ -461,6 +476,7 @@ function TournamentCardView({
                         bannerUrl={t.bannerUrl}
                         height="100%"
                         seed={t.uuid}
+                        priority={priority}
                     />
                     <Box position="absolute" top="3" left="3">
                         {ds ? <DateStamp day={ds.day} dayNum={ds.dayNum} month={ds.month} /> : null}
@@ -468,6 +484,24 @@ function TournamentCardView({
                     <Box position="absolute" top="3" right="3">
                         <StatusChip status={status.status} label={status.label} />
                     </Box>
+                    {t.hidden && (
+                        <Box
+                            position="absolute"
+                            bottom="3"
+                            left="3"
+                            bg="rgba(0,0,0,0.65)"
+                            color="white"
+                            px="2.5"
+                            py="1"
+                            rounded="full"
+                            fontFamily="mono"
+                            fontSize="10px"
+                            fontWeight={800}
+                            letterSpacing="0.1em"
+                        >
+                            🔒 SKRIVENO
+                        </Box>
+                    )}
                     {ds ? (
                         <Flex
                             position="absolute"
@@ -586,14 +620,15 @@ function TournamentCardView({
                                 {winner}
                             </Box>
                         </HStack>
-                    ) : typeof t.maxTeams === "number" ? (
+                    ) : (
                         <Box>
                             <Flex justify="space-between" align="baseline" mb="1.5">
                                 <Text fontSize="12px" color="fg.muted" fontWeight={500}>
                                     Popunjenost
                                 </Text>
                                 <Box fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.ink">
-                                    {t.registeredTeams ?? 0} / {t.maxTeams}
+                                    {/* No cap → "x/∞"; the bar below simulates progress. */}
+                                    {t.registeredTeams ?? 0} / {typeof t.maxTeams === "number" ? t.maxTeams : "∞"}
                                 </Box>
                             </Flex>
                             <Box h="6px" bg="bg.surfaceTint" rounded="full" overflow="hidden">
@@ -613,7 +648,7 @@ function TournamentCardView({
                                 />
                             </Box>
                         </Box>
-                    ) : null}
+                    )}
 
                     <Flex
                         justify="space-between"
@@ -896,6 +931,11 @@ function ViewToggleButton({
         <Box
             as="button"
             onClick={onClick}
+            // The text label is hidden on phones (icon-only) — without an
+            // aria-label the button has NO accessible name there (PSI
+            // "button-name" fail). Set it always; harmless on desktop.
+            aria-label={label}
+            aria-pressed={active}
             display="inline-flex"
             alignItems="center"
             gap="1.5"
@@ -1070,6 +1110,8 @@ export default function TournamentsPage() {
     const [locationFilter, setLocationFilter] = useState("")
     const [priceMin, setPriceMin] = useState("")
     const [priceMax, setPriceMax] = useState("")
+    const [prizeMin, setPrizeMin] = useState("")
+    const [prizeMax, setPrizeMax] = useState("")
     const [radiusKm, setRadiusKm] = useState<number>(RADIUS_MAX_KM)
 
     const { pos: userPos, status: geoStatus, request: requestLocation } = useUserLocation()
@@ -1084,12 +1126,16 @@ export default function TournamentsPage() {
         (locationFilter.trim() ? 1 : 0) +
         (priceMin.trim() ? 1 : 0) +
         (priceMax.trim() ? 1 : 0) +
+        (prizeMin.trim() ? 1 : 0) +
+        (prizeMax.trim() ? 1 : 0) +
         (userPos && radiusKm < RADIUS_MAX_KM ? 1 : 0)
     const resetFilters = () => {
         setSearch("")
         setLocationFilter("")
         setPriceMin("")
         setPriceMax("")
+        setPrizeMin("")
+        setPrizeMax("")
         setRadiusKm(RADIUS_MAX_KM)
     }
 
@@ -1174,6 +1220,8 @@ export default function TournamentsPage() {
         const loc = locationFilter.trim().toLowerCase()
         const min = parseNum(priceMin)
         const max = parseNum(priceMax)
+        const pMin = parseNum(prizeMin)
+        const pMax = parseNum(prizeMax)
         const me = userPos ? { lat: userPos[0], lng: userPos[1] } : null
         const filtered = upcoming.filter((t) => {
             if (q && !t.name.toLowerCase().includes(q)) return false
@@ -1182,6 +1230,15 @@ export default function TournamentsPage() {
                 if (min != null && t.entryPrice < min) return false
                 if (max != null && t.entryPrice > max) return false
             } else if (min != null || max != null) {
+                return false
+            }
+            // Total prize fund — same missing-value convention as kotizacija:
+            // a tournament without a prize fund only survives when neither
+            // bound is set.
+            if (typeof t.prizeTotal === "number") {
+                if (pMin != null && t.prizeTotal < pMin) return false
+                if (pMax != null && t.prizeTotal > pMax) return false
+            } else if (pMin != null || pMax != null) {
                 return false
             }
             if (me && radiusKm < RADIUS_MAX_KM) {
@@ -1195,7 +1252,7 @@ export default function TournamentsPage() {
         // rest — preserving the chosen sort within each group (stable sort).
         const rank = (t: TournamentCardWithUuid) => (t.featuredAt ? 2 : t.liveMatch ? 1 : 0)
         return [...sorted].sort((a, b) => rank(b) - rank(a))
-    }, [upcoming, search, locationFilter, priceMin, priceMax, userPos, radiusKm, sortMode])
+    }, [upcoming, search, locationFilter, priceMin, priceMax, prizeMin, prizeMax, userPos, radiusKm, sortMode])
 
     const isFiltering = search.trim().length > 0 || activeFilterCount > 0
 
@@ -1426,7 +1483,11 @@ export default function TournamentsPage() {
                         borderColor="border"
                         rounded="lg"
                     >
-                        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap="3">
+                        {/* Desktop: all three filters share ONE row (location
+                            gets the flexible share; the two €-ranges size to
+                            compact fixed-width inputs). Mobile: each filter
+                            stacks into its own row. */}
+                        <Grid templateColumns={{ base: "1fr", md: "minmax(160px, 1fr) auto auto" }} gap="3">
                             <Box>
                                 <MonoLabel>LOKACIJA</MonoLabel>
                                 <Input
@@ -1439,9 +1500,10 @@ export default function TournamentsPage() {
                             </Box>
                             <Box>
                                 <MonoLabel>KOTIZACIJA (€)</MonoLabel>
-                                <HStack mt="1" gap="2">
+                                <HStack mt="1" gap="1.5">
                                     <Input
                                         size="sm"
+                                        w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
                                         placeholder="od"
                                         value={priceMin}
@@ -1450,10 +1512,33 @@ export default function TournamentsPage() {
                                     <Text color="fg.muted">–</Text>
                                     <Input
                                         size="sm"
+                                        w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
                                         placeholder="do"
                                         value={priceMax}
                                         onChange={(e) => setPriceMax(sanitizeNum(e.target.value))}
+                                    />
+                                </HStack>
+                            </Box>
+                            <Box>
+                                <MonoLabel>UKUPNA NAGRADA (€)</MonoLabel>
+                                <HStack mt="1" gap="1.5">
+                                    <Input
+                                        size="sm"
+                                        w={{ base: "full", md: "72px" }}
+                                        inputMode="decimal"
+                                        placeholder="od"
+                                        value={prizeMin}
+                                        onChange={(e) => setPrizeMin(sanitizeNum(e.target.value))}
+                                    />
+                                    <Text color="fg.muted">–</Text>
+                                    <Input
+                                        size="sm"
+                                        w={{ base: "full", md: "72px" }}
+                                        inputMode="decimal"
+                                        placeholder="do"
+                                        value={prizeMax}
+                                        onChange={(e) => setPrizeMax(sanitizeNum(e.target.value))}
                                     />
                                 </HStack>
                             </Box>
@@ -1567,8 +1652,8 @@ export default function TournamentsPage() {
                     <MonthList items={filteredUpcoming} />
                 ) : (
                     <Grid templateColumns={gridCols} gap="5">
-                        {filteredUpcoming.map((t) => (
-                            <TournamentCardView key={t.uuid} t={t} variant="upcoming" />
+                        {filteredUpcoming.map((t, i) => (
+                            <TournamentCardView key={t.uuid} t={t} variant="upcoming" priority={i === 0} />
                         ))}
                     </Grid>
                 )}

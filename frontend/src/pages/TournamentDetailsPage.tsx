@@ -13,7 +13,7 @@ import { registerLocale } from "react-datepicker"
 import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
 import "../datepicker.css"
-import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { FiArrowLeft, FiCode, FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
 import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
@@ -37,7 +37,10 @@ import {
     selfRegisterTeam,
     featureTournament,
     unfeatureTournament,
+    hideTournament,
+    unhideTournament,
 } from "../api/tournaments"
+import NotFoundView from "../components/NotFoundView"
 import { fetchSchedule } from "../api/schedule"
 import type { ScheduledMatch } from "../types/schedule"
 import { listPresets } from "../api/userTeamPresets"
@@ -140,7 +143,9 @@ export default function TournamentDetailsPage() {
 
     /* ---------- Core state ---------- */
     const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
+    // Kept for state-tracking (set on fetch failure); the render shows the
+    // friendly NotFoundView rather than the raw axios message.
+    const [, setError] = useState<string | null>(null)
     const [t, setT] = useState<TournamentDetails | null>(null)
     const [teams, setTeams] = useState<TeamShort[]>([])
     // True once the draw (groups / bracket) has been generated — locks the
@@ -715,13 +720,14 @@ export default function TournamentDetailsPage() {
     }
 
     if (!t) {
+        // Friendly branded panel instead of the raw axios error string
+        // ("Request failed with status code 404") — this is what a visitor
+        // sees when opening a link to a deleted tournament or a dead slug.
         return (
-            <VStack py="16" gap="4">
-                <Text color="accent.red">{error ?? "Turnir nije pronađen."}</Text>
-                <Button asChild size="sm" variant="outline">
-                    <RouterLink to="/turniri">Natrag na popis</RouterLink>
-                </Button>
-            </VStack>
+            <NotFoundView
+                title="Turnir nije pronađen"
+                description="Turnir je možda obrisan ili je adresa netočna. Pogledaj aktualne turnire na popisu."
+            />
         )
     }
 
@@ -819,7 +825,31 @@ export default function TournamentDetailsPage() {
     const activeLabel = sections.find((s) => s.key === section)?.label ?? "Detalji"
 
     return (
-        <VStack align="stretch" gap="4">
+        <VStack
+            align="stretch"
+            gap="4"
+            // Hidden tournament (visible only to creator/admin) — the whole
+            // page is desaturated so it's unmistakably "not public", plus the
+            // banner below spells it out.
+            css={t.hidden ? { filter: "grayscale(0.55)" } : undefined}
+        >
+            {t.hidden && (
+                <HStack
+                    bg="bg.muted"
+                    borderWidth="1px"
+                    borderColor="border.emphasized"
+                    borderStyle="dashed"
+                    rounded="lg"
+                    px="4"
+                    py="2.5"
+                    gap="2.5"
+                >
+                    <Text fontSize="16px" lineHeight="1">🔒</Text>
+                    <Text fontSize="sm" color="fg.soft" fontWeight={600}>
+                        Turnir nije javno vidljiv — vide ga samo organizator i administratori.
+                    </Text>
+                </HStack>
+            )}
             {/* Back is now an arrow button inside the header action cluster
                 (top-right), so the standalone "Natrag na popis" link is
                 gone — frees up the vertical space above the title. */}
@@ -876,6 +906,21 @@ export default function TournamentDetailsPage() {
                                     await unfeatureTournament(uuid)
                                 } else {
                                     await featureTournament(uuid)
+                                }
+                                setT(await fetchTournamentDetails(uuid))
+                            } catch {
+                                // Error toasted by the http interceptor.
+                            }
+                        }}
+                        onToggleHidden={async () => {
+                            // Admin-only visibility toggle — same refetch
+                            // pattern as the feature toggle above.
+                            if (!uuid) return
+                            try {
+                                if (t.hidden) {
+                                    await unhideTournament(uuid)
+                                } else {
+                                    await hideTournament(uuid)
                                 }
                                 setT(await fetchTournamentDetails(uuid))
                             } catch {

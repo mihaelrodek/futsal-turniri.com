@@ -310,6 +310,44 @@ public class AdminController {
         return Response.noContent().build();
     }
 
+    /**
+     * Mark a tournament as "not publicly visible". While hidden it vanishes
+     * from every public read (lists, details, sitemap, live, previews) —
+     * only its creator and admins still see it (greyed out in the SPA) and
+     * can open/edit it. Works for upcoming AND finished tournaments.
+     * Reversible — see {@link #unhideTournament}.
+     */
+    @POST
+    @Path("/tournaments/{uuid}/hidden")
+    @Transactional
+    public Response hideTournament(@PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        t.setHidden(true);
+        // A hidden tournament can't stay the public daily highlight.
+        t.setFeaturedAt(null);
+        tournamentsRepo.persist(t);
+        return Response.noContent().build();
+    }
+
+    /** Inverse of {@link #hideTournament} — makes the tournament public again. */
+    @DELETE
+    @Path("/tournaments/{uuid}/hidden")
+    @Transactional
+    public Response unhideTournament(@PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        t.setHidden(false);
+        tournamentsRepo.persist(t);
+        return Response.noContent().build();
+    }
+
     /** ──────────────────────────────────────────────────────────────────
      * Admin raw status override. Differs from {@code /tournaments/{uuid}/start}
      * which gates on business rules (INSUFFICIENT_TEAMS, etc.) — this

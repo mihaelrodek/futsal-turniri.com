@@ -72,6 +72,7 @@ public class SitemapController {
         // the slug-backfill hasn't touched yet.
         List<Tournaments> tournaments = tournamentsRepo.listAll();
         for (Tournaments t : tournaments) {
+            if (t.isHidden()) continue; // admin-hidden — never in the sitemap
             String key;
             if (t.getSlug() != null && !t.getSlug().isBlank()) {
                 key = t.getSlug();

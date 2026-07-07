@@ -356,6 +356,12 @@ export default function CreateTournamentPage() {
     const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
         e.preventDefault()
 
+        // Publishing is ONLY allowed from the final Pregled step. Anything
+        // else that manages to submit the form (Enter key inside a field on
+        // an earlier step, a stray un-typed button) is a navigation mishap,
+        // not an intent to publish.
+        if (step !== 4) return
+
         // Block past dates outright. The {@code min} attribute on the input
         // already prevents picking earlier than now, but a slow form-fill
         // can drift behind, and clients can bypass the attribute anyway.
@@ -472,9 +478,15 @@ export default function CreateTournamentPage() {
                         const isActive = n === step
                         const isDone = n < step
                         return (
-                            <Box
+                            <chakra.button
                                 key={s}
-                                as="button"
+                                // Inside a <form>, a button WITHOUT an explicit
+                                // type defaults to type="submit" — clicking a
+                                // step chip (e.g. "Pregled") silently submitted
+                                // the form and published the tournament.
+                                // (chakra.button, not Box as="button" — Box's
+                                // typings don't accept the native `type` attr.)
+                                type="button"
                                 onClick={() => setStep(n)}
                                 display="flex"
                                 alignItems="center"
@@ -526,7 +538,7 @@ export default function CreateTournamentPage() {
                                     {isDone ? "✓" : n}
                                 </Box>
                                 <Box display={{ base: "none", sm: "block" }}>{s}</Box>
-                            </Box>
+                            </chakra.button>
                         )
                     })}
                     </HStack>
