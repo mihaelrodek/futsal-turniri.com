@@ -216,27 +216,29 @@ const config = defineConfig({
                 // ("night pitch") rather than neutral gray, so the brand hue
                 // survives the flip. Toggle lives in the navbar; next-themes
                 // sets the `dark` class that Chakra's `_dark` condition reads.
+                // Dark surfaces are neutral GRAY (near-slate, no green cast) —
+                // the brand green stays reserved for accents/CTAs so it pops.
                 bg: {
-                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#1c2721" } },
-                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#141d18" } },
-                    panel: { value: { base: "{colors.surface.base}", _dark: "#1c2721" } },
-                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#212e26" } },
-                    muted: { value: { base: "{colors.surface.tint}", _dark: "#28372e" } },
-                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#28372e" } },
-                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#212e26" } },
+                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#232629" } },
+                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#191b1d" } },
+                    panel: { value: { base: "{colors.surface.base}", _dark: "#232629" } },
+                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#282b2e" } },
+                    muted: { value: { base: "{colors.surface.tint}", _dark: "#303437" } },
+                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#303437" } },
+                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#282b2e" } },
                 },
                 fg: {
-                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#eaf0eb" } },
-                    ink: { value: { base: "{colors.ink}", _dark: "#eaf0eb" } },
-                    soft: { value: { base: "{colors.ink.soft}", _dark: "#bccac0" } },
-                    muted: { value: { base: "{colors.ink.mute}", _dark: "#95a399" } },
-                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#829087" } },
+                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#edeeef" } },
+                    ink: { value: { base: "{colors.ink}", _dark: "#edeeef" } },
+                    soft: { value: { base: "{colors.ink.soft}", _dark: "#c3c7ca" } },
+                    muted: { value: { base: "{colors.ink.mute}", _dark: "#9aa0a5" } },
+                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#878d92" } },
                 },
                 border: {
-                    DEFAULT: { value: { base: "{colors.line}", _dark: "#324438" } },
-                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#41574a" } },
-                    subtle: { value: { base: "{colors.line}", _dark: "#2b3b31" } },
-                    strong: { value: { base: "{colors.line.strong}", _dark: "#41574a" } },
+                    DEFAULT: { value: { base: "{colors.line}", _dark: "#3b4045" } },
+                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#4c5257" } },
+                    subtle: { value: { base: "{colors.line}", _dark: "#33383c" } },
+                    strong: { value: { base: "{colors.line.strong}", _dark: "#4c5257" } },
                 },
                 // Make `colorPalette="pitch"` fully wired. Dark: solid pops a
                 // step brighter, fg goes light-green for text/links, subtle/

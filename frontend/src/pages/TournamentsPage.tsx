@@ -870,9 +870,12 @@ function ListRow({ t }: { t: TournamentCard }) {
                 rounded="lg"
                 borderWidth="1px"
                 borderColor="border"
+                borderStyle={t.hidden ? "dashed" : "solid"}
                 bg="bg.panel"
                 transition="background 0.15s"
                 _hover={{ bg: "bg.surfaceTint" }}
+                // Admin-hidden — greyed out, visible only to creator/admin.
+                css={t.hidden ? { filter: "grayscale(0.7)", opacity: 0.75 } : undefined}
             >
                 <Flex
                     direction="column"
@@ -890,9 +893,28 @@ function ListRow({ t }: { t: TournamentCard }) {
                     </Text>
                 </Flex>
                 <Box flex="1" minW="0">
-                    <Text fontSize="sm" fontWeight={600} truncate color="fg.ink">
-                        {t.name}
-                    </Text>
+                    <HStack gap="1.5" minW="0">
+                        <Text fontSize="sm" fontWeight={600} truncate color="fg.ink">
+                            {t.name}
+                        </Text>
+                        {t.hidden && (
+                            <Box
+                                as="span"
+                                flexShrink={0}
+                                px="1.5"
+                                py="0.5"
+                                rounded="sm"
+                                bg="bg.muted"
+                                color="fg.muted"
+                                fontFamily="mono"
+                                fontSize="9px"
+                                fontWeight={800}
+                                letterSpacing="0.08em"
+                            >
+                                🔒 SKRIVEN
+                            </Box>
+                        )}
+                    </HStack>
                     <HStack gap="1" mt="0.5" color="fg.muted">
                         {t.location ? (
                             <>

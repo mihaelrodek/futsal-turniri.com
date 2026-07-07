@@ -627,7 +627,10 @@ export function TournamentPoster({
                     fetchPriority={priority ? "high" : "auto"}
                     {...(natural
                         ? { h: "auto" }
-                        : { h: "full", objectFit: "cover", objectPosition: "center" })}
+                        : // Anchor the crop to the TOP of the poster — that's
+                          // where the title/header lives on a typical portrait
+                          // flyer; a centre crop showed the middle instead.
+                          { h: "full", objectFit: "cover", objectPosition: "top center" })}
                 />
                 {downloadable && (
                     <chakra.a
