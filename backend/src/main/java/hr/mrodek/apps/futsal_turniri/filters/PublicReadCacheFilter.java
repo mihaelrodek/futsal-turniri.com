@@ -66,6 +66,15 @@ public class PublicReadCacheFilter implements ContainerResponseFilter {
 
         if (CACHEABLE.contains(path)) {
             res.getHeaders().putSingle(HttpHeaders.CACHE_CONTROL, CACHE_VALUE);
+            // The tournaments list is no longer auth-uniform: admin-hidden
+            // rows are included for their creator/admins only. Without Vary
+            // the browser could serve an ANONYMOUS cached copy (e.g. from the
+            // index.html warm-up fetch) to a signed-in admin for up to 20s —
+            // the hidden tournament flickered in and out of the list. Vary
+            // keys the browser cache on the Authorization header so anonymous
+            // and signed-in responses never mix. Harmless for the endpoints
+            // that really are uniform (no Authorization → same cache key).
+            res.getHeaders().putSingle(HttpHeaders.VARY, "Authorization");
         }
     }
 }

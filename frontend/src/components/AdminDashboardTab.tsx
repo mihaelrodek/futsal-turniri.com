@@ -895,7 +895,7 @@ function AdminTournamentActions({
                             loading={busy === "feature"}
                             onClick={toggleFeature}
                         >
-                            <FiStar /> Istakni za dan
+                            <FiStar /> Istakni
                         </Button>
                         <Button
                             size="sm"

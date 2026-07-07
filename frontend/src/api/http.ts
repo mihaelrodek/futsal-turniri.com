@@ -55,6 +55,13 @@ http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     // Firebase is lazy-loaded (see firebase.ts) — awaiting here is a no-op
     // after the first call thanks to the cached promise.
     const { auth } = await getFirebase()
+    // Wait for the persisted session to be restored before reading
+    // currentUser. On a cold page load currentUser is null for a moment even
+    // for a signed-in user — the very first requests then went out WITHOUT
+    // the bearer, so auth-dependent reads (e.g. the tournaments list with an
+    // admin-hidden row) intermittently returned the anonymous variant.
+    // Resolves immediately once known; guests resolve to null just as fast.
+    await auth.authStateReady()
     const u = auth.currentUser
     if (u) {
         try {

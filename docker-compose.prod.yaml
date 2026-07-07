@@ -18,9 +18,17 @@
 #
 #   docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build
 #
-# Update workflow:
+# Update workflow — prefer the maintenance-guarded scripts so users see the
+# "Nadogradnja u tijeku" page during the rebuild instead of errors:
 #
-#   git pull
+#   ./ops/deploy.sh             # full release: git pull + rebuild + prune
+#   ./ops/up.sh                 # guarded compose up (no pull/prune); pass a
+#                               # service name to rebuild just that one
+#
+# The raw command below does the same rebuild but shows NO maintenance page
+# (docker compose has no hooks to toggle the flag) — use it only when you
+# deliberately want a hot, in-place update with no maintenance page:
+#
 #   docker compose -f docker-compose.prod.yaml --env-file .env.prod up -d --build
 #   docker image prune -f       # reclaim space from old images
 

@@ -701,15 +701,29 @@ export function TournamentPoster({
                     color="rgba(255,255,255,0.94)"
                     css={{ display: "block", margin: "0 auto" }}
                 />
-                <MonoLabel
-                    color="rgba(255,255,255,0.78)"
-                    fontSize={big ? "11px" : "10px"}
-                    letterSpacing="0.2em"
+                {/* Tournament name instead of a "no poster" note — the
+                    placeholder doubles as a text poster. Clamped to two
+                    lines so a long name can't blow up the card height. */}
+                <Text
+                    color="rgba(255,255,255,0.92)"
+                    fontFamily="heading"
+                    fontSize={big ? "20px" : "15px"}
+                    fontWeight={800}
+                    letterSpacing="-0.01em"
+                    lineHeight="1.25"
                     mt={big ? "3" : "2"}
-                    display="block"
+                    px="4"
+                    maxW={big ? "420px" : "260px"}
+                    mx="auto"
+                    css={{
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: 2,
+                        overflow: "hidden",
+                    }}
                 >
-                    ⊕ NEMA PLAKATA
-                </MonoLabel>
+                    {name}
+                </Text>
             </Box>
         </Box>
     )

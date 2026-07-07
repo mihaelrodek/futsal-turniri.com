@@ -874,7 +874,7 @@ function DetailsReadView({
                             icon={<FiStar size={14} />}
                             onClick={onToggleFeature}
                         >
-                            {t.featuredAt ? "Ukloni istaknuto" : "Istakni za dan"}
+                            {t.featuredAt ? "Ukloni istaknuto" : "Istakni"}
                         </GhostButton>
                         {/* Visibility toggle — hides the tournament from the
                             public (only creator + admins keep access). */}
@@ -882,7 +882,7 @@ function DetailsReadView({
                             icon={t.hidden ? <FiEye size={14} /> : <FiEyeOff size={14} />}
                             onClick={onToggleHidden}
                         >
-                            {t.hidden ? "Učini javnim" : "Sakrij od javnosti"}
+                            {t.hidden ? "Javno" : "Sakrij"}
                         </GhostButton>
                         <GhostButton
                             danger
