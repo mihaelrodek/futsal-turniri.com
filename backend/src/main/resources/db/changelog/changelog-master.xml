@@ -39,4 +39,5 @@
     <include file="db/changelog/tournament_hidden.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_event_team.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_game_system_website.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/player_is_demo.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

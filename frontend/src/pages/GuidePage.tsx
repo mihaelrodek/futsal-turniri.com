@@ -1,25 +1,18 @@
-import { Box, Flex, Grid, Heading, HStack, Icon, Text, VStack } from "@chakra-ui/react"
+import { Box, Flex, Grid, Heading, HStack, Icon, Text, VStack, chakra } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
+import { createContext, useContext, useState } from "react"
 import type { ElementType, ReactNode } from "react"
 import {
     LuTrophy,
     LuShuffle,
-    LuCalendarClock,
     LuTimer,
     LuRadioTower,
     LuBellRing,
     LuChartColumn,
-    LuMap,
     LuMonitorPlay,
-    LuShare2,
-    LuUsers,
-    LuDownload,
     LuSparkles,
-    LuQrCode,
-    LuListOrdered,
-    LuMove,
 } from "react-icons/lu"
-import { FiArrowRight } from "react-icons/fi"
+import { FiArrowDown, FiArrowRight, FiArrowUp } from "react-icons/fi"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { MonoLabel, PitchBackdrop, PrimaryButton, GhostButton } from "../ui/pitch"
 
@@ -31,6 +24,302 @@ import { MonoLabel, PitchBackdrop, PrimaryButton, GhostButton } from "../ui/pitc
    ────────────────────────────────────────────────────────────────────── */
 
 type Feature = { icon: ElementType; title: string; desc: string }
+
+/* ── Hover zoom ─────────────────────────────────────────────────────────
+   Hovering any guide screenshot shows a large centered preview; moving the
+   mouse away hides it. The overlay is pointer-events:none so it can never
+   steal the hover from the thumbnail (no flicker), and it stays mounted so
+   opacity/scale transitions run smoothly both ways. Hover-only devices -
+   touch screens never trigger it. */
+type ZoomData = { src: string; alt: string }
+const ZoomCtx = createContext<{ show: (d: ZoomData) => void; hide: () => void } | null>(null)
+
+/** Hover handlers for a zoomable image - spread onto the <img>'s wrapper. */
+function useZoomHandlers(d: ZoomData) {
+    const zoom = useContext(ZoomCtx)
+    return {
+        onMouseEnter: () => {
+            // Only real hover devices (mouse/trackpad) - a tap on touch
+            // screens must not open an un-dismissable overlay.
+            if (typeof window !== "undefined" && !window.matchMedia("(hover: hover)").matches) return
+            zoom?.show(d)
+        },
+        onMouseLeave: () => zoom?.hide(),
+    }
+}
+
+/**
+ * Real app screenshot in a browser-window frame (title bar with traffic-dot
+ * trio + a caption bar below). The shots live in /public/vodic and show the
+ * actual product with real match data - captured at 2x for retina crispness.
+ * Explicit width/height (the intrinsic px of the webp) prevents layout shift;
+ * everything below the fold is lazy-loaded.
+ */
+function Shot({
+    src,
+    alt,
+    width,
+    height,
+    caption,
+    maxW,
+    cropAspect,
+}: {
+    src: string
+    alt: string
+    width: number
+    height: number
+    caption: string
+    /** Cap the frame width so screenshots stay compact on large screens. */
+    maxW?: string
+    /** Display-crop the image to this aspect ratio (top-anchored). The hover
+     *  zoom still shows the FULL image - handy for tall shots like brackets. */
+    cropAspect?: number
+}) {
+    const zoomHandlers = useZoomHandlers({ src, alt })
+    return (
+        <Box
+            rounded="xl"
+            overflow="hidden"
+            borderWidth="1px"
+            borderColor="border"
+            bg="bg.panel"
+            boxShadow="0 12px 32px -18px rgba(8, 74, 40, 0.35)"
+            maxW={maxW}
+            mx={maxW ? "auto" : undefined}
+            w="full"
+        >
+            {/* Faux browser title bar */}
+            <HStack gap="1.5" px="3.5" py="2.5" bg="bg.surfaceTint" borderBottomWidth="1px" borderColor="border">
+                <Box w="9px" h="9px" rounded="full" bg="#f87171" />
+                <Box w="9px" h="9px" rounded="full" bg="#fbbf24" />
+                <Box w="9px" h="9px" rounded="full" bg="#34d399" />
+                <Text fontFamily="mono" fontSize="10.5px" color="fg.soft" ml="2" letterSpacing="0.04em">
+                    futsal-turniri.com
+                </Text>
+            </HStack>
+            <Box
+                {...zoomHandlers}
+                cursor="zoom-in"
+                aspectRatio={cropAspect}
+                overflow={cropAspect ? "hidden" : undefined}
+            >
+                <chakra.img
+                    src={src}
+                    alt={alt}
+                    width={width}
+                    height={height}
+                    loading="lazy"
+                    decoding="async"
+                    display="block"
+                    w="full"
+                    h={cropAspect ? "full" : "auto"}
+                    objectFit={cropAspect ? "cover" : undefined}
+                    objectPosition={cropAspect ? "center top" : undefined}
+                />
+            </Box>
+            <Text
+                px="4"
+                py="2.5"
+                fontSize="12.5px"
+                color="fg.muted"
+                borderTopWidth="1px"
+                borderColor="border"
+                bg="bg.surfaceTint"
+            >
+                {caption}
+            </Text>
+        </Box>
+    )
+}
+
+/** Bare screenshot in a light frame (no browser bar / caption) - for the
+ *  compact process-flow steps where a full Shot frame would be too heavy. */
+function MiniShot({
+    src,
+    alt,
+    width,
+    height,
+    cropAspect,
+}: {
+    src: string
+    alt: string
+    width: number
+    height: number
+    /** Display-crop to this aspect (top-anchored); hover zoom shows it all. */
+    cropAspect?: number
+}) {
+    const zoomHandlers = useZoomHandlers({ src, alt })
+    return (
+        <Box
+            rounded="xl"
+            overflow="hidden"
+            borderWidth="1px"
+            borderColor="border"
+            bg="bg.panel"
+            boxShadow="sm"
+            {...zoomHandlers}
+            cursor="zoom-in"
+            aspectRatio={cropAspect}
+        >
+            <chakra.img
+                src={src}
+                alt={alt}
+                width={width}
+                height={height}
+                loading="lazy"
+                decoding="async"
+                display="block"
+                w="full"
+                h={cropAspect ? "full" : "auto"}
+                objectFit={cropAspect ? "cover" : undefined}
+                objectPosition={cropAspect ? "center top" : undefined}
+            />
+        </Box>
+    )
+}
+
+/** Numbered green dot badge shared by the nav legend + flow steps. */
+function NumBadge({ n, size = "18px", fontSize = "10px" }: { n: number | string; size?: string; fontSize?: string }) {
+    return (
+        <Flex
+            w={size}
+            h={size}
+            rounded="full"
+            bg="pitch.500"
+            color="white"
+            fontFamily="mono"
+            fontSize={fontSize}
+            fontWeight={800}
+            align="center"
+            justify="center"
+            flexShrink={0}
+        >
+            {n}
+        </Flex>
+    )
+}
+
+/* Main-menu items, annotated. `pct` is the horizontal center of each item in
+   the izbornik.webp screenshot (measured at capture time, viewport 1280) so
+   the numbered arrows below the image line up with the real buttons. */
+const NAV_ITEMS: { pct: number; label: string; desc: string }[] = [
+    { pct: 35.1, label: "Turniri", desc: "popis svih turnira - pretraga i filteri po lokaciji, kotizaciji i nagradi" },
+    { pct: 41.7, label: "Uživo", desc: "utakmice koje se upravo igraju - rezultati u stvarnom vremenu" },
+    { pct: 49.7, label: "Kreiraj turnir", desc: "novi turnir u par minuta - besplatno" },
+    { pct: 56.7, label: "Karta", desc: "svi turniri na karti - pronađi one blizu sebe" },
+    { pct: 63.0, label: "Statistika", desc: "vječna lista strijelaca kroz sve turnire" },
+    { pct: 89.0, label: "Prijava", desc: "Google prijava - potrebna samo organizatorima" },
+]
+
+/** The navbar screenshot with numbered arrows pointing at each item and a
+ *  short legend underneath. Arrows are % positioned so they scale with the
+ *  image; on phones (image too small to point at) only the legend shows. */
+function AnnotatedNav() {
+    const zoomHandlers = useZoomHandlers({
+        src: "/vodic/izbornik.webp",
+        alt: "Glavni izbornik: Turniri, Uživo, Kreiraj turnir, Karta, Statistika i Prijava",
+    })
+    return (
+        <Box>
+            <Box
+                rounded="xl"
+                overflow="hidden"
+                borderWidth="1px"
+                borderColor="border"
+                bg="bg.panel"
+                boxShadow="sm"
+                {...zoomHandlers}
+                cursor="zoom-in"
+            >
+                <chakra.img
+                    src="/vodic/izbornik.webp"
+                    alt="Glavni izbornik: Turniri, Uživo, Kreiraj turnir, Karta, Statistika i Prijava"
+                    width={1600}
+                    height={87}
+                    loading="lazy"
+                    decoding="async"
+                    display="block"
+                    w="full"
+                    h="auto"
+                />
+            </Box>
+            {/* Numbered arrows under the strip, lined up with the real items. */}
+            <Box position="relative" h="34px" display={{ base: "none", md: "block" }} mt="1">
+                {NAV_ITEMS.map((it, i) => (
+                    <VStack
+                        key={it.label}
+                        position="absolute"
+                        left={`${it.pct}%`}
+                        transform="translateX(-50%)"
+                        gap="0.5"
+                    >
+                        <Icon as={FiArrowUp} boxSize="3.5" color="pitch.500" />
+                        <NumBadge n={i + 1} />
+                    </VStack>
+                ))}
+            </Box>
+            <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="2.5" mt={{ base: "3", md: "1.5" }}>
+                {NAV_ITEMS.map((it, i) => (
+                    <HStack
+                        key={it.label}
+                        gap="2.5"
+                        align="flex-start"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="lg"
+                        px="3"
+                        py="2.5"
+                    >
+                        <Box mt="0.5">
+                            <NumBadge n={i + 1} />
+                        </Box>
+                        <Text fontSize="13px" lineHeight="1.5" color="fg.muted">
+                            <Box as="span" fontWeight={700} color="fg.ink">{it.label}</Box>
+                            {" - "}
+                            {it.desc}
+                        </Text>
+                    </HStack>
+                ))}
+            </Grid>
+        </Box>
+    )
+}
+
+/** Right-pointing arrow between flow steps (points down when stacked). */
+function FlowArrow() {
+    return (
+        <Flex align="center" justify="center" color="pitch.500" py={{ base: "0.5", lg: "0" }}>
+            <Icon as={FiArrowRight} boxSize="6" display={{ base: "none", lg: "block" }} />
+            <Icon as={FiArrowDown} boxSize="6" display={{ base: "block", lg: "none" }} />
+        </Flex>
+    )
+}
+
+/** One step of the "kreiranje turnira" process flow: number + title,
+ *  screenshot (or placeholder), one-line description. */
+function FlowStep({
+    step,
+    title,
+    desc,
+    children,
+}: {
+    step: number
+    title: string
+    desc: string
+    children: ReactNode
+}) {
+    return (
+        <VStack align="stretch" gap="2" minW="0">
+            <HStack gap="2">
+                <NumBadge n={step} size="22px" fontSize="12px" />
+                <Text fontWeight={700} fontSize="14.5px" color="fg.ink">{title}</Text>
+            </HStack>
+            {children}
+            <Text fontSize="13px" color="fg.muted" lineHeight="1.55">{desc}</Text>
+        </VStack>
+    )
+}
 
 /** One feature card (icon + title + short description). */
 function FeatureCard({ f }: { f: Feature }) {
@@ -142,11 +431,52 @@ export default function GuidePage() {
     useDocumentHead({
         title: "Što nudimo - Futsal Turniri",
         description:
-            "Sve što trebaš za futsal turnir na jednom mjestu: kreiranje, ždrijeb, raspored, vođenje uživo, rezultati, statistika, obavijesti i dijeljenje.",
+            "Sve što trebaš za futsal turnir na jednom mjestu: kreiranje, ždrijeb, raspored, vođenje uživo, rezultati, tablice i statistika.",
     })
 
+    // Hover-zoom overlay state. `zoom` keeps the last image so the fade-out
+    // animates on the same picture; `zoomOpen` drives opacity/scale.
+    const [zoom, setZoom] = useState<ZoomData | null>(null)
+    const [zoomOpen, setZoomOpen] = useState(false)
+    const zoomApi = {
+        show: (d: ZoomData) => { setZoom(d); setZoomOpen(true) },
+        hide: () => setZoomOpen(false),
+    }
+
     return (
+        <ZoomCtx.Provider value={zoomApi}>
         <VStack align="stretch" gap="12" pb="4">
+            {/* Enlarged hover preview - pointer-events:none so it can never
+                steal the hover from the thumbnail below it (no flicker). */}
+            <Box
+                position="fixed"
+                inset="0"
+                zIndex={1400}
+                pointerEvents="none"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                p={{ base: "4", md: "10" }}
+                bg="rgba(7, 22, 13, 0.45)"
+                opacity={zoomOpen ? 1 : 0}
+                transition="opacity 180ms ease"
+            >
+                {zoom && (
+                    <chakra.img
+                        src={zoom.src}
+                        alt={zoom.alt}
+                        maxW="min(1120px, 94vw)"
+                        maxH="88vh"
+                        w="auto"
+                        h="auto"
+                        rounded="xl"
+                        boxShadow="0 24px 80px rgba(0,0,0,0.45)"
+                        bg="white"
+                        transform={zoomOpen ? "scale(1)" : "scale(0.94)"}
+                        transition="transform 200ms cubic-bezier(0.2, 0.8, 0.3, 1)"
+                    />
+                )}
+            </Box>
             {/* ── Hero ─────────────────────────────────────────────────── */}
             <Box
                 position="relative"
@@ -190,11 +520,11 @@ export default function GuidePage() {
                             mt="4"
                             mb="4"
                         >
-                            Cijeli futsal turnir -{" "}
+
                             <Box as="span" color="#ffd54a">
-                                od prijava do pehara
+                               Futsal turniri
                             </Box>{" "}
-                            - na jednom mjestu
+                            na jednom mjestu
                         </Heading>
                         <Text
                             fontSize={{ base: "15px", md: "17px" }}
@@ -245,69 +575,159 @@ export default function GuidePage() {
                 </Grid>
             </Box>
 
-            {/* ── 1. Priprema ──────────────────────────────────────────── */}
+            {/* ── 1. Izbornik ──────────────────────────────────────────── */}
             <Chapter
                 n={1}
-                title="Kreiranje i priprema"
-                intro="Sve kreće od turnira: uneseš osnovne podatke, dodaš ekipe i igrače - i spreman si za ždrijeb."
+                title="Snađi se u izborniku"
+                intro="Sve bitno je u glavnom izborniku - brojevi pokazuju što se gdje nalazi."
             >
-                <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuTrophy, title: "Novi turnir u par minuta", desc: "Naziv, lokacija, termin, kotizacija i nagrade. Format po želji: grupe + eliminacija ili samo eliminacija." }} />
-                    <FeatureCard f={{ icon: LuUsers, title: "Ekipe i sastavi", desc: "Dodaj ekipe i igrače s brojevima. Ekipa može preuzeti svoj profil i sama urediti sastav putem linka." }} />
-                    <FeatureCard f={{ icon: LuShuffle, title: "Ždrijeb po tvojim pravilima", desc: "Nasumičan ili ručni ždrijeb. Odredi broj grupa, koliko prolazi dalje i tko ide direktno u sljedeće kolo." }} />
-                </Grid>
+                <AnnotatedNav />
             </Chapter>
 
-            {/* ── 2. Raspored ──────────────────────────────────────────── */}
+            {/* ── 2. Kreiranje turnira - proces u tri koraka ───────────── */}
             <Chapter
                 n={2}
-                title="Raspored bez ručnog računanja"
-                intro="Odaberi trajanje poluvremena i pauze - termini svih utakmica izračunaju se sami."
+                title="Kreiranje turnira"
+                intro="Uneseš osnovne podatke, dodaš ekipe i igrače, izvučeš skupine - a raspored se izračuna sam."
             >
-                <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuCalendarClock, title: "Automatski termini", desc: "Satnica za cijeli turnir jednim klikom - grupe pa eliminacija, redom po terenu." }} />
-                    <FeatureCard f={{ icon: LuMove, title: "Povuci i ispravi", desc: "Preslaguj utakmice drag & drop-om (radi i na mobitelu) - satnica se sama preračuna." }} />
-                    <FeatureCard f={{ icon: LuListOrdered, title: "Kalendar za ekipe", desc: "Svaka utakmica ima 'Dodaj u kalendar' - igrači dobiju termin u svoj mobitel." }} />
-                </Grid>
+                <Box
+                    display="grid"
+                    gridTemplateColumns={{ base: "1fr", lg: "1fr auto 1fr auto 1fr" }}
+                    gap={{ base: "2", lg: "3" }}
+                    alignItems="center"
+                >
+                    <FlowStep
+                        step={1}
+                        title="Dodaj ekipe i igrače"
+                        desc="Svaka ekipa ima svoj sastav - igrači s brojevima i kapetanom. Ekipa može i sama urediti sastav putem linka."
+                    >
+                        <MiniShot
+                            src="/vodic/ekipe.webp"
+                            alt="Ekipe turnira s otvorenim sastavom igrača"
+                            width={1400}
+                            height={875}
+                        />
+                    </FlowStep>
+                    <FlowArrow />
+                    <FlowStep
+                        step={2}
+                        title="Izvuci skupine"
+                        desc="Povuci ekipe u skupine (ručni ždrijeb) ili ih rasporedi automatski jednim klikom."
+                    >
+                        {/* Screenshot dolazi naknadno - placeholder drži isti
+                            omjer kao susjedne slike da red ostane poravnat. */}
+                        <Flex
+                            rounded="xl"
+                            borderWidth="1.5px"
+                            borderStyle="dashed"
+                            borderColor="border.emphasized"
+                            bg="bg.surfaceTint"
+                            align="center"
+                            justify="center"
+                            direction="column"
+                            gap="1.5"
+                            aspectRatio={1.6}
+                            px="4"
+                        >
+                            <Icon as={LuShuffle} boxSize="6" color="fg.muted" />
+                            <Text fontSize="12.5px" color="fg.muted" textAlign="center">
+                                Slika ždrijeba uskoro
+                            </Text>
+                        </Flex>
+                    </FlowStep>
+                    <FlowArrow />
+                    <FlowStep
+                        step={3}
+                        title="Generiraj raspored"
+                        desc="Odaberi trajanje poluvremena i pauze - termini svih utakmica izračunaju se sami, a preslaguješ ih povlačenjem."
+                    >
+                        <MiniShot
+                            src="/vodic/raspored.webp"
+                            alt="Raspored turnira s terminima i rezultatima"
+                            width={1600}
+                            height={1000}
+                        />
+                    </FlowStep>
+                </Box>
             </Chapter>
 
-            {/* ── 3. Uživo ─────────────────────────────────────────────── */}
+            {/* ── 3. Zapisnik + semafor ────────────────────────────────── */}
             <Chapter
                 n={3}
-                title="Vođenje utakmica uživo"
+                title="Zapisnik - vođenje utakmica uživo"
                 intro="Zapisnik na mobitelu umjesto papira: sve što upišeš odmah vide svi - kod kuće, u dvorani i na velikom ekranu."
             >
-                <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuTimer, title: "Mjerač po poluvremenima", desc: "1. poluvrijeme → pauza → 2. poluvrijeme → kraj. Sat se zaustavlja na isteku i čeka tebe." }} />
-                    <FeatureCard f={{ icon: LuRadioTower, title: "Golovi i događaji", desc: "Gol jednim dodirom na igrača - minuta se upiše sama. Žuti/crveni kartoni, prekršaji (deveterac) i penali." }} />
-                    <FeatureCard f={{ icon: LuMonitorPlay, title: "TV / semafor prikaz", desc: "Fullscreen semafor za dvoranu: veliki rezultat, mjerač, prekršaji i strijelci - uživo." }} />
+                <Grid templateColumns={{ base: "1fr", lg: "1fr 1.35fr" }} gap="4" alignItems="stretch">
+                    {/* Zapisnik features (screenshot slijedi nakon redizajna). */}
+                    <VStack align="stretch" gap="3">
+                        <FeatureCard f={{ icon: LuTimer, title: "Mjerač po poluvremenima", desc: "1. poluvrijeme → pauza → 2. poluvrijeme → kraj. Sat se zaustavlja na isteku i čeka tebe." }} />
+                        <FeatureCard f={{ icon: LuRadioTower, title: "Golovi i događaji", desc: "Gol jednim dodirom na igrača - minuta se upiše sama. Žuti/crveni kartoni, prekršaji (deveterac) i penali." }} />
+                        <FeatureCard f={{ icon: LuMonitorPlay, title: "TV / semafor prikaz", desc: "Fullscreen semafor za dvoranu - sve što upišeš u zapisnik odmah je na velikom ekranu." }} />
+                    </VStack>
+                    <Shot
+                        src="/vodic/uzivo.webp"
+                        alt="Fullscreen semafor: rezultat uživo, mjerač 2. poluvremena, prekršaji i strijelci"
+                        width={1600}
+                        height={1000}
+                        caption="Semafor uživo - rezultat, mjerač, akumulirani prekršaji i strijelci u stvarnom vremenu."
+                    />
                 </Grid>
             </Chapter>
 
-            {/* ── 4. Rezultati i statistika ────────────────────────────── */}
+            {/* ── 4. Rezultati, tablice i statistika ───────────────────── */}
             <Chapter
                 n={4}
                 title="Rezultati, tablice i statistika"
                 intro="Nakon svakog sudačkog zvižduka sve je već izračunato - bez Excela i ručnog zbrajanja."
             >
-                <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuChartColumn, title: "Tablice i bracket", desc: "Poredak grupa (bodovi, razlika, međusobni), eliminacijski bracket i tijek svake utakmice." }} />
-                    <FeatureCard f={{ icon: LuBellRing, title: "Obavijesti (zvonce)", desc: "Prati turnir ili utakmicu - push obavijest kad počne, kad padne gol i kad završi." }} />
-                    <FeatureCard f={{ icon: LuMap, title: "Karta i pretraga", desc: "Svi turniri na karti - filtriraj po blizini, datumu i kotizaciji. Statistika strijelaca kroz sve turnire." }} />
-                </Grid>
-            </Chapter>
-
-            {/* ── 5. Dijeljenje ────────────────────────────────────────── */}
-            <Chapter
-                n={5}
-                title="Dijeljenje i promocija"
-                intro="Neka se za turnir čuje: sve je spremno za objavu i ugradnju gdje god trebaš."
-            >
-                <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="4">
-                    <FeatureCard f={{ icon: LuQrCode, title: "QR kod i plakat", desc: "Isprintaj QR kod dvorane - gledatelji skeniraju i prate rezultate. Plakat turnira uz jedan klik." }} />
-                    <FeatureCard f={{ icon: LuShare2, title: "Podijeli i ugradi", desc: "Podijeli bracket kao sliku ili ugradi rezultate (embed) u klupsku stranicu ili portal." }} />
-                    <FeatureCard f={{ icon: LuDownload, title: "Instaliraj kao aplikaciju", desc: "Dodaj na početni zaslon (iPhone i Android) i koristi kao pravu aplikaciju." }} />
-                </Grid>
+                <Box
+                    display="grid"
+                    gridTemplateColumns={{ base: "1fr", lg: "1fr auto 1fr auto 1fr" }}
+                    gap={{ base: "2", lg: "3" }}
+                    alignItems="center"
+                >
+                    <FlowStep
+                        step={1}
+                        title="Tablice skupina"
+                        desc="Bodovi, gol-razlika i forma računaju se sami nakon svake upisane utakmice."
+                    >
+                        <MiniShot
+                            src="/vodic/grupe.webp"
+                            alt="Tablice grupa s bodovima, gol-razlikom i formom"
+                            width={1600}
+                            height={1000}
+                        />
+                    </FlowStep>
+                    <FlowArrow />
+                    <FlowStep
+                        step={2}
+                        title="Završnica"
+                        desc="Eliminacija od četvrtfinala do prvaka - s rezultatima i penalima. Prijeđi mišem za cijeli bracket."
+                    >
+                        {/* Tall bracket display-cropped to match the neighbours;
+                            the hover zoom reveals the whole thing. */}
+                        <MiniShot
+                            src="/vodic/bracket.webp"
+                            alt="Eliminacijska završnica s rezultatima, penalima i prvakom"
+                            width={1400}
+                            height={1845}
+                            cropAspect={1.6}
+                        />
+                    </FlowStep>
+                    <FlowArrow />
+                    <FlowStep
+                        step={3}
+                        title="Statistika"
+                        desc="Najbolji strijelci i golovi turnira - lista se puni sama iz zapisnika."
+                    >
+                        <MiniShot
+                            src="/vodic/statistika.webp"
+                            alt="Statistika turnira: najbolji strijelci s brojem golova"
+                            width={1400}
+                            height={875}
+                        />
+                    </FlowStep>
+                </Box>
             </Chapter>
 
             {/* ── Final CTA ────────────────────────────────────────────── */}
@@ -342,5 +762,6 @@ export default function GuidePage() {
                 </HStack>
             </Box>
         </VStack>
+        </ZoomCtx.Provider>
     )
 }

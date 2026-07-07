@@ -240,3 +240,5 @@ public interface TournamentMapper {
         return "/api/resources/" + rid + "/image";
     }
 }
+
+// touched to force MapStruct APT regeneration after the details-DTO change

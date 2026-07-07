@@ -6,7 +6,7 @@ import { fetchGroups } from "../api/groups"
 import { fetchBracket } from "../api/bracket"
 import type { Group } from "../types/groups"
 import type { BracketMatch } from "../types/bracket"
-import { EmptyState, Loader, Panel, SectionHeader } from "../ui/primitives"
+import { EmptyState, Loader, Panel } from "../ui/primitives"
 import LiveMatchPanel, { type PanelMatch } from "./LiveMatchPanel"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -123,16 +123,12 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
         <VStack align="stretch" gap="4">
             <Panel p={{ base: "5", md: "6" }}>
                 <VStack align="stretch" gap="4">
-                    <SectionHeader
-                        icon={LuRadioTower}
-                        title="Zapisnik"
-                        subtitle="Vodi aktivnu utakmicu uživo - odaberi koju vodiš."
-                    />
-
-                    {/* Match picker - dropdown. Defaults to the on-deck match;
+                    {/* Match picker - centered dropdown, no section header (the
+                        tab label already says "Zapisnik"; the panel goes
+                        straight to the point). Defaults to the on-deck match;
                         the organizer can switch to any other live/scheduled one. */}
                     {manageable.length > 1 && (
-                        <VStack align="stretch" gap="1.5">
+                        <VStack align="center" gap="1.5" w="full">
                             <Text
                                 fontSize="2xs"
                                 fontWeight="semibold"
@@ -142,13 +138,14 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
                             >
                                 Utakmica za vođenje
                             </Text>
-                            <NativeSelect.Root size="md" maxW={{ md: "xl" }}>
+                            <NativeSelect.Root size="md" w="full" maxW="xl">
                                 <NativeSelect.Field
                                     value={selected ? String(selected.match.matchId) : ""}
                                     onChange={(ev) =>
                                         setSelectedId(ev.target.value === "" ? null : Number(ev.target.value))
                                     }
                                     fontWeight={600}
+                                    textAlign="center"
                                 >
                                     {manageable.map((e) => (
                                         <option key={`${e.kind}-${e.match.matchId}`} value={e.match.matchId}>

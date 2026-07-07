@@ -291,10 +291,11 @@ function MatchRow({
                     the right. Equal flex on the two side clusters keeps the
                     time visually centred regardless of badge width. */}
                 <Flex align="center" gap="2" wrap="wrap">
-                    {/* Left: stage + live/next badges. Fixed width (no flex
-                        shrink) so the nowrap badge never collapses to 0 and
-                        overflows over the date/calendar on narrow phones. */}
-                    <HStack gap="2" flexShrink={0} wrap="wrap">
+                    {/* Left: stage + live/next badges. flex=1 mirrors the
+                        right cluster so the kickoff time sits truly centred;
+                        minW=fit-content keeps the nowrap badge from
+                        collapsing to 0 on narrow phones. */}
+                    <HStack gap="2" flex="1" minW="fit-content" wrap="wrap">
                         <StageBadge stage={match.stage} groupName={match.groupName} />
                         {isLive && <LiveBadge />}
                         {/* "Na redu" tag for the next match to start. */}
@@ -319,8 +320,10 @@ function MatchRow({
                         )}
                     </HStack>
 
-                    {/* Center: kickoff time / editor - shrinks to fit. */}
-                    <Box flex="1" minW="0">
+                    {/* Center: kickoff time / editor - fixed to its content
+                        width and centred between the two equal-flex side
+                        clusters (dead-centre above the score). */}
+                    <Box flexShrink={0} maxW="100%" display="flex" justifyContent="center">
                         {canEdit ? (
                             <chakra.input
                                 type="datetime-local"
@@ -373,8 +376,9 @@ function MatchRow({
                         )}
                     </Box>
 
-                    {/* Right: add to calendar (scheduled matches only) */}
-                    <Flex flexShrink={0} justify="flex-end" ml="auto">
+                    {/* Right: add to calendar (scheduled matches only).
+                        flex=1 mirrors the left cluster - see comment above. */}
+                    <Flex flex="1" minW="fit-content" justify="flex-end">
                         {!scoreboard && match.kickoffAt && (
                             <RowButton
                                 type="button"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Marks players seeded for showcase/demo tournaments ("Pokazni turnir").
+        Demo players are excluded from the global player-name autocomplete so
+        they are never offered while editing real rosters, and the flag makes
+        them trivially bulk-deletable later:
+            DELETE FROM players WHERE is_demo;
+    -->
+    <changeSet id="2026-07-07-player-is-demo" author="mrodek">
+        <addColumn tableName="players">
+            <column name="is_demo" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

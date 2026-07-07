@@ -34,12 +34,15 @@ public class PlayersRepository implements AppRepository<Player, Long> {
      * Distinct player names (already stored uppercase) matching the query
      * as a prefix or substring, for the roster autocomplete. Case-folded
      * compare so partial lowercase input still matches. Capped at {@code limit}.
+     * Demo-tournament players (is_demo) are excluded - fake showcase names
+     * must never be offered while editing a real roster.
      */
     public List<String> searchDistinctNames(String q, int limit) {
         String like = "%" + q.trim().toLowerCase() + "%";
         return em.createQuery(
                         "select distinct p.name from Player p " +
                         "where lower(p.name) like :like " +
+                        "and p.demo = false " +
                         "order by p.name asc", String.class)
                 .setParameter("like", like)
                 .setMaxResults(limit)

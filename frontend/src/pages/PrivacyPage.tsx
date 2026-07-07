@@ -64,7 +64,7 @@ export default function PrivacyPage() {
             </Section>
 
             <Section title="2. Koje podatke prikupljamo">
-                <Text>• <b>Prijava (Google / Firebase):</b> ime, e-mail adresa i profilna slika koje dijeli tvoj Google račun.</Text>
+                <Text>• <b>Prijava:</b> ime, e-mail adresa i profilna slika(ako ju uneseš).</Text>
                 <Text>• <b>Profil:</b> prikazno ime i, ako ga sam upišeš, broj telefona.</Text>
                 <Text>• <b>Sadržaj turnira:</b> nazivi turnira, ekipa i igrača, rezultati, rasporedi te plakati/slike koje učitaš.</Text>
                 <Text>• <b>Obavijesti (push):</b> tehnički identifikator tvog preglednika za slanje obavijesti - samo ako ih izričito odobriš.</Text>
@@ -81,15 +81,6 @@ export default function PrivacyPage() {
                 </Text>
             </Section>
 
-            <Section title="4. Tko ima pristup (izvršitelji obrade)">
-                <Text>• <b>Google Firebase</b> - autentikacija (prijava).</Text>
-                <Text>• <b>Hetzner Online GmbH</b> - poslužitelj (hosting) u EU (Finska).</Text>
-                <Text>
-                    Podatke ne prodajemo niti dijelimo s trećim stranama u
-                    marketinške svrhe.
-                </Text>
-            </Section>
-
             <Section title="5. Kolačići i lokalna pohrana">
                 <Text>
                     Koristimo isključivo <b>nužnu</b> lokalnu pohranu preglednika
@@ -98,7 +89,7 @@ export default function PrivacyPage() {
                 </Text>
             </Section>
 
-            <Section title="6. Koliko dugo čuvamo podatke">
+            <Section title="5. Koliko dugo čuvamo podatke">
                 <Text>
                     Podatke čuvamo dok imaš aktivan račun ili dok su potrebni za
                     prikaz povijesti turnira. Na zahtjev brišemo tvoje osobne
@@ -106,7 +97,7 @@ export default function PrivacyPage() {
                 </Text>
             </Section>
 
-            <Section title="7. Tvoja prava">
+            <Section title="6. Tvoja prava">
                 <Text>
                     Imaš pravo na pristup, ispravak, brisanje i ograničenje
                     obrade svojih podataka te pravo na prigovor. Za ostvarivanje
@@ -119,7 +110,7 @@ export default function PrivacyPage() {
                 </Text>
             </Section>
 
-            <Section title="8. Izmjene ovih pravila">
+            <Section title="7. Izmjene ovih pravila">
                 <Text>
                     Pravila se mogu povremeno ažurirati. Datum zadnje izmjene
                     naveden je na vrhu stranice.

@@ -16,6 +16,11 @@ public record TournamentDetailsResponse(
         String slug,
         String name,
         String location,
+        // Geocoded coordinates of `location` (nullable until geocoded). The
+        // edit form seeds its map picker with these so the SAVED spot shows
+        // up as a marker immediately, instead of an empty Croatia-wide map.
+        Double latitude,
+        Double longitude,
         String details,
         OffsetDateTime startAt,
         String bannerUrl,

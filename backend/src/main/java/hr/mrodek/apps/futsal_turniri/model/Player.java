@@ -45,6 +45,16 @@ public class Player {
     @Column(name = "sort_order")
     private Integer sortOrder;
 
+    /**
+     * True for players seeded as part of a showcase/demo tournament
+     * ("Pokazni turnir"). Demo players are excluded from the global
+     * player-name autocomplete (they must never be offered while editing
+     * a real roster) and the flag makes them easy to bulk-delete later:
+     * DELETE FROM players WHERE is_demo.
+     */
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo = false;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

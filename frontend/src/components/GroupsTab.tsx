@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
     Badge,
     Box,
@@ -8,7 +8,6 @@ import {
     HStack,
     IconButton,
     Input,
-    NativeSelect,
     Portal,
     Text,
     VStack,
@@ -146,13 +145,27 @@ export default function GroupsTab({
     // organizer previews an auto-shuffle (or assigns by hand) and confirms it
     // before it's persisted.
     const [drawOpen, setDrawOpen] = useState(false)
-    const [drawMode, setDrawMode] = useState<"auto" | "manual">("auto")
+    const [drawMode, setDrawMode] = useState<"auto" | "manual">("manual")
     const [cfgGroups, setCfgGroups] = useState("4")
     const [cfgAdvance, setCfgAdvance] = useState("2")
     const [assign, setAssign] = useState<Record<number, number>>({})
     /** advance-per-group just drawn (the page's prop is stale until refetch). */
     const [advanceOverride, setAdvanceOverride] = useState<number | null>(null)
     const [resetting, setResetting] = useState(false)
+
+    // Manual-draw drag & drop ("kuglice" board). In MANUAL mode a team with no
+    // `assign` entry sits in the left-hand pool; dragging a chip onto a group
+    // box assigns it, dragging it back onto the pool unassigns. Pointer events
+    // (not HTML5 DnD) so it also works on touch screens - same approach as the
+    // schedule tab's drag-to-reorder. Refs mirror the state for the pointer
+    // handlers; the ghost chip follows the finger via direct style writes so
+    // nothing re-renders on every pointermove.
+    const [dragTeam, setDragTeam] = useState<TeamShort | null>(null)
+    const [dragOver, setDragOver] = useState<string | null>(null) // "pool" | group ordinal as string
+    const dragRef = useRef<TeamShort | null>(null)
+    const dragOverRef = useRef<string | null>(null)
+    const dragPosRef = useRef({ x: 0, y: 0 })
+    const ghostRef = useRef<HTMLDivElement | null>(null)
 
     useEffect(() => {
         let cancelled = false
@@ -290,26 +303,150 @@ export default function GroupsTab({
         const def = Math.min(maxGroups, cur >= 2 ? cur : 4)
         setCfgGroups(String(def))
         setCfgAdvance(String(effectiveAdvance && effectiveAdvance >= 1 ? effectiveAdvance : 2))
-        setDrawMode("auto")
-        setAssign(buildAssign(def, true))
+        // Default to MANUAL: the organizer starts with every team in the pool
+        // and drags them into groups (or clicks "Automatski" for a shuffle).
+        setDrawMode("manual")
+        setAssign({})
         setDrawOpen(true)
     }
     function changeGroupCount(v: string) {
         const s = v.replace(/[^\d]/g, "")
         setCfgGroups(s)
         const c = Math.min(maxGroups, Math.max(2, parseInt(s || "0", 10) || 0))
-        setAssign(buildAssign(c, drawMode === "auto"))
+        if (drawMode === "auto") {
+            setAssign(buildAssign(c, true))
+        } else {
+            // Manual board: keep what fits the new group count/capacities,
+            // overflow goes back to the pool.
+            setAssign((a) => {
+                const base = Math.floor(registeredTeams.length / c)
+                const rem = registeredTeams.length % c
+                const cap = (i: number) => base + (i < rem ? 1 : 0)
+                const counts = new Array(c).fill(0)
+                const next: Record<number, number> = {}
+                for (const tm of registeredTeams) {
+                    const gi = a[tm.id]
+                    if (gi != null && gi < c && counts[gi] < cap(gi)) {
+                        next[tm.id] = gi
+                        counts[gi]++
+                    }
+                }
+                return next
+            })
+        }
     }
     function chooseMode(m: "auto" | "manual") {
         setDrawMode(m)
-        if (m === "auto") setAssign(buildAssign(gcNum, true))
+        // Auto: full random preview. Manual: everyone starts in the pool.
+        setAssign(m === "auto" ? buildAssign(gcNum, true) : {})
+    }
+
+    /* ── Manual-draw board helpers ────────────────────────────────────── */
+
+    // Per-group capacity: teams split as evenly as possible, the first
+    // `remainder` groups take one extra (12 teams / 4 groups → 3,3,3,3;
+    // 13 → 4,3,3,3).
+    const capOf = (i: number) =>
+        Math.floor(registeredTeams.length / gcNum) + (i < registeredTeams.length % gcNum ? 1 : 0)
+    const teamsInGroup = (i: number) => registeredTeams.filter((tm) => assign[tm.id] === i)
+    const poolTeams = registeredTeams.filter((tm) => assign[tm.id] == null)
+    const allAssigned = drawMode === "auto" || poolTeams.length === 0
+
+    /** Randomly place every still-pooled team into the emptiest groups. */
+    function fillRemaining() {
+        setAssign((a) => {
+            const counts = new Array(gcNum).fill(0)
+            for (const tm of registeredTeams) {
+                const gi = a[tm.id]
+                if (gi != null && gi < gcNum) counts[gi]++
+            }
+            const pool = registeredTeams.filter((tm) => a[tm.id] == null)
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1))
+                ;[pool[i], pool[j]] = [pool[j], pool[i]]
+            }
+            const next = { ...a }
+            for (const tm of pool) {
+                let best = -1
+                let bestFree = 0
+                for (let i = 0; i < gcNum; i++) {
+                    const free = capOf(i) - counts[i]
+                    if (free > bestFree) { bestFree = free; best = i }
+                }
+                if (best < 0) break
+                next[tm.id] = best
+                counts[best]++
+            }
+            return next
+        })
+    }
+
+    /* Pointer-drag mechanics. The chip captures the pointer, a fixed-position
+       ghost follows it, and drop targets are found by hit-testing
+       [data-drop] wrappers under the pointer. */
+    function moveGhost(x: number, y: number) {
+        dragPosRef.current = { x, y }
+        const el = ghostRef.current
+        if (el) el.style.transform = `translate(${x + 14}px, ${y - 14}px)`
+    }
+    function zoneAt(x: number, y: number): string | null {
+        const el = document.elementFromPoint(x, y) as HTMLElement | null
+        return el?.closest<HTMLElement>("[data-drop]")?.dataset.drop ?? null
+    }
+    function startDrag(e: React.PointerEvent<HTMLElement>, tm: TeamShort) {
+        if (drawing) return
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        dragRef.current = tm
+        moveGhost(e.clientX, e.clientY)
+        setDragTeam(tm)
+    }
+    function dragMove(e: React.PointerEvent<HTMLElement>) {
+        if (!dragRef.current) return
+        moveGhost(e.clientX, e.clientY)
+        const z = zoneAt(e.clientX, e.clientY)
+        if (z !== dragOverRef.current) {
+            dragOverRef.current = z
+            setDragOver(z)
+        }
+    }
+    function endDrag(e: React.PointerEvent<HTMLElement>) {
+        const tm = dragRef.current
+        if (!tm) return
+        const z = zoneAt(e.clientX, e.clientY)
+        dragRef.current = null
+        dragOverRef.current = null
+        setDragTeam(null)
+        setDragOver(null)
+        if (z == null) return
+        if (z === "pool") {
+            setAssign((a) => {
+                const next = { ...a }
+                delete next[tm.id]
+                return next
+            })
+            return
+        }
+        const gi = parseInt(z, 10)
+        if (!Number.isFinite(gi) || gi < 0 || gi >= gcNum) return
+        // A full group only accepts the drop if the team is already in it.
+        if (assign[tm.id] !== gi && teamsInGroup(gi).length >= capOf(gi)) return
+        setAssign((a) => ({ ...a, [tm.id]: gi }))
+    }
+    function cancelDrag() {
+        dragRef.current = null
+        dragOverRef.current = null
+        setDragTeam(null)
+        setDragOver(null)
     }
 
     async function submitDraw() {
         if (!enoughTeams) return
+        // Manual board: every kuglica must be dragged into a group first.
+        if (drawMode === "manual" && !allAssigned) return
         const assignments = registeredTeams.map((tm) => ({
             teamId: tm.id,
-            groupOrdinal: grpOf(tm.id),
+            groupOrdinal: drawMode === "manual" ? (assign[tm.id] ?? 0) : grpOf(tm.id),
         }))
         try {
             setDrawing(true)
@@ -353,12 +490,13 @@ export default function GroupsTab({
                         </Text>
                         <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance} onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))} />
                     </Box>
+                    {/* Ručno first - it's the default; Automatski is the opt-in. */}
                     <HStack gap="2">
-                        <Button size="sm" variant={drawMode === "auto" ? "solid" : "outline"} colorPalette={drawMode === "auto" ? "brand" : "gray"} onClick={() => chooseMode("auto")}>
-                            Automatski
-                        </Button>
                         <Button size="sm" variant={drawMode === "manual" ? "solid" : "outline"} colorPalette={drawMode === "manual" ? "brand" : "gray"} onClick={() => chooseMode("manual")}>
                             Ručno
+                        </Button>
+                        <Button size="sm" variant={drawMode === "auto" ? "solid" : "outline"} colorPalette={drawMode === "auto" ? "brand" : "gray"} onClick={() => chooseMode("auto")}>
+                            Automatski
                         </Button>
                     </HStack>
                 </Flex>
@@ -398,28 +536,182 @@ export default function GroupsTab({
                         </Box>
                     </VStack>
                 ) : (
-                    <VStack align="stretch" gap="1.5">
-                        {registeredTeams.map((tm) => (
-                            <HStack key={tm.id} gap="3" justify="space-between" borderWidth="1px" borderColor="border" rounded="lg" px="3" py="2">
-                                <Text fontSize="sm" flex="1" minW="0" truncate>
-                                    {tm.name?.trim() || "Bez imena"}
-                                </Text>
-                                <NativeSelect.Root size="sm" w="140px" flexShrink={0}>
-                                    <NativeSelect.Field
-                                        value={String(grpOf(tm.id))}
-                                        onChange={(e) => setAssign((a) => ({ ...a, [tm.id]: Number(e.target.value) }))}
-                                    >
-                                        {Array.from({ length: gcNum }, (_, i) => (
-                                            <option key={i} value={i}>Grupa {grpLabel(i)}</option>
-                                        ))}
-                                    </NativeSelect.Field>
-                                </NativeSelect.Root>
+                    /* ── Manual draw - drag & drop board ─────────────────
+                       Pool of "kuglice" on the left, group boxes with
+                       numbered slots on the right. Drag a chip into a slot
+                       to assign it; drag it back onto the pool to undo. */
+                    <VStack align="stretch" gap="3">
+                        <HStack justify="space-between" align="center" wrap="wrap" gap="2">
+                            <Text fontSize="xs" color="fg.muted">
+                                Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
+                                    ? `Neraspoređeno: ${poolTeams.length}.`
+                                    : "Sve ekipe su raspoređene."}
+                            </Text>
+                            <HStack gap="2">
+                                <Button size="xs" variant="outline" onClick={fillRemaining} disabled={poolTeams.length === 0}>
+                                    <HStack gap="1"><LuShuffle size={13} /> Nasumično rasporedi</HStack>
+                                </Button>
+                                <Button size="xs" variant="ghost" onClick={() => setAssign({})} disabled={registeredTeams.length === poolTeams.length}>
+                                    Isprazni
+                                </Button>
                             </HStack>
-                        ))}
+                        </HStack>
+
+                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "minmax(200px, 1fr) 1.25fr" }} gap="4" alignItems="start">
+                            {/* Pool ("kuglice") - also a drop zone for unassigning. */}
+                            <Box
+                                data-drop="pool"
+                                borderWidth="1px"
+                                borderStyle="dashed"
+                                borderColor={dragOver === "pool" ? "pitch.400" : "border"}
+                                bg={dragOver === "pool" ? "bg.surfaceTint" : undefined}
+                                rounded="lg"
+                                p="3"
+                                transition="background 120ms, border-color 120ms"
+                            >
+                                <Text fontWeight="bold" fontSize="sm" mb="2">
+                                    Kuglice / ekipe ({poolTeams.length})
+                                </Text>
+                                <VStack align="stretch" gap="1.5">
+                                    {poolTeams.map((tm) => (
+                                        <Box
+                                            key={tm.id}
+                                            onPointerDown={(e) => startDrag(e, tm)}
+                                            onPointerMove={dragMove}
+                                            onPointerUp={endDrag}
+                                            onPointerCancel={cancelDrag}
+                                            style={{ touchAction: "none", userSelect: "none" }}
+                                            borderWidth="1px"
+                                            borderColor="border"
+                                            bg="bg.panel"
+                                            rounded="lg"
+                                            px="3"
+                                            py="2"
+                                            fontSize="sm"
+                                            fontWeight={600}
+                                            cursor="grab"
+                                            opacity={dragTeam?.id === tm.id ? 0.35 : 1}
+                                            _hover={{ borderColor: "pitch.400" }}
+                                        >
+                                            <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
+                                        </Box>
+                                    ))}
+                                    {poolTeams.length === 0 && (
+                                        <Text fontSize="xs" color="fg.muted" py="2" textAlign="center">
+                                            Sve raspoređeno - povuci ekipu ovamo da je vratiš.
+                                        </Text>
+                                    )}
+                                </VStack>
+                            </Box>
+
+                            {/* Group boxes with numbered slots. */}
+                            <VStack align="stretch" gap="3">
+                                {Array.from({ length: gcNum }, (_, i) => {
+                                    const inGroup = teamsInGroup(i)
+                                    const cap = capOf(i)
+                                    const full = inGroup.length >= cap
+                                    const hovered = dragOver === String(i)
+                                    return (
+                                        <Box
+                                            key={i}
+                                            data-drop={String(i)}
+                                            borderWidth="1px"
+                                            borderColor={hovered ? (full ? "red.400" : "pitch.400") : "border"}
+                                            bg={hovered && !full ? "bg.surfaceTint" : undefined}
+                                            rounded="lg"
+                                            overflow="hidden"
+                                            transition="background 120ms, border-color 120ms"
+                                        >
+                                            <HStack justify="space-between" px="3" py="2" bg="bg.surfaceTint" borderBottomWidth="1px" borderColor="border">
+                                                <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em">
+                                                    SKUPINA {grpLabel(i)}
+                                                </Text>
+                                                <Text fontFamily="mono" fontSize="2xs" color="fg.muted" fontWeight={700}>
+                                                    {inGroup.length}/{cap}
+                                                </Text>
+                                            </HStack>
+                                            <VStack align="stretch" gap="1.5" p="2.5">
+                                                {inGroup.map((tm) => (
+                                                    <Box
+                                                        key={tm.id}
+                                                        onPointerDown={(e) => startDrag(e, tm)}
+                                                        onPointerMove={dragMove}
+                                                        onPointerUp={endDrag}
+                                                        onPointerCancel={cancelDrag}
+                                                        style={{ touchAction: "none", userSelect: "none" }}
+                                                        borderWidth="1px"
+                                                        borderColor="pitch.muted"
+                                                        bg="bg.surfaceTint"
+                                                        rounded="lg"
+                                                        px="3"
+                                                        py="2"
+                                                        fontSize="sm"
+                                                        fontWeight={600}
+                                                        cursor="grab"
+                                                        opacity={dragTeam?.id === tm.id ? 0.35 : 1}
+                                                        _hover={{ borderColor: "pitch.400" }}
+                                                    >
+                                                        <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
+                                                    </Box>
+                                                ))}
+                                                {Array.from({ length: Math.max(0, cap - inGroup.length) }, (_, s) => (
+                                                    <Flex
+                                                        key={`slot-${s}`}
+                                                        align="center"
+                                                        px="3"
+                                                        py="2"
+                                                        borderWidth="1px"
+                                                        borderStyle="dashed"
+                                                        borderColor="border"
+                                                        rounded="lg"
+                                                        color="fg.muted"
+                                                        fontSize="sm"
+                                                    >
+                                                        {inGroup.length + s + 1}. mjesto
+                                                    </Flex>
+                                                ))}
+                                            </VStack>
+                                        </Box>
+                                    )
+                                })}
+                            </VStack>
+                        </Box>
+
+                        {/* Floating chip that follows the pointer while dragging. */}
+                        {dragTeam && (
+                            <Box
+                                ref={ghostRef}
+                                position="fixed"
+                                top="0"
+                                left="0"
+                                zIndex={1500}
+                                pointerEvents="none"
+                                px="3"
+                                py="1.5"
+                                rounded="lg"
+                                bg="pitch.500"
+                                color="white"
+                                fontSize="sm"
+                                fontWeight={700}
+                                boxShadow="lg"
+                                style={{
+                                    transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
+                                    willChange: "transform",
+                                }}
+                            >
+                                {dragTeam.name?.trim() || "Bez imena"}
+                            </Box>
+                        )}
                     </VStack>
                 )}
 
-                <Button colorPalette="brand" onClick={submitDraw} loading={drawing} disabled={!enoughTeams}>
+                <Button
+                    colorPalette="brand"
+                    onClick={submitDraw}
+                    loading={drawing}
+                    disabled={!enoughTeams || !allAssigned}
+                    title={!allAssigned ? "Rasporedi sve kuglice u skupine prije potvrde" : undefined}
+                >
                     Potvrdi ždrijeb
                 </Button>
             </VStack>

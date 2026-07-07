@@ -516,7 +516,14 @@ export default function TournamentDetailsPage() {
     function enterDetailsEdit() {
         if (!t) return
         setEditForm(buildEditForm(t))
-        setEditPickedCoords(null)
+        // Seed the map picker with the SAVED coordinates so the existing
+        // location shows up as a marker right away (the picker centers and
+        // zooms onto a non-null value); null only when never geocoded.
+        setEditPickedCoords(
+            t.latitude != null && t.longitude != null
+                ? { lat: t.latitude, lng: t.longitude }
+                : null,
+        )
         setEditingDetails(true)
     }
     function cancelDetailsEdit() {

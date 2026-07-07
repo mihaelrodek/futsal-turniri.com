@@ -1017,20 +1017,21 @@ export default function BracketTab({
                             : !groupStageComplete
                                 ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
                                 : isKnockoutOnly
-                                    ? "Posloži nosioce pa generiraj - ista ljestvica svaki put. Ili ručno složi parove."
-                                    : "Generiraj automatski iz kvalifikanata ili ručno složi parove sam."
+                                    ? "Ručno složi parove sam, ili posloži nosioce pa generiraj (ista ljestvica svaki put)."
+                                    : "Ručno složi parove sam ili generiraj automatski iz kvalifikanata."
                     }
                     action={
                         canEdit ? (
                             <HStack gap="2" wrap="wrap" justify="center">
+                                {/* Ručni ždrijeb is the default (primary); the
+                                    automatic draw is the opt-in beside it. */}
                                 <Button
                                     colorPalette="brand"
                                     size="sm"
-                                    onClick={() => { if (byesNeeded > 0) openByePicker(); else void runGenerate() }}
-                                    loading={generating}
+                                    onClick={openManualBracket}
                                     disabled={!groupStageComplete || pool.length < 2}
                                 >
-                                    Automatski
+                                    Ručni ždrijeb
                                 </Button>
                                 {isKnockoutOnly && (
                                     <Button
@@ -1045,10 +1046,11 @@ export default function BracketTab({
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={openManualBracket}
+                                    onClick={() => { if (byesNeeded > 0) openByePicker(); else void runGenerate() }}
+                                    loading={generating}
                                     disabled={!groupStageComplete || pool.length < 2}
                                 >
-                                    Ručni ždrijeb
+                                    Automatski
                                 </Button>
                             </HStack>
                         ) : undefined

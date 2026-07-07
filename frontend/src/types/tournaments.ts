@@ -38,6 +38,10 @@ export type TournamentDetails = {
     slug?: string | null;
     name: string;
     location?: string | null;
+    /** Geocoded coordinates of `location` - seed the edit-mode map picker
+     *  so the saved spot shows as a marker immediately. */
+    latitude?: number | null;
+    longitude?: number | null;
     details?: string | null;
     startAt?: string | null;
 
