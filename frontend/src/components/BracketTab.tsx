@@ -997,7 +997,17 @@ export default function BracketTab({
         return <Loader label="Učitavanje ljestvice…" />
     }
 
-    const hasBracket = bracket != null && bracket.rounds.length > 0
+    // A bracket counts as "drawn" only once teams are actually placed in it.
+    // Generating the schedule ahead of time creates an empty knockout SKELETON
+    // (rounds of null-team matches with reserved kickoff slots) - that must
+    // still show the draw buttons so the organizer can auto-generate the
+    // seeding (A1-D2, …) into it. So a team-less skeleton is treated as
+    // not-yet-drawn, not as an existing bracket.
+    const hasBracket =
+        bracket != null &&
+        bracket.rounds.some((r) =>
+            r.matches.some((m) => m.team1Id != null || m.team2Id != null),
+        )
 
     if (!hasBracket) {
         if (canEdit && byeOpen) return byePanel
