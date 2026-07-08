@@ -22,6 +22,8 @@ public record LiveMatchDto(
         /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
         OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
+        /** Instant the live clock was paused; null while running. */
+        OffsetDateTime livePausedAt,
         /** Tournament half length (minutes) + half count - lets every live
          *  widget run the scoreboard-semaphore countdown (stop at the end of
          *  a half) instead of a free-running elapsed clock. Null until the

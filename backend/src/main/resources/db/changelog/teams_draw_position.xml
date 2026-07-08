@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Draw-board position. 0-based order of the team within its group as the
+        organizer arranged it in the draw board (drag & drop order). Used to
+        order the generated round-robin fixtures so the schedule follows the
+        organizer's arrangement instead of an arbitrary database order.
+        Null for groups drawn before this column existed.
+    -->
+    <changeSet id="2026-07-08-teams-draw-position" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="draw_position" type="int"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

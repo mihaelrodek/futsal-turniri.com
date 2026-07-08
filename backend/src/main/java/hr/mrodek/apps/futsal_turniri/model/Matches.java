@@ -117,4 +117,15 @@ public class Matches {
     @Column(name = "second_half_started_at")
     private java.time.OffsetDateTime secondHalfStartedAt;
 
+    /**
+     * Wall-clock instant the organizer PAUSED the live clock (ball out of
+     * play, injury, ...). Null while the clock runs. While set, every clock
+     * renders {@code pausedAt - halfStart} instead of {@code now - halfStart}
+     * so the display freezes. Resuming shifts the current half's start
+     * instant forward by the pause duration and clears this - so the rest of
+     * the clock math never has to know a pause happened.
+     */
+    @Column(name = "live_paused_at")
+    private java.time.OffsetDateTime livePausedAt;
+
 }

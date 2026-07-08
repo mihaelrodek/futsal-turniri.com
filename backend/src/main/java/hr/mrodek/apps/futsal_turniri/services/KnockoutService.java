@@ -792,6 +792,7 @@ public class KnockoutService {
                 m.getLiveStartedAt(),
                 m.getFirstHalfEndedAt(),
                 m.getSecondHalfStartedAt(),
+                m.getLivePausedAt(),
                 m.getKickoffAt(),
                 m.getFouls1First(),
                 m.getFouls1Second(),

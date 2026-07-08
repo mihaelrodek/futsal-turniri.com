@@ -73,6 +73,7 @@ export function LiveMatchRow({
                             liveStartedAt={match.liveStartedAt}
                             firstHalfEndedAt={match.firstHalfEndedAt}
                             secondHalfStartedAt={match.secondHalfStartedAt}
+                            livePausedAt={match.livePausedAt}
                             halfLengthMin={match.halfLengthMin}
                             halfCount={match.halfCount}
                             showLabel

@@ -34,6 +34,8 @@ export type GroupMatch = {
     firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
+    /** ISO timestamp the live clock was paused; null while it runs. */
+    livePausedAt?: string | null
     /** Scheduled kickoff (set when the schedule is generated); null before. */
     kickoffAt?: string | null
     /** Accumulated team fouls per half (futsal "deveterac" tracking). */

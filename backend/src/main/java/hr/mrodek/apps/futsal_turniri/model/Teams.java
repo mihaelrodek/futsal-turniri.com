@@ -39,6 +39,16 @@ public class Teams {
     @Column(name = "manual_rank")
     private Integer manualRank;
 
+    /**
+     * The team's 0-based position within its group as arranged in the draw
+     * board (the order the organizer dragged the teams in). Set at draw time
+     * and used to order the round-robin fixtures so the generated schedule
+     * matches the arrangement the organizer made, rather than an arbitrary
+     * database order. Null for teams drawn before this field existed.
+     */
+    @Column(name = "draw_position")
+    private Integer drawPosition;
+
     @Column(name = "name", length = 200, nullable = false)
     private String name;
 

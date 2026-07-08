@@ -52,7 +52,7 @@ import {
     TintButton,
     TournamentPoster,
 } from "../ui/pitch"
-import { matchPhase } from "../components/liveMatch"
+import { clockState, matchPhase } from "../components/liveMatch"
 import HelpFab from "../components/HelpFab"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -128,32 +128,50 @@ function classifyStatus(
 /* ──────────────────────────────────────────────────────────────────────────
    Live scoreboard hero - the dark gradient panel that opens the page when
    at least one match is live. Pulls the highest-watching live match and
-   renders the 78px score block.
+   renders the score block (team names, no abbreviation badges).
    ────────────────────────────────────────────────────────────────────── */
-function teamShort(name: string | null | undefined): string {
-    if (!name) return "??"
-    const words = name.trim().split(/\s+/)
-    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
-    return name.slice(0, 2).toUpperCase()
-}
 
 function LiveHero({ match }: { match: LiveMatch }) {
+    // Tick every second so the live minute keeps counting between the
+    // WebSocket-pushed refreshes (which deliver fresh instants/scores).
+    const [, setHeroTick] = useState(0)
+    useEffect(() => {
+        if (match.liveMode !== "TIMER") return
+        const id = setInterval(() => setHeroTick((t) => t + 1), 1000)
+        return () => clearInterval(id)
+    }, [match.liveMode])
+
     const heroPhase =
         match.liveMode === "TIMER"
             ? matchPhase({
                   liveStartedAt: match.liveStartedAt,
                   firstHalfEndedAt: match.firstHalfEndedAt ?? null,
                   secondHalfStartedAt: match.secondHalfStartedAt ?? null,
+                  livePausedAt: match.livePausedAt ?? null,
                   halfLengthMin: match.halfLengthMin,
                   halfCount: match.halfCount,
               })
             : null
     const heroHalfLabel =
-        heroPhase === "HALFTIME" ? "POLUVRIJEME"
-            : heroPhase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                : heroPhase === "FULL_TIME" ? "KRAJ"
-                    : heroPhase === "FIRST_HALF" ? "1. POLUVRIJEME"
-                        : match.secondHalfStartedAt ? "2. POLUVRIJEME" : "1. POLUVRIJEME"
+        match.livePausedAt && (heroPhase === "FIRST_HALF" || heroPhase === "SECOND_HALF")
+            ? "PAUZA"
+            : heroPhase === "HALFTIME" ? "POLUVRIJEME"
+                : heroPhase === "SECOND_HALF" ? "2. POLUVRIJEME"
+                    : heroPhase === "FULL_TIME" ? "KRAJ"
+                        : heroPhase === "FIRST_HALF" ? "1. POLUVRIJEME"
+                            : match.secondHalfStartedAt ? "2. POLUVRIJEME" : "1. POLUVRIJEME"
+    // Running match minute (m:ss) - TIMER matches only.
+    const heroClock =
+        match.liveMode === "TIMER"
+            ? clockState({
+                  liveStartedAt: match.liveStartedAt,
+                  firstHalfEndedAt: match.firstHalfEndedAt ?? null,
+                  secondHalfStartedAt: match.secondHalfStartedAt ?? null,
+                  livePausedAt: match.livePausedAt ?? null,
+                  halfLengthMin: match.halfLengthMin,
+                  halfCount: match.halfCount,
+              })
+            : null
     return (
         <Box
             position="relative"
@@ -171,13 +189,13 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 bg="repeating-linear-gradient(90deg, transparent 0, transparent 70px, rgba(0,0,0,0.05) 70px, rgba(0,0,0,0.05) 140px)"
             />
 
-            {/* Top sub-bar */}
+            {/* Top sub-bar - just the UŽIVO kicker; the tournament name sits
+                centred in the scoreboard below. */}
             <Flex
                 position="relative"
-                justify="space-between"
                 align="center"
                 px={{ base: 4, md: 7 }}
-                py="3.5"
+                py="2.5"
                 borderBottomWidth="1px"
                 borderColor="rgba(255,255,255,0.12)"
                 bg="rgba(220, 38, 38, 0.18)"
@@ -186,85 +204,77 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 <HStack gap="2.5">
                     <PulseDot color="white" size={8} glow />
                     <Box fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.15em">
-                        UŽIVO · MATCHDAY
+                        UŽIVO
                     </Box>
                 </HStack>
-                <Box
-                    fontFamily="mono"
-                    fontSize="10px"
-                    color="rgba(255,255,255,0.65)"
-                    letterSpacing="0.1em"
-                    display={{ base: "none", md: "block" }}
-                    textTransform="uppercase"
-                    truncate
-                >
-                    {match.tournamentName ?? "Tekuća utakmica"}
-                </Box>
             </Flex>
 
-            {/* Centre scoreboard */}
+            {/* Centre scoreboard - compact */}
             <Grid
                 position="relative"
                 templateColumns={{ base: "1fr", md: "1fr auto 1fr" }}
                 alignItems="center"
-                gap={{ base: 5, md: 6 }}
+                gap={{ base: 4, md: 6 }}
                 px={{ base: 4, md: 8 }}
-                py={{ base: 5, md: 7 }}
+                py={{ base: 4, md: 5 }}
             >
-                <HStack gap={{ base: "3", md: "4" }} justify={{ base: "center", md: "flex-end" }} wrap="wrap">
-                    <Box textAlign={{ base: "center", md: "right" }}>
-                        <MonoLabel color="rgba(255,255,255,0.6)">DOMAĆIN</MonoLabel>
-                        <Box
-                            fontFamily="heading"
-                            fontSize={{ base: "16px", md: "28px" }}
-                            fontWeight={700}
-                            letterSpacing="-0.02em"
-                            lineHeight={1.1}
-                            mt="0.5"
-                        >
-                            {match.team1Name ?? "-"}
-                        </Box>
-                    </Box>
-                    <Flex
-                        w={{ base: "44px", md: "64px" }}
-                        h={{ base: "44px", md: "64px" }}
-                        rounded="lg"
-                        bgImage="linear-gradient(145deg, #ff5c4e, #c93026)"
-                        align="center"
-                        justify="center"
+                <Box textAlign={{ base: "center", md: "right" }}>
+                    <MonoLabel color="rgba(255,255,255,0.6)">DOMAĆIN</MonoLabel>
+                    <Box
                         fontFamily="heading"
-                        fontSize={{ base: "16px", md: "24px" }}
-                        fontWeight={800}
-                        boxShadow="0 8px 24px rgba(201,48,38,0.45)"
+                        fontSize={{ base: "15px", md: "24px" }}
+                        fontWeight={700}
+                        letterSpacing="-0.02em"
+                        lineHeight={1.1}
+                        mt="0.5"
                     >
-                        {teamShort(match.team1Name)}
-                    </Flex>
-                </HStack>
+                        {match.team1Name ?? "-"}
+                    </Box>
+                </Box>
 
                 <Box textAlign="center" px="2">
+                    {/* Tournament name - centred, prominent. */}
+                    {match.tournamentName && (
+                        <Box
+                            fontFamily="heading"
+                            fontSize={{ base: "15px", md: "19px" }}
+                            fontWeight={800}
+                            letterSpacing="-0.01em"
+                            lineHeight={1.15}
+                            mb="1"
+                        >
+                            {match.tournamentName}
+                        </Box>
+                    )}
+                    {/* Live minute + phase - each on its own line (UŽIVO already
+                        sits top-left). */}
                     <Box
-                        as="span"
-                        display="inline-flex"
-                        alignItems="center"
-                        gap="1.5"
                         fontFamily="mono"
-                        fontSize="11px"
                         color="accent.goal"
-                        letterSpacing="0.18em"
+                        letterSpacing="0.14em"
                         fontWeight={700}
+                        fontVariantNumeric="tabular-nums"
                     >
-                        <FiClock size={12} /> UŽIVO · {heroHalfLabel}
+                        {heroClock && (
+                            <Flex justify="center" align="center" gap="1.5" fontSize="15px">
+                                <FiClock size={13} />
+                                {heroClock.display}
+                            </Flex>
+                        )}
+                        <Box fontSize="11px" mt={heroClock ? "0.5" : "0"}>
+                            {heroHalfLabel}
+                        </Box>
                     </Box>
                     <Box
                         fontFamily="mono"
-                        fontSize={{ base: "40px", md: "78px" }}
+                        fontSize={{ base: "36px", md: "64px" }}
                         fontWeight={800}
                         letterSpacing="-0.05em"
                         lineHeight={1}
-                        mt="1.5"
+                        mt="1"
                     >
                         {match.score1 ?? 0}
-                        <Box as="span" color="rgba(255,255,255,0.35)" px={{ base: "1.5", md: "4" }}>
+                        <Box as="span" color="rgba(255,255,255,0.35)" px={{ base: "1.5", md: "3.5" }}>
                             :
                         </Box>
                         {match.score2 ?? 0}
@@ -272,43 +282,26 @@ function LiveHero({ match }: { match: LiveMatch }) {
                     <MonoLabel
                         color="rgba(255,255,255,0.5)"
                         letterSpacing="0.15em"
-                        mt="1.5"
+                        mt="1"
                         display="block"
                     >
-                        FUTSAL · FUTSAL-TURNIRI.COM
+                        FUTSAL-TURNIRI.COM
                     </MonoLabel>
                 </Box>
 
-                <HStack gap={{ base: "3", md: "4" }} justify={{ base: "center", md: "flex-start" }} wrap="wrap">
-                    <Flex
-                        w={{ base: "44px", md: "64px" }}
-                        h={{ base: "44px", md: "64px" }}
-                        rounded="lg"
-                        bgImage="linear-gradient(145deg, #4d80ff, #1a4dcc)"
-                        align="center"
-                        justify="center"
+                <Box textAlign={{ base: "center", md: "left" }}>
+                    <MonoLabel color="rgba(255,255,255,0.6)">GOST</MonoLabel>
+                    <Box
                         fontFamily="heading"
-                        fontSize={{ base: "16px", md: "24px" }}
-                        fontWeight={800}
-                        boxShadow="0 8px 24px rgba(26,77,204,0.45)"
-                        order={{ base: 2, md: 1 }}
+                        fontSize={{ base: "15px", md: "24px" }}
+                        fontWeight={700}
+                        letterSpacing="-0.02em"
+                        lineHeight={1.1}
+                        mt="0.5"
                     >
-                        {teamShort(match.team2Name)}
-                    </Flex>
-                    <Box textAlign={{ base: "center", md: "left" }} order={{ base: 1, md: 2 }}>
-                        <MonoLabel color="rgba(255,255,255,0.6)">GOST</MonoLabel>
-                        <Box
-                            fontFamily="heading"
-                            fontSize={{ base: "16px", md: "28px" }}
-                            fontWeight={700}
-                            letterSpacing="-0.02em"
-                            lineHeight={1.1}
-                            mt="0.5"
-                        >
-                            {match.team2Name ?? "-"}
-                        </Box>
+                        {match.team2Name ?? "-"}
                     </Box>
-                </HStack>
+                </Box>
             </Grid>
 
             {/* Bottom CTA strip */}
@@ -318,7 +311,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 borderColor="rgba(255,255,255,0.12)"
                 bg="rgba(0,0,0,0.3)"
                 px={{ base: 4, md: 7 }}
-                py="3.5"
+                py="2.5"
                 justify="space-between"
                 align="center"
                 gap="3"

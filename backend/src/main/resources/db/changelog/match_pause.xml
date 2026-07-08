@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Pause/resume for the live match clock. While paused, live_paused_at
+        holds the pause instant and every clock renders (pausedAt - halfStart)
+        instead of (now - halfStart), freezing the display. On resume the
+        current half's start instant is shifted FORWARD by the pause duration
+        and this column is cleared - so all existing clock math (phases,
+        auto-minute stamping, half boundaries) keeps working unchanged.
+    -->
+    <changeSet id="2026-07-08-match-live-paused-at" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="live_paused_at" type="timestamptz"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

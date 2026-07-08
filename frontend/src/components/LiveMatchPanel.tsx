@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Button, Flex, HStack, Text, VStack } from "@chakra-ui/react"
+import { FiEdit2 } from "react-icons/fi"
 
 import {
     deleteMatchEvent,
     endFirstHalf,
     fetchMatchEvents,
     finishMatch,
+    pauseMatch,
     resetMatch,
+    resumeMatch,
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
@@ -18,7 +21,7 @@ import { ConfirmDialog } from "../ui/primitives"
 import {
     DirectScoreEditor,
     FoulControls,
-    LiveClock,
+    LiveConsoleHeader,
     LiveEventRow,
     LiveGoalEntry,
     PenaltyShootout,
@@ -28,9 +31,15 @@ import {
 /* ──────────────────────────────────────────────────────────────────────────
    LiveMatchPanel - the same live-control surface as the Grupe / Eliminacija
    match dialogs, but rendered INLINE (no modal). Drives one match through
-   SCHEDULED → LIVE → FINISHED: start, goals, fouls, halves, finish (penalties
-   for a level knockout) and reset. Reuses the shared live primitives so the
+   SCHEDULED → LIVE → FINISHED: start, goals (incl. own goals), cards (incl.
+   unknown player), fouls, halves, clock pause/resume, finish (penalties for
+   a level knockout) and reset. Reuses the shared live primitives so the
    behaviour matches the dialogs exactly.
+
+   Layout (approved redesign): big central timer with a pause/play button,
+   the ⋯ menu holds Resetiraj + "Unesi samo rezultat", and ONE primary
+   phase button drives the match (Završi 1. poluvrijeme → Započni 2.
+   poluvrijeme → Završi; plain "Završi" when playing without the app timer).
    ────────────────────────────────────────────────────────────────────────── */
 
 export type PanelMatch = {
@@ -40,6 +49,7 @@ export type PanelMatch = {
     liveStartedAt?: string | null
     firstHalfEndedAt?: string | null
     secondHalfStartedAt?: string | null
+    livePausedAt?: string | null
     team1Id: number | null
     team1Name: string | null
     team2Id: number | null
@@ -55,30 +65,12 @@ export type PanelMatch = {
     penalties2?: number | null
 }
 
-function LivePill() {
-    return (
-        <Box
-            as="span"
-            px="2"
-            py="0.5"
-            rounded="full"
-            bg="red.solid"
-            color="white"
-            fontSize="2xs"
-            fontWeight={800}
-            letterSpacing="wider"
-            textTransform="uppercase"
-        >
-            Uživo
-        </Box>
-    )
-}
-
 function scoreFromEvents(list: MatchEventDto[], t1: number | null, t2: number | null) {
     let s1 = 0
     let s2 = 0
     for (const e of list) {
-        if (e.type !== "GOAL") continue
+        // OWN_GOAL's teamId is the beneficiary, so both goal kinds count the same.
+        if (e.type !== "GOAL" && e.type !== "OWN_GOAL") continue
         if (e.teamId === t1) s1 += 1
         else if (e.teamId === t2) s2 += 1
     }
@@ -112,23 +104,43 @@ export default function LiveMatchPanel({
     const [secondHalfStartedAt, setSecondHalfStartedAt] = useState<string | null>(
         match.secondHalfStartedAt ?? null,
     )
+    const [livePausedAt, setLivePausedAt] = useState<string | null>(
+        match.livePausedAt ?? null,
+    )
     const [starting, setStarting] = useState(false)
-    const [endingHalf, setEndingHalf] = useState(false)
-    const [startingHalf, setStartingHalf] = useState(false)
+    const [phaseBusy, setPhaseBusy] = useState(false)
+    const [pauseBusy, setPauseBusy] = useState(false)
     const [finishing, setFinishing] = useState(false)
     const [resetting, setResetting] = useState(false)
     const [shootout, setShootout] = useState(false)
     const [deletingId, setDeletingId] = useState<number | null>(null)
-    // Direct final-score entry (no scorers). `pendingScore` carries an entered
-    // score into the penalty shootout for a level knockout result.
+    // Direct final-score entry (no scorers). Hidden during LIVE unless toggled
+    // from the ⋯ menu; `pendingScore` carries an entered score into the penalty
+    // shootout for a level knockout result.
     const [savingScore, setSavingScore] = useState(false)
+    const [showDirectScore, setShowDirectScore] = useState(false)
     const [pendingScore, setPendingScore] = useState<{ s1: number; s2: number } | null>(null)
+
+    // Keep the local live instants in sync when the parent refetches the match.
+    useEffect(() => setFirstHalfEndedAt(match.firstHalfEndedAt ?? null), [match.firstHalfEndedAt])
+    useEffect(() => setSecondHalfStartedAt(match.secondHalfStartedAt ?? null), [match.secondHalfStartedAt])
+    useEffect(() => setLivePausedAt(match.livePausedAt ?? null), [match.livePausedAt])
 
     const sentOffIds = useMemo(
         () =>
             new Set(
                 (events ?? [])
                     .filter((e) => e.type === "RED_CARD" && e.playerId != null)
+                    .map((e) => e.playerId as number),
+            ),
+        [events],
+    )
+    // Yellow-carded players - marked with 🟨 in the entry roster.
+    const yellowIds = useMemo(
+        () =>
+            new Set(
+                (events ?? [])
+                    .filter((e) => e.type === "YELLOW_CARD" && e.playerId != null)
                     .map((e) => e.playerId as number),
             ),
         [events],
@@ -183,6 +195,7 @@ export default function LiveMatchPanel({
                   liveStartedAt: match.liveStartedAt,
                   firstHalfEndedAt,
                   secondHalfStartedAt,
+                  livePausedAt,
                   halfLengthMin,
                   halfCount,
               })
@@ -199,12 +212,6 @@ export default function LiveMatchPanel({
     // final half of a free-running match (no clock → manual end is the norm).
     const finishIsPremature =
         isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
-    const halfLabel =
-        phase === "FIRST_HALF" ? "1. POLUVRIJEME"
-            : phase === "HALFTIME" ? "POLUVRIJEME"
-                : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                    : phase === "FULL_TIME" ? "KRAJ"
-                        : null
 
     async function refreshAfterMutation() {
         try {
@@ -228,28 +235,59 @@ export default function LiveMatchPanel({
     }
 
     async function handleEndFirstHalf() {
-        setEndingHalf(true)
+        setPhaseBusy(true)
         try {
             await endFirstHalf(uuid, matchId)
             setFirstHalfEndedAt(new Date().toISOString())
+            setLivePausedAt(null)
             await onChanged()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
-            setEndingHalf(false)
+            setPhaseBusy(false)
         }
     }
 
     async function handleStartSecondHalf() {
-        setStartingHalf(true)
+        setPhaseBusy(true)
         try {
             await startSecondHalf(uuid, matchId)
             setSecondHalfStartedAt(new Date().toISOString())
+            setLivePausedAt(null)
             await onChanged()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
-            setStartingHalf(false)
+            setPhaseBusy(false)
+        }
+    }
+
+    /** Pause / resume the live clock. Optimistic local flip; the parent
+     *  refetch then confirms it (backend shifts the half start on resume,
+     *  so the clock continues exactly where it froze). */
+    async function handlePause() {
+        setPauseBusy(true)
+        try {
+            await pauseMatch(uuid, matchId)
+            setLivePausedAt(new Date().toISOString())
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setPauseBusy(false)
+        }
+    }
+
+    async function handleResume() {
+        setPauseBusy(true)
+        try {
+            await resumeMatch(uuid, matchId)
+            setLivePausedAt(null)
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setPauseBusy(false)
         }
     }
 
@@ -326,6 +364,7 @@ export default function LiveMatchPanel({
             } else {
                 await recordGroupResult(uuid, matchId, s1, s2)
             }
+            setShowDirectScore(false)
             await refreshAfterMutation()
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -346,9 +385,6 @@ export default function LiveMatchPanel({
         }
     }
     const [confirmResetOpen, setConfirmResetOpen] = useState(false)
-    function confirmReset() {
-        setConfirmResetOpen(true)
-    }
     const [confirmFinishOpen, setConfirmFinishOpen] = useState(false)
     function requestFinish() {
         if (finishIsPremature) {
@@ -358,65 +394,82 @@ export default function LiveMatchPanel({
         void handleFinish()
     }
 
+    // THE one primary phase action: walk the state machine for a TIMER match;
+    // playing without the app timer (SIMPLE) always shows plain "Završi".
+    const primary = !isTimer
+        ? { label: "Završi", run: requestFinish, busy: finishing }
+        : canEndFirstHalf
+            ? { label: "Završi 1. poluvrijeme", run: handleEndFirstHalf, busy: phaseBusy }
+            : canStartSecondHalf
+                ? { label: "Započni 2. poluvrijeme", run: handleStartSecondHalf, busy: phaseBusy }
+                : { label: "Završi", run: requestFinish, busy: finishing }
+
     return (
         <Box borderWidth="1px" borderColor="border.emphasized" rounded="xl" p={{ base: "4", md: "5" }}>
-            {/* Scoreboard header */}
-            <VStack gap="2" align="stretch" mb="3">
-                {isLive && (
-                    <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
-                        <Box justifySelf="start"><LivePill /></Box>
-                        <Box justifySelf="center">
-                            {halfLabel && (
-                                <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em" color="fg.muted">
-                                    {halfLabel}
-                                </Text>
-                            )}
-                        </Box>
-                        <Box justifySelf="end">
-                            {isTimer && (
-                                <LiveClock
-                                    liveStartedAt={match.liveStartedAt}
-                                    firstHalfEndedAt={firstHalfEndedAt}
-                                    secondHalfStartedAt={secondHalfStartedAt}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                />
-                            )}
-                        </Box>
-                    </Box>
-                )}
-                <HStack justify="center" gap="3" align="center">
-                    <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
-                        {match.team1Name ?? "-"}
-                    </Text>
-                    <Text fontFamily="mono" fontSize="2xl" fontWeight={800} fontVariantNumeric="tabular-nums" color={isLive ? "red.fg" : "fg.ink"} flexShrink={0}>
-                        {score.s1} : {score.s2}
-                    </Text>
-                    <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
-                        {match.team2Name ?? "-"}
-                    </Text>
-                </HStack>
-            </VStack>
+            {/* Big scoreboard header: UŽIVO pill, big timer with pause/play,
+                phase label, teams around the score. */}
+            <Box mb="3">
+                <LiveConsoleHeader
+                    team1Name={match.team1Name}
+                    team2Name={match.team2Name}
+                    score1={score.s1}
+                    score2={score.s2}
+                    isLive={isLive}
+                    isFinished={isFinished}
+                    isTimer={isTimer}
+                    liveStartedAt={match.liveStartedAt}
+                    firstHalfEndedAt={firstHalfEndedAt}
+                    secondHalfStartedAt={secondHalfStartedAt}
+                    livePausedAt={livePausedAt}
+                    halfLengthMin={halfLengthMin}
+                    halfCount={halfCount}
+                    onPause={handlePause}
+                    onResume={handleResume}
+                    pauseBusy={pauseBusy}
+                    belowTeams={
+                        isLive && !shootout ? (
+                            <FoulControls
+                                uuid={uuid}
+                                matchId={matchId}
+                                half={secondHalfStartedAt ? 2 : 1}
+                                fouls1First={match.fouls1First}
+                                fouls1Second={match.fouls1Second}
+                                fouls2First={match.fouls2First}
+                                fouls2Second={match.fouls2Second}
+                            />
+                        ) : undefined
+                    }
+                />
+            </Box>
 
-            {/* SCHEDULED - start the match */}
+            {/* SCHEDULED - start the match (+ optional "unesi samo rezultat"). */}
             {isScheduled && (
                 <VStack gap="2" py="2">
                     <Text fontSize="sm" color="fg.muted">Utakmica još nije pokrenuta.</Text>
                     <HStack gap="2" wrap="wrap" justify="center">
                         <Button colorPalette="red" loading={starting} onClick={() => handleStart("TIMER")}>
-                            Pokreni s mjeračem
+                            Uživo - s mjeračem vremena
                         </Button>
                         <Button variant="outline" colorPalette="red" loading={starting} onClick={() => handleStart("SIMPLE")}>
-                            Pokreni bez mjerača
+                            Uživo - bez mjerača (vlastiti sat)
                         </Button>
                     </HStack>
+                    <Button
+                        variant="ghost"
+                        colorPalette="gray"
+                        size="sm"
+                        onClick={() => setShowDirectScore((v) => !v)}
+                    >
+                        <FiEdit2 /> {showDirectScore ? "Sakrij unos rezultata" : "Unesi samo rezultat"}
+                    </Button>
                 </VStack>
             )}
 
-            {/* Direct final-score entry - available whenever the match isn't
-                being scored live and has no goal events yet, so the organizer
-                can just type the result (0:0 default) instead of going live. */}
-            {!isLive && events != null && events.length === 0 && !shootout && (
+            {/* Direct final-score entry - opened via the "Unesi samo rezultat"
+                button on a scheduled match, or shown directly for a finished
+                result-only match (no scorers to attribute). */}
+            {!shootout && events != null &&
+                (showDirectScore || (isFinished && events.length === 0)) && (
                 <Box mb="3">
                     <DirectScoreEditor
                         team1Name={match.team1Name}
@@ -429,21 +482,10 @@ export default function LiveMatchPanel({
                 </Box>
             )}
 
-            {/* LIVE controls (or penalty shootout) */}
+            {/* LIVE controls (or penalty shootout). Fouls now live in the
+                scoreboard header (belowTeams), right under each team's name. */}
             {isLive && (
                 <VStack align="stretch" gap="2.5">
-                    {!shootout && (
-                        <FoulControls
-                            uuid={uuid}
-                            matchId={matchId}
-                            half={secondHalfStartedAt ? 2 : 1}
-                            fouls1First={match.fouls1First}
-                            fouls1Second={match.fouls1Second}
-                            fouls2First={match.fouls2First}
-                            fouls2Second={match.fouls2Second}
-                        />
-                    )}
-
                     {shootout && (
                         <PenaltyShootout
                             uuid={uuid}
@@ -470,34 +512,37 @@ export default function LiveMatchPanel({
                             liveStartedAt={match.liveStartedAt}
                             firstHalfEndedAt={firstHalfEndedAt}
                             secondHalfStartedAt={secondHalfStartedAt}
+                            livePausedAt={livePausedAt}
                             halfLengthMin={halfLengthMin}
                             halfCount={halfCount}
                             onAdded={refreshAfterMutation}
                             sentOffPlayerIds={sentOffIds}
+                            yellowCardedPlayerIds={yellowIds}
                         />
                     )}
 
+                    {/* The primary phase button (follows the state machine) +
+                        "Poništi utakmicu" next to it. */}
                     {!shootout && (
-                        <HStack gap="2" justify="center" wrap="wrap" pt="1">
-                            <Button variant="outline" colorPalette="red" loading={resetting} onClick={confirmReset}>
-                                Resetiraj
-                            </Button>
-                            {canEndFirstHalf && (
-                                <Button colorPalette="red" loading={endingHalf} onClick={handleEndFirstHalf}>
-                                    Završi 1. poluvrijeme
-                                </Button>
-                            )}
-                            {canStartSecondHalf && (
-                                <Button colorPalette="red" loading={startingHalf} onClick={handleStartSecondHalf}>
-                                    Započni 2. poluvrijeme
-                                </Button>
-                            )}
+                        <HStack gap="2" w="full" wrap="wrap">
                             <Button
                                 colorPalette="red"
-                                loading={finishing}
-                                onClick={requestFinish}
+                                size="lg"
+                                flex="1"
+                                loading={primary.busy}
+                                onClick={primary.run}
                             >
-                                Završi
+                                {primary.label}
+                            </Button>
+                            <Button
+                                colorPalette="red"
+                                variant="outline"
+                                size="lg"
+                                flex="1"
+                                loading={resetting}
+                                onClick={() => setConfirmResetOpen(true)}
+                            >
+                                Poništi utakmicu
                             </Button>
                         </HStack>
                     )}
@@ -533,8 +578,8 @@ export default function LiveMatchPanel({
 
             {isFinished && (
                 <Flex justify="center" mt="3">
-                    <Button variant="outline" colorPalette="red" loading={resetting} onClick={confirmReset}>
-                        Resetiraj
+                    <Button variant="outline" colorPalette="red" loading={resetting} onClick={() => setConfirmResetOpen(true)}>
+                        Poništi utakmicu
                     </Button>
                 </Flex>
             )}
@@ -543,9 +588,9 @@ export default function LiveMatchPanel({
                 open={confirmResetOpen}
                 busy={resetting}
                 danger
-                title="Resetirati utakmicu?"
-                description="Utakmica se vraća na 'zakazano' - brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
-                confirmLabel="Da, resetiraj"
+                title="Poništiti utakmicu?"
+                description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
+                confirmLabel="Da, poništi"
                 onClose={() => setConfirmResetOpen(false)}
                 onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
             />

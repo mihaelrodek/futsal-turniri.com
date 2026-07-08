@@ -13,9 +13,11 @@ public interface MatchEventMapper {
             @Mapping(target = "type", expression = "java(e.getType() == null ? null : e.getType().name())"),
             @Mapping(target = "playerId", source = "player.id"),
             @Mapping(target = "playerName", source = "player.name"),
-            // Team derives from the player; for an unattributed penalty kick
-            // (player == null) it falls back to the event's own team.
-            @Mapping(target = "teamId", expression = "java(e.getPlayer() != null ? e.getPlayer().getTeam().getId() : (e.getTeam() != null ? e.getTeam().getId() : null))"),
+            // The event's own team wins when set - for an OWN_GOAL it holds the
+            // BENEFICIARY (the side whose score went up; the named player is on
+            // the other team), and for unattributed events it names the side.
+            // Otherwise the team derives from the player.
+            @Mapping(target = "teamId", expression = "java(e.getTeam() != null ? e.getTeam().getId() : (e.getPlayer() != null ? e.getPlayer().getTeam().getId() : null))"),
             @Mapping(target = "assistPlayerId", source = "assistPlayer.id"),
             @Mapping(target = "assistPlayerName", source = "assistPlayer.name")
     })

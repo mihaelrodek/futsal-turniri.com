@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiClock, FiEdit2, FiMinus, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
+import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
+import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, adjustMatchFouls, deleteMatchEvent, fetchMatchEvents, resetMatchFouls } from "../api/matchEvents"
 import { ConfirmDialog } from "../ui/primitives"
 import type { MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
@@ -11,30 +12,50 @@ import type { PlayerDto } from "../types/players"
    Live-match shared helpers.
    ────────────────────────────────────────────────────────────────────────── */
 
+/** "Now" for clock math - the pause instant while the clock is paused, the
+ *  actual wall clock otherwise. Passing the pause instant freezes every
+ *  elapsed computation at the moment the organizer paused. */
+function clockNow(pausedAt?: string | null): number {
+    if (pausedAt) {
+        const p = new Date(pausedAt).getTime()
+        if (Number.isFinite(p)) return p
+    }
+    return Date.now()
+}
+
 /** Whole minutes elapsed since an ISO liveStartedAt (clamped at >= 0). */
-export function elapsedMinutes(liveStartedAt: string | null | undefined): number {
+export function elapsedMinutes(
+    liveStartedAt: string | null | undefined,
+    pausedAt?: string | null,
+): number {
     if (!liveStartedAt) return 0
     const started = new Date(liveStartedAt).getTime()
     if (!Number.isFinite(started)) return 0
-    const diff = Date.now() - started
+    const diff = clockNow(pausedAt) - started
     return diff > 0 ? Math.floor(diff / 60000) : 0
 }
 
 /** Elapsed time since liveStartedAt formatted as m:ss. */
-function elapsedClock(liveStartedAt: string | null | undefined): string {
+function elapsedClock(
+    liveStartedAt: string | null | undefined,
+    pausedAt?: string | null,
+): string {
     if (!liveStartedAt) return "0:00"
     const started = new Date(liveStartedAt).getTime()
     if (!Number.isFinite(started)) return "0:00"
-    const secs = Math.max(0, Math.floor((Date.now() - started) / 1000))
+    const secs = Math.max(0, Math.floor((clockNow(pausedAt) - started) / 1000))
     return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`
 }
 
 /** Whole seconds elapsed since an ISO timestamp (clamped at >= 0). */
-function elapsedSeconds(at: string | null | undefined): number {
+function elapsedSeconds(
+    at: string | null | undefined,
+    pausedAt?: string | null,
+): number {
     if (!at) return 0
     const started = new Date(at).getTime()
     if (!Number.isFinite(started)) return 0
-    const diff = Date.now() - started
+    const diff = clockNow(pausedAt) - started
     return diff > 0 ? Math.floor(diff / 1000) : 0
 }
 
@@ -72,12 +93,15 @@ export function matchPhase({
     liveStartedAt,
     firstHalfEndedAt,
     secondHalfStartedAt,
+    livePausedAt,
     halfLengthMin,
     halfCount,
 }: {
     liveStartedAt: string | null | undefined
     firstHalfEndedAt?: string | null
     secondHalfStartedAt?: string | null
+    /** While set, elapsed time is measured up to this instant (clock paused). */
+    livePausedAt?: string | null
     halfLengthMin?: number | null
     halfCount?: number | null
 }): MatchPhase {
@@ -88,7 +112,7 @@ export function matchPhase({
 
     // 2nd half running - full time once its clock expires (still manual finish).
     if (secondHalfStartedAt) {
-        if (halfSecs != null && elapsedSeconds(secondHalfStartedAt) >= halfSecs) return "FULL_TIME"
+        if (halfSecs != null && elapsedSeconds(secondHalfStartedAt, livePausedAt) >= halfSecs) return "FULL_TIME"
         return "SECOND_HALF"
     }
 
@@ -97,7 +121,7 @@ export function matchPhase({
 
     // 1st half running. A single-period match reaches full time when its clock
     // expires; a two-half match freezes at 0:00 and waits for "Završi 1. pol.".
-    if (halves === 1 && halfSecs != null && elapsedSeconds(liveStartedAt) >= halfSecs) {
+    if (halves === 1 && halfSecs != null && elapsedSeconds(liveStartedAt, livePausedAt) >= halfSecs) {
         return "FULL_TIME"
     }
     return "FIRST_HALF"
@@ -109,12 +133,95 @@ type LiveClockProps = {
     firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half started; enables 2nd-half timing. */
     secondHalfStartedAt?: string | null
+    /** ISO timestamp the clock was PAUSED by the organizer; freezes the display. */
+    livePausedAt?: string | null
     /** Length of one half in minutes; when absent the clock just free-runs. */
     halfLengthMin?: number | null
     /** Number of halves (periods); 1 = single period, >= 2 = two halves. */
     halfCount?: number | null
     /** When true, render the phase label ("Poluvrijeme" / "2. pol." / "Kraj"). */
     showLabel?: boolean
+    /** Display size: "xs" (inline rows, default) or "md" (live cards). */
+    size?: "xs" | "md"
+}
+
+/** Everything a clock display needs, derived from the match's live instants.
+ *  Shared by the small inline LiveClock and the big console clock. */
+export function clockState({
+    liveStartedAt,
+    firstHalfEndedAt,
+    secondHalfStartedAt,
+    livePausedAt,
+    halfLengthMin,
+    halfCount,
+}: Omit<LiveClockProps, "showLabel">): {
+    display: string
+    label: string
+    /** True while a half's clock is actually ticking (not paused / boundary). */
+    running: boolean
+    paused: boolean
+    /** True in the last 60s of a running half (amber warning). */
+    endingSoon: boolean
+} {
+    const paused = !!livePausedAt
+
+    // Free-running clock - no half config supplied.
+    if (halfLengthMin == null || halfLengthMin <= 0) {
+        return {
+            display: elapsedClock(liveStartedAt, livePausedAt),
+            label: paused ? "Pauza" : "",
+            running: !paused,
+            paused,
+            endingSoon: false,
+        }
+    }
+
+    const halfSecs = halfLengthMin * 60
+    const halves = halfCount === 1 ? 1 : 2
+    const phase = matchPhase({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount })
+
+    // Match-clock behaviour: the clock COUNTS UP the cumulative match minute and
+    // freezes at each half boundary. 1st half runs 0:00 → the half length; at
+    // half-time it holds on the half length; the 2nd half continues from there
+    // → 2× the half length. It never advances past a boundary on its own - it
+    // waits for the organizer (end 1st half / start 2nd half / finish).
+    let elapsedInHalf = 0 // seconds into the currently running half (amber warning)
+    let shownSecs: number
+    let label: string
+    switch (phase) {
+        case "FIRST_HALF": {
+            elapsedInHalf = elapsedSeconds(liveStartedAt, livePausedAt)
+            shownSecs = Math.min(elapsedInHalf, halfSecs)
+            label = "1. pol."
+            break
+        }
+        case "HALFTIME": {
+            shownSecs = halfSecs
+            label = "Poluvrijeme"
+            break
+        }
+        case "SECOND_HALF": {
+            elapsedInHalf = elapsedSeconds(secondHalfStartedAt, livePausedAt)
+            shownSecs = Math.min(halfSecs + elapsedInHalf, 2 * halfSecs)
+            label = "2. pol."
+            break
+        }
+        case "FULL_TIME":
+        default: {
+            shownSecs = halves * halfSecs
+            label = "Kraj"
+            break
+        }
+    }
+
+    const inRunningPhase = phase === "FIRST_HALF" || phase === "SECOND_HALF"
+    return {
+        display: formatClock(shownSecs),
+        label: paused && inRunningPhase ? "Pauza" : label,
+        running: inRunningPhase && !paused,
+        paused,
+        endingSoon: inRunningPhase && !paused && halfSecs - elapsedInHalf <= 60,
+    }
 }
 
 /**
@@ -127,14 +234,17 @@ type LiveClockProps = {
  *    organizer ends the half (→ "Poluvrijeme" at the same frozen value).
  *  - 2nd half (once {@code secondHalfStartedAt} is set): continues from the
  *    half length → 2x the half length, then holds there ("Kraj").
+ * While {@code livePausedAt} is set the display freezes at the pause instant.
  */
 export function LiveClock({
     liveStartedAt,
     firstHalfEndedAt,
     secondHalfStartedAt,
+    livePausedAt,
     halfLengthMin,
     halfCount,
     showLabel,
+    size = "xs",
 }: LiveClockProps) {
     const [, setTick] = useState(0)
     useEffect(() => {
@@ -142,75 +252,14 @@ export function LiveClock({
         return () => clearInterval(id)
     }, [])
 
-    // Free-running clock - no half config supplied.
-    if (halfLengthMin == null || halfLengthMin <= 0) {
-        return (
-            <Text
-                as="span"
-                fontSize="xs"
-                fontWeight="bold"
-                fontVariantNumeric="tabular-nums"
-                color="red.fg"
-                display="inline-flex"
-                alignItems="center"
-                gap="1"
-                whiteSpace="nowrap"
-            >
-                <FiClock size={11} />
-                {elapsedClock(liveStartedAt)}
-            </Text>
-        )
-    }
-
-    const halfSecs = halfLengthMin * 60
-    const halves = halfCount === 1 ? 1 : 2
-    const phase = matchPhase({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, halfLengthMin, halfCount })
-
-    // Match-clock behaviour: the clock COUNTS UP the cumulative match minute and
-    // freezes at each half boundary. 1st half runs 0:00 → the half length; at
-    // half-time it holds on the half length; the 2nd half continues from there
-    // → 2× the half length. It never advances past a boundary on its own - it
-    // waits for the organizer (end 1st half / start 2nd half / finish).
-    let elapsedInHalf = 0 // seconds into the currently running half (amber warning)
-    let shownSecs: number
-    let label: string
-    switch (phase) {
-        case "FIRST_HALF": {
-            elapsedInHalf = elapsedSeconds(liveStartedAt)
-            shownSecs = Math.min(elapsedInHalf, halfSecs)
-            label = "1. pol."
-            break
-        }
-        case "HALFTIME": {
-            shownSecs = halfSecs
-            label = "Poluvrijeme"
-            break
-        }
-        case "SECOND_HALF": {
-            elapsedInHalf = elapsedSeconds(secondHalfStartedAt)
-            shownSecs = Math.min(halfSecs + elapsedInHalf, 2 * halfSecs)
-            label = "2. pol."
-            break
-        }
-        case "FULL_TIME":
-        default: {
-            shownSecs = halves * halfSecs
-            label = "Kraj"
-            break
-        }
-    }
-    const display = formatClock(shownSecs)
-
-    // Flash to amber in the last 60s of a running half so the organizer can
-    // see the half is about to end; red otherwise (and at the boundaries).
-    const running = phase === "FIRST_HALF" || phase === "SECOND_HALF"
-    const clockColor =
-        running && halfSecs - elapsedInHalf <= 60 ? "accent.amber" : "red.fg"
+    const st = clockState({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount })
+    const clockColor = st.paused ? "fg.muted" : st.endingSoon ? "accent.amber" : "red.fg"
+    const iconSize = size === "md" ? 14 : 11
 
     return (
         <Text
             as="span"
-            fontSize="xs"
+            fontSize={size === "md" ? "md" : "xs"}
             fontWeight="bold"
             fontVariantNumeric="tabular-nums"
             color={clockColor}
@@ -219,14 +268,202 @@ export function LiveClock({
             gap="1"
             whiteSpace="nowrap"
         >
-            {showLabel && (
+            {(showLabel || st.paused) && st.label && (
                 <Text as="span" color="fg.muted" fontWeight="medium">
-                    {label}
+                    {st.label}
                 </Text>
             )}
-            <FiClock size={11} />
-            {display}
+            {st.paused ? <FiPause size={iconSize} /> : <FiClock size={iconSize} />}
+            {st.display}
         </Text>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   LiveConsoleHeader - the big scoreboard head of the organizer's match
+   console (dialogs + /uzivo panel). Layout, top to bottom:
+     1. UŽIVO pill (left) · ⋯ actions menu slot (right)
+     2. BIG central timer (TIMER matches) with a pause/play button beside it
+        and the phase label underneath ("1. POLUVRIJEME" / "PAUZA" / ...)
+     3. Team names (wrap to 2 lines) around the big score
+     4. `belowTeams` slot - fouls sit here, right under the names.
+   ────────────────────────────────────────────────────────────────────────── */
+export function LiveConsoleHeader({
+    team1Name,
+    team2Name,
+    score1,
+    score2,
+    isLive,
+    isFinished,
+    isTimer,
+    liveStartedAt,
+    firstHalfEndedAt,
+    secondHalfStartedAt,
+    livePausedAt,
+    halfLengthMin,
+    halfCount,
+    onPause,
+    onResume,
+    pauseBusy = false,
+    menu,
+    belowTeams,
+}: {
+    team1Name: string | null
+    team2Name: string | null
+    score1: number
+    score2: number
+    isLive: boolean
+    isFinished: boolean
+    isTimer: boolean
+    liveStartedAt?: string | null
+    firstHalfEndedAt?: string | null
+    secondHalfStartedAt?: string | null
+    livePausedAt?: string | null
+    halfLengthMin?: number | null
+    halfCount?: number | null
+    /** Pause/resume the live clock. Button rendered only when both provided. */
+    onPause?: () => void
+    onResume?: () => void
+    pauseBusy?: boolean
+    /** Slot for the top-right ⋯ actions menu. */
+    menu?: React.ReactNode
+    /** Slot rendered directly under the team names (the fouls row lives here
+     *  so the per-team counters sit right beneath each team). */
+    belowTeams?: React.ReactNode
+}) {
+    // Tick every second so the big clock + phase label stay live.
+    const [, setTick] = useState(0)
+    useEffect(() => {
+        if (!isLive || !isTimer) return
+        const id = setInterval(() => setTick((t) => t + 1), 1000)
+        return () => clearInterval(id)
+    }, [isLive, isTimer])
+
+    const st = isLive && isTimer
+        ? clockState({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount })
+        : null
+    const phase = isLive && isTimer
+        ? matchPhase({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount })
+        : null
+    // Pause makes sense only while a half's clock is running (or paused).
+    const canPauseResume =
+        !!onPause && !!onResume && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
+    const paused = !!livePausedAt
+
+    const phaseLabel =
+        phase == null
+            ? null
+            : paused && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
+                ? "PAUZA"
+                : phase === "FIRST_HALF" ? "1. POLUVRIJEME"
+                    : phase === "HALFTIME" ? "POLUVRIJEME"
+                        : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
+                            : "KRAJ"
+
+    return (
+        <VStack gap="1" align="stretch" w="full">
+            {/* Top strip: UŽIVO left · ⋯ menu right. */}
+            {(isLive || menu) && (
+                <Flex align="center" justify="space-between" gap="2" minH="8">
+                    <Box>
+                        {isLive && (
+                            <Box
+                                as="span"
+                                px="2"
+                                py="0.5"
+                                rounded="full"
+                                bg="red.solid"
+                                color="white"
+                                fontSize="2xs"
+                                fontWeight={800}
+                                letterSpacing="wider"
+                                textTransform="uppercase"
+                            >
+                                Uživo
+                            </Box>
+                        )}
+                    </Box>
+                    <Box>{menu}</Box>
+                </Flex>
+            )}
+
+            {/* BIG central timer + pause/play + phase label. The timer itself is
+                truly centred; the pause/play button is absolutely positioned to
+                its RIGHT so it never shifts the timer off-centre. */}
+            {isLive && isTimer && st && (
+                <VStack gap="0.5" align="center">
+                    <Box position="relative" display="inline-flex" alignItems="center" justifyContent="center">
+                        <Text
+                            fontFamily="mono"
+                            fontSize={{ base: "38px", md: "44px" }}
+                            fontWeight={800}
+                            lineHeight="1"
+                            fontVariantNumeric="tabular-nums"
+                            color={st.paused ? "fg.muted" : st.endingSoon ? "accent.amber" : "red.fg"}
+                        >
+                            {st.display}
+                        </Text>
+                        {canPauseResume && (
+                            <Box position="absolute" left="100%" ml="3" top="50%" transform="translateY(-50%)">
+                                <IconButton
+                                    aria-label={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                    title={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                    size="lg"
+                                    variant={paused ? "solid" : "outline"}
+                                    colorPalette={paused ? "brand" : "gray"}
+                                    rounded="full"
+                                    loading={pauseBusy}
+                                    onClick={paused ? onResume : onPause}
+                                >
+                                    {paused ? <FiPlay size={24} /> : <FiPause size={24} />}
+                                </IconButton>
+                            </Box>
+                        )}
+                    </Box>
+                    {phaseLabel && (
+                        <Text
+                            fontFamily="mono"
+                            fontSize="2xs"
+                            fontWeight={800}
+                            letterSpacing="0.12em"
+                            color={paused ? "accent.amber" : "fg.muted"}
+                        >
+                            {phaseLabel}
+                        </Text>
+                    )}
+                </VStack>
+            )}
+
+            {/* Teams + big score. Names are bigger (next to the result) and wrap
+                to 2 lines so long club names fit. */}
+            <Box
+                display="grid"
+                gridTemplateColumns="1fr auto 1fr"
+                alignItems="center"
+                gap="3"
+                w="full"
+            >
+                <Text fontSize={{ base: "lg", md: "xl" }} fontWeight={800} color="fg.ink" minW="0" textAlign="right" lineClamp="2">
+                    {team1Name ?? "-"}
+                </Text>
+                <Text
+                    fontFamily="mono"
+                    fontSize="2xl"
+                    fontWeight={800}
+                    fontVariantNumeric="tabular-nums"
+                    color={isFinished ? "fg.ink" : "red.fg"}
+                    flexShrink={0}
+                >
+                    {score1} : {score2}
+                </Text>
+                <Text fontSize={{ base: "lg", md: "xl" }} fontWeight={800} color="fg.ink" minW="0" textAlign="left" lineClamp="2">
+                    {team2Name ?? "-"}
+                </Text>
+            </Box>
+
+            {/* Fouls (or any per-team row) sit right under the team names. */}
+            {belowTeams}
+        </VStack>
     )
 }
 
@@ -399,7 +636,12 @@ export function LiveEventRow({
     onDelete: () => void
 }) {
     const isPenalty = ev.type === "PENALTY_GOAL" || ev.type === "PENALTY_MISSED"
+    const isOwnGoal = ev.type === "OWN_GOAL"
+    // OWN_GOAL's teamId is the BENEFICIARY, so the event naturally renders on
+    // the side whose score went up (name carries the "(ag)" marker).
     const isLeft = ev.teamId === team1Id
+    // Own goal gets its OWN icon (a red ball) so it's instantly distinct from a
+    // regular goal; other types keep their emoji.
     const icon =
         ev.type === "GOAL" ? "⚽"
             : ev.type === "YELLOW_CARD" ? "🟨"
@@ -411,16 +653,22 @@ export function LiveEventRow({
             : ev.type === "PENALTY_MISSED" ? "accent.red"
                 : undefined
     const label = isPenalty ? "pen" : `${ev.minute}'`
-    // No-name events: a goal without a named scorer shows "Nepoznati strijelac";
-    // an unattributed penalty kick shows "(gol)" / "(promašaj)".
+    // No-name events: a goal without a named scorer shows "Nepoznati strijelac",
+    // a card "Nepoznati igrač", an unattributed penalty kick "(gol)"/"(promašaj)".
     const noName = ev.playerName == null
     const displayName =
-        ev.playerName ??
-        (ev.type === "GOAL"
-            ? "Nepoznati strijelac"
-            : ev.type === "PENALTY_MISSED"
-                ? "(promašaj)"
-                : "(gol)")
+        ev.type === "OWN_GOAL"
+            ? ev.playerName != null
+                ? `${ev.playerName} (ag)`
+                : "Autogol"
+            : ev.playerName ??
+              (ev.type === "GOAL"
+                  ? "Nepoznati strijelac"
+                  : ev.type === "YELLOW_CARD" || ev.type === "RED_CARD"
+                      ? "Nepoznati igrač"
+                      : ev.type === "PENALTY_MISSED"
+                          ? "(promašaj)"
+                          : "(gol)")
 
     const minuteEl = (
         <Text
@@ -434,7 +682,11 @@ export function LiveEventRow({
             {label}
         </Text>
     )
-    const iconEl = (
+    const iconEl = isOwnGoal ? (
+        <Box as="span" display="inline-flex" lineHeight="1" flexShrink={0} color="accent.red">
+            <GiSoccerBall size={14} />
+        </Box>
+    ) : (
         <Box
             as="span"
             fontSize="xs"
@@ -674,7 +926,7 @@ export function GoalscorersPanel({
         // Regulation events (goals/cards) sit on the minute-sorted timeline;
         // penalty-shootout kicks get their own marked "Penali" section below.
         const regulation = events
-            .filter((e) => e.type === "GOAL" || e.type === "YELLOW_CARD" || e.type === "RED_CARD")
+            .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL" || e.type === "YELLOW_CARD" || e.type === "RED_CARD")
             .sort((a, b) => a.minute - b.minute)
         const penalties = events.filter(
             (e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED",
@@ -781,9 +1033,11 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
     const isPenGoal = evt.type === "PENALTY_GOAL"
     const isPenMiss = evt.type === "PENALTY_MISSED"
     const isPenalty = isPenGoal || isPenMiss
+    const isOwnGoal = evt.type === "OWN_GOAL"
 
-    // Icon nearest the line: ⚽ for (penalty) goals, ❌ for a missed penalty,
-    // 🟨 / 🟥 for cards.
+    // Icon nearest the line: ⚽ for a (penalty) goal, ❌ for a missed penalty,
+    // 🟨 / 🟥 for cards. An own goal gets its OWN red-ball icon (rendered
+    // below), so it's not part of this emoji map.
     const icon = isPenMiss
         ? "❌"
         : isPenGoal
@@ -792,9 +1046,10 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
                 ? String.fromCodePoint(parseInt(EVENT_ICON[evt.type], 16))
                 : "•"
 
-    // Dot colour: goals blue, missed penalty / red card red, yellow card amber.
+    // Dot colour: own goal + missed penalty + red card red, yellow card amber,
+    // regular / penalty goals blue.
     const dotColor =
-        isPenMiss || evt.type === "RED_CARD"
+        isOwnGoal || isPenMiss || evt.type === "RED_CARD"
             ? "red.solid"
             : evt.type === "YELLOW_CARD"
                 ? "yellow.solid"
@@ -803,20 +1058,29 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
     // Penalty kicks carry no meaningful match minute; regulation events do.
     const showMinute = !isPenalty
     const noName = evt.playerName == null
-    const name =
-        evt.playerName ??
-        (evt.type === "GOAL" || isPenGoal
-            ? "Nepoznati strijelac"
-            : isPenMiss
-                ? "(promašaj)"
-                : "")
+    const name = isOwnGoal
+        ? evt.playerName != null
+            ? `${evt.playerName} (ag)`
+            : "Autogol"
+        : evt.playerName ??
+          (evt.type === "GOAL" || isPenGoal
+              ? "Nepoznati strijelac"
+              : evt.type === "YELLOW_CARD" || evt.type === "RED_CARD"
+                  ? "Nepoznati igrač"
+                  : isPenMiss
+                      ? "(promašaj)"
+                      : "")
 
     const minuteEl = showMinute ? (
         <Text fontSize="xs" fontWeight="bold" color="fg" whiteSpace="nowrap" flexShrink={0}>
             {evt.minute}&apos;
         </Text>
     ) : null
-    const iconEl = (
+    const iconEl = isOwnGoal ? (
+        <Box as="span" display="inline-flex" flexShrink={0} lineHeight="1.4" color="red.solid">
+            <GiSoccerBall size={13} />
+        </Box>
+    ) : (
         <Text fontSize="xs" flexShrink={0} lineHeight="1.4">
             {icon}
         </Text>
@@ -899,27 +1163,29 @@ function liveMatchMinute(args: {
     liveStartedAt: string | null | undefined
     firstHalfEndedAt?: string | null
     secondHalfStartedAt: string | null | undefined
+    livePausedAt?: string | null
     halfLengthMin: number | null
     halfCount: number | null
 }): number {
     const hl = args.halfLengthMin ?? 0
     const halves = args.halfCount === 1 ? 1 : 2
+    const paused = args.livePausedAt
     const phase = matchPhase(args)
     switch (phase) {
         case "FIRST_HALF":
             return hl > 0
-                ? Math.min(elapsedMinutes(args.liveStartedAt), hl)
-                : elapsedMinutes(args.liveStartedAt)
+                ? Math.min(elapsedMinutes(args.liveStartedAt, paused), hl)
+                : elapsedMinutes(args.liveStartedAt, paused)
         case "HALFTIME":
             return hl
         case "SECOND_HALF":
             return hl > 0
-                ? Math.min(hl + elapsedMinutes(args.secondHalfStartedAt), halves * hl)
-                : hl + elapsedMinutes(args.secondHalfStartedAt)
+                ? Math.min(hl + elapsedMinutes(args.secondHalfStartedAt, paused), halves * hl)
+                : hl + elapsedMinutes(args.secondHalfStartedAt, paused)
         case "FULL_TIME":
             return halves * hl
         default:
-            return elapsedMinutes(args.liveStartedAt)
+            return elapsedMinutes(args.liveStartedAt, paused)
     }
 }
 
@@ -940,10 +1206,12 @@ export function LiveGoalEntry({
     liveStartedAt,
     firstHalfEndedAt,
     secondHalfStartedAt,
+    livePausedAt,
     halfLengthMin,
     halfCount,
     onAdded,
     sentOffPlayerIds,
+    yellowCardedPlayerIds,
 }: {
     uuid: string
     matchId: number
@@ -955,12 +1223,17 @@ export function LiveGoalEntry({
     liveStartedAt: string | null | undefined
     firstHalfEndedAt?: string | null
     secondHalfStartedAt: string | null | undefined
+    /** ISO instant the clock was paused; freezes the auto-minute too. */
+    livePausedAt?: string | null
     halfLengthMin: number | null
     halfCount: number | null
     onAdded: () => Promise<void> | void
     /** Players sent off (red card) in this match - greyed out and not
      *  selectable, since they can't score or otherwise affect play. */
     sentOffPlayerIds?: Set<number>
+    /** Players with a yellow card in this match - shown with a 🟨 marker
+     *  next to their name (still selectable). */
+    yellowCardedPlayerIds?: Set<number>
 }) {
     const isTimer = liveMode === "TIMER"
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
@@ -971,7 +1244,7 @@ export function LiveGoalEntry({
     const [autoMinute, setAutoMinute] = useState(true)
     /** playerId whose add call is in flight (for the per-button spinner). */
     const [addingId, setAddingId] = useState<number | null>(null)
-    /** teamId whose anonymous-goal add is in flight. */
+    /** teamId whose anonymous add is in flight. */
     const [addingAnon, setAddingAnon] = useState<number | null>(null)
 
     // Load both rosters once.
@@ -1002,13 +1275,14 @@ export function LiveGoalEntry({
                 liveStartedAt,
                 firstHalfEndedAt,
                 secondHalfStartedAt,
+                livePausedAt,
                 halfLengthMin,
                 halfCount,
             })))
         sync()
         const id = setInterval(sync, 1000)
         return () => clearInterval(id)
-    }, [isTimer, autoMinute, liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, halfLengthMin, halfCount])
+    }, [isTimer, autoMinute, liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount])
 
     const minuteNum = parseInt(minute, 10)
     const minuteValid = Number.isFinite(minuteNum) && minuteNum >= 0
@@ -1032,14 +1306,16 @@ export function LiveGoalEntry({
         }
     }
 
-    // Anonymous goal - counts for the team, no named scorer (privacy). Recorded
-    // with teamId instead of playerId; the timeline shows just the goal icon.
+    // Anonymous event - counts for the team, no named player. Works for every
+    // event kind: unknown scorer, unknown own-goal, and an unknown carded
+    // player (who obviously can't be locked out of play - it's a timeline
+    // record only). Recorded with teamId instead of playerId.
     async function pickAnon(teamId: number) {
         if (!minuteValid || addingId != null || addingAnon != null) return
         setAddingAnon(teamId)
         try {
             await addMatchEvent(uuid, matchId, {
-                type: "GOAL",
+                type: kind,
                 playerId: null,
                 teamId,
                 minute: minuteNum,
@@ -1053,17 +1329,37 @@ export function LiveGoalEntry({
         }
     }
 
-    const TYPES: { value: MatchEventType; label: string }[] = [
-        { value: "GOAL", label: "⚽ Gol" },
-        { value: "YELLOW_CARD", label: "🟨" },
-        { value: "RED_CARD", label: "🟥" },
+    const TYPES: { value: MatchEventType; label: React.ReactNode; title: string }[] = [
+        { value: "GOAL", label: "⚽ Gol", title: "Gol" },
+        {
+            value: "OWN_GOAL",
+            // Own goal gets a red ball (matches the timeline / fullscreen).
+            label: (
+                <>
+                    <Box as="span" display="inline-flex" alignItems="center" color="accent.red" mr="1">
+                        <GiSoccerBall size={15} />
+                    </Box>
+                    AG
+                </>
+            ),
+            title: "Autogol - gol u vlastitu mrežu (bod ide protivniku)",
+        },
+        { value: "YELLOW_CARD", label: "🟨", title: "Žuti karton" },
+        { value: "RED_CARD", label: "🟥", title: "Crveni karton" },
     ]
+
+    // The label of the per-team "unknown player" button follows the kind.
+    const anonLabel =
+        kind === "GOAL" ? "⚽ Nepoznati strijelac"
+            : kind === "OWN_GOAL" ? "⚽ Autogol (nepoznati)"
+                : kind === "YELLOW_CARD" ? "🟨 Nepoznati igrač"
+                    : "🟥 Nepoznati igrač"
 
     return (
         <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5">
             {/* Type toggle + minute */}
             <Flex gap="2" align="center" justify="space-between" wrap="wrap" mb="2">
-                <HStack gap="1">
+                <HStack gap="1" wrap="wrap">
                     {TYPES.map((t) => (
                         <Button
                             key={t.value}
@@ -1071,6 +1367,7 @@ export function LiveGoalEntry({
                             variant={kind === t.value ? "solid" : "outline"}
                             colorPalette={kind === t.value ? "brand" : "gray"}
                             onClick={() => setKind(t.value)}
+                            title={t.title}
                         >
                             {t.label}
                         </Button>
@@ -1104,7 +1401,7 @@ export function LiveGoalEntry({
                     )}
                 </HStack>
             </Flex>
-
+            
             {!minuteValid && (
                 <Text fontSize="xs" color="red.fg" mb="2">
                     Unesi minutu.
@@ -1120,8 +1417,10 @@ export function LiveGoalEntry({
                     addingId={addingId}
                     disabled={!minuteValid}
                     sentOffPlayerIds={sentOffPlayerIds}
+                    yellowCardedPlayerIds={yellowCardedPlayerIds}
                     onPick={pick}
-                    showAnonGoal={ANON_GOAL_ENABLED && kind === "GOAL"}
+                    showAnon={ANON_GOAL_ENABLED}
+                    anonLabel={anonLabel}
                     addingAnon={addingAnon}
                     onAnon={pickAnon}
                 />
@@ -1132,8 +1431,10 @@ export function LiveGoalEntry({
                     addingId={addingId}
                     disabled={!minuteValid}
                     sentOffPlayerIds={sentOffPlayerIds}
+                    yellowCardedPlayerIds={yellowCardedPlayerIds}
                     onPick={pick}
-                    showAnonGoal={ANON_GOAL_ENABLED && kind === "GOAL"}
+                    showAnon={ANON_GOAL_ENABLED}
+                    anonLabel={anonLabel}
                     addingAnon={addingAnon}
                     onAnon={pickAnon}
                     align="right"
@@ -1150,8 +1451,10 @@ function PlayerPickColumn({
     addingId,
     disabled,
     sentOffPlayerIds,
+    yellowCardedPlayerIds,
     onPick,
-    showAnonGoal = false,
+    showAnon = false,
+    anonLabel = "Nepoznati igrač",
     addingAnon = null,
     onAnon,
     align = "left",
@@ -1162,10 +1465,13 @@ function PlayerPickColumn({
     addingId: number | null
     disabled: boolean
     sentOffPlayerIds?: Set<number>
+    /** Players with a yellow card - 🟨 marker beside the name (still selectable). */
+    yellowCardedPlayerIds?: Set<number>
     onPick: (p: PlayerDto) => void
-    /** Show the "Nepoznati strijelac" button first, above the roster - records
-     *  a goal for the team with no named scorer. Goals only. */
-    showAnonGoal?: boolean
+    /** Show the "unknown player" button first, above the roster - records the
+     *  current event kind for the team with no named player. */
+    showAnon?: boolean
+    anonLabel?: string
     addingAnon?: number | null
     onAnon?: (teamId: number) => void
     align?: "left" | "right"
@@ -1173,31 +1479,31 @@ function PlayerPickColumn({
     return (
         <VStack align="stretch" gap="1" minW="0">
             <Text
-                fontSize="2xs"
-                fontWeight="semibold"
-                letterSpacing="wider"
-                textTransform="uppercase"
-                color="fg.muted"
+                fontSize="sm"
+                fontWeight={800}
+                color="fg.ink"
                 textAlign={align}
-                truncate
+                lineClamp="2"
+                lineHeight="1.2"
             >
                 {teamName ?? "-"}
             </Text>
-            {/* Unknown scorer - goal counts for the team, no named scorer.
-                Shown first, above the players. */}
-            {showAnonGoal && teamId != null && (
+            {/* Unknown player - the event counts for the team, no named player.
+                ALWAYS first in the list so it's the quickest tap. */}
+            {showAnon && teamId != null && (
                 <Button
                     size="sm"
+                    h="10"
                     variant="outline"
                     colorPalette="gray"
                     justifyContent={align === "right" ? "flex-end" : "flex-start"}
                     loading={addingAnon === teamId}
                     disabled={disabled || addingId != null || (addingAnon != null && addingAnon !== teamId)}
                     onClick={() => onAnon?.(teamId)}
-                    title="Gol za ekipu bez imena strijelca"
-                    aria-label="Nepoznati strijelac"
+                    title="Događaj za ekipu bez imena igrača"
+                    aria-label={anonLabel}
                 >
-                    <Text truncate>⚽ Nepoznati strijelac</Text>
+                    <Text truncate fontStyle="italic" color="fg.muted">{anonLabel}</Text>
                 </Button>
             )}
             {players.length === 0 ? (
@@ -1208,24 +1514,29 @@ function PlayerPickColumn({
                 players.map((p) => {
                     // Sent off (red card): greyed out and not selectable.
                     const sentOff = sentOffPlayerIds?.has(p.id) ?? false
+                    // Yellow-carded: still selectable, marked with 🟨 in the
+                    // roster so the organizer sees who's on a booking.
+                    const hasYellow = !sentOff && (yellowCardedPlayerIds?.has(p.id) ?? false)
+                    const marker = sentOff ? "🟥" : hasYellow ? "🟨" : ""
                     return (
                         <Button
                             key={p.id}
                             size="sm"
+                            h="10"
                             variant="outline"
                             justifyContent={align === "right" ? "flex-end" : "flex-start"}
                             loading={addingId === p.id}
                             disabled={sentOff || disabled || (addingId != null && addingId !== p.id)}
                             opacity={sentOff ? 0.5 : undefined}
                             color={sentOff ? "fg.subtle" : undefined}
-                            title={sentOff ? "Isključen (crveni karton)" : undefined}
+                            title={sentOff ? "Isključen (crveni karton)" : hasYellow ? "Ima žuti karton" : undefined}
                             onClick={() => onPick(p)}
                         >
                             <Text truncate>
-                                {align === "right" && sentOff ? "🟥 " : ""}
+                                {align === "right" && marker ? `${marker} ` : ""}
                                 {p.number != null ? `${p.number}. ` : ""}
                                 {p.name}
-                                {align !== "right" && sentOff ? " 🟥" : ""}
+                                {align !== "right" && marker ? ` ${marker}` : ""}
                             </Text>
                         </Button>
                     )
@@ -1887,12 +2198,17 @@ export function FoulControls({
         setConfirmResetOpen(true)
     }
 
-    // Compact single-row counter: [team1 − N +] · PREKRŠAJI ⟲ · [team2 − M +].
+    // 3-column grid mirroring the scoreboard header (1fr auto 1fr): each team's
+    // counter hugs the centre so it sits right under that team's name, with the
+    // PREKRŠAJI label + reset in the middle (under the score). Compact + close
+    // to the names instead of pushed out to the far edges.
     return (
         <>
-        <Flex align="center" justify="space-between" gap="2" px="0.5">
-            <FoulCounter count={cur1} busy={busy} onMinus={() => adjust(1, -1)} onPlus={() => adjust(1, 1)} />
-            <HStack gap="1" align="center" minW="0">
+        <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
+            <Box justifySelf="end">
+                <FoulCounter count={cur1} busy={busy} onMinus={() => adjust(1, -1)} onPlus={() => adjust(1, 1)} />
+            </Box>
+            <HStack gap="1" align="center" minW="0" justifySelf="center">
                 <Text
                     fontSize="2xs"
                     fontWeight={700}
@@ -1915,8 +2231,10 @@ export function FoulControls({
                     <FiRotateCcw />
                 </IconButton>
             </HStack>
-            <FoulCounter count={cur2} busy={busy} onMinus={() => adjust(2, -1)} onPlus={() => adjust(2, 1)} />
-        </Flex>
+            <Box justifySelf="start">
+                <FoulCounter count={cur2} busy={busy} onMinus={() => adjust(2, -1)} onPlus={() => adjust(2, 1)} />
+            </Box>
+        </Box>
         <ConfirmDialog
             open={confirmResetOpen}
             busy={busy}

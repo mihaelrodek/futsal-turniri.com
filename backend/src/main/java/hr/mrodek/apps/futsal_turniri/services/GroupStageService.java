@@ -174,7 +174,9 @@ public class GroupStageService {
         buildGroupFixtures(t, groups);
     }
 
-    /** Places teams into groups - manual placement or a random auto draw. */
+    /** Places teams into groups - manual placement or a random auto draw.
+     *  Each team's {@code drawPosition} is set to its 0-based order within the
+     *  group so the round-robin fixtures follow the organizer's arrangement. */
     private void assignTeams(List<Teams> teams, List<Groups> groups, DrawRequest req) {
         boolean manual = req != null
                 && req.mode() == DrawRequest.Mode.MANUAL
@@ -183,6 +185,9 @@ public class GroupStageService {
         if (manual) {
             Map<Long, Teams> byId = teams.stream()
                     .collect(Collectors.toMap(Teams::getId, x -> x));
+            // Per-group running counter: teams keep the order they appear in the
+            // assignments list (which the board sends in drag/display order).
+            int[] posInGroup = new int[groups.size()];
             for (DrawRequest.Assignment a : req.assignments()) {
                 Teams tm = byId.get(a.teamId());
                 if (tm == null) continue;
@@ -191,6 +196,7 @@ public class GroupStageService {
                     throw new BadRequestException("Invalid group ordinal: " + ord);
                 }
                 tm.setGroup(groups.get(ord));
+                tm.setDrawPosition(posInGroup[ord]++);
             }
             for (Teams tm : teams) {
                 if (tm.getGroup() == null) {
@@ -200,13 +206,22 @@ public class GroupStageService {
             }
         } else {
             // AUTO - shuffle, then spread round-robin so group sizes differ
-            // by at most one (13 teams, 4 groups → 4+3+3+3).
+            // by at most one (13 teams, 4 groups → 4+3+3+3). Position within a
+            // group = the cycle index (i / groupCount).
             List<Teams> shuffled = new ArrayList<>(teams);
             Collections.shuffle(shuffled);
             for (int i = 0; i < shuffled.size(); i++) {
                 shuffled.get(i).setGroup(groups.get(i % groups.size()));
+                shuffled.get(i).setDrawPosition(i / groups.size());
             }
         }
+    }
+
+    /** A group's teams in draw-board order (the arrangement the organizer made),
+     *  falling back to id for any legacy team without a draw position. */
+    private List<Teams> groupTeamsInDrawOrder(Long groupId) {
+        return teamsRepo.list(
+                "group.id = ?1 order by drawPosition nulls last, id", groupId);
     }
 
     /** Builds the single round-robin fixtures for every group. */
@@ -216,7 +231,7 @@ public class GroupStageService {
         Map<Long, List<List<Teams[]>>> schedules = new HashMap<>();
         int maxMatchdays = 0;
         for (Groups g : groups) {
-            List<Teams> gt = teamsRepo.list("group.id", g.getId());
+            List<Teams> gt = groupTeamsInDrawOrder(g.getId());
             List<List<Teams[]>> sched = roundRobin(gt);
             schedules.put(g.getId(), sched);
             maxMatchdays = Math.max(maxMatchdays, sched.size());
@@ -295,7 +310,7 @@ public class GroupStageService {
         List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(t.getId());
         List<List<Teams[]>> perGroup = new ArrayList<>();
         for (Groups g : groups) {
-            List<Teams> gt = teamsRepo.list("group.id", g.getId());
+            List<Teams> gt = groupTeamsInDrawOrder(g.getId());
             List<Teams[]> flat = new ArrayList<>();
             for (List<Teams[]> round : roundRobin(gt)) flat.addAll(round);
             perGroup.add(flat);
@@ -331,7 +346,9 @@ public class GroupStageService {
         List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(tournamentId);
         List<GroupDto> out = new ArrayList<>();
         for (Groups g : groups) {
-            List<Teams> teams = teamsRepo.list("group.id", g.getId());
+            // Draw-board order: before any match is played the table shows the
+            // teams in the order the organizer arranged them.
+            List<Teams> teams = groupTeamsInDrawOrder(g.getId());
             // Ordered by id ≈ matchday/play order so the per-team "Last 5"
             // form ends up chronological.
             List<Matches> finished = matchesRepo.list(
@@ -369,6 +386,7 @@ public class GroupStageService {
                         m.getLiveStartedAt(),
                         m.getFirstHalfEndedAt(),
                         m.getSecondHalfStartedAt(),
+                        m.getLivePausedAt(),
                         m.getKickoffAt(),
                         m.getFouls1First(),
                         m.getFouls1Second(),

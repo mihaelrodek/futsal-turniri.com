@@ -17,6 +17,8 @@ public record GroupMatchDto(
         /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
         OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
+        /** Instant the live clock was paused; null while running. */
+        OffsetDateTime livePausedAt,
         /** Scheduled kickoff (set when the schedule is generated); null before. */
         OffsetDateTime kickoffAt,
         /** Accumulated team fouls per half (for the live-entry foul controls). */

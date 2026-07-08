@@ -80,45 +80,6 @@ function formatTime(iso?: string | null): string {
     }).format(d)
 }
 
-function teamShort(name: string | null | undefined): string {
-    if (!name) return "??"
-    const words = name.trim().split(/\s+/)
-    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
-    return name.slice(0, 2).toUpperCase()
-}
-
-// Deterministic colour per team name - used for the team badge gradient.
-const BADGE_COLORS = ["#dc2626", "#2563eb", "#7c3aed", "#f59e0b", "#10b981", "#06b6d4", "#ef4444", "#8b5cf6"]
-function badgeColor(name?: string | null): string {
-    if (!name) return BADGE_COLORS[0]
-    let h = 0
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-    return BADGE_COLORS[h % BADGE_COLORS.length]
-}
-
-function TeamBadge({ name, size = 44 }: { name: string | null | undefined; size?: number }) {
-    const c = badgeColor(name)
-    return (
-        <Flex
-            w={`${size}px`}
-            h={`${size}px`}
-            rounded="md"
-            align="center"
-            justify="center"
-            color="white"
-            fontFamily="heading"
-            fontSize={`${Math.round(size * 0.36)}px`}
-            fontWeight={800}
-            letterSpacing="-0.02em"
-            flexShrink={0}
-            bgImage={`linear-gradient(145deg, ${c}, ${c}cc)`}
-            css={{ boxShadow: `0 8px 24px ${c}80` }}
-        >
-            {teamShort(name)}
-        </Flex>
-    )
-}
-
 /**
  * Disabled: the old separate "tournament of the day" hero card. A featured
  * tournament is now promoted as the "GLAVNA UTAKMICA" live slot (here) and
@@ -293,16 +254,19 @@ function LiveMatchCard({
                   liveStartedAt: match.liveStartedAt,
                   firstHalfEndedAt: match.firstHalfEndedAt ?? null,
                   secondHalfStartedAt: match.secondHalfStartedAt ?? null,
+                  livePausedAt: match.livePausedAt ?? null,
                   halfLengthMin: match.halfLengthMin,
                   halfCount: match.halfCount,
               })
             : null
     const half =
-        livePhase === "HALFTIME" ? "PAUZA"
-            : livePhase === "SECOND_HALF" ? "2. POL."
-                : livePhase === "FULL_TIME" ? "KRAJ"
-                    : livePhase === "FIRST_HALF" ? "1. POL."
-                        : match.secondHalfStartedAt ? "2. POL." : "1. POL."
+        match.livePausedAt && (livePhase === "FIRST_HALF" || livePhase === "SECOND_HALF")
+            ? "PAUZA"
+            : livePhase === "HALFTIME" ? "PAUZA"
+                : livePhase === "SECOND_HALF" ? "2. POL."
+                    : livePhase === "FULL_TIME" ? "KRAJ"
+                        : livePhase === "FIRST_HALF" ? "1. POL."
+                            : match.secondHalfStartedAt ? "2. POL." : "1. POL."
     const [expanded, setExpanded] = useState(false)
     return (
         <Box
@@ -358,8 +322,10 @@ function LiveMatchCard({
                             liveStartedAt={match.liveStartedAt}
                             firstHalfEndedAt={match.firstHalfEndedAt ?? null}
                             secondHalfStartedAt={match.secondHalfStartedAt ?? null}
+                            livePausedAt={match.livePausedAt ?? null}
                             halfLengthMin={match.halfLengthMin}
                             halfCount={match.halfCount}
+                            size="md"
                         />
                     )}
                     <MonoLabel color="fg.muted">{half}</MonoLabel>
@@ -372,8 +338,8 @@ function LiveMatchCard({
             </Flex>
 
             {/* Scoreboard - tighter on mobile so the card stays one-column
-                 friendly while readable. Score scales 30px→42px, badges
-                 38px→44px, team names truncate. */}
+                 friendly while readable. Score scales 30px→42px; long team
+                 names wrap to two lines (no abbreviation badges). */}
             <Grid
                 templateColumns="1fr auto 1fr"
                 alignItems="center"
@@ -381,23 +347,16 @@ function LiveMatchCard({
                 px={{ base: "3", md: "5" }}
                 py={{ base: "3", md: "5" }}
             >
-                <Flex justify="flex-end" align="center" gap={{ base: "2", md: "3" }} minW="0">
-                    <Text
-                        fontSize={{ base: "13px", md: "16px" }}
-                        fontWeight={700}
-                        color="fg.ink"
-                        textAlign="right"
-                        truncate
-                    >
-                        {match.team1Name ?? "-"}
-                    </Text>
-                    <Box display={{ base: "none", sm: "block" }}>
-                        <TeamBadge name={match.team1Name} size={44} />
-                    </Box>
-                    <Box display={{ base: "block", sm: "none" }}>
-                        <TeamBadge name={match.team1Name} size={36} />
-                    </Box>
-                </Flex>
+                <Text
+                    fontSize={{ base: "13px", md: "16px" }}
+                    fontWeight={700}
+                    color="fg.ink"
+                    textAlign="right"
+                    lineClamp="2"
+                    minW="0"
+                >
+                    {match.team1Name ?? "-"}
+                </Text>
                 <Box textAlign="center" px={{ base: "0", md: "1" }}>
                     <Box
                         fontFamily="mono"
@@ -414,17 +373,16 @@ function LiveMatchCard({
                         {match.score2 ?? 0}
                     </Box>
                 </Box>
-                <Flex align="center" gap={{ base: "2", md: "3" }} minW="0">
-                    <Box display={{ base: "none", sm: "block" }}>
-                        <TeamBadge name={match.team2Name} size={44} />
-                    </Box>
-                    <Box display={{ base: "block", sm: "none" }}>
-                        <TeamBadge name={match.team2Name} size={36} />
-                    </Box>
-                    <Text fontSize={{ base: "13px", md: "16px" }} fontWeight={700} color="fg.ink" truncate>
-                        {match.team2Name ?? "-"}
-                    </Text>
-                </Flex>
+                <Text
+                    fontSize={{ base: "13px", md: "16px" }}
+                    fontWeight={700}
+                    color="fg.ink"
+                    textAlign="left"
+                    lineClamp="2"
+                    minW="0"
+                >
+                    {match.team2Name ?? "-"}
+                </Text>
             </Grid>
             </Box>
             {/* End of clickable region */}

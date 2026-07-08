@@ -23,6 +23,8 @@ export type BracketMatch = {
     firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
+    /** ISO timestamp the live clock was paused; null while it runs. */
+    livePausedAt?: string | null
     /** Scheduled kickoff; null until the schedule is generated/confirmed. A
      *  match can't be started live before it has one. */
     kickoffAt?: string | null

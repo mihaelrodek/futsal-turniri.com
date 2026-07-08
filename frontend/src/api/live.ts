@@ -26,6 +26,8 @@ export type LiveMatch = {
     firstHalfEndedAt?: string | null
     /** ISO timestamp the 2nd half was started; null until the organizer starts it. */
     secondHalfStartedAt?: string | null
+    /** ISO timestamp the live clock was paused; null while it runs. */
+    livePausedAt?: string | null
     /** Tournament half length (min) + half count - drives the scoreboard
      *  countdown so live widgets stop at the end of a half instead of
      *  free-running. Null until the schedule is generated. */

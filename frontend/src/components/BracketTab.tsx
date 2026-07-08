@@ -36,7 +36,9 @@ import {
     deleteMatchEvent,
     endFirstHalf,
     fetchMatchEvents,
+    pauseMatch,
     resetMatch,
+    resumeMatch,
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
@@ -44,7 +46,7 @@ import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
-import { DirectScoreEditor, FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
+import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
 import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { toPng } from "html-to-image"
 
@@ -1383,19 +1385,7 @@ export default function BracketTab({
                                 : { bottom: "16px", right: "16px", w: "260px" })}
                         >
                             <Box>
-                                <Text
-                                    fontFamily="'JetBrains Mono', ui-monospace, monospace"
-                                    fontSize="11px"
-                                    fontWeight="bold"
-                                    letterSpacing="wide"
-                                    color="fg.muted"
-                                    h="32px"
-                                    mb="16px"
-                                    display="flex"
-                                    alignItems="center"
-                                >
-                                    Za 3. mjesto
-                                </Text>
+                                
                                 <MatchCard
                                     match={bracket.thirdPlace}
                                     canEdit={canEdit}
@@ -1634,6 +1624,7 @@ function MatchCard({
                                     liveStartedAt={m.liveStartedAt}
                                     firstHalfEndedAt={m.firstHalfEndedAt}
                                     secondHalfStartedAt={m.secondHalfStartedAt}
+                                    livePausedAt={m.livePausedAt}
                                     halfLengthMin={halfLengthMin}
                                     halfCount={halfCount}
                                     showLabel
@@ -1945,6 +1936,16 @@ export function BracketLiveMatchDialog({
             ),
         [events],
     )
+    // Yellow-carded players - marked with 🟨 in the entry roster.
+    const yellowIds = useMemo(
+        () =>
+            new Set(
+                (events ?? [])
+                    .filter((e) => e.type === "YELLOW_CARD" && e.playerId != null)
+                    .map((e) => e.playerId as number),
+            ),
+        [events],
+    )
     const [score, setScore] = useState<{ s1: number; s2: number }>({
         s1: match.score1 ?? 0,
         s2: match.score2 ?? 0,
@@ -1965,10 +1966,14 @@ export function BracketLiveMatchDialog({
     const [secondHalfStartedAt, setSecondHalfStartedAt] = useState<string | null>(
         match.secondHalfStartedAt ?? null,
     )
+    const [livePausedAt, setLivePausedAt] = useState<string | null>(
+        match.livePausedAt ?? null,
+    )
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
     const [endingHalf, setEndingHalf] = useState(false)
     const [startingHalf, setStartingHalf] = useState(false)
+    const [pauseBusy, setPauseBusy] = useState(false)
 
     const [finishing, setFinishing] = useState(false)
     /** True once the organizer hits "Završi" on a level knockout match -
@@ -2016,9 +2021,39 @@ export function BracketLiveMatchDialog({
             if (found) {
                 setFirstHalfEndedAt(found.firstHalfEndedAt ?? null)
                 setSecondHalfStartedAt(found.secondHalfStartedAt ?? null)
+                setLivePausedAt(found.livePausedAt ?? null)
             }
         } catch {
             /* error toast surfaced by the http interceptor */
+        }
+    }
+
+    /** Pause / resume the live clock (optimistic flip + refetch). */
+    async function handlePause() {
+        setPauseBusy(true)
+        try {
+            await pauseMatch(uuid, matchId)
+            setLivePausedAt(new Date().toISOString())
+            await refreshMatchHalf()
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setPauseBusy(false)
+        }
+    }
+
+    async function handleResume() {
+        setPauseBusy(true)
+        try {
+            await resumeMatch(uuid, matchId)
+            setLivePausedAt(null)
+            await refreshMatchHalf()
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setPauseBusy(false)
         }
     }
 
@@ -2067,6 +2102,7 @@ export function BracketLiveMatchDialog({
                   liveStartedAt: match.liveStartedAt,
                   firstHalfEndedAt,
                   secondHalfStartedAt,
+                  livePausedAt,
                   halfLengthMin,
                   halfCount,
               })
@@ -2085,20 +2121,14 @@ export function BracketLiveMatchDialog({
     // final half of a free-running match (no clock → manual end is the norm).
     const finishIsPremature =
         isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
-    // Half label shown in the centre of the modal header (TIMER matches).
-    const halfLabel =
-        phase === "FIRST_HALF" ? "1. POLUVRIJEME"
-            : phase === "HALFTIME" ? "POLUVRIJEME"
-                : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                    : phase === "FULL_TIME" ? "KRAJ"
-                        : null
 
-    /** Recompute the displayed score from the event log. */
+    /** Recompute the displayed score from the event log. An OWN_GOAL's teamId
+     *  is the beneficiary, so both goal kinds count the same way. */
     function scoreFromEvents(list: MatchEventDto[]): { s1: number; s2: number } {
         let s1 = 0
         let s2 = 0
         for (const e of list) {
-            if (e.type !== "GOAL") continue
+            if (e.type !== "GOAL" && e.type !== "OWN_GOAL") continue
             if (e.teamId === match.team1Id) s1 += 1
             else if (e.teamId === match.team2Id) s2 += 1
         }
@@ -2227,6 +2257,13 @@ export function BracketLiveMatchDialog({
         }
     }
 
+    // A finished match entered as a plain result - no scorer/card events and
+    // not decided on penalties. Editing scorers / cards / fouls is meaningless
+    // then, so the dialog collapses to just the score editor + "Poništi
+    // utakmicu" (annuls the result so it can be re-entered).
+    const resultOnly =
+        isFinished && !decidedOnPenalties && events != null && events.length === 0
+
     return (
         <>
         <Dialog.Root
@@ -2242,84 +2279,43 @@ export function BracketLiveMatchDialog({
                     <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
                         <Dialog.Header pb="2">
                             <Dialog.Title flex="1">
-                                {/* Compact scoreboard header. Top strip mirrors the
-                                    match card: UŽIVO left, half centre, timer right. */}
-                                <VStack gap="1.5" align="stretch" w="full">
-                                    {!isFinished && (
-                                        <Box
-                                            display="grid"
-                                            gridTemplateColumns="1fr auto 1fr"
-                                            alignItems="center"
-                                            gap="2"
-                                            w="full"
-                                        >
-                                            <Box justifySelf="start">
-                                                <LivePill />
-                                            </Box>
-                                            <Box justifySelf="center" minW="0">
-                                                {halfLabel && (
-                                                    <Text
-                                                        fontFamily="mono"
-                                                        fontSize="2xs"
-                                                        fontWeight={800}
-                                                        letterSpacing="0.12em"
-                                                        textTransform="uppercase"
-                                                        color="fg.muted"
-                                                        whiteSpace="nowrap"
-                                                    >
-                                                        {halfLabel}
-                                                    </Text>
-                                                )}
-                                            </Box>
-                                            <Box justifySelf="end">
-                                                {isTimer && (
-                                                    <LiveClock
-                                                        liveStartedAt={match.liveStartedAt}
-                                                        firstHalfEndedAt={firstHalfEndedAt}
-                                                        secondHalfStartedAt={secondHalfStartedAt}
-                                                        halfLengthMin={halfLengthMin}
-                                                        halfCount={halfCount}
-                                                    />
-                                                )}
-                                            </Box>
-                                        </Box>
-                                    )}
-                                    <HStack justify="center" gap="3" align="center" w="full">
-                                        <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="right" truncate>
-                                            {match.team1Name ?? "-"}
-                                        </Text>
-                                        <Text
-                                            fontFamily="mono"
-                                            fontSize="2xl"
-                                            fontWeight={800}
-                                            fontVariantNumeric="tabular-nums"
-                                            color={isFinished ? "fg.ink" : "red.fg"}
-                                            flexShrink={0}
-                                        >
-                                            {score.s1} : {score.s2}
-                                        </Text>
-                                        <Text fontSize="md" fontWeight={700} color="fg.ink" flex="1" minW="0" textAlign="left" truncate>
-                                            {match.team2Name ?? "-"}
-                                        </Text>
-                                    </HStack>
-                                </VStack>
+                                {/* Big scoreboard header: pill + ⋯ menu, BIG timer
+                                    with pause/play, phase label, teams + score. */}
+                                <LiveConsoleHeader
+                                    team1Name={match.team1Name ?? null}
+                                    team2Name={match.team2Name ?? null}
+                                    score1={score.s1}
+                                    score2={score.s2}
+                                    isLive={!isFinished}
+                                    isFinished={isFinished}
+                                    isTimer={isTimer}
+                                    liveStartedAt={match.liveStartedAt}
+                                    firstHalfEndedAt={firstHalfEndedAt}
+                                    secondHalfStartedAt={secondHalfStartedAt}
+                                    livePausedAt={livePausedAt}
+                                    halfLengthMin={halfLengthMin}
+                                    halfCount={halfCount}
+                                    onPause={handlePause}
+                                    onResume={handleResume}
+                                    pauseBusy={pauseBusy}
+                                    belowTeams={
+                                        !shootout && !resultOnly ? (
+                                            <FoulControls
+                                                uuid={uuid}
+                                                matchId={matchId}
+                                                half={secondHalfStartedAt ? 2 : 1}
+                                                fouls1First={match.fouls1First}
+                                                fouls1Second={match.fouls1Second}
+                                                fouls2First={match.fouls2First}
+                                                fouls2Second={match.fouls2Second}
+                                            />
+                                        ) : undefined
+                                    }
+                                />
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body>
                             <VStack align="stretch" gap="2.5">
-                                {/* Accumulated team fouls - compact counters
-                                    right below the scoreboard (deveterac). */}
-                                {!shootout && (
-                                    <FoulControls
-                                        uuid={uuid}
-                                        matchId={matchId}
-                                        half={secondHalfStartedAt ? 2 : 1}
-                                        fouls1First={match.fouls1First}
-                                        fouls1Second={match.fouls1Second}
-                                        fouls2First={match.fouls2First}
-                                        fouls2Second={match.fouls2Second}
-                                    />
-                                )}
 
                                 {/* Penalty shootout - a level knockout match
                                     is decided here (guided, alternating kicks). */}
@@ -2377,10 +2373,11 @@ export function BracketLiveMatchDialog({
                                     </Box>
                                 )}
 
-                                {/* Direct final-score entry (no scorers) - for a
-                                    knockout match with no goal events yet. A
-                                    level score routes to the penalty shootout. */}
-                                {!shootout && !decidedOnPenalties && events != null && events.length === 0 && (
+                                {/* Direct score entry - only for a result-only
+                                    finished match (no scorers). A level score
+                                    routes to the penalty shootout. A live match
+                                    tracks goals below instead. */}
+                                {!shootout && resultOnly && (
                                     <DirectScoreEditor
                                         team1Name={match.team1Name ?? null}
                                         team2Name={match.team2Name ?? null}
@@ -2395,8 +2392,9 @@ export function BracketLiveMatchDialog({
                                     finished match too so "Uredi rezultat" can fix
                                     a wrong scorer. Locked when the match was
                                     decided on penalties (the regulation flow is
-                                    fixed) unless "penali se nisu igrali". */}
-                                {!shootout && !lockGoals && (
+                                    fixed) unless "penali se nisu igrali"; hidden
+                                    entirely for a result-only match. */}
+                                {!shootout && !lockGoals && !resultOnly && (
                                     <LiveGoalEntry
                                         uuid={uuid}
                                         matchId={matchId}
@@ -2408,10 +2406,12 @@ export function BracketLiveMatchDialog({
                                         liveStartedAt={match.liveStartedAt}
                                         firstHalfEndedAt={firstHalfEndedAt}
                                         secondHalfStartedAt={secondHalfStartedAt}
+                                        livePausedAt={livePausedAt}
                                         halfLengthMin={halfLengthMin}
                                         halfCount={halfCount}
                                         onAdded={refreshAfterMutation}
                                         sentOffPlayerIds={sentOffIds}
+                                        yellowCardedPlayerIds={yellowIds}
                                     />
                                 )}
 
@@ -2460,46 +2460,51 @@ export function BracketLiveMatchDialog({
                             </VStack>
                         </Dialog.Body>
                         <Dialog.Footer justifyContent="center">
-                            <HStack gap="2" justify="center" wrap="wrap">
-                                <Button variant="ghost" onClick={onClose}>
+                            {/* Zatvori · the one primary phase button · Poništi
+                                utakmicu. */}
+                            <HStack gap="2" justify="center" w="full" maxW="md" wrap="wrap">
+                                <Button variant="ghost" onClick={onClose} flexShrink={0}>
                                     Zatvori
                                 </Button>
                                 {!isFinished && !shootout && (
+                                    canEndFirstHalf ? (
+                                        <Button
+                                            colorPalette="red"
+                                            flex="1"
+                                            loading={endingHalf}
+                                            onClick={handleEndFirstHalf}
+                                        >
+                                            Završi 1. poluvrijeme
+                                        </Button>
+                                    ) : canStartSecondHalf ? (
+                                        <Button
+                                            colorPalette="red"
+                                            flex="1"
+                                            loading={startingHalf}
+                                            onClick={handleStartSecondHalf}
+                                        >
+                                            Započni 2. poluvrijeme
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            colorPalette="red"
+                                            flex="1"
+                                            loading={finishing}
+                                            onClick={requestFinish}
+                                        >
+                                            Završi
+                                        </Button>
+                                    )
+                                )}
+                                {!shootout && (
                                     <Button
-                                        variant="outline"
                                         colorPalette="red"
+                                        variant="outline"
+                                        flex="1"
                                         loading={resetting}
                                         onClick={confirmReset}
-                                        title="Vrati utakmicu na zakazano (npr. ako mjerač ne radi dobro)"
                                     >
-                                        Resetiraj
-                                    </Button>
-                                )}
-                                {!isFinished && !shootout && canEndFirstHalf && (
-                                    <Button
-                                        colorPalette="red"
-                                        loading={endingHalf}
-                                        onClick={handleEndFirstHalf}
-                                    >
-                                        Završi 1. poluvrijeme
-                                    </Button>
-                                )}
-                                {!isFinished && !shootout && canStartSecondHalf && (
-                                    <Button
-                                        colorPalette="red"
-                                        loading={startingHalf}
-                                        onClick={handleStartSecondHalf}
-                                    >
-                                        Započni 2. poluvrijeme
-                                    </Button>
-                                )}
-                                {!isFinished && !shootout && (
-                                    <Button
-                                        colorPalette="red"
-                                        loading={finishing}
-                                        onClick={requestFinish}
-                                    >
-                                        Završi
+                                        Poništi utakmicu
                                     </Button>
                                 )}
                             </HStack>
@@ -2512,9 +2517,9 @@ export function BracketLiveMatchDialog({
             open={confirmResetOpen}
             busy={resetting}
             danger
-            title="Resetirati utakmicu?"
-            description="Utakmica se vraća na 'zakazano' - brišu se rezultat, prekršaji i svi događaji. Kickoff termin ostaje."
-            confirmLabel="Da, resetiraj"
+            title="Poništiti utakmicu?"
+            description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
+            confirmLabel="Da, poništi"
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
         />

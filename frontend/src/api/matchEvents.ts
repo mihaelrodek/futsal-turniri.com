@@ -96,6 +96,38 @@ export async function startSecondHalf(
     )
 }
 
+/**
+ * PAUSE the live clock (ball far away, injury, ...). While paused every clock
+ * freezes at the pause instant - for the organizer AND all public viewers.
+ * Silent (no toast) - it's tapped mid-play.
+ */
+export async function pauseMatch(
+    tournamentUuid: string,
+    matchId: number,
+): Promise<void> {
+    await http.post(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/pause`,
+        undefined,
+        { silent: true } as any,
+    )
+}
+
+/**
+ * RESUME a paused live clock. The backend shifts the current half's start
+ * instant forward by the pause duration, so the clock continues from where
+ * it froze. Silent (no toast).
+ */
+export async function resumeMatch(
+    tournamentUuid: string,
+    matchId: number,
+): Promise<void> {
+    await http.post(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/resume`,
+        undefined,
+        { silent: true } as any,
+    )
+}
+
 /** List every event recorded for a match, in backend (chronological) order. */
 export async function fetchMatchEvents(
     tournamentUuid: string,

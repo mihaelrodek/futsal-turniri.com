@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Box, Flex, HStack, Spinner, Text, VStack, chakra } from "@chakra-ui/react"
 import { useNavigate, useParams } from "react-router-dom"
 import { FiClock, FiX } from "react-icons/fi"
-import { GiSoccerKick } from "react-icons/gi"
+import { GiSoccerBall, GiSoccerKick } from "react-icons/gi"
 import { fetchTournamentDetails } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches } from "../api/live"
@@ -320,36 +320,49 @@ export default function FullscreenTournamentPage() {
             </Box>
 
             <Flex direction="column" h="100vh" px={{ base: "6", md: "10" }} py={{ base: "6", md: "8" }}>
-                {/* Header - logo lockup (with futsal-turniri.com) top-left,
-                    tournament name centered. The `1fr auto 1fr` grid centres
-                    the name in the viewport regardless of the logo's width;
-                    the right column stays empty (the exit X floats above it). */}
+                {/* Header - logo lockup top-left, tournament name centred.
+                    Desktop: `1fr minmax(0,3fr) 1fr` centres the name and BOUNDS
+                    its column so a long name wraps to 2 lines (then ellipsis)
+                    instead of truncating on one. Mobile: the columns collapse
+                    to a single column (logo stacks above the name) and the logo
+                    shrinks to the mark only, so the big name never overlaps the
+                    wide "Futsal Turniri" wordmark or the floating exit X. */}
                 <Box
                     display="grid"
-                    gridTemplateColumns="1fr auto 1fr"
+                    gridTemplateColumns={{ base: "1fr", md: "1fr minmax(0, 3fr) 1fr" }}
                     alignItems="center"
-                    gap="4"
-                    mb={{ base: "6", md: "10" }}
+                    gap={{ base: "2", md: "4" }}
+                    mb={{ base: "5", md: "10" }}
+                    pr={{ base: "14", md: "0" }}
                 >
                     <Box justifySelf="start">
-                        <Logo
-                            variant={dark ? "dark" : "light"}
-                            size={64}
-                            asStatic
-                        />
+                        <Box display={{ base: "none", md: "block" }}>
+                            <Logo variant={dark ? "dark" : "light"} size={64} asStatic />
+                        </Box>
+                        <Box display={{ base: "block", md: "none" }}>
+                            <Logo variant={dark ? "dark" : "light"} size={40} asStatic markOnly />
+                        </Box>
                     </Box>
                     <Text
-                        fontSize={{ base: "28px", md: "44px", lg: "60px" }}
+                        // Tournament name is secondary to the score / clock, so
+                        // keep it modest - and shrink it further when it's long
+                        // (still wraps to 2 lines, then ellipsis).
+                        fontSize={
+                            (tournament.name?.length ?? 0) > 26
+                                ? { base: "16px", md: "24px", lg: "32px" }
+                                : { base: "20px", md: "32px", lg: "44px" }
+                        }
                         fontWeight={800}
                         letterSpacing="-0.03em"
                         color="var(--fs-fg)"
-                        lineHeight={1.05}
-                        textAlign="center"
-                        truncate
+                        lineHeight={1.1}
+                        textAlign={{ base: "left", md: "center" }}
+                        lineClamp="2"
+                        minW="0"
                     >
                         {tournament.name}
                     </Text>
-                    <Box />
+                    <Box display={{ base: "none", md: "block" }} />
                 </Box>
 
                 {/* Centerpiece: huge live scoreboard, or empty-state. Top-aligned
@@ -597,12 +610,18 @@ function BigScoreboard({
     )
 }
 
-/* ── Whole seconds since an ISO instant (>= 0). */
-function elapsedSecs(at: string | null | undefined): number {
+/* ── Whole seconds since an ISO instant (>= 0). While `pausedAt` is set the
+   elapsed time is measured up to the pause instant, freezing the display. */
+function elapsedSecs(at: string | null | undefined, pausedAt?: string | null): number {
     if (!at) return 0
     const s = new Date(at).getTime()
     if (!Number.isFinite(s)) return 0
-    const d = Date.now() - s
+    let now = Date.now()
+    if (pausedAt) {
+        const p = new Date(pausedAt).getTime()
+        if (Number.isFinite(p)) now = p
+    }
+    const d = now - s
     return d > 0 ? Math.floor(d / 1000) : 0
 }
 
@@ -623,12 +642,13 @@ function computeClock(
     halfLengthMin: number | null,
     halfCount: number | null,
 ): ClockInfo {
+    const paused = match.livePausedAt ?? null
     const isTimer =
         match.liveMode === "TIMER" && halfLengthMin != null && halfLengthMin > 0
     if (!isTimer) {
         return {
-            display: fmtClock(elapsedSecs(match.liveStartedAt)),
-            label: "",
+            display: fmtClock(elapsedSecs(match.liveStartedAt, paused)),
+            label: paused ? "PAUZA" : "",
             lastMinute: false,
         }
     }
@@ -638,22 +658,24 @@ function computeClock(
         liveStartedAt: match.liveStartedAt,
         firstHalfEndedAt: match.firstHalfEndedAt,
         secondHalfStartedAt: match.secondHalfStartedAt,
+        livePausedAt: paused,
         halfLengthMin,
         halfCount,
     })
-    // Counts UP the cumulative match minute, freezing at each half boundary.
+    // Counts UP the cumulative match minute, freezing at each half boundary
+    // (and at the pause instant while the organizer has the clock paused).
     switch (phase) {
         case "FIRST_HALF": {
-            const into = elapsedSecs(match.liveStartedAt)
+            const into = elapsedSecs(match.liveStartedAt, paused)
             const rem = halfSecs - into
-            return { display: fmtClock(Math.min(into, halfSecs)), label: "1. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
+            return { display: fmtClock(Math.min(into, halfSecs)), label: paused ? "PAUZA" : "1. POLUVRIJEME", lastMinute: !paused && rem > 0 && rem <= 60 }
         }
         case "HALFTIME":
             return { display: fmtClock(halfSecs), label: "POLUVRIJEME", lastMinute: false }
         case "SECOND_HALF": {
-            const into = elapsedSecs(match.secondHalfStartedAt)
+            const into = elapsedSecs(match.secondHalfStartedAt, paused)
             const rem = halfSecs - into
-            return { display: fmtClock(Math.min(halfSecs + into, 2 * halfSecs)), label: "2. POLUVRIJEME", lastMinute: rem > 0 && rem <= 60 }
+            return { display: fmtClock(Math.min(halfSecs + into, 2 * halfSecs)), label: paused ? "PAUZA" : "2. POLUVRIJEME", lastMinute: !paused && rem > 0 && rem <= 60 }
         }
         case "FULL_TIME":
         default:
@@ -730,8 +752,14 @@ function BigScorers({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tournamentUuid, matchId, pollMs, refreshSignal])
 
+    // Regular goals AND own goals (an own goal's teamId is the beneficiary,
+    // so it already lands on the correct side). Own goals carry a red-ball
+    // marker + "(ag)" so they read distinctly from a normal goal.
     const goals = useMemo(
-        () => events.filter((e) => e.type === "GOAL").sort((a, b) => a.minute - b.minute),
+        () =>
+            events
+                .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL")
+                .sort((a, b) => a.minute - b.minute),
         [events],
     )
 
@@ -776,33 +804,51 @@ function ScorerColumn({
 }) {
     return (
         <VStack flex="1" minW="0" maxW="46%" gap="1" align={align === "right" ? "flex-end" : "flex-start"}>
-            {goals.map((g) => (
-                <Text
-                    key={g.id}
-                    fontSize="clamp(14px, 2vh, 26px)"
-                    fontWeight={600}
-                    color="var(--fs-fg)"
-                    textAlign={align}
-                    truncate
-                    maxW="full"
-                >
-                    {align === "right" ? (
-                        <>
-                            {g.playerName}{" "}
-                            <chakra.span color="var(--fs-fg-subtle)" fontWeight={800}>
-                                {g.minute}&apos;
-                            </chakra.span>
-                        </>
-                    ) : (
-                        <>
-                            <chakra.span color="var(--fs-fg-subtle)" fontWeight={800}>
-                                {g.minute}&apos;
-                            </chakra.span>{" "}
-                            {g.playerName}
-                        </>
-                    )}
-                </Text>
-            ))}
+            {goals.map((g) => {
+                const own = g.type === "OWN_GOAL"
+                // Own goal: name of the player who put it in his own net + "(ag)"
+                // (or just "Autogol" when anonymous); a red ball marks it.
+                const name = own
+                    ? g.playerName != null ? `${g.playerName} (ag)` : "Autogol"
+                    : g.playerName
+                const ball = own ? (
+                    <chakra.span display="inline-flex" flexShrink={0} css={{ color: "#ff5c4e" }}>
+                        <GiSoccerBall size="1em" />
+                    </chakra.span>
+                ) : null
+                const minuteEl = (
+                    <chakra.span color="var(--fs-fg-subtle)" fontWeight={800} flexShrink={0}>
+                        {g.minute}&apos;
+                    </chakra.span>
+                )
+                return (
+                    <Flex
+                        key={g.id}
+                        align="center"
+                        gap="1.5"
+                        maxW="full"
+                        minW="0"
+                        justify={align === "right" ? "flex-end" : "flex-start"}
+                        fontSize="clamp(14px, 2vh, 26px)"
+                        fontWeight={600}
+                        color="var(--fs-fg)"
+                    >
+                        {align === "right" ? (
+                            <>
+                                {ball}
+                                <chakra.span truncate minW="0">{name}</chakra.span>
+                                {minuteEl}
+                            </>
+                        ) : (
+                            <>
+                                {minuteEl}
+                                <chakra.span truncate minW="0">{name}</chakra.span>
+                                {ball}
+                            </>
+                        )}
+                    </Flex>
+                )
+            })}
         </VStack>
     )
 }

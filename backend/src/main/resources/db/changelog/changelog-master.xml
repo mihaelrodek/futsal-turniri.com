@@ -41,4 +41,6 @@
     <include file="db/changelog/tournament_game_system_website.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/player_is_demo.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_best_third.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_pause.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/teams_draw_position.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

@@ -1535,6 +1535,7 @@ public class TournamentController {
                             m.getLiveStartedAt(),
                             m.getFirstHalfEndedAt(),
                             m.getSecondHalfStartedAt(),
+                            m.getLivePausedAt(),
                             t != null ? t.getHalfLengthMin() : null,
                             t != null ? t.getHalfCount() : null,
                             m.getFouls1First(),
@@ -1632,24 +1633,34 @@ public class TournamentController {
     }
 
     /**
-     * Recompute {@code score1} / {@code score2} of a match from its GOAL
-     * events. Each goal counts to the side whose team the scorer belongs
-     * to: scorer's team equals the match's {@code team1} → {@code score1},
-     * otherwise {@code score2}. Card events are ignored. Called after every
-     * goal insert/delete so the score always mirrors the timeline.
+     * Recompute {@code score1} / {@code score2} of a match from its GOAL +
+     * OWN_GOAL events. A regular goal counts to the side whose team the
+     * scorer belongs to (anonymous goals carry the side on the event's own
+     * team). An OWN_GOAL always stores the BENEFICIARY in the event's team
+     * column, so it counts to that side directly. Card events are ignored.
+     * Called after every goal insert/delete so the score mirrors the timeline.
      */
     private void recomputeScoreFromGoals(Matches match) {
         Long team1Id = match.getTeam1() != null ? match.getTeam1().getId() : null;
         int score1 = 0;
         int score2 = 0;
-        for (MatchEvent ev : matchEventRepo.findByMatch_IdAndType(match.getId(), MatchEventType.GOAL)) {
-            Player scorer = ev.getPlayer();
-            // Named scorer → his team; anonymous goal → the team stored on the
-            // event itself (so privacy goals still count for the right side).
-            Long scorerTeamId = (scorer != null && scorer.getTeam() != null)
-                    ? scorer.getTeam().getId()
-                    : (ev.getTeam() != null ? ev.getTeam().getId() : null);
-            if (team1Id != null && Objects.equals(scorerTeamId, team1Id)) {
+        List<MatchEvent> goals = new ArrayList<>(
+                matchEventRepo.findByMatch_IdAndType(match.getId(), MatchEventType.GOAL));
+        goals.addAll(matchEventRepo.findByMatch_IdAndType(match.getId(), MatchEventType.OWN_GOAL));
+        for (MatchEvent ev : goals) {
+            final Long countsForTeamId;
+            if (ev.getType() == MatchEventType.OWN_GOAL) {
+                // Own goal: the event's team IS the beneficiary.
+                countsForTeamId = ev.getTeam() != null ? ev.getTeam().getId() : null;
+            } else {
+                Player scorer = ev.getPlayer();
+                // Named scorer → his team; anonymous goal → the team stored on
+                // the event itself (so privacy goals count for the right side).
+                countsForTeamId = (scorer != null && scorer.getTeam() != null)
+                        ? scorer.getTeam().getId()
+                        : (ev.getTeam() != null ? ev.getTeam().getId() : null);
+            }
+            if (team1Id != null && Objects.equals(countsForTeamId, team1Id)) {
                 score1++;
             } else {
                 score2++;
@@ -1689,6 +1700,7 @@ public class TournamentController {
         match.setStatus(MatchStatus.LIVE);
         match.setLiveMode(mode);
         match.setLiveStartedAt(java.time.OffsetDateTime.now());
+        match.setLivePausedAt(null);
 
         // Notify everyone who tapped the bell on this specific match that it
         // just kicked off. Fire-and-forget - a flaky push must not abort the
@@ -1728,6 +1740,7 @@ public class TournamentController {
         assertCanEdit(match.getTournament());
 
         match.setStatus(MatchStatus.FINISHED);
+        match.setLivePausedAt(null);
         // No goals recorded → an explicit 0:0 so the result counts everywhere.
         if (match.getScore1() == null) match.setScore1(0);
         if (match.getScore2() == null) match.setScore2(0);
@@ -1778,6 +1791,7 @@ public class TournamentController {
         match.setLiveStartedAt(null);
         match.setFirstHalfEndedAt(null);
         match.setSecondHalfStartedAt(null);
+        match.setLivePausedAt(null);
         match.setScore1(null);
         match.setScore2(null);
         match.setPenalties1(null);
@@ -1888,6 +1902,8 @@ public class TournamentController {
         if (match.getFirstHalfEndedAt() == null) {
             match.setFirstHalfEndedAt(java.time.OffsetDateTime.now());
         }
+        // Half-time IS the pause - a live-clock pause can't outlive the half.
+        match.setLivePausedAt(null);
 
         // Fan out the half-time whistle to bell subscribers.
         Tournaments t = match.getTournament();
@@ -1930,6 +1946,8 @@ public class TournamentController {
             match.setFirstHalfEndedAt(java.time.OffsetDateTime.now());
         }
         match.setSecondHalfStartedAt(java.time.OffsetDateTime.now());
+        // A pause can't survive a half transition - the fresh half starts NOW.
+        match.setLivePausedAt(null);
 
         // Fan out the second-half kickoff to bell subscribers.
         Tournaments t = match.getTournament();
@@ -1942,6 +1960,72 @@ public class TournamentController {
             );
         }
 
+        notifyLive(match);
+        return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * PAUSE the live clock (ball far away, injury, ...). Organizer-or-admin
+     * only; the match must be LIVE. Idempotent - pausing an already-paused
+     * match is a no-op. While paused every clock renders the elapsed time up
+     * to the pause instant, so the display freezes for all viewers.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/pause")
+    @Authenticated
+    @Transactional
+    public Response pauseMatch(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+
+        if (match.getStatus() != MatchStatus.LIVE) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Match is not LIVE").build();
+        }
+        if (match.getLivePausedAt() == null) {
+            match.setLivePausedAt(java.time.OffsetDateTime.now());
+        }
+        notifyLive(match);
+        return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * RESUME a paused live clock. Organizer-or-admin only; the match must be
+     * LIVE. Idempotent - resuming a non-paused match is a no-op. The trick:
+     * the current half's start instant is shifted FORWARD by the pause
+     * duration and the pause marker cleared, so every clock computation
+     * ({@code now - halfStart}) keeps working with zero special cases.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/resume")
+    @Authenticated
+    @Transactional
+    public Response resumeMatch(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+
+        if (match.getStatus() != MatchStatus.LIVE) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Match is not LIVE").build();
+        }
+        var pausedAt = match.getLivePausedAt();
+        if (pausedAt != null) {
+            var pause = java.time.Duration.between(pausedAt, java.time.OffsetDateTime.now());
+            if (!pause.isNegative()) {
+                if (match.getSecondHalfStartedAt() != null) {
+                    match.setSecondHalfStartedAt(match.getSecondHalfStartedAt().plus(pause));
+                } else if (match.getLiveStartedAt() != null) {
+                    match.setLiveStartedAt(match.getLiveStartedAt().plus(pause));
+                }
+            }
+            match.setLivePausedAt(null);
+        }
         notifyLive(match);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
@@ -1996,19 +2080,14 @@ public class TournamentController {
             return Response.status(Response.Status.BAD_REQUEST).entity("minute is required").build();
         }
 
-        boolean isPenalty = type == MatchEventType.PENALTY_GOAL
-                || type == MatchEventType.PENALTY_MISSED;
-        // A penalty kick OR a goal may be recorded without naming the scorer
-        // (anonymous scorer - privacy); then the side comes from teamId. The
-        // goal still counts for that team. Cards always require a player.
-        boolean teamOnlyAllowed = isPenalty || type == MatchEventType.GOAL;
-
+        // EVERY event type may now be recorded without naming the player
+        // (anonymous scorer / carded player - privacy or an unknown player);
+        // then the side comes from teamId. An anonymous red card can't send
+        // anyone off (the sent-off check is per playerId) - it's a record on
+        // the timeline only, exactly the intended semantics.
         Player player = null;
         Teams eventTeam = null;
         if (body.playerId() == null) {
-            if (!teamOnlyAllowed) {
-                return Response.status(Response.Status.BAD_REQUEST).entity("playerId is required").build();
-            }
             if (body.teamId() == null) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("teamId is required").build();
             }
@@ -2028,6 +2107,23 @@ public class TournamentController {
             if (matchEventRepo.playerSentOff(match.getId(), player.getId())) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("PLAYER_SENT_OFF").build();
             }
+        }
+
+        // Own goal: the request names the COMMITTING side (the player who put
+        // it into his own net, or his team when anonymous); the score goes to
+        // the opponent. Resolve the beneficiary here and store it on the
+        // event's team column - the recompute and the DTO both read it there.
+        Teams ownGoalBeneficiary = null;
+        if (type == MatchEventType.OWN_GOAL) {
+            Long committingTeamId = player != null
+                    ? player.getTeam().getId()
+                    : eventTeam.getId();
+            Teams t1 = match.getTeam1();
+            Teams t2 = match.getTeam2();
+            if (t1 == null || t2 == null) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("TEAMS_NOT_SET").build();
+            }
+            ownGoalBeneficiary = Objects.equals(committingTeamId, t1.getId()) ? t2 : t1;
         }
 
         Player assist = null;
@@ -2052,14 +2148,17 @@ public class TournamentController {
         event.setMatch(match);
         event.setType(type);
         event.setPlayer(player);
-        // Team only stored for an unattributed kick; otherwise derived from the player.
-        event.setTeam(player == null ? eventTeam : null);
+        // Own goal → the beneficiary; otherwise team is only stored for an
+        // unattributed event and derived from the player when one is named.
+        event.setTeam(type == MatchEventType.OWN_GOAL
+                ? ownGoalBeneficiary
+                : (player == null ? eventTeam : null));
         event.setMinute(body.minute());
         event.setAssistPlayer(assist);
         matchEventRepo.persist(event);
 
-        // A goal changes the score; cards never do.
-        if (type == MatchEventType.GOAL) {
+        // A goal (own or regular) changes the score; cards never do.
+        if (type == MatchEventType.GOAL || type == MatchEventType.OWN_GOAL) {
             recomputeScoreFromGoals(match);
 
             // Fan out to every user that opted into this tournament's
@@ -2107,7 +2206,8 @@ public class TournamentController {
             throw new NotFoundException("Match event not found");
         }
 
-        boolean wasGoal = event.getType() == MatchEventType.GOAL;
+        boolean wasGoal = event.getType() == MatchEventType.GOAL
+                || event.getType() == MatchEventType.OWN_GOAL;
         matchEventRepo.delete(event);
 
         if (wasGoal) {

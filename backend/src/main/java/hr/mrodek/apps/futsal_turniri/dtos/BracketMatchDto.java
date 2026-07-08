@@ -25,6 +25,8 @@ public record BracketMatchDto(
         /** Instant the 1st half was ended (match in half-time "pauza"); null otherwise. */
         OffsetDateTime firstHalfEndedAt,
         OffsetDateTime secondHalfStartedAt,
+        /** Instant the live clock was paused; null while running. */
+        OffsetDateTime livePausedAt,
         /** Scheduled kickoff - null until the schedule is generated/confirmed.
          *  A match can't be started live before it has one. */
         OffsetDateTime kickoffAt,

@@ -18,12 +18,20 @@ export type MatchStatus = "SCHEDULED" | "LIVE" | "FINISHED"
  */
 export type MatchLiveMode = "TIMER" | "SIMPLE"
 
-/** The kind of thing that happened during a live match. PENALTY_GOAL /
- *  PENALTY_MISSED record an individual knockout penalty-shootout kick (who
- *  shot + whether it scored); they never affect the match score or scorer
- *  stats - the shootout total lives in the match's penalties1/2. */
+/** The kind of thing that happened during a live match.
+ *
+ *  OWN_GOAL is a goal into one's OWN net: the event's `teamId` is the
+ *  BENEFICIARY (the side whose score went up); `playerId` - when named -
+ *  belongs to the other team. Own goals count in the score but never in
+ *  the scorer stats.
+ *
+ *  PENALTY_GOAL / PENALTY_MISSED record an individual knockout
+ *  penalty-shootout kick (who shot + whether it scored); they never affect
+ *  the match score or scorer stats - the shootout total lives in the
+ *  match's penalties1/2. */
 export type MatchEventType =
     | "GOAL"
+    | "OWN_GOAL"
     | "YELLOW_CARD"
     | "RED_CARD"
     | "PENALTY_GOAL"
@@ -33,10 +41,12 @@ export type MatchEventType =
 export type MatchEventDto = {
     id: number
     type: MatchEventType
-    /** Null for an unattributed penalty kick (taker not named). */
+    /** Null for an unattributed event (player not named). */
     playerId: number | null
-    /** Null for an unattributed penalty kick (taker not named). */
+    /** Null for an unattributed event (player not named). */
     playerName: string | null
+    /** The side the event belongs to on the timeline. For OWN_GOAL this is
+     *  the beneficiary - the side whose score went up. */
     teamId: number
     minute: number
     /** Set only for GOAL events that had an assist; null otherwise. */
@@ -47,10 +57,13 @@ export type MatchEventDto = {
 /** Request body for creating a new match event. */
 export type CreateMatchEventRequest = {
     type: MatchEventType
-    /** Required for goals/cards; may be null for an unattributed penalty kick. */
+    /** May be null for any event recorded without naming the player
+     *  (unknown scorer / carded player / penalty taker). For OWN_GOAL a
+     *  named player is the one who put it into his OWN net. */
     playerId: number | null
-    /** Required (instead of playerId) when recording a penalty kick with no
-     *  named taker - names the side. Ignored when playerId is set. */
+    /** Required (instead of playerId) when recording an event with no named
+     *  player - names the side. For OWN_GOAL this is the COMMITTING team
+     *  (the goal counts for the opponent). Ignored when playerId is set. */
     teamId?: number | null
     minute: number
     /** Optional - only meaningful for GOAL events. */
