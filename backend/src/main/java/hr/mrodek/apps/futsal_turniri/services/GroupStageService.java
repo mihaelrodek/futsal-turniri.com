@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.DrawRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupMatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupStandingRowDto;
+import hr.mrodek.apps.futsal_turniri.dtos.ThirdPlacedTableDto;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
@@ -81,6 +82,13 @@ public class GroupStageService {
                 throw new BadRequestException("At least 1 team must advance per group");
             }
             t.setAdvancePerGroup(req.advancePerGroup());
+        }
+        // How many best next-placed ("third") teams also advance. Clamp to
+        // [0, groupCount] - at most one such team can come from each group.
+        if (req != null && req.bestThirdCount() != null) {
+            t.setBestThirdCount(Math.max(0, Math.min(req.bestThirdCount(), groupCount)));
+        } else {
+            t.setBestThirdCount(0);
         }
 
         // Registered teams = everything except still-pending self-registrations.
@@ -274,6 +282,36 @@ public class GroupStageService {
         return result;
     }
 
+    /**
+     * In-memory group fixtures in single-court play order (round-robin per
+     * group, interleaved across groups A, B, C…), WITHOUT persisting anything.
+     * Used by the multi-day schedule preview so it can show/count group matches
+     * before they're generated. Deterministic and identical to the order
+     * {@code generateFixtures} + {@code orderForSingleCourt} produce, so the
+     * preview lines up with the eventual generated schedule. Each element is a
+     * {@code Teams[]{team1, team2}} pair (both carry their group).
+     */
+    public List<Teams[]> plannedGroupFixtures(Tournaments t) {
+        List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(t.getId());
+        List<List<Teams[]>> perGroup = new ArrayList<>();
+        for (Groups g : groups) {
+            List<Teams> gt = teamsRepo.list("group.id", g.getId());
+            List<Teams[]> flat = new ArrayList<>();
+            for (List<Teams[]> round : roundRobin(gt)) flat.addAll(round);
+            perGroup.add(flat);
+        }
+        // Interleave: one match from each group per cycle (A1, B1, C1, A2, …).
+        List<Teams[]> result = new ArrayList<>();
+        boolean any = true;
+        for (int idx = 0; any; idx++) {
+            any = false;
+            for (List<Teams[]> gp : perGroup) {
+                if (idx < gp.size()) { result.add(gp.get(idx)); any = true; }
+            }
+        }
+        return result;
+    }
+
     private static String groupLabel(int ordinal) {
         // A..Z, then AA, AB, … for the (very unlikely) >26 groups case.
         StringBuilder sb = new StringBuilder();
@@ -340,6 +378,41 @@ public class GroupStageService {
             out.add(new GroupDto(g.getId(), g.getName(), g.getOrdinal(), dto, matchDtos));
         }
         return out;
+    }
+
+    /**
+     * Cross-group ranking of the best next-placed ("third-placed") teams for
+     * the {@code bestThirdCount} feature. Takes the team at index
+     * {@code advancePerGroup} from every group (the first non-qualifying spot),
+     * ranks them by points → goal difference → goals scored, and flags the top
+     * {@code bestThirdCount} as qualifying. Rows are empty when the feature is
+     * off or no group has a team in that tier yet.
+     */
+    @Transactional
+    public ThirdPlacedTableDto thirdPlacedTable(Tournaments t) {
+        int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
+        int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+
+        List<GroupDto> groups = standings(t.getId());
+        // Pair each tier team with its group label, then rank across groups.
+        record Tier(GroupStandingRowDto row, String group) {}
+        List<Tier> tier = new ArrayList<>();
+        for (GroupDto g : groups) {
+            if (g.standings().size() > adv) {
+                tier.add(new Tier(g.standings().get(adv), g.name()));
+            }
+        }
+        tier.sort(Comparator
+                .comparingInt((Tier x) -> x.row().points()).reversed()
+                .thenComparing(Comparator.comparingInt((Tier x) -> x.row().goalDiff()).reversed())
+                .thenComparing(Comparator.comparingInt((Tier x) -> x.row().goalsFor()).reversed()));
+
+        List<ThirdPlacedTableDto.Row> rows = new ArrayList<>();
+        for (int i = 0; i < tier.size(); i++) {
+            rows.add(new ThirdPlacedTableDto.Row(
+                    i + 1, i < bestThird, tier.get(i).group(), tier.get(i).row()));
+        }
+        return new ThirdPlacedTableDto(adv, bestThird, rows);
     }
 
     /**
@@ -424,11 +497,18 @@ public class GroupStageService {
     }
 
     /**
-     * Rank the rows in place. Primary key is points; teams level on points
-     * are ordered by the UEFA head-to-head rule - a mini-table built from
-     * only the matches among the tied teams (H2H points, then H2H goal
-     * difference, then H2H goals scored) - falling back to overall goal
-     * difference and goals scored.
+     * Rank the rows in place. Primary key is points; teams level on points are
+     * ordered by the "closed circle" rule the product owner specified:
+     *   1. head-to-head POINTS among the tied teams (who beat whom), and
+     *      crucially the circle is RE-COMPUTED for each shrunken sub-group -
+     *      once a team separates out on H2H points, the remaining still-tied
+     *      teams are re-ranked by the head-to-head among ONLY themselves;
+     *   2. then OVERALL goal difference;
+     *   3. then OVERALL goals scored.
+     * Note: only head-to-head POINTS are used inside the circle - NOT H2H goal
+     * difference or H2H goals - so once the mutual matches are all level on
+     * points, the overall goal difference decides (e.g. three teams that drew
+     * each other are ordered by their overall GD, then overall goals).
      */
     private void rankRows(List<Row> rows, List<Matches> finished) {
         rows.sort(Comparator.comparingInt(Row::points).reversed());
@@ -438,24 +518,53 @@ public class GroupStageService {
             int j = i + 1;
             while (j < rows.size() && rows.get(j).points() == rows.get(i).points()) j++;
             if (j - i > 1) {
-                List<Row> run = rows.subList(i, j);
-                Set<Long> ids = run.stream().map(r -> r.teamId).collect(Collectors.toSet());
-                Map<Long, int[]> h2h = headToHead(ids, finished); // id -> [pts, gd, gf]
-                run.sort((a, b) -> {
-                    int[] ha = h2h.get(a.teamId), hb = h2h.get(b.teamId);
-                    int c = Integer.compare(hb[0], ha[0]);          // H2H points
-                    if (c != 0) return c;
-                    c = Integer.compare(hb[1], ha[1]);              // H2H goal diff
-                    if (c != 0) return c;
-                    c = Integer.compare(hb[2], ha[2]);              // H2H goals for
-                    if (c != 0) return c;
-                    c = Integer.compare(b.goalDiff(), a.goalDiff()); // overall goal diff
-                    if (c != 0) return c;
-                    return Integer.compare(b.goalsFor, a.goalsFor);  // overall goals for
-                });
+                List<Row> ordered = breakTie(new ArrayList<>(rows.subList(i, j)), finished);
+                for (int k = 0; k < ordered.size(); k++) rows.set(i + k, ordered.get(k));
             }
             i = j;
         }
+    }
+
+    /**
+     * Order teams level on points using the closed-circle head-to-head POINTS
+     * rule, recomputing the mini-table for each shrunken circle. Teams that
+     * stay level on head-to-head points fall back to OVERALL goal difference,
+     * then OVERALL goals scored.
+     */
+    private List<Row> breakTie(List<Row> tied, List<Matches> finished) {
+        if (tied.size() <= 1) return tied;
+
+        Set<Long> ids = tied.stream().map(r -> r.teamId).collect(Collectors.toSet());
+        // [pts, gd, gf] - only the head-to-head POINTS (index 0) are used here.
+        Map<Long, int[]> h2h = headToHead(ids, finished); // recomputed for THIS circle only
+
+        // Order by head-to-head points within this (possibly shrunken) circle.
+        tied.sort((a, b) -> Integer.compare(h2h.get(b.teamId)[0], h2h.get(a.teamId)[0]));
+
+        // Maximal blocks equal on H2H points; recurse on a proper sub-circle,
+        // otherwise fall back to overall goal difference then overall goals.
+        List<Row> result = new ArrayList<>();
+        int k = 0;
+        while (k < tied.size()) {
+            int l = k + 1;
+            int pk = h2h.get(tied.get(k).teamId)[0];
+            while (l < tied.size() && h2h.get(tied.get(l).teamId)[0] == pk) l++;
+            List<Row> block = new ArrayList<>(tied.subList(k, l));
+            if (block.size() == 1) {
+                result.add(block.get(0));
+            } else if (block.size() == tied.size()) {
+                // H2H points couldn't split this circle → overall GD then GF.
+                block.sort(Comparator
+                        .comparingInt(Row::goalDiff).reversed()
+                        .thenComparing(Comparator.comparingInt((Row r) -> r.goalsFor).reversed()));
+                result.addAll(block);
+            } else {
+                // A proper sub-circle → recompute head-to-head points among just these.
+                result.addAll(breakTie(block, finished));
+            }
+            k = l;
+        }
+        return result;
     }
 
     /** Head-to-head mini-table among the given team ids: id → [points, gd, gf]. */

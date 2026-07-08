@@ -11,10 +11,12 @@ import {
     startSecondHalf,
 } from "../api/matchEvents"
 import { recordKnockoutResult } from "../api/bracket"
+import { recordGroupResult } from "../api/groups"
 import { fetchSchedule } from "../api/schedule"
 import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
 import { ConfirmDialog } from "../ui/primitives"
 import {
+    DirectScoreEditor,
     FoulControls,
     LiveClock,
     LiveEventRow,
@@ -117,6 +119,10 @@ export default function LiveMatchPanel({
     const [resetting, setResetting] = useState(false)
     const [shootout, setShootout] = useState(false)
     const [deletingId, setDeletingId] = useState<number | null>(null)
+    // Direct final-score entry (no scorers). `pendingScore` carries an entered
+    // score into the penalty shootout for a level knockout result.
+    const [savingScore, setSavingScore] = useState(false)
+    const [pendingScore, setPendingScore] = useState<{ s1: number; s2: number } | null>(null)
 
     const sentOffIds = useMemo(
         () =>
@@ -286,17 +292,45 @@ export default function LiveMatchPanel({
     async function confirmShootout(pen1: number, pen2: number) {
         setFinishing(true)
         try {
+            // Use the directly-entered score when the shootout was reached from
+            // the direct-score editor; otherwise the event-derived score.
+            const base = pendingScore ?? score
             await recordKnockoutResult(uuid, matchId, {
-                score1: score.s1,
-                score2: score.s2,
+                score1: base.s1,
+                score2: base.s2,
                 penalties1: pen1,
                 penalties2: pen2,
             })
+            setPendingScore(null)
             await onChanged()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
             setFinishing(false)
+        }
+    }
+
+    /** Save a final score directly (no scorers). Group -> recordGroupResult;
+     *  knockout -> recordKnockoutResult (a level knockout hands off to the
+     *  penalty shootout). */
+    async function handleSaveDirectScore(s1: number, s2: number) {
+        if (isKnockout && s1 === s2) {
+            setPendingScore({ s1, s2 })
+            setShootout(true)
+            return
+        }
+        setSavingScore(true)
+        try {
+            if (isKnockout) {
+                await recordKnockoutResult(uuid, matchId, { score1: s1, score2: s2 })
+            } else {
+                await recordGroupResult(uuid, matchId, s1, s2)
+            }
+            await refreshAfterMutation()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setSavingScore(false)
         }
     }
 
@@ -377,6 +411,22 @@ export default function LiveMatchPanel({
                         </Button>
                     </HStack>
                 </VStack>
+            )}
+
+            {/* Direct final-score entry - available whenever the match isn't
+                being scored live and has no goal events yet, so the organizer
+                can just type the result (0:0 default) instead of going live. */}
+            {!isLive && events != null && events.length === 0 && !shootout && (
+                <Box mb="3">
+                    <DirectScoreEditor
+                        team1Name={match.team1Name}
+                        team2Name={match.team2Name}
+                        initialS1={match.score1 ?? 0}
+                        initialS2={match.score2 ?? 0}
+                        saving={savingScore}
+                        onSave={handleSaveDirectScore}
+                    />
+                </Box>
             )}
 
             {/* LIVE controls (or penalty shootout) */}

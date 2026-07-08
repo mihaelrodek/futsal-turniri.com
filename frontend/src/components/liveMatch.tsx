@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiClock, FiEdit2, FiPlay, FiRotateCcw, FiTrash2 } from "react-icons/fi"
+import { FiClock, FiEdit2, FiMinus, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
 import { addMatchEvent, adjustMatchFouls, deleteMatchEvent, fetchMatchEvents, resetMatchFouls } from "../api/matchEvents"
 import { ConfirmDialog } from "../ui/primitives"
 import type { MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
@@ -273,6 +273,107 @@ export function StartLivePopover({
                 </Menu.Positioner>
             </Portal>
         </Menu.Root>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   DirectScoreEditor - set/fix a match's FINAL SCORE directly, without
+   attributing goals to individual scorers. Shown in the live/zapisnik dialogs
+   for a match that has no goal events yet (a "result-only" match), so the
+   organizer can just type the score instead of tapping in every goal. API is
+   passed in via `onSave` so this component stays backend-agnostic (group ->
+   recordGroupResult, knockout -> recordKnockoutResult). Defaults to 0 : 0.
+   ────────────────────────────────────────────────────────────────────────── */
+export function DirectScoreEditor({
+    team1Name,
+    team2Name,
+    initialS1,
+    initialS2,
+    saving,
+    onSave,
+}: {
+    team1Name: string | null
+    team2Name: string | null
+    initialS1: number
+    initialS2: number
+    saving?: boolean
+    onSave: (s1: number, s2: number) => void
+}) {
+    const [s1, setS1] = useState<number>(Math.max(0, initialS1 ?? 0))
+    const [s2, setS2] = useState<number>(Math.max(0, initialS2 ?? 0))
+
+    const Stepper = ({
+        name,
+        value,
+        set,
+    }: {
+        name: string | null
+        value: number
+        set: (n: number) => void
+    }) => (
+        <VStack gap="1.5" flex="1" minW="0">
+            <Text fontSize="12px" fontWeight={700} color="fg.ink" truncate maxW="full" title={name ?? "-"}>
+                {name ?? "-"}
+            </Text>
+            <HStack gap="1.5">
+                <IconButton
+                    aria-label={`Smanji ${name ?? ""}`}
+                    size="xs"
+                    variant="outline"
+                    disabled={value <= 0 || saving}
+                    onClick={() => set(Math.max(0, value - 1))}
+                >
+                    <FiMinus />
+                </IconButton>
+                <Text
+                    fontFamily="mono"
+                    fontSize="xl"
+                    fontWeight={800}
+                    fontVariantNumeric="tabular-nums"
+                    minW="24px"
+                    textAlign="center"
+                >
+                    {value}
+                </Text>
+                <IconButton
+                    aria-label={`Povećaj ${name ?? ""}`}
+                    size="xs"
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => set(value + 1)}
+                >
+                    <FiPlus />
+                </IconButton>
+            </HStack>
+        </VStack>
+    )
+
+    return (
+        <Box borderWidth="1px" borderColor="border" rounded="lg" p="3" bg="bg.surfaceTint">
+            <Text
+                fontSize="2xs"
+                fontWeight="semibold"
+                letterSpacing="wider"
+                textTransform="uppercase"
+                color="fg.muted"
+                textAlign="center"
+                mb="2"
+            >
+                Unesi rezultat (bez strijelaca)
+            </Text>
+            <HStack align="center" gap="2">
+                <Stepper name={team1Name} value={s1} set={setS1} />
+                <Text fontFamily="mono" fontSize="lg" fontWeight={800} color="fg.muted" pt="4">
+                    :
+                </Text>
+                <Stepper name={team2Name} value={s2} set={setS2} />
+            </HStack>
+            <Flex justify="center" mt="3">
+                <Button size="sm" colorPalette="pitch" loading={saving} onClick={() => onSave(s1, s2)}>
+                    <FiEdit2 /> Spremi rezultat
+                </Button>
+            </Flex>
+        </Box>
     )
 }
 

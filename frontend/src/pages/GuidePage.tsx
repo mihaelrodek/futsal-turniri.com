@@ -11,10 +11,15 @@ import {
     LuChartColumn,
     LuMonitorPlay,
     LuSparkles,
+    LuMap,
+    LuCirclePlus,
+    LuUserRound,
+    LuMoon,
 } from "react-icons/lu"
-import { FiArrowDown, FiArrowRight, FiArrowUp } from "react-icons/fi"
+import { FiArrowDown, FiArrowRight } from "react-icons/fi"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { MonoLabel, PitchBackdrop, PrimaryButton, GhostButton } from "../ui/pitch"
+import { Logo } from "../components/Logo"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Vodič / "Što nudimo" - marketing-style tour of the app, reached from the
@@ -199,89 +204,217 @@ function NumBadge({ n, size = "18px", fontSize = "10px" }: { n: number | string;
     )
 }
 
-/* Main-menu items, annotated. `pct` is the horizontal center of each item in
-   the izbornik.webp screenshot (measured at capture time, viewport 1280) so
-   the numbered arrows below the image line up with the real buttons. */
-const NAV_ITEMS: { pct: number; label: string; desc: string }[] = [
-    { pct: 35.1, label: "Turniri", desc: "popis svih turnira - pretraga i filteri po lokaciji, kotizaciji i nagradi" },
-    { pct: 41.7, label: "Uživo", desc: "utakmice koje se upravo igraju - rezultati u stvarnom vremenu" },
-    { pct: 49.7, label: "Kreiraj turnir", desc: "novi turnir u par minuta - besplatno" },
-    { pct: 56.7, label: "Karta", desc: "svi turniri na karti - pronađi one blizu sebe" },
-    { pct: 63.0, label: "Statistika", desc: "vječna lista strijelaca kroz sve turnire" },
-    { pct: 89.0, label: "Prijava", desc: "Google prijava - potrebna samo organizatorima" },
+/* Main-menu items for the interactive menu demo. `live` flags the "Uživo"
+   item (red dot); `right` flags items that live in the navbar's right cluster
+   (Prijava) rather than the centre capsule. */
+type NavItem = { label: string; icon: ElementType; desc: string; live?: boolean; right?: boolean }
+const NAV_ITEMS: NavItem[] = [
+    { label: "Turniri", icon: LuTrophy, desc: "Popis svih turnira. Pretražuj i filtriraj po lokaciji, kotizaciji i ukupnoj nagradi, pa otvori bilo koji turnir." },
+    { label: "Uživo", icon: LuRadioTower, live: true, desc: "Utakmice koje se upravo igraju - rezultati, mjerač i strijelci osvježavaju se u stvarnom vremenu." },
+    { label: "Kreiraj turnir", icon: LuCirclePlus, desc: "Pokreni novi turnir u par minuta - uneseš osnovne podatke i format. Potpuno besplatno." },
+    { label: "Karta", icon: LuMap, desc: "Svi turniri prikazani na karti - pronađi one najbliže sebi jednim pogledom." },
+    { label: "Statistika", icon: LuChartColumn, desc: "Vječna lista strijelaca kroz sve turnire - tko je zabio najviše golova." },
+    { label: "Prijava", icon: LuUserRound, right: true, desc: "Google prijava - potrebna je samo organizatorima. Gledatelji sve prate bez prijave." },
 ]
 
-/** The navbar screenshot with numbered arrows pointing at each item and a
- *  short legend underneath. Arrows are % positioned so they scale with the
- *  image; on phones (image too small to point at) only the legend shows. */
-function AnnotatedNav() {
-    const zoomHandlers = useZoomHandlers({
-        src: "/vodic/izbornik.webp",
-        alt: "Glavni izbornik: Turniri, Uživo, Kreiraj turnir, Karta, Statistika i Prijava",
-    })
+/** One clickable pill in the demo navbar. Mirrors the real PillNavLink look:
+ *  filled pitch-green when selected, ghost otherwise. */
+function DemoPill({
+    item,
+    index,
+    active,
+    onSelect,
+}: {
+    item: NavItem
+    index: number
+    active: number
+    onSelect: (i: number) => void
+}) {
+    const isActive = active === index
+    return (
+        <chakra.button
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onSelect(index)}
+            display="inline-flex"
+            alignItems="center"
+            gap="1.5"
+            px={{ base: "3", md: "4" }}
+            py="2"
+            rounded="full"
+            fontSize="13px"
+            fontWeight={600}
+            whiteSpace="nowrap"
+            border="none"
+            cursor="pointer"
+            color={isActive ? "white" : "fg.ink"}
+            bg={isActive ? "pitch.500" : "transparent"}
+            _hover={!isActive ? { bg: "bg.panel" } : undefined}
+            transition="background 150ms, box-shadow 150ms"
+            boxShadow={isActive ? "0 6px 16px -8px var(--chakra-colors-pitch-500)" : undefined}
+        >
+            {item.live && (
+                <Box w="7px" h="7px" rounded="full" bg={isActive ? "white" : "#e5484d"} flexShrink={0} />
+            )}
+            {item.label}
+            {item.live && (
+                <Box as="span" fontFamily="mono" fontSize="10px" opacity={0.85}>1</Box>
+            )}
+        </chakra.button>
+    )
+}
+
+/** Interactive menu demo - a live facsimile of the app navbar. Click any item
+ *  (or use Prethodno / Sljedeće) to highlight it, just like navigating in the
+ *  app, and see what it does in the panel below. Real DOM, so it's crisp and
+ *  follows the theme; nothing here navigates. */
+function InteractiveNav() {
+    const [active, setActive] = useState(0)
+    const item = NAV_ITEMS[active]
+    const step = (dir: number) =>
+        setActive((a) => (a + dir + NAV_ITEMS.length) % NAV_ITEMS.length)
+    const centre = NAV_ITEMS.map((it, i) => ({ it, i })).filter(({ it }) => !it.right)
+    const right = NAV_ITEMS.map((it, i) => ({ it, i })).filter(({ it }) => it.right)
+
     return (
         <Box>
-            <Box
-                rounded="xl"
-                overflow="hidden"
+            {/* Card entrance animation for the explanation panel. */}
+            <style>{"@keyframes guidePop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}"}</style>
+
+            {/* ── Faux navbar ─────────────────────────────────────────── */}
+            <Flex
+                align="center"
+                justify={{ base: "center", md: "space-between" }}
+                gap="3"
+                wrap="wrap"
+                bg="bg.panel"
                 borderWidth="1px"
                 borderColor="border"
-                bg="bg.panel"
+                rounded="2xl"
+                px={{ base: "3", md: "4" }}
+                py="3"
                 boxShadow="sm"
-                {...zoomHandlers}
-                cursor="zoom-in"
             >
-                <chakra.img
-                    src="/vodic/izbornik.webp"
-                    alt="Glavni izbornik: Turniri, Uživo, Kreiraj turnir, Karta, Statistika i Prijava"
-                    width={1600}
-                    height={87}
-                    loading="lazy"
-                    decoding="async"
-                    display="block"
-                    w="full"
-                    h="auto"
-                />
-            </Box>
-            {/* Numbered arrows under the strip, lined up with the real items. */}
-            <Box position="relative" h="34px" display={{ base: "none", md: "block" }} mt="1">
-                {NAV_ITEMS.map((it, i) => (
-                    <VStack
-                        key={it.label}
-                        position="absolute"
-                        left={`${it.pct}%`}
-                        transform="translateX(-50%)"
-                        gap="0.5"
-                    >
-                        <Icon as={FiArrowUp} boxSize="3.5" color="pitch.500" />
-                        <NumBadge n={i + 1} />
-                    </VStack>
-                ))}
-            </Box>
-            <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap="2.5" mt={{ base: "3", md: "1.5" }}>
-                {NAV_ITEMS.map((it, i) => (
-                    <HStack
-                        key={it.label}
-                        gap="2.5"
-                        align="flex-start"
-                        bg="bg.panel"
+                <Box display={{ base: "none", sm: "block" }}>
+                    <Logo asStatic size={32} />
+                </Box>
+
+                {/* Centre capsule - the five primary pills. */}
+                <HStack
+                    gap="0.5"
+                    bg="bg.surfaceTint"
+                    padding="1"
+                    rounded="full"
+                    maxW="full"
+                    overflowX="auto"
+                    css={{ scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}
+                >
+                    {centre.map(({ it, i }) => (
+                        <DemoPill key={it.label} item={it} index={i} active={active} onSelect={setActive} />
+                    ))}
+                </HStack>
+
+                {/* Right cluster - decorative theme toggle + the Prijava item. */}
+                <HStack gap="2" flexShrink={0}>
+                    <Flex
+                        w="34px"
+                        h="34px"
+                        rounded="full"
                         borderWidth="1px"
                         borderColor="border"
-                        rounded="lg"
-                        px="3"
-                        py="2.5"
+                        color="pitch.500"
+                        align="center"
+                        justify="center"
+                        aria-hidden
                     >
-                        <Box mt="0.5">
-                            <NumBadge n={i + 1} />
-                        </Box>
-                        <Text fontSize="13px" lineHeight="1.5" color="fg.muted">
-                            <Box as="span" fontWeight={700} color="fg.ink">{it.label}</Box>
-                            {" - "}
-                            {it.desc}
-                        </Text>
+                        <Icon as={LuMoon} boxSize="4" />
+                    </Flex>
+                    {right.map(({ it, i }) => {
+                        const isActive = active === i
+                        return (
+                            <chakra.button
+                                key={it.label}
+                                type="button"
+                                aria-pressed={isActive}
+                                onClick={() => setActive(i)}
+                                px="4"
+                                py="2"
+                                rounded="full"
+                                fontSize="13px"
+                                fontWeight={700}
+                                border="none"
+                                cursor="pointer"
+                                color="white"
+                                bg="pitch.500"
+                                transition="box-shadow 150ms, transform 150ms"
+                                boxShadow={isActive ? "0 0 0 3px var(--chakra-colors-pitch-200)" : undefined}
+                                transform={isActive ? "translateY(-1px)" : undefined}
+                            >
+                                {it.label}
+                            </chakra.button>
+                        )
+                    })}
+                </HStack>
+            </Flex>
+
+            {/* ── Explanation panel ───────────────────────────────────── */}
+            <Box
+                mt="3"
+                bg="bg.panel"
+                borderWidth="1px"
+                borderColor="border"
+                rounded="xl"
+                p={{ base: "4", md: "5" }}
+            >
+                <Flex key={active} css={{ animation: "guidePop 240ms ease" }} gap="3.5" align="flex-start">
+                    <Flex
+                        w="46px"
+                        h="46px"
+                        rounded="lg"
+                        bg="bg.surfaceTint"
+                        color="pitch.500"
+                        align="center"
+                        justify="center"
+                        flexShrink={0}
+                    >
+                        <Icon as={item.icon} boxSize="5.5" />
+                    </Flex>
+                    <Box minW="0" flex="1">
+                        <HStack gap="2" mb="1">
+                            <NumBadge n={active + 1} />
+                            <Text fontWeight={800} fontSize="16px" color="fg.ink">{item.label}</Text>
+                        </HStack>
+                        <Text fontSize="14px" color="fg.muted" lineHeight="1.6">{item.desc}</Text>
+                    </Box>
+                </Flex>
+
+                {/* Stepper - Prethodno / korak N od 6 / Sljedeće. */}
+                <HStack justify="space-between" mt="4" pt="3" borderTopWidth="1px" borderColor="border">
+                    <GhostButton onClick={() => step(-1)}>
+                        ‹ Prethodno
+                    </GhostButton>
+                    <HStack gap="1.5">
+                        {NAV_ITEMS.map((_, i) => (
+                            <chakra.button
+                                key={i}
+                                type="button"
+                                aria-label={`Korak ${i + 1}`}
+                                onClick={() => setActive(i)}
+                                w={i === active ? "20px" : "7px"}
+                                h="7px"
+                                rounded="full"
+                                border="none"
+                                cursor="pointer"
+                                bg={i === active ? "pitch.500" : "border.emphasized"}
+                                transition="width 200ms, background 200ms"
+                            />
+                        ))}
                     </HStack>
-                ))}
-            </Grid>
+                    <GhostButton onClick={() => step(1)}>
+                        Sljedeće ›
+                    </GhostButton>
+                </HStack>
+            </Box>
         </Box>
     )
 }
@@ -579,9 +712,9 @@ export default function GuidePage() {
             <Chapter
                 n={1}
                 title="Snađi se u izborniku"
-                intro="Sve bitno je u glavnom izborniku - brojevi pokazuju što se gdje nalazi."
+                intro="Klikni stavku izbornika (ili koristi Prethodno / Sljedeće) da vidiš čemu služi."
             >
-                <AnnotatedNav />
+                <InteractiveNav />
             </Chapter>
 
             {/* ── 2. Kreiranje turnira - proces u tri koraka ───────────── */}

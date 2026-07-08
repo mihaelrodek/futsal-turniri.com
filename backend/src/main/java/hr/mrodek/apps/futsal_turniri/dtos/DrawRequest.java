@@ -5,8 +5,10 @@ import java.util.List;
 /**
  * Request to draw the registered teams into groups.
  *
- * <p>{@code groupCount} and {@code advancePerGroup} are chosen at draw time
- * (not at tournament creation) and stored on the tournament before the draw.
+ * <p>{@code groupCount}, {@code advancePerGroup} and {@code bestThirdCount}
+ * are chosen at draw time (not at tournament creation) and stored on the
+ * tournament before the draw. {@code bestThirdCount} is how many best
+ * next-placed ("third-placed") teams also advance to the bracket; 0/null off.
  *
  * <p>{@code mode = AUTO} - the server randomly distributes registered teams
  * across {@code groupCount} groups; {@code assignments} is ignored.
@@ -20,6 +22,7 @@ public record DrawRequest(
         Mode mode,
         Integer groupCount,
         Integer advancePerGroup,
+        Integer bestThirdCount,
         List<Assignment> assignments
 ) {
     public enum Mode { AUTO, MANUAL }

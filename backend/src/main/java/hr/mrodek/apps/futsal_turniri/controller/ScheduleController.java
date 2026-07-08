@@ -82,6 +82,43 @@ public class ScheduleController {
         return schedulingService.schedule(t);
     }
 
+    /** Predicted total match count (group + knockout), so the multi-day
+     *  generate UI can show how many matches remain to schedule. Public read. */
+    @GET
+    @Path("/plan-info")
+    public hr.mrodek.apps.futsal_turniri.dtos.SchedulePlanInfoDto planInfo(
+            @PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid)
+                .orElseThrow(() -> new NotFoundException("Tournament not found"));
+        return schedulingService.planInfo(t);
+    }
+
+    /** Compute (but do NOT persist) the multi-day schedule for the given day
+     *  plan - the "Skiciraj" preview the organizer confirms before generating. */
+    @POST
+    @Path("/preview")
+    @Authenticated
+    public hr.mrodek.apps.futsal_turniri.dtos.SchedulePreviewDto preview(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.SchedulePlanRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        return schedulingService.previewMultiDay(t, body);
+    }
+
+    /** Actually generate the multi-day schedule from the confirmed day plan
+     *  ("Potvrdi"): group fixtures + knockout placeholders + kickoff times. */
+    @POST
+    @Path("/generate-multiday")
+    @Authenticated
+    @Transactional
+    public ScheduleDto generateMultiDay(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.SchedulePlanRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        schedulingService.generateMultiDay(t, body);
+        return schedulingService.schedule(t);
+    }
+
     /**
      * Fill in kickoff times for matches that don't have one yet (e.g. knockout
      * matches created after the group schedule), continuing after the last

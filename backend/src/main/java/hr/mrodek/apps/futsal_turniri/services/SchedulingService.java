@@ -1,12 +1,17 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
+import hr.mrodek.apps.futsal_turniri.dtos.DaySchedule;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduleConfigRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduleDto;
 import hr.mrodek.apps.futsal_turniri.dtos.ScheduledMatchDto;
+import hr.mrodek.apps.futsal_turniri.dtos.SchedulePlanInfoDto;
+import hr.mrodek.apps.futsal_turniri.dtos.SchedulePlanRequest;
+import hr.mrodek.apps.futsal_turniri.dtos.SchedulePreviewDto;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
+import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -36,6 +41,7 @@ public class SchedulingService {
 
     @Inject MatchesRepository matchesRepo;
     @Inject GroupStageService groupStageService;
+    @Inject KnockoutService knockoutService;
 
     /** Play order: matchday/round number, then knockout stage, then id. */
     private static final Comparator<Matches> MATCH_ORDER = Comparator
@@ -96,6 +102,158 @@ public class SchedulingService {
             m.setKickoffAt(cursor);
             cursor = cursor.plusMinutes(slot);
         }
+    }
+
+    /* ─────────────────── multi-day scheduling ─────────────────── */
+
+    /**
+     * How many matches the whole tournament will have, so the multi-day
+     * generate UI can show "still to schedule". Group matches come from the
+     * drawn groups (round-robin); knockout is the predicted bracket size
+     * (elimination + third place), reserved even before the bracket is drawn.
+     */
+    @Transactional
+    public SchedulePlanInfoDto planInfo(Tournaments t) {
+        int groupMatches = t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
+                ? groupStageService.plannedGroupFixtures(t).size()
+                : 0;
+        int knockoutMatches = knockoutService.plannedKnockoutMatchCount(t);
+        return new SchedulePlanInfoDto(groupMatches, knockoutMatches, groupMatches + knockoutMatches);
+    }
+
+    /**
+     * Compute the multi-day schedule WITHOUT persisting anything ("Skiciraj").
+     * Lays every match (group fixtures interleaved, then the knockout - real if
+     * a bracket exists, else placeholders) across the day plan and groups the
+     * result by day. Matches that don't fit the plan are counted as unscheduled.
+     */
+    @Transactional
+    public SchedulePreviewDto previewMultiDay(Tournaments t, SchedulePlanRequest req) {
+        int slot = slotFromRequest(req);
+        if (slot <= 0) {
+            throw new BadRequestException("The match format must total more than 0 minutes");
+        }
+
+        record Plan(String stage, String group, String t1, String t2, boolean known) {}
+        List<Plan> plan = new ArrayList<>();
+
+        int groupMatches = 0;
+        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+            for (Teams[] pair : groupStageService.plannedGroupFixtures(t)) {
+                String gn = pair[0].getGroup() != null ? pair[0].getGroup().getName() : null;
+                plan.add(new Plan("GROUP", gn, pair[0].getName(), pair[1].getName(), true));
+                groupMatches++;
+            }
+        }
+
+        int knockoutMatches;
+        List<Matches> existingKo = matchesRepo.list(
+                "tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        if (!existingKo.isEmpty()) {
+            existingKo.sort(Comparator
+                    .comparingInt((Matches m) -> stageRank(m.getStage()))
+                    .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
+            for (Matches m : existingKo) {
+                boolean known = m.getTeam1() != null && m.getTeam2() != null;
+                plan.add(new Plan(
+                        m.getStage() != null ? m.getStage().name() : null, null,
+                        m.getTeam1() != null ? m.getTeam1().getName() : null,
+                        m.getTeam2() != null ? m.getTeam2().getName() : null, known));
+            }
+            knockoutMatches = existingKo.size();
+        } else {
+            List<MatchStage> stages = knockoutService.plannedKnockoutStages(t);
+            for (MatchStage st : stages) plan.add(new Plan(st.name(), null, null, null, false));
+            knockoutMatches = stages.size();
+        }
+
+        int total = plan.size();
+        List<OffsetDateTime> times = layoutTimes(total, req.days(), slot);
+
+        Map<String, List<SchedulePreviewDto.Match>> byDay = new LinkedHashMap<>();
+        int scheduled = 0;
+        for (int i = 0; i < total; i++) {
+            OffsetDateTime k = times.get(i);
+            if (k == null) continue; // didn't fit the day plan
+            scheduled++;
+            Plan p = plan.get(i);
+            byDay.computeIfAbsent(k.toLocalDate().toString(), d -> new ArrayList<>())
+                    .add(new SchedulePreviewDto.Match(k, p.stage(), p.group(), p.t1(), p.t2(), p.known()));
+        }
+        List<SchedulePreviewDto.Day> days = new ArrayList<>();
+        for (Map.Entry<String, List<SchedulePreviewDto.Match>> e : byDay.entrySet()) {
+            days.add(new SchedulePreviewDto.Day(e.getKey(), e.getValue()));
+        }
+        return new SchedulePreviewDto(
+                total, groupMatches, knockoutMatches, scheduled, total - scheduled, slot, days);
+    }
+
+    /**
+     * Persist the multi-day schedule ("Potvrdi"). Stores the format config,
+     * creates the group fixtures + the knockout placeholder skeleton (so the
+     * elimination has reserved slots), then lays out every match's kickoff per
+     * the day plan. Re-runnable. For KNOCKOUT_ONLY the existing bracket matches
+     * are simply laid out across the days.
+     */
+    @Transactional
+    public void generateMultiDay(Tournaments t, SchedulePlanRequest req) {
+        if (req == null || req.days() == null || req.days().isEmpty()) {
+            throw new BadRequestException("No day plan provided");
+        }
+        t.setHalfCount(req.halfCount() != null ? req.halfCount() : 2);
+        t.setHalfLengthMin(
+                req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10);
+        t.setHalftimeBreakMin(req.halftimeBreakMin());
+        t.setBreakBetweenMatchesMin(req.breakBetweenMatchesMin());
+        t.setBufferMin(req.bufferMin());
+
+        int slot = slotLength(t);
+        if (slot <= 0) {
+            throw new BadRequestException("The match format must total more than 0 minutes");
+        }
+
+        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+            groupStageService.generateFixtures(t);  // group matches (idempotent)
+            knockoutService.createSkeleton(t);       // knockout placeholders (no-op if bracket exists)
+        }
+
+        List<Matches> ordered = orderForSingleCourt(t);
+        List<OffsetDateTime> times = layoutTimes(ordered.size(), req.days(), slot);
+        for (int i = 0; i < ordered.size(); i++) {
+            ordered.get(i).setKickoffAt(times.get(i)); // null → beyond the plan (left unscheduled)
+        }
+    }
+
+    /**
+     * Assign kickoff times for {@code total} matches over the day plan: each day
+     * places its {@code matches} back-to-back from that day's first kickoff,
+     * {@code slot} minutes apart. Returns a list of length {@code total}; any
+     * match beyond the plan's capacity gets a null time.
+     */
+    private List<OffsetDateTime> layoutTimes(int total, List<DaySchedule> days, int slot) {
+        List<OffsetDateTime> times = new ArrayList<>();
+        if (days != null) {
+            for (DaySchedule d : days) {
+                if (d == null || d.firstKickoff() == null) continue;
+                OffsetDateTime cursor = OffsetDateTime.parse(d.firstKickoff());
+                int cnt = Math.max(0, d.matches());
+                for (int i = 0; i < cnt && times.size() < total; i++) {
+                    times.add(cursor);
+                    cursor = cursor.plusMinutes(slot);
+                }
+            }
+        }
+        while (times.size() < total) times.add(null);
+        return times;
+    }
+
+    private static int slotFromRequest(SchedulePlanRequest req) {
+        int hc = req.halfCount() != null ? req.halfCount() : 2;
+        int hl = req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10;
+        int ht = nz(req.halftimeBreakMin());
+        int pb = nz(req.breakBetweenMatchesMin());
+        int bf = nz(req.bufferMin());
+        return hc * hl + ht + pb + bf;
     }
 
     /**

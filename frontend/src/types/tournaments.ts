@@ -56,6 +56,8 @@ export type TournamentDetails = {
     format?: TournamentFormat | null;
     groupCount?: number | null;
     advancePerGroup?: number | null;
+    /** How many best "third-placed" teams also advance (0 = off). */
+    bestThirdCount?: number | null;
     bracketFill?: BracketFill | null;
 
     contactName?: string | null;

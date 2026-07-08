@@ -1,9 +1,19 @@
 import { http } from "./http"
-import type { Group, DrawRequest } from "../types/groups"
+import type { Group, DrawRequest, ThirdPlacedTable } from "../types/groups"
 
 /** Live group tables for a tournament. Empty array before the draw. */
 export async function fetchGroups(tournamentUuid: string): Promise<Group[]> {
     const { data } = await http.get<Group[]>(`/tournaments/${tournamentUuid}/groups`)
+    return data
+}
+
+/** Cross-group ranking of the best "third-placed" teams (live). Drives the
+ *  "Najbolje trećeplasirane" table; bestThirdCount = 0 means the feature is
+ *  off and the UI hides the table. */
+export async function fetchThirdPlaced(tournamentUuid: string): Promise<ThirdPlacedTable> {
+    const { data } = await http.get<ThirdPlacedTable>(
+        `/tournaments/${tournamentUuid}/groups/third-placed`,
+    )
     return data
 }
 

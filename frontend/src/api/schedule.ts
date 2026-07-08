@@ -1,9 +1,51 @@
 import { http } from "./http"
-import type { Schedule, ScheduleConfig } from "../types/schedule"
+import type {
+    Schedule,
+    ScheduleConfig,
+    SchedulePlanInfo,
+    SchedulePlanRequest,
+    SchedulePreview,
+} from "../types/schedule"
 
 /** The tournament schedule - config + every match in play order. */
 export async function fetchSchedule(tournamentUuid: string): Promise<Schedule> {
     const { data } = await http.get<Schedule>(`/tournaments/${tournamentUuid}/schedule`)
+    return data
+}
+
+/** Predicted total match count (group + knockout), for the multi-day planner's
+ *  "matches remaining to schedule" counter. */
+export async function fetchPlanInfo(tournamentUuid: string): Promise<SchedulePlanInfo> {
+    const { data } = await http.get<SchedulePlanInfo>(
+        `/tournaments/${tournamentUuid}/schedule/plan-info`,
+    )
+    return data
+}
+
+/** Compute (but do NOT persist) the multi-day schedule for a day plan -
+ *  the "Skiciraj" preview the organizer reviews before generating. */
+export async function previewSchedule(
+    tournamentUuid: string,
+    req: SchedulePlanRequest,
+): Promise<SchedulePreview> {
+    const { data } = await http.post<SchedulePreview>(
+        `/tournaments/${tournamentUuid}/schedule/preview`,
+        req,
+        { silent: true } as any,
+    )
+    return data
+}
+
+/** Actually generate the multi-day schedule from the confirmed day plan. */
+export async function generateMultiDaySchedule(
+    tournamentUuid: string,
+    req: SchedulePlanRequest,
+): Promise<Schedule> {
+    const { data } = await http.post<Schedule>(
+        `/tournaments/${tournamentUuid}/schedule/generate-multiday`,
+        req,
+        { successMessage: "Raspored je generiran." } as any,
+    )
     return data
 }
 

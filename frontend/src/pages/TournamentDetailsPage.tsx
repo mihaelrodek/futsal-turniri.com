@@ -1050,6 +1050,7 @@ export default function TournamentDetailsPage() {
                                     uuid={t.uuid}
                                     advancePerGroup={t.advancePerGroup}
                                     groupCount={t.groupCount}
+                                    bestThirdCount={t.bestThirdCount}
                                     teams={teams}
                                     canEdit={canEdit}
                                     tournamentStarted={tournamentStarted}
@@ -1077,6 +1078,7 @@ export default function TournamentDetailsPage() {
                         tournamentSlug={t.slug}
                         focusMatchId={focusMatchId}
                         format={t.format}
+                        startAt={t.startAt}
                     />
                 )}
 

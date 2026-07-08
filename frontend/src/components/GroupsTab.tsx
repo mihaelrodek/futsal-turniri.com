@@ -12,10 +12,10 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { LuShuffle } from "react-icons/lu"
-import { FiEdit2, FiArrowUp, FiArrowDown, FiClock } from "react-icons/fi"
-import { fetchGroups, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
-import type { Group, GroupMatch } from "../types/groups"
+import { LuShuffle, LuTrophy } from "react-icons/lu"
+import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock } from "react-icons/fi"
+import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
+import type { Group, GroupMatch, ThirdPlacedTable } from "../types/groups"
 import type { TeamShort } from "../types/teams"
 import {
     deleteMatchEvent,
@@ -34,7 +34,7 @@ import { fetchSchedule } from "../api/schedule"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { FiRefreshCw, FiTrash2 } from "react-icons/fi"
-import { FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, StartLivePopover, matchPhase } from "./liveMatch"
+import { DirectScoreEditor, FoulControls, LiveClock, LiveEventRow, LiveGoalEntry, MatchTimelineModal, StartLivePopover, matchPhase } from "./liveMatch"
 
 /**
  * "Grupe" tab on the tournament detail page (Phase E2 + E5).
@@ -100,6 +100,7 @@ export default function GroupsTab({
     uuid,
     advancePerGroup,
     groupCount,
+    bestThirdCount,
     teams,
     canEdit = false,
     tournamentStarted = false,
@@ -110,6 +111,9 @@ export default function GroupsTab({
     /** Configured number of groups (from the tournament) - sizes the manual
      *  draw assignment editor. */
     groupCount?: number | null
+    /** How many best "third-placed" teams also advance (0 = feature off).
+     *  Seeds the draw config default and gates the third-placed table. */
+    bestThirdCount?: number | null
     /** Registered teams - needed for the manual draw (assign each to a group). */
     teams?: TeamShort[]
     /** Owner / admin only - controls visibility of the draw button and
@@ -148,9 +152,23 @@ export default function GroupsTab({
     const [drawMode, setDrawMode] = useState<"auto" | "manual">("manual")
     const [cfgGroups, setCfgGroups] = useState("4")
     const [cfgAdvance, setCfgAdvance] = useState("2")
+    /** How many best "third-placed" teams also advance (draw config). */
+    const [cfgBestThird, setCfgBestThird] = useState("0")
     const [assign, setAssign] = useState<Record<number, number>>({})
     /** advance-per-group just drawn (the page's prop is stale until refetch). */
     const [advanceOverride, setAdvanceOverride] = useState<number | null>(null)
+    /** best-third count just drawn (the page's prop is stale until refetch). */
+    const [bestThirdOverride, setBestThirdOverride] = useState<number | null>(null)
+    /** Live "best third-placed" ranking; null before the group draw. */
+    const [thirdTable, setThirdTable] = useState<ThirdPlacedTable | null>(null)
+    /** Group ids whose fixtures are expanded. Empty = all collapsed (default). */
+    const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
+    const toggleGroup = (id: number) =>
+        setExpandedGroups((prev) => {
+            const next = new Set(prev)
+            next.has(id) ? next.delete(id) : next.add(id)
+            return next
+        })
     const [resetting, setResetting] = useState(false)
 
     // Manual-draw drag & drop ("kuglice" board). In MANUAL mode a team with no
@@ -183,6 +201,19 @@ export default function GroupsTab({
             .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
         return () => { cancelled = true }
     }, [uuid])
+
+    // Refresh the "best third-placed" ranking whenever the standings change
+    // (draw, a result, a reset). Kept in a separate effect keyed on `groups`
+    // so it stays in sync with exactly what's displayed. The endpoint returns
+    // bestThirdCount = 0 when the feature is off; the table then hides itself.
+    useEffect(() => {
+        if (!groups || groups.length === 0) { setThirdTable(null); return }
+        let cancelled = false
+        fetchThirdPlaced(uuid)
+            .then((t) => { if (!cancelled) setThirdTable(t) })
+            .catch(() => { if (!cancelled) setThirdTable(null) })
+        return () => { cancelled = true }
+    }, [uuid, groups])
 
     // The next match to start: the earliest-kickoff SCHEDULED match across all
     // groups. Highlighted with a red border so the organizer sees what's on
@@ -229,8 +260,8 @@ export default function GroupsTab({
     function startEdit(m: GroupMatch) {
         setEditingId(m.matchId)
         setForm({
-            s1: m.score1 != null ? String(m.score1) : "",
-            s2: m.score2 != null ? String(m.score2) : "",
+            s1: m.score1 != null ? String(m.score1) : "0",
+            s2: m.score2 != null ? String(m.score2) : "0",
         })
     }
 
@@ -278,6 +309,8 @@ export default function GroupsTab({
     const maxGroups = Math.max(2, registeredTeams.length)
     const gcNum = Math.min(maxGroups, Math.max(2, parseInt(cfgGroups || "0", 10) || 0))
     const advNum = Math.max(1, parseInt(cfgAdvance || "0", 10) || 0)
+    // Best "third-placed" that also advance - at most one per group.
+    const bestThirdNum = Math.max(0, Math.min(gcNum, parseInt(cfgBestThird || "0", 10) || 0))
     const enoughTeams = registeredTeams.length >= gcNum
     const effectiveAdvance = advanceOverride ?? advancePerGroup
     const grpOf = (id: number) => Math.min(gcNum - 1, assign[id] ?? 0)
@@ -303,6 +336,7 @@ export default function GroupsTab({
         const def = Math.min(maxGroups, cur >= 2 ? cur : 4)
         setCfgGroups(String(def))
         setCfgAdvance(String(effectiveAdvance && effectiveAdvance >= 1 ? effectiveAdvance : 2))
+        setCfgBestThird(String((bestThirdOverride ?? bestThirdCount) || 0))
         // Default to MANUAL: the organizer starts with every team in the pool
         // and drags them into groups (or clicks "Automatski" for a shuffle).
         setDrawMode("manual")
@@ -454,9 +488,11 @@ export default function GroupsTab({
                 mode: "MANUAL",
                 groupCount: gcNum,
                 advancePerGroup: advNum,
+                bestThirdCount: bestThirdNum,
                 assignments,
             }))
             setAdvanceOverride(advNum)
+            setBestThirdOverride(bestThirdNum)
             setDrawOpen(false)
             setEditingId(null)
         } catch {
@@ -490,6 +526,25 @@ export default function GroupsTab({
                         </Text>
                         <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance} onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))} />
                     </Box>
+                    {/* Best next-placed ("third") teams that also advance. Max
+                        one per group; the label position tracks advNum. */}
+                    <Box>
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                            Najbolje {advNum + 1}. plasirane
+                        </Text>
+                        <Input
+                            size="sm"
+                            w="84px"
+                            inputMode="numeric"
+                            textAlign="center"
+                            value={cfgBestThird}
+                            onChange={(e) => {
+                                const s = e.target.value.replace(/[^\d]/g, "")
+                                const n = parseInt(s || "0", 10) || 0
+                                setCfgBestThird(String(Math.min(gcNum, Math.max(0, n))))
+                            }}
+                        />
+                    </Box>
                     {/* Ručno first - it's the default; Automatski is the opt-in. */}
                     <HStack gap="2">
                         <Button size="sm" variant={drawMode === "manual" ? "solid" : "outline"} colorPalette={drawMode === "manual" ? "brand" : "gray"} onClick={() => chooseMode("manual")}>
@@ -500,6 +555,15 @@ export default function GroupsTab({
                         </Button>
                     </HStack>
                 </Flex>
+
+                {bestThirdNum > 0 && (
+                    <Text fontSize="xs" color="fg.muted">
+                        U eliminaciju prolazi {gcNum} × {advNum} = {gcNum * advNum} po grupama
+                        {" + "}
+                        {bestThirdNum} najbolje {advNum + 1}. plasirane ={" "}
+                        <Text as="span" fontWeight={700} color="fg.ink">{gcNum * advNum + bestThirdNum} ekipa</Text>.
+                    </Text>
+                )}
 
                 {!enoughTeams && (
                     <Text fontSize="xs" color="red.fg">
@@ -791,34 +855,91 @@ export default function GroupsTab({
                     }
                 }}
             >
-                <VStack align="stretch" gap="0.5">
-                    {/* Meta row - UŽIVO badge (+clock) top-left, kickoff time
-                        centred, organizer control (Pokreni / Uživo / Rezultat /
-                        Uredi) top-right. Equal flex on the side clusters keeps
-                        the time centred regardless of their widths. */}
-                    <Flex align="center" gap="2" wrap="wrap">
-                        {/* Left: live / next badge */}
-                        <HStack flex="1" minW="0" gap="2" justify="flex-start" wrap="wrap">
-                            {isLive && <LivePill />}
-                            {!isLive && isNext && (
+                <VStack align="stretch" gap="1">
+                    {/* Teams + score - team1 right, score centre, team2 left. Names
+                        wrap to max 2 lines; the centre cell keeps a fixed height so
+                        toggling the score editor doesn't shift the row. Teams sit ON
+                        TOP; the time / action row is below. */}
+                    <Box
+                        display="grid"
+                        gridTemplateColumns="1fr 120px 1fr"
+                        alignItems="center"
+                        gap={{ base: "2", sm: "4" }}
+                    >
+                        <Text
+                            fontSize="sm"
+                            fontWeight={700}
+                            color="fg.ink"
+                            textAlign="right"
+                            lineClamp="2"
+                        >
+                            {m.team1Name ?? "-"}
+                        </Text>
+                        <Flex justify="center" align="center" minH="9">
+                            {editing ? (
+                                // Result typed inline where the score sits.
+                                <HStack gap="1" justify="center" onClick={(e) => e.stopPropagation()}>
+                                    <Input
+                                        size="sm"
+                                        type="number"
+                                        min={0}
+                                        w="12"
+                                        textAlign="center"
+                                        rounded="lg"
+                                        value={form.s1}
+                                        onChange={(e) => setForm((f) => ({ ...f, s1: e.target.value }))}
+                                    />
+                                    <Text fontWeight={800} color="fg.muted">:</Text>
+                                    <Input
+                                        size="sm"
+                                        type="number"
+                                        min={0}
+                                        w="12"
+                                        textAlign="center"
+                                        rounded="lg"
+                                        value={form.s2}
+                                        onChange={(e) => setForm((f) => ({ ...f, s2: e.target.value }))}
+                                    />
+                                </HStack>
+                            ) : (
                                 <Box
-                                    as="span"
-                                    px="2"
-                                    py="0.5"
-                                    rounded="full"
-                                    bg="red.subtle"
-                                    color="red.fg"
                                     fontFamily="mono"
-                                    fontSize="9px"
-                                    fontWeight={800}
-                                    letterSpacing="0.1em"
-                                    textTransform="uppercase"
-                                    flexShrink={0}
-                                    whiteSpace="nowrap"
+                                    fontSize={scoreboard ? "md" : "sm"}
+                                    fontWeight={scoreboard ? 800 : 600}
+                                    letterSpacing="-0.02em"
+                                    color={isLive ? "red.fg" : scoreboard ? "fg.ink" : "fg.muted"}
+                                    bg={isLive ? "red.subtle" : scoreboard ? "bg.surfaceTint" : "transparent"}
+                                    px="2.5"
+                                    py="0.5"
+                                    rounded="lg"
+                                    minW="56px"
+                                    textAlign="center"
+                                    fontVariantNumeric="tabular-nums"
                                 >
-                                    Na redu
+                                    {hasScore ? `${m.score1}:${m.score2}` : scoreboard ? "-" : "vs"}
                                 </Box>
                             )}
+                        </Flex>
+                        <Text
+                            fontSize="sm"
+                            fontWeight={700}
+                            color="fg.ink"
+                            textAlign="left"
+                            lineClamp="2"
+                        >
+                            {m.team2Name ?? "-"}
+                        </Text>
+                    </Box>
+
+                    {/* Meta row (below) - live badge left, kickoff time centred,
+                        organizer control (Start / Uredi) + live clock bottom-right,
+                        in the same row / column as the time. Fixed minH so the time
+                        doesn't nudge when the action toggles on edit. "Na redu"
+                        removed - the red border already marks the next match. */}
+                    <Flex align="center" gap="2" wrap="wrap" minH="8">
+                        {/* Left: live badge */}
+                        <HStack flex="1" minW="0" gap="2" justify="flex-start" wrap="wrap">
+                            {isLive && <LivePill />}
                         </HStack>
 
                         {/* Center: kickoff time */}
@@ -843,12 +964,7 @@ export default function GroupsTab({
                             )}
                         </Box>
 
-                        {/* Right: live clock (time + half) for LIVE matches -
-                            shown to everyone, top-right. No stopPropagation, so an
-                            organizer clicking here still opens the management modal
-                            (whole live row is clickable for them). For scheduled /
-                            finished matches the organizer's action button sits here
-                            and DOES stopPropagation. */}
+                        {/* Right: live clock + organizer action (Start / Uredi) */}
                         <Flex flex="1" minW="0" justify="flex-end" align="center" gap="2">
                             {isLive && m.liveMode === "TIMER" && (
                                 <LiveClock
@@ -882,77 +998,6 @@ export default function GroupsTab({
                             )}
                         </Flex>
                     </Flex>
-
-                    {/* Teams + score - team1 right, score centre, team2 left
-                        (mirrors the Raspored → završene utakmice layout). */}
-                    <Box
-                        display="grid"
-                        gridTemplateColumns="1fr auto 1fr"
-                        alignItems="center"
-                        gap={{ base: "2", sm: "4" }}
-                    >
-                        <Text
-                            fontSize="sm"
-                            fontWeight={700}
-                            color="fg.ink"
-                            textAlign="right"
-                            truncate
-                        >
-                            {m.team1Name ?? "-"}
-                        </Text>
-                        {editing ? (
-                            // Result typed inline where the score sits, not below.
-                            <HStack gap="1.5" justify="center" onClick={(e) => e.stopPropagation()}>
-                                <Input
-                                    size="sm"
-                                    type="number"
-                                    min={0}
-                                    maxW="14"
-                                    textAlign="center"
-                                    rounded="lg"
-                                    value={form.s1}
-                                    onChange={(e) => setForm((f) => ({ ...f, s1: e.target.value }))}
-                                />
-                                <Text fontWeight={800} color="fg.muted">:</Text>
-                                <Input
-                                    size="sm"
-                                    type="number"
-                                    min={0}
-                                    maxW="14"
-                                    textAlign="center"
-                                    rounded="lg"
-                                    value={form.s2}
-                                    onChange={(e) => setForm((f) => ({ ...f, s2: e.target.value }))}
-                                />
-                            </HStack>
-                        ) : (
-                            <Box
-                                fontFamily="mono"
-                                fontSize={scoreboard ? "md" : "sm"}
-                                fontWeight={scoreboard ? 800 : 600}
-                                letterSpacing="-0.02em"
-                                color={isLive ? "red.fg" : scoreboard ? "fg.ink" : "fg.muted"}
-                                bg={isLive ? "red.subtle" : scoreboard ? "bg.surfaceTint" : "transparent"}
-                                px="2.5"
-                                py="0.5"
-                                rounded="lg"
-                                minW="56px"
-                                textAlign="center"
-                                fontVariantNumeric="tabular-nums"
-                            >
-                                {hasScore ? `${m.score1}:${m.score2}` : scoreboard ? "-" : "vs"}
-                            </Box>
-                        )}
-                        <Text
-                            fontSize="sm"
-                            fontWeight={700}
-                            color="fg.ink"
-                            textAlign="left"
-                            truncate
-                        >
-                            {m.team2Name ?? "-"}
-                        </Text>
-                    </Box>
                 </VStack>
 
                 {editing && (
@@ -1286,7 +1331,8 @@ export default function GroupsTab({
                         })}
                     </Box>
 
-                    {/* Fixtures section */}
+                    {/* Fixtures section - collapsed by default; "Prikaži
+                        utakmice" expands this group's matches. */}
                     {g.matches.length > 0 && (
                         <Box
                             px={{ base: "2.5", md: "3" }}
@@ -1295,13 +1341,139 @@ export default function GroupsTab({
                             borderColor="border"
                             bg="bg.subtle"
                         >
-                            <VStack align="stretch" gap="1.5">
-                                {g.matches.map(renderFixture)}
-                            </VStack>
+                            {expandedGroups.has(g.id) ? (
+                                <VStack align="stretch" gap="1.5">
+                                    {g.matches.map(renderFixture)}
+                                    <Flex justify="center" pt="1">
+                                        <Button
+                                            size="xs"
+                                            variant="ghost"
+                                            colorPalette="brand"
+                                            onClick={() => toggleGroup(g.id)}
+                                        >
+                                            <FiChevronUp /> Sakrij utakmice
+                                        </Button>
+                                    </Flex>
+                                </VStack>
+                            ) : (
+                                <Flex justify="center">
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        colorPalette="brand"
+                                        onClick={() => toggleGroup(g.id)}
+                                    >
+                                        <FiChevronDown /> Prikaži utakmice ({g.matches.length})
+                                    </Button>
+                                </Flex>
+                            )}
                         </Box>
                     )}
                 </Box>
             ))}
+
+            {/* ── Best "third-placed" ranking ─────────────────────────────
+                 In the group grid so it sits alongside the last group when
+                 there's an odd number of groups (2 per row); spans the full
+                 width when the group count is even. Not collapsible - it's
+                 shown expanded like the group tables. Only when the organizer
+                 enabled it at draw time and the tier exists. */}
+            {thirdTable && thirdTable.bestThirdCount > 0 && thirdTable.rows.length > 0 && (
+                <Box
+                    gridColumn={{ lg: (groups!.length % 2 === 0) ? "1 / -1" : undefined }}
+                    borderWidth="1px"
+                    borderColor="border"
+                    rounded="xl"
+                    overflow="hidden"
+                    bg="bg.panel"
+                    h="fit-content"
+                >
+                    <Flex
+                        align="center"
+                        justify="space-between"
+                        gap="2"
+                        px={{ base: "3", md: "4" }}
+                        py="3"
+                        borderBottomWidth="1px"
+                        borderColor="border"
+                        wrap="wrap"
+                    >
+                        <HStack gap="2.5" align="center">
+                            <Flex w="26px" h="26px" rounded="md" bg="pitch.500" color="white" align="center" justify="center">
+                                <LuTrophy size={12} />
+                            </Flex>
+                            <Text fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.1em" color="fg.ink">
+                                NAJBOLJE {thirdTable.advancePerGroup + 1}. PLASIRANE
+                            </Text>
+                        </HStack>
+                        <Box fontFamily="mono" fontSize="9px" fontWeight={700} letterSpacing="0.06em" color="pitch.500" bg="rgba(58,165,107,0.12)" px="2.5" py="1" rounded="full">
+                            {thirdTable.bestThirdCount} PROLAZE
+                        </Box>
+                    </Flex>
+
+                    <Box
+                        display="grid"
+                        gridTemplateColumns={{ base: "22px 1fr 30px 24px 32px", md: "24px 1fr 44px 26px 40px 48px 34px" }}
+                        gap="1.5"
+                        px={{ base: "3", md: "4" }}
+                        py="2"
+                        bg="bg.surfaceTint2"
+                        borderBottomWidth="1px"
+                        borderColor="border"
+                    >
+                        <StHead label="#" />
+                        <Text fontFamily="mono" fontSize="9px" color="fg.muted" letterSpacing="0.08em" fontWeight={700}>
+                            EKIPA
+                        </Text>
+                        <StHead label="GRP" />
+                        <StHead label="UT" mdOnly />
+                        <StHead label="GR" mdOnly />
+                        <StHead label="GOL" mdOnly />
+                        <StHead label="BOD" />
+                    </Box>
+
+                    {thirdTable.rows.map((tr, idx) => {
+                        const q = tr.qualifies
+                        return (
+                            <Box
+                                key={tr.standing.teamId}
+                                display="grid"
+                                gridTemplateColumns={{ base: "22px 1fr 30px 24px 32px", md: "24px 1fr 44px 26px 40px 48px 34px" }}
+                                gap="1.5"
+                                alignItems="center"
+                                px={{ base: "3", md: "4" }}
+                                py="2.5"
+                                bg={q ? "rgba(58,165,107,0.08)" : undefined}
+                                borderLeftWidth="3px"
+                                borderLeftColor={q ? "pitch.500" : "transparent"}
+                                borderTopWidth={idx === 0 ? "0" : "1px"}
+                                borderTopColor="border"
+                            >
+                                <Text fontFamily="mono" fontSize="13px" fontWeight={800} color={q ? "pitch.500" : "fg.muted"} textAlign="center">
+                                    {tr.rank}
+                                </Text>
+                                <Text fontSize="14px" fontWeight={700} color="fg.ink" truncate minW="0">
+                                    {tr.standing.teamName}
+                                </Text>
+                                <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted" textAlign="center">
+                                    {tr.groupName}
+                                </Text>
+                                <StNum value={tr.standing.played} mdOnly />
+                                <StNum
+                                    mdOnly
+                                    weight={600}
+                                    value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
+                                    color={tr.standing.goalDiff > 0 ? "pitch.500" : tr.standing.goalDiff < 0 ? "accent.red" : "fg.muted"}
+                                />
+                                <StNum value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`} mdOnly />
+                                <Text fontFamily="mono" fontSize="14px" fontWeight={800} color={q ? "pitch.500" : "fg.ink"} textAlign="center">
+                                    {tr.standing.points}
+                                </Text>
+                            </Box>
+                        )
+                    })}
+                </Box>
+            )}
             </Box>
 
             {/* Live-match dialog - goals, cards, finish (organizer only). */}
@@ -1564,6 +1736,8 @@ export function GroupLiveMatchDialog({
     const [finishing, setFinishing] = useState(false)
     /** eventId currently being deleted. */
     const [deletingId, setDeletingId] = useState<number | null>(null)
+    /** Saving a directly-entered final score (no scorers). */
+    const [savingScore, setSavingScore] = useState(false)
 
     // Load events once (rosters are owned by LiveGoalEntry).
     useEffect(() => {
@@ -1733,6 +1907,23 @@ export function GroupLiveMatchDialog({
         }
     }
 
+    /** Save the final score directly (no scorers) via recordGroupResult. We
+     *  set the displayed score straight from the entered value and do NOT flag
+     *  scoreDirty, so the event-log recompute (which would show 0:0 for a
+     *  result-only match) doesn't clobber it. */
+    async function handleSaveDirectScore(s1: number, s2: number) {
+        setSavingScore(true)
+        try {
+            await recordGroupResult(uuid, matchId, s1, s2)
+            setScore({ s1, s2 })
+            await onChanged()
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setSavingScore(false)
+        }
+    }
+
     const [resetting, setResetting] = useState(false)
     async function doReset() {
         setResetting(true)
@@ -1850,6 +2041,21 @@ export function GroupLiveMatchDialog({
                                     fouls2First={match.fouls2First}
                                     fouls2Second={match.fouls2Second}
                                 />
+
+                                {/* Direct final-score entry (no scorers) - shown
+                                    while the match has no goal events, so the
+                                    organizer can just set/fix the result (0:0
+                                    default) without attributing every goal. */}
+                                {events != null && events.length === 0 && (
+                                    <DirectScoreEditor
+                                        team1Name={match.team1Name ?? null}
+                                        team2Name={match.team2Name ?? null}
+                                        initialS1={match.score1 ?? 0}
+                                        initialS2={match.score2 ?? 0}
+                                        saving={savingScore}
+                                        onSave={handleSaveDirectScore}
+                                    />
+                                )}
 
                                 {/* Add-event - fast one-tap entry. Shown for a
                                     finished match too so "Uredi" can fix a wrong

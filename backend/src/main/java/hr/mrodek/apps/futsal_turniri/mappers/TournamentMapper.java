@@ -56,6 +56,7 @@ public interface TournamentMapper {
             @Mapping(target = "format", source = "format", qualifiedByName = "enumToName"),
             @Mapping(target = "groupCount", source = "groupCount"),
             @Mapping(target = "advancePerGroup", source = "advancePerGroup"),
+            @Mapping(target = "bestThirdCount", source = "bestThirdCount"),
             @Mapping(target = "bracketFill", source = "bracketFill", qualifiedByName = "enumToName"),
             @Mapping(target = "status", source = "status", qualifiedByName = "enumToName"), // <-- NEW
             @Mapping(target = "contactName", source = "contactName"),

@@ -112,10 +112,10 @@ const ScheduleTabContent = () => (
       action={<PrimaryButton icon={<IconCalendar size={14}/>}>Generiraj raspored</PrimaryButton>}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-        <FormatField label="POLUVREMENA" value="2" sub="× po"/>
-        <FormatField label="MIN / POLUVRIJEME" value="10" sub="min"/>
+        <FormatField label="BROJ POLUVREMENA" value="2" sub="× po"/>
+        <FormatField label="TRAJANJE POLUVRIJEME" value="10" sub="min"/>
         <FormatField label="PAUZA POLUVRIJEME" value="5" sub="min"/>
-        <FormatField label="PAUZA IZMEĐU" value="5" sub="min"/>
+        <FormatField label="PAUZA IZMEĐU UTAKMICA" value="5" sub="min"/>
         <FormatField label="BUFFER" value="5" sub="min"/>
       </div>
       <div style={{ marginTop: 16, padding: '12px 16px', background: T.surfaceTint, borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -74,6 +74,18 @@ public class GroupController {
         return groupStageService.standings(t.getId());
     }
 
+    /** Cross-group ranking of the best "third-placed" teams (public). Drives
+     *  the "Najbolje trećeplasirane" table; {@code bestThirdCount = 0} means
+     *  the feature is off and the UI hides the table. */
+    @GET
+    @Path("/third-placed")
+    public hr.mrodek.apps.futsal_turniri.dtos.ThirdPlacedTableDto thirdPlaced(
+            @PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid)
+                .orElseThrow(() -> new NotFoundException("Tournament not found"));
+        return groupStageService.thirdPlacedTable(t);
+    }
+
     /** Draw teams into groups and generate the round-robin fixtures. */
     @POST
     @Path("/draw")

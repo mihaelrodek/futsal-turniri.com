@@ -134,6 +134,19 @@ public class KnockoutService {
             if (front.size() == qs.size()) qs = front;
         }
 
+        // A multi-day schedule reserves kickoff slots on placeholder knockout
+        // matches BEFORE the real bracket is drawn (see createSkeleton). Capture
+        // those reserved times so the freshly-built bracket inherits them - the
+        // day split (group stage on early days, knockout on later days) survives
+        // materialization instead of being lost with the wiped placeholders.
+        List<java.time.OffsetDateTime> reservedKickoffs = matchesRepo
+                .list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP)
+                .stream()
+                .map(Matches::getKickoffAt)
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .collect(Collectors.toList());
+
         // Wipe any prior knockout matches and their now-empty rounds.
         matchesRepo.delete("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
         matchesRepo.flush();
@@ -216,7 +229,33 @@ public class KnockoutService {
             }
         }
 
+        applyReservedKickoffs(t, reservedKickoffs);
         return bracket(t.getId());
+    }
+
+    /**
+     * Re-apply kickoff slots that a multi-day schedule reserved on the knockout
+     * placeholders, in bracket play order (earlier rounds first; third place
+     * before the final). Keeps the schedule's day split after the real bracket
+     * replaces the skeleton. No-op when nothing was reserved.
+     */
+    private void applyReservedKickoffs(Tournaments t, List<java.time.OffsetDateTime> reserved) {
+        if (reserved == null || reserved.isEmpty()) return;
+        List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        ko.sort(Comparator
+                .comparingInt((Matches m) -> knockoutStageRank(m.getStage()))
+                .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
+        for (int i = 0; i < ko.size() && i < reserved.size(); i++) {
+            ko.get(i).setKickoffAt(reserved.get(i));
+        }
+    }
+
+    /** Play-order rank for a knockout stage: earlier rounds first, third-place
+     *  right before the final (mirrors SchedulingService's stage ordering). */
+    private static int knockoutStageRank(MatchStage s) {
+        if (s == null) return 0;
+        if (s == MatchStage.THIRD_PLACE) return MatchStage.FINAL.ordinal() * 2 - 1;
+        return s.ordinal() * 2;
     }
 
     /**
@@ -232,6 +271,105 @@ public class KnockoutService {
         for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
             if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
         }
+    }
+
+    /* ──────────────── multi-day schedule support ───────────────── */
+
+    /** Predicted qualifier count for a GROUPS_KNOCKOUT tournament, before the
+     *  bracket exists: groupCount * advancePerGroup + bestThirdCount. */
+    public int predictedQualifiers(Tournaments t) {
+        int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
+        int gc = t.getGroupCount() == null ? 0 : t.getGroupCount();
+        int bt = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+        return gc * adv + bt;
+    }
+
+    /** Predicted knockout match count = bracket size (elimination matches +
+     *  third-place playoff = bracket-slot count) for the predicted qualifiers,
+     *  or the actual count once a bracket/skeleton already exists. */
+    public int plannedKnockoutMatchCount(Tournaments t) {
+        long existing = matchesRepo.count("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        if (existing > 0) return (int) existing;
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return 0;
+        int q = predictedQualifiers(t);
+        return q >= 2 ? nextPowerOfTwo(q) : 0;
+    }
+
+    /** Predicted knockout stages in single-court play order (e.g. QF×4, SF×2,
+     *  THIRD_PLACE, FINAL for 8 qualifiers), for the multi-day schedule preview
+     *  before the bracket exists. Empty when not GROUPS_KNOCKOUT or < 2 qualify. */
+    public List<MatchStage> plannedKnockoutStages(Tournaments t) {
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return List.of();
+        int q = predictedQualifiers(t);
+        if (q < 2) return List.of();
+        int n = nextPowerOfTwo(q);
+        List<MatchStage> stages = new ArrayList<>();
+        int inRound = n / 2;
+        while (inRound >= 1) {
+            MatchStage st = stageFor(inRound);
+            for (int i = 0; i < inRound; i++) stages.add(st);
+            inRound /= 2;
+        }
+        stages.add(MatchStage.THIRD_PLACE);
+        stages.sort(Comparator.comparingInt(KnockoutService::knockoutStageRank));
+        return stages;
+    }
+
+    /**
+     * Create an empty knockout bracket skeleton (rounds of matches with null
+     * teams + a third-place playoff) so a multi-day schedule can reserve
+     * kickoff slots for the elimination BEFORE the group stage decides who
+     * plays. No-op when a bracket already exists, when not GROUPS_KNOCKOUT, or
+     * when fewer than two teams will qualify. Teams are filled in later by
+     * {@link #generateBracket} - which preserves these reserved kickoffs.
+     */
+    @Transactional
+    public void createSkeleton(Tournaments t) {
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return;
+        if (matchesRepo.count("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP) > 0) return;
+        int q = predictedQualifiers(t);
+        if (q < 2) return;
+        int n = nextPowerOfTwo(q);
+
+        int baseNum = roundsRepo.findTopByTournamentOrderByNumberDesc(t)
+                .map(Rounds::getNumber).orElse(0);
+        Rounds koRound = new Rounds();
+        koRound.setTournament(t);
+        koRound.setNumber(baseNum + 1);
+        roundsRepo.persist(koRound);
+
+        int totalRounds = Integer.numberOfTrailingZeros(n); // log2(n)
+        List<List<Matches>> byRound = new ArrayList<>();
+        int inRound = n / 2;
+        for (int r = 0; r < totalRounds; r++) {
+            MatchStage stage = stageFor(inRound);
+            List<Matches> rm = new ArrayList<>();
+            for (int i = 0; i < inRound; i++) {
+                Matches m = new Matches();
+                m.setTournament(t);
+                m.setRound(koRound);
+                m.setStage(stage);
+                m.setStatus(MatchStatus.SCHEDULED);
+                matchesRepo.persist(m);
+                rm.add(m);
+            }
+            byRound.add(rm);
+            inRound /= 2;
+        }
+        for (int r = 0; r < totalRounds - 1; r++) {
+            List<Matches> cur = byRound.get(r);
+            List<Matches> next = byRound.get(r + 1);
+            for (int i = 0; i < cur.size(); i++) {
+                cur.get(i).setNextMatch(next.get(i / 2));
+                cur.get(i).setNextSlot((i % 2) + 1);
+            }
+        }
+        Matches third = new Matches();
+        third.setTournament(t);
+        third.setRound(koRound);
+        third.setStage(MatchStage.THIRD_PLACE);
+        third.setStatus(MatchStatus.SCHEDULED);
+        matchesRepo.persist(third);
     }
 
     /**
@@ -446,6 +584,24 @@ public class KnockoutService {
             }
         }
 
+        // Best "third-placed" qualifiers: the organizer picked N best teams
+        // from the first non-advancing tier (index `adv` in each group -
+        // the 3rd-placed when 2 advance) to also enter the bracket. They are
+        // the lowest seeds (appended last), ranked across groups by points →
+        // goal difference → goals scored.
+        int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+        if (bestThird > 0) {
+            List<GroupStandingRowDto> tier = new ArrayList<>();
+            for (GroupDto g : groups) {
+                if (g.standings().size() > adv) tier.add(g.standings().get(adv));
+            }
+            tier.sort(STANDING_RANK);
+            for (int i = 0; i < bestThird && i < tier.size(); i++) {
+                Teams tm = teamById.get(tier.get(i).teamId());
+                if (tm != null) qualified.add(tm);
+            }
+        }
+
         // Wildcards: add the best next-placed teams to round the qualifier
         // count up to a power of two (no byes needed).
         if (t.getBracketFill() == BracketFill.WILDCARDS) {
@@ -456,10 +612,11 @@ public class KnockoutService {
                     if (g.standings().size() > adv) wc.add(g.standings().get(adv));
                 }
                 wc.sort(STANDING_RANK);
-                int need = target - qualified.size();
-                for (int i = 0; i < need && i < wc.size(); i++) {
+                for (int i = 0; i < wc.size() && qualified.size() < target; i++) {
                     Teams tm = teamById.get(wc.get(i).teamId());
-                    if (tm != null) qualified.add(tm);
+                    // Skip teams already taken as best-third qualifiers so the
+                    // two features can't double-add the same tier team.
+                    if (tm != null && !qualified.contains(tm)) qualified.add(tm);
                 }
             }
         }

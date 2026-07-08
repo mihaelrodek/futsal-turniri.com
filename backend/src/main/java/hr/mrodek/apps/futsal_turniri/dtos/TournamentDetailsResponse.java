@@ -34,6 +34,10 @@ public record TournamentDetailsResponse(
         String format,               // "GROUPS_KNOCKOUT" | "KNOCKOUT_ONLY"
         Integer groupCount,
         Integer advancePerGroup,
+        // How many best "third-placed" teams also advance to the bracket
+        // (0 = off). Chosen at draw time; drives the draw config default and
+        // the "Najbolje trećeplasirane" table.
+        Integer bestThirdCount,
         String bracketFill,          // "BYES" | "WILDCARDS"
 
         String contactName,

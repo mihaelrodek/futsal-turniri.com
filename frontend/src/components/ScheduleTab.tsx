@@ -12,13 +12,14 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiEdit2, FiFilter, FiRefreshCw, FiTrash2 } from "react-icons/fi"
-import { LuCalendarClock, LuCalendarX2, LuGripVertical, LuSettings2 } from "react-icons/lu"
+import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
 import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
+import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
 import { fetchGroups } from "../api/groups"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
-import { GhostButton, MonoLabel, PrimaryButton, SectionCard } from "../ui/pitch"
+import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -132,13 +133,16 @@ function CfgField({
     label,
     value,
     onChange,
+    align = "center",
 }: {
     label: string
     value: string
     onChange: (v: string) => void
+    /** Where the (fixed-width) field sits in its grid cell: start / center / end. */
+    align?: React.ComponentProps<typeof Field.Root>["justifySelf"]
 }) {
     return (
-        <Field.Root>
+        <Field.Root justifySelf={align} w="170px" maxW="full">
             <Field.Label
                 fontSize="2xs"
                 fontWeight="semibold"
@@ -146,10 +150,13 @@ function CfgField({
                 textTransform="uppercase"
                 color="fg.muted"
                 mb="1"
+                w="full"
+                justifyContent="center"
+                textAlign="center"
             >
                 {label}
             </Field.Label>
-            <Box position="relative">
+            <Box position="relative" w="full">
                 <Input
                     size="sm"
                     inputMode="numeric"
@@ -522,9 +529,12 @@ export default function ScheduleTab({
     tournamentSlug,
     focusMatchId = null,
     format,
+    startAt,
 }: {
     uuid: string
     canEdit?: boolean
+    /** Tournament start ISO - seeds the multi-day planner's default date/time. */
+    startAt?: string | null
     /** Tournament format. For GROUPS_KNOCKOUT the group draw places teams into
      *  groups but does NOT create fixtures (those are built when the schedule
      *  is generated), so "draw done" must be detected from the groups, not the
@@ -548,6 +558,8 @@ export default function ScheduleTab({
     const [clearing, setClearing] = useState(false)
     /** Which destructive schedule action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
+    /** Multi-day generate planner (date range + per-day matches + preview). */
+    const [plannerOpen, setPlannerOpen] = useState(false)
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
@@ -562,11 +574,17 @@ export default function ScheduleTab({
     const orderRef = useRef<number[]>([])
     /** Team id (as string) to filter the schedule by; "" = all teams. */
     const [teamFilter, setTeamFilter] = useState<string>("")
+    /** Group name (A, B, …) to filter by; "" = all groups. */
+    const [groupFilter, setGroupFilter] = useState<string>("")
+    /** Calendar day (local YYYY-MM-DD) to filter by; "" = all days. Only shown
+     *  when the tournament spans more than one day. */
+    const [dayFilter, setDayFilter] = useState<string>("")
     const [cfg, setCfg] = useState<Cfg>({
         halfLengthMin: "10",
         halftimeBreakMin: "5",
         breakBetweenMatchesMin: "5",
-        bufferMin: "5",
+        // Buffer is hidden in the UI now; kept at 0 so the backend field stays.
+        bufferMin: "0",
     })
 
     useEffect(() => {
@@ -584,7 +602,7 @@ export default function ScheduleTab({
                         s.breakBetweenMatchesMin != null
                             ? String(s.breakBetweenMatchesMin)
                             : "5",
-                    bufferMin: s.bufferMin != null ? String(s.bufferMin) : "5",
+                    bufferMin: "0",
                 })
             })
             .catch(() => {
@@ -742,10 +760,28 @@ export default function ScheduleTab({
         })
         .map((x) => x.m)
 
-    // Distinct teams across the schedule, for the "filter by team" dropdown.
+    // How many distinct teams / groups the tournament has in total (ignoring the
+    // active filters). Drives whether each dropdown is worth showing at all.
+    const allTeamCount = (() => {
+        const s = new Set<number>()
+        for (const m of rawMatches) {
+            if (m.team1Id != null) s.add(m.team1Id)
+            if (m.team2Id != null) s.add(m.team2Id)
+        }
+        return s.size
+    })()
+    const allGroupCount = (() => {
+        const s = new Set<string>()
+        for (const m of rawMatches) if (m.groupName) s.add(m.groupName)
+        return s.size
+    })()
+
+    // Team dropdown options - narrowed to the selected group, so once a group is
+    // picked only that group's teams can be chosen (and not the other way round).
     const teamOptions = (() => {
         const map = new Map<number, string>()
         for (const m of rawMatches) {
+            if (groupFilter && m.groupName !== groupFilter) continue
             if (m.team1Id != null) map.set(m.team1Id, m.team1Name ?? `#${m.team1Id}`)
             if (m.team2Id != null) map.set(m.team2Id, m.team2Name ?? `#${m.team2Id}`)
         }
@@ -754,13 +790,68 @@ export default function ScheduleTab({
             .sort((a, b) => a.name.localeCompare(b.name, "hr"))
     })()
 
-    // Apply the team filter (only that team's matches when one is picked).
-    const visibleMatches = teamFilter
-        ? byKickoff.filter(
-              (m) =>
-                  String(m.team1Id) === teamFilter || String(m.team2Id) === teamFilter,
-          )
-        : byKickoff
+    // Group dropdown options (A, B, …) - narrowed to the group(s) the selected
+    // team plays in, so picking a team limits the group filter to that team's
+    // group. Only group-stage matches carry a groupName; empty for KNOCKOUT_ONLY.
+    const groupOptions = (() => {
+        const set = new Set<string>()
+        for (const m of rawMatches) {
+            if (
+                teamFilter &&
+                String(m.team1Id) !== teamFilter &&
+                String(m.team2Id) !== teamFilter
+            ) {
+                continue
+            }
+            if (m.groupName) set.add(m.groupName)
+        }
+        return [...set].sort((a, b) => a.localeCompare(b, "hr"))
+    })()
+
+    // Local calendar-day key + friendly label for the "filter by day" dropdown.
+    const dateKey = (iso?: string | null): string => {
+        if (!iso) return ""
+        const d = new Date(iso)
+        const p = (n: number) => String(n).padStart(2, "0")
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+    }
+    const dayLabel = (key: string): string => {
+        const [y, mo, da] = key.split("-").map(Number)
+        return new Date(y, mo - 1, da).toLocaleDateString("hr-HR", {
+            weekday: "short",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+        })
+    }
+    // Distinct scheduled days. The day filter only appears for a multi-day
+    // tournament (more than one distinct kickoff date).
+    const dayOptions = (() => {
+        const set = new Set<string>()
+        for (const m of rawMatches) {
+            const k = dateKey(m.kickoffAt)
+            if (k) set.add(k)
+        }
+        return [...set].sort()
+    })()
+    const multiDay = dayOptions.length > 1
+
+    const anyFilter = !!teamFilter || !!groupFilter || !!(multiDay && dayFilter)
+    function clearFilters() {
+        setTeamFilter("")
+        setGroupFilter("")
+        setDayFilter("")
+    }
+
+    // Apply the active filters (team AND group AND day).
+    const visibleMatches = byKickoff.filter((m) => {
+        if (teamFilter && String(m.team1Id) !== teamFilter && String(m.team2Id) !== teamFilter) {
+            return false
+        }
+        if (groupFilter && m.groupName !== groupFilter) return false
+        if (multiDay && dayFilter && dateKey(m.kickoffAt) !== dayFilter) return false
+        return true
+    })
 
     // Two sections: upcoming/live first (the schedule), finished at the bottom.
     const upcomingMatches = visibleMatches.filter((m) => m.status !== "FINISHED")
@@ -855,8 +946,8 @@ export default function ScheduleTab({
     // started yet (SCHEDULED only).
     const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode)
     // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, and not
-    // while a team filter is active (the visible subset isn't the real order).
-    const reorderEnabled = scheduleEditable && scheduleLaidOut && !teamFilter
+    // while any filter is active (the visible subset isn't the real order).
+    const reorderEnabled = scheduleEditable && scheduleLaidOut && !anyFilter
     // Keep the current draggable order in a ref the pointer listeners can read.
     orderRef.current = reorderEnabled
         ? upcomingMatches
@@ -869,37 +960,28 @@ export default function ScheduleTab({
             {/* Read-only format summary - visible to everyone once the schedule
                 is generated, so all viewers see how long halves/breaks are. */}
             {scheduleHasConfig && !showEditableConfig && (
-                <SectionCard
-                    icon={LuSettings2}
-                    title="Postavke rasporeda"
-                    subtitle={
-                        editScheduleMode
-                            ? "Uređivanje uključeno - promijeni termin ili povuci utakmicu koja još nije počela"
-                            : "Format utakmice - vrijedi za sve utakmice"
-                    }
-                    padding="4"
-                    action={
-                        canEdit && tournamentStarted ? (
+                <SectionCard>
+                    <Box
+                        display="grid"
+                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
+                        gap="3"
+                    >
+                        <SettingStat label="Broj poluvremena" value={`${schedule.halfCount ?? 2}`} />
+                        <SettingStat label="Trajanje poluvrijeme" value={`${schedule.halfLengthMin ?? 0} min`} />
+                        <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
+                        <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
+                        <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
+                    </Box>
+                    {canEdit && tournamentStarted && (
+                        <Flex justify="center" mt="4">
                             <PrimaryButton
                                 onClick={() => setEditScheduleMode((v) => !v)}
                                 icon={<FiEdit2 size={14} />}
                             >
                                 {editScheduleMode ? "Gotovo" : "Uredi raspored"}
                             </PrimaryButton>
-                        ) : undefined
-                    }
-                >
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
-                        gap="3"
-                    >
-                        <SettingStat label="Min / poluvrijeme" value={`${schedule.halfLengthMin}`} />
-                        <SettingStat label="Poluvremena" value={`${schedule.halfCount ?? 2}`} />
-                        <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
-                        <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
-                        <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
-                    </Box>
+                        </Flex>
+                    )}
                 </SectionCard>
             )}
 
@@ -945,158 +1027,197 @@ export default function ScheduleTab({
                  also hidden for non-organizers - schedule generation is a
                  destructive owner-only action. */}
             {showEditableConfig && (
-                <SectionCard
-                    icon={LuSettings2}
-                    title="Format utakmice"
-                    subtitle={
-                        drawGenerated
-                            ? "Trajanje, poluvremena i pauze između utakmica"
-                            : "Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored"
-                    }
-                    action={
-                        scheduleLaidOut ? (
-                            <HStack gap="2" wrap="wrap" justify="flex-end">
-                                <PrimaryButton
-                                    onClick={() => setConfirmAction("regenerate")}
-                                    disabled={generating || clearing}
-                                    icon={<FiRefreshCw size={14} />}
-                                >
-                                    Ponovno postavi raspored
-                                </PrimaryButton>
-                                <GhostButton
-                                    danger
-                                    onClick={() => setConfirmAction("clear")}
-                                    disabled={generating || clearing}
-                                    icon={<FiTrash2 size={14} />}
-                                >
-                                    Očisti raspored
-                                </GhostButton>
-                            </HStack>
-                        ) : (
-                            <PrimaryButton
-                                onClick={runGenerate}
-                                disabled={generating || !drawGenerated}
-                                icon={<LuCalendarClock size={14} />}
-                            >
-                                {generating ? "Generiranje…" : "Generiraj raspored"}
-                            </PrimaryButton>
-                        )
-                    }
-                >
+                <SectionCard>
                     <Box
                         display="grid"
-                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }}
+                        gridTemplateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
                         gap="3"
+                        alignItems="end"
                     >
                         <CfgField
-                            label="Min / poluvrijeme"
+                            label="Trajanje poluvrijeme"
+                            align={{ base: "center", md: "start" }}
                             value={cfg.halfLengthMin}
                             onChange={(v) => setCfg((c) => ({ ...c, halfLengthMin: v }))}
                         />
                         <CfgField
                             label="Pauza poluvrijeme"
+                            align="center"
                             value={cfg.halftimeBreakMin}
                             onChange={(v) => setCfg((c) => ({ ...c, halftimeBreakMin: v }))}
                         />
                         <CfgField
                             label="Pauza između utakmica"
+                            align={{ base: "center", md: "end" }}
                             value={cfg.breakBetweenMatchesMin}
                             onChange={(v) => setCfg((c) => ({ ...c, breakBetweenMatchesMin: v }))}
                         />
-                        <CfgField
-                            label="Rezerva"
-                            value={cfg.bufferMin}
-                            onChange={(v) => setCfg((c) => ({ ...c, bufferMin: v }))}
-                        />
                     </Box>
-                    {/* Computed-duration info bar */}
+
+                    {/* Green action bar: format description (left) · generate
+                        action (centre) · computed slot duration (right). */}
                     <Flex
                         mt="4"
                         align="center"
-                        justify="space-between"
-                        bg="bg.surfaceTint"
-                        rounded="md"
-                        px="4"
-                        py="3"
                         gap="3"
                         wrap="wrap"
+                        bg="brand.subtle"
+                        borderWidth="1px"
+                        borderColor="brand.emphasized"
+                        rounded="lg"
+                        px="4"
+                        py="3"
                     >
-                        <HStack gap="2">
-                            <FiClock size={14} />
-                            <Text fontSize="13px" color="fg.ink" fontWeight={600}>
+                        <Text
+                            flex={{ base: "1 1 100%", md: "1" }}
+                            minW="0"
+                            fontSize="13px"
+                            color="fg.ink"
+                            fontWeight={600}
+                        >
+                            {drawGenerated
+                                ? "Raspored turnira - trajanje, poluvrijeme, pauze"
+                                : "Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored"}
+                        </Text>
+
+                        <Flex flex={{ base: "1 1 100%", md: "1" }} justify="center" gap="2" wrap="wrap">
+                            {scheduleLaidOut ? (
+                                <>
+                                    <PrimaryButton
+                                        onClick={() => setPlannerOpen(true)}
+                                        disabled={generating || clearing}
+                                        icon={<FiRefreshCw size={14} />}
+                                    >
+                                        Ponovno postavi
+                                    </PrimaryButton>
+                                    <GhostButton
+                                        danger
+                                        onClick={() => setConfirmAction("clear")}
+                                        disabled={generating || clearing}
+                                        icon={<FiTrash2 size={14} />}
+                                    >
+                                        Očisti raspored
+                                    </GhostButton>
+                                </>
+                            ) : (
+                                <PrimaryButton
+                                    onClick={() => setPlannerOpen(true)}
+                                    disabled={generating || !drawGenerated}
+                                    icon={<LuCalendarClock size={14} />}
+                                >
+                                    {generating ? "Generiranje…" : "Generiraj raspored"}
+                                </PrimaryButton>
+                            )}
+                        </Flex>
+
+                        <HStack flex={{ base: "1 1 100%", md: "1" }} justify={{ base: "flex-start", md: "flex-end" }} gap="1.5">
+                            <FiClock size={13} />
+                            <Text fontSize="12px" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
                                 Trajanje termina:
                             </Text>
-                            <Box
-                                fontFamily="mono"
-                                fontSize="15px"
-                                color="pitch.500"
-                                fontWeight={800}
-                            >
+                            <Box fontFamily="mono" fontSize="15px" color="pitch.500" fontWeight={800}>
                                 {slot} min
                             </Box>
                         </HStack>
-                        <MonoLabel>UKUPNO TERMINA ZA SVE UTAKMICE</MonoLabel>
                     </Flex>
                 </SectionCard>
             )}
 
-            {/* Filter the schedule down to a single team's matches - centred,
-                in a noticeable box that lights up when a filter is active. */}
-            {teamOptions.length > 1 && (
+            {/* Filter the schedule - by team, by group, and (multi-day only) by
+                day. Centred box that lights up when any filter is active. */}
+            {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
                 <Flex justify="center">
                     <Flex
                         align="center"
                         justify="center"
-                        gap="2.5"
+                        gap="3"
                         wrap="wrap"
                         borderWidth="1px"
-                        borderColor={teamFilter ? "brand.emphasized" : "border.emphasized"}
-                        bg={teamFilter ? "brand.subtle" : "bg.surfaceTint"}
+                        borderColor={anyFilter ? "brand.emphasized" : "border.emphasized"}
+                        bg={anyFilter ? "brand.subtle" : "bg.surfaceTint"}
                         rounded="xl"
                         px="5"
                         py="3"
                         shadow="xs"
                         transition="background-color 0.15s, border-color 0.15s"
                     >
-                        <HStack
-                            gap="1.5"
-                            color={teamFilter ? "brand.fg" : "fg.ink"}
-                            flexShrink={0}
-                        >
+                        <HStack gap="1.5" color={anyFilter ? "brand.fg" : "fg.ink"} flexShrink={0}>
                             <FiFilter size={15} />
                             <Text fontSize="sm" fontWeight={600} whiteSpace="nowrap">
-                                Filtriraj po ekipi:
+                                Filtriraj:
                             </Text>
                         </HStack>
-                        <NativeSelect.Root size="sm" w="auto" minW="200px" maxW="280px">
-                            <NativeSelect.Field
-                                value={teamFilter}
-                                onChange={(e) => setTeamFilter(e.target.value)}
-                                fontWeight={600}
-                            >
-                                <option value="">Sve ekipe</option>
-                                {teamOptions.map((t) => (
-                                    <option key={t.id} value={t.id}>
-                                        {t.name}
-                                    </option>
-                                ))}
-                            </NativeSelect.Field>
-                            <NativeSelect.Indicator />
-                        </NativeSelect.Root>
-                        {/* Always rendered (just hidden when inactive) so the
-                            box keeps the same size and the layout doesn't shift
-                            when a team is picked. */}
+
+                        {allTeamCount > 1 && (
+                            <NativeSelect.Root size="sm" w="auto" minW="170px" maxW="240px">
+                                <NativeSelect.Field
+                                    value={teamFilter}
+                                    onChange={(e) => setTeamFilter(e.target.value)}
+                                    fontWeight={600}
+                                    aria-label="Filtriraj po ekipi"
+                                >
+                                    <option value="">Sve ekipe</option>
+                                    {teamOptions.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.name}
+                                        </option>
+                                    ))}
+                                </NativeSelect.Field>
+                                <NativeSelect.Indicator />
+                            </NativeSelect.Root>
+                        )}
+
+                        {allGroupCount > 1 && (
+                            <NativeSelect.Root size="sm" w="auto" minW="130px" maxW="180px">
+                                <NativeSelect.Field
+                                    value={groupFilter}
+                                    onChange={(e) => setGroupFilter(e.target.value)}
+                                    fontWeight={600}
+                                    aria-label="Filtriraj po skupini"
+                                >
+                                    <option value="">Sve skupine</option>
+                                    {groupOptions.map((g) => (
+                                        <option key={g} value={g}>
+                                            Skupina {g}
+                                        </option>
+                                    ))}
+                                </NativeSelect.Field>
+                                <NativeSelect.Indicator />
+                            </NativeSelect.Root>
+                        )}
+
+                        {multiDay && (
+                            <NativeSelect.Root size="sm" w="auto" minW="150px" maxW="220px">
+                                <NativeSelect.Field
+                                    value={dayFilter}
+                                    onChange={(e) => setDayFilter(e.target.value)}
+                                    fontWeight={600}
+                                    aria-label="Filtriraj po danu"
+                                >
+                                    <option value="">Svi dani</option>
+                                    {dayOptions.map((d) => (
+                                        <option key={d} value={d}>
+                                            {dayLabel(d)}
+                                        </option>
+                                    ))}
+                                </NativeSelect.Field>
+                                <NativeSelect.Indicator />
+                            </NativeSelect.Root>
+                        )}
+
+                        {/* Always rendered (hidden when inactive) so the box keeps
+                            its size and the layout doesn't shift on pick. */}
                         <Button
                             size="xs"
                             variant="ghost"
                             colorPalette="brand"
-                            onClick={() => setTeamFilter("")}
-                            visibility={teamFilter ? "visible" : "hidden"}
-                            aria-hidden={!teamFilter}
-                            tabIndex={teamFilter ? 0 : -1}
+                            onClick={clearFilters}
+                            visibility={anyFilter ? "visible" : "hidden"}
+                            aria-hidden={!anyFilter}
+                            tabIndex={anyFilter ? 0 : -1}
                             flexShrink={0}
                         >
-                            Poništi filter
+                            Poništi filtere
                         </Button>
                     </Flex>
                 </Flex>
@@ -1116,7 +1237,14 @@ export default function ScheduleTab({
                     <EmptyState
                         icon={LuCalendarX2}
                         title="Nema utakmica"
-                        description="Odabrana ekipa nema utakmica u rasporedu."
+                        description="Nijedna utakmica ne odgovara odabranom filteru."
+                        action={
+                            anyFilter ? (
+                                <Button size="sm" variant="outline" onClick={clearFilters}>
+                                    Poništi filtere
+                                </Button>
+                            ) : undefined
+                        }
                     />
                 </Panel>
             ) : (
@@ -1219,6 +1347,24 @@ export default function ScheduleTab({
                     setConfirmAction(null)
                 }}
             />
+
+            {/* Multi-day generate flow: date range → per-day matches → sketch
+                preview → confirm & generate. */}
+            {plannerOpen && (
+                <MultiDaySchedulePlanner
+                    uuid={uuid}
+                    startAt={startAt}
+                    cfg={{
+                        halfCount: HALF_COUNT,
+                        halfLengthMin: numVal(cfg.halfLengthMin),
+                        halftimeBreakMin: numVal(cfg.halftimeBreakMin),
+                        breakBetweenMatchesMin: numVal(cfg.breakBetweenMatchesMin),
+                        bufferMin: numVal(cfg.bufferMin),
+                    }}
+                    onClose={() => setPlannerOpen(false)}
+                    onGenerated={(s) => setSchedule(s)}
+                />
+            )}
         </VStack>
     )
 }

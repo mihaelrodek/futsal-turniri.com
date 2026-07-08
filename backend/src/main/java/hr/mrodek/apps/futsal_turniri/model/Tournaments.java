@@ -81,6 +81,17 @@ public class Tournaments {
     private Integer advancePerGroup;
 
     /**
+     * How many best next-placed teams also advance to the bracket, on top of
+     * the {@code advancePerGroup} per-group qualifiers. With the common
+     * "2 advance per group" this is the number of best THIRD-placed teams
+     * (e.g. 12 teams / 3 groups: 2×3=6 qualifiers + 2 best thirds = 8).
+     * They are ranked across groups by points, then goal difference, then
+     * goals scored. 0 (or null) = off. Only meaningful for GROUPS_KNOCKOUT.
+     */
+    @Column(name = "best_third_count", nullable = false)
+    private Integer bestThirdCount = 0;
+
+    /**
      * How the knockout bracket is filled when qualifiers aren't a power of
      * two. Null for KNOCKOUT_ONLY. See {@link BracketFill}.
      */

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        How many best next-placed teams (the "best third-placed" teams when
+        2 advance per group) also qualify for the knockout bracket, on top of
+        the per-group qualifiers. 0 = feature off. Chosen at draw time, stored
+        on the tournament so the standings table and the bracket qualifier
+        pull both know the count.
+    -->
+    <changeSet id="2026-07-08-tournament-best-third-count" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="best_third_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

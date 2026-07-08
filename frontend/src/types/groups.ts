@@ -66,6 +66,26 @@ export type DrawRequest = {
     /** Chosen at draw time (no longer at tournament creation). */
     groupCount?: number | null
     advancePerGroup?: number | null
+    /** How many best "third-placed" teams also advance (0/undefined = off). */
+    bestThirdCount?: number | null
     /** Required when mode is MANUAL; ignored for AUTO. */
     assignments?: DrawAssignment[] | null
+}
+
+/** One row of the "best third-placed" cross-group ranking. */
+export type ThirdPlacedRow = {
+    /** 1-based cross-group rank. */
+    rank: number
+    /** True for the top `bestThirdCount` rows - the teams that advance. */
+    qualifies: boolean
+    /** The team's group label (A, B, …). */
+    groupName: string
+    standing: GroupStandingRow
+}
+
+/** The "Najbolje trećeplasirane" table. `bestThirdCount = 0` → feature off. */
+export type ThirdPlacedTable = {
+    advancePerGroup: number
+    bestThirdCount: number
+    rows: ThirdPlacedRow[]
 }

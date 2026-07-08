@@ -34,3 +34,46 @@ export type Schedule = ScheduleConfig & {
     /** Every match in play order. */
     matches: ScheduledMatch[]
 }
+
+/* ── Multi-day scheduling ─────────────────────────────────────────────── */
+
+/** Predicted match counts, for the "matches remaining to schedule" counter. */
+export type SchedulePlanInfo = {
+    groupMatches: number
+    knockoutMatches: number
+    totalMatches: number
+}
+
+/** One day of the plan: the day's first kickoff (ISO offset) + how many
+ *  matches play that day. */
+export type DaySchedule = {
+    firstKickoff: string
+    matches: number
+}
+
+/** Request for the multi-day preview / generate - format config + day plan. */
+export type SchedulePlanRequest = ScheduleConfig & {
+    days: DaySchedule[]
+}
+
+/** One planned match in the (non-persisted) preview. */
+export type SchedulePreviewMatch = {
+    kickoff: string
+    stage: string
+    groupName?: string | null
+    team1Name?: string | null
+    team2Name?: string | null
+    /** False for knockout placeholders (teams decided after the group stage). */
+    teamsKnown: boolean
+}
+
+/** The computed multi-day schedule shown before confirming. */
+export type SchedulePreview = {
+    totalMatches: number
+    groupMatches: number
+    knockoutMatches: number
+    scheduled: number
+    unscheduled: number
+    slotLengthMin: number
+    days: { date: string; matches: SchedulePreviewMatch[] }[]
+}
