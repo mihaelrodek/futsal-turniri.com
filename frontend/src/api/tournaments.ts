@@ -238,10 +238,20 @@ export async function deleteTournament(tournamentUuid: string): Promise<void> {
 
 /* ── Individual awards (best GK / player / scorer) ──────────────────── */
 
+export type AwardPlayerOption = { name: string; teamName: string | null }
+
 export type AwardSuggestions = {
     bestScorer: { name: string | null; teamName: string | null; goals: number } | null
     bestPlayer: { name: string | null; teamName: string | null; goals: number } | null
-    bestGoalkeeperTeam: { teamName: string | null; goalsConceded: number } | null
+    /** Recommended goalkeeper's team: furthest run, then fewest conceded.
+     *  `reachedStage` is a label (FINALE, POLUFINALE, SKUPINA, …). */
+    bestGoalkeeperTeam: {
+        teamName: string | null
+        goalsConceded: number
+        reachedStage: string | null
+    } | null
+    /** Every real player of the tournament, for the award dropdowns. */
+    players: AwardPlayerOption[]
 }
 
 export type AwardsPayload = {

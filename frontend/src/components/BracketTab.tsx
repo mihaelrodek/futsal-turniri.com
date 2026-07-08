@@ -47,7 +47,7 @@ import { fetchSchedule } from "../api/schedule"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
-import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -278,10 +278,10 @@ function useDragPan() {
  *  match. When false the tab is read-only and the toolbar is collapsed.
  *
  *  `tournamentStarted` - set once any match goes LIVE or FINISHED. When
- *  true, "Ponovno generiraj" is removed from the toolbar (regenerating a
- *  bracket mid-tournament would wipe live scores). canEdit controls
- *  visibility of result entry on individual matches; tournamentStarted
- *  controls the destructive whole-bracket regenerate action. */
+ *  true, the draw toolbar (manual draw / reset) is removed (re-drawing
+ *  mid-tournament would wipe live scores). canEdit controls visibility of
+ *  result entry on individual matches; tournamentStarted controls the
+ *  destructive whole-bracket draw actions. */
 export default function BracketTab({
     uuid,
     canEdit = false,
@@ -331,7 +331,7 @@ export default function BracketTab({
     const [byeOpen, setByeOpen] = useState(false)
     const [byeIds, setByeIds] = useState<Set<number>>(new Set())
     /** Which destructive bracket action awaits confirmation in the popup. */
-    const [confirmAction, setConfirmAction] = useState<null | "reset" | "regenerate">(null)
+    const [confirmAction, setConfirmAction] = useState<null | "reset">(null)
     // Eligible teams for the bracket (group qualifiers / all teams) + whether
     // the group stage is finished - both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
@@ -442,12 +442,6 @@ export default function BracketTab({
         } finally {
             setSaving(false)
         }
-    }
-
-    /** Re-drawing wipes the existing bracket, so "Ponovno (auto)" asks for an
-     *  explicit confirmation in a popup modal before running. */
-    function confirmRegenerate() {
-        setConfirmAction("regenerate")
     }
 
     async function runResetBracket() {
@@ -1067,28 +1061,6 @@ export default function BracketTab({
     const editB = parseInt(form.s2, 10)
     const showPenaltyRow = Number.isFinite(editA) && Number.isFinite(editB) && editA === editB
 
-    // Podium - derived from the decided final and third-place matches.
-    const finalMatch = bracket.rounds.find((r) => r.stage === "FINAL")?.matches[0]
-    const champion =
-        finalMatch && finalMatch.winnerTeamId != null
-            ? finalMatch.winnerTeamId === finalMatch.team1Id
-                ? finalMatch.team1Name
-                : finalMatch.team2Name
-            : null
-    const runnerUp =
-        finalMatch && finalMatch.winnerTeamId != null
-            ? finalMatch.winnerTeamId === finalMatch.team1Id
-                ? finalMatch.team2Name
-                : finalMatch.team1Name
-            : null
-    const tp = bracket.thirdPlace
-    const thirdPlaceName =
-        tp && tp.winnerTeamId != null
-            ? tp.winnerTeamId === tp.team1Id
-                ? tp.team1Name
-                : tp.team2Name
-            : null
-
     const roundCount = bracket.rounds.length
 
     // Once a real ELIMINATION match is played the draw is locked - re-drawing
@@ -1179,10 +1151,9 @@ export default function BracketTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Owner draw controls - right-aligned. "Ponovno (auto)" wipes the
-                bracket so it asks for confirmation first. Both hidden once any
-                match is LIVE/FINISHED (re-drawing would destroy real results).
-                The "Podijeli bracket" button now floats at the bottom (below). */}
+            {/* Owner draw controls - right-aligned. Hidden once any match is
+                LIVE/FINISHED (re-drawing would destroy real results). The
+                "Podijeli bracket" button now floats at the bottom (below). */}
             {canEdit && !started && (
                 <Flex justify="flex-end" gap="2" wrap="wrap">
                     <GhostButton
@@ -1191,14 +1162,6 @@ export default function BracketTab({
                         disabled={generating || generatingManual}
                     >
                         Ručni ždrijeb
-                    </GhostButton>
-                    <GhostButton
-                        danger
-                        icon={<FiRefreshCw size={14} />}
-                        onClick={confirmRegenerate}
-                        disabled={generating}
-                    >
-                        {generating ? "Ždrijeb…" : "Ponovno (auto)"}
                     </GhostButton>
                     <GhostButton
                         danger
@@ -1211,73 +1174,23 @@ export default function BracketTab({
                 </Flex>
             )}
 
-            {/* Confirm popup for the destructive draw actions (reset / regenerate). */}
+            {/* Confirm popup for resetting (wiping) the elimination bracket. */}
             <ConfirmDialog
                 open={confirmAction !== null}
-                busy={confirmAction === "reset" ? resetting : generating}
+                busy={resetting}
                 danger
-                title={confirmAction === "reset" ? "Resetirati eliminaciju?" : "Ponoviti ždrijeb?"}
-                description={
-                    confirmAction === "reset"
-                        ? "Sve utakmice eliminacijske faze bit će obrisane."
-                        : "Postojeća eliminacijska ljestvica bit će obrisana i izvučena ponovno."
-                }
-                confirmLabel={confirmAction === "reset" ? "Da, resetiraj" : "Da, ponovi ždrijeb"}
+                title="Resetirati eliminaciju?"
+                description="Sve utakmice eliminacijske faze bit će obrisane."
+                confirmLabel="Da, resetiraj"
                 onClose={() => setConfirmAction(null)}
                 onConfirm={async () => {
-                    if (confirmAction === "reset") await runResetBracket()
-                    else await runGenerate()
+                    await runResetBracket()
                     setConfirmAction(null)
                 }}
             />
 
             {/* Manual draw editor - shown above the bracket when opened. */}
             {canEdit && !started && manualOpen && manualBracketPanel}
-
-            {/* ── Podium banner ──────────────────────────────────────────── */}
-            {champion && (
-                <Panel>
-                    <Box
-                        px="5"
-                        py="4"
-                        rounded="2xl"
-                        bgGradient="to-r"
-                        gradientFrom="yellow.subtle"
-                        gradientTo="brand.subtle"
-                    >
-                        <Text
-                            fontSize="xs"
-                            fontWeight="semibold"
-                            letterSpacing="wider"
-                            textTransform="uppercase"
-                            color="yellow.fg"
-                            mb="2"
-                        >
-                            Rezultati turnira
-                        </Text>
-                        <Flex gap="5" wrap="wrap" align="center">
-                            <HStack gap="2">
-                                <Text fontSize="lg" lineHeight="1">🥇</Text>
-                                <Text fontWeight="bold" color="fg">
-                                    {champion}
-                                </Text>
-                            </HStack>
-                            {runnerUp && (
-                                <HStack gap="2">
-                                    <Text fontSize="lg" lineHeight="1">🥈</Text>
-                                    <Text color="fg.muted">{runnerUp}</Text>
-                                </HStack>
-                            )}
-                            {thirdPlaceName && (
-                                <HStack gap="2">
-                                    <Text fontSize="lg" lineHeight="1">🥉</Text>
-                                    <Text color="fg.muted">{thirdPlaceName}</Text>
-                                </HStack>
-                            )}
-                        </Flex>
-                    </Box>
-                </Panel>
-            )}
 
             {/* ── Bracket - driven by @g-loot/react-tournament-brackets.
                  The library renders the SVG layout + connectors; our
@@ -1985,6 +1898,15 @@ export function BracketLiveMatchDialog({
     // score into the penalty shootout for a level knockout result.
     const [savingScore, setSavingScore] = useState(false)
     const [pendingScore, setPendingScore] = useState<{ s1: number; s2: number } | null>(null)
+    /** Live value of the result-only score editor, so the footer "Spremi
+     *  rezultat" button (which sits outside the editor) can read it. */
+    const [directScore, setDirectScore] = useState<{ s1: number; s2: number }>({
+        s1: match.score1 ?? 0,
+        s2: match.score2 ?? 0,
+    })
+    /** Penalty result (as text) for a level result-only score - a knockout
+     *  can't end drawn, so a level score needs a penalty tally. */
+    const [directPens, setDirectPens] = useState<{ p1: string; p2: string }>({ p1: "", p2: "" })
 
     // Load events once (rosters are owned by LiveGoalEntry).
     useEffect(() => {
@@ -2237,17 +2159,34 @@ export function BracketLiveMatchDialog({
         }
     }
 
-    /** Save a final knockout score directly (no scorers). A level score hands
-     *  off to the penalty shootout (a knockout can't end drawn). */
+    /** Save a final knockout score directly (no scorers). A level score can't
+     *  win a knockout, so the organizer just types the penalty tally alongside
+     *  it (no guided one-by-one shootout) and we save both at once. */
     async function handleSaveDirectScore(s1: number, s2: number) {
+        let penalties1: number | undefined
+        let penalties2: number | undefined
         if (s1 === s2) {
-            setPendingScore({ s1, s2 })
-            setShootout(true)
-            return
+            const p1 = directPens.p1.trim()
+            const p2 = directPens.p2.trim()
+            if (p1 === "" || p2 === "") {
+                showError("Penali", "Neriješena eliminacijska utakmica - upiši rezultat penala za obje ekipe.")
+                return
+            }
+            penalties1 = Number(p1)
+            penalties2 = Number(p2)
+            if (penalties1 === penalties2) {
+                showError("Penali", "Rezultat penala ne može biti neriješen.")
+                return
+            }
         }
         setSavingScore(true)
         try {
-            await recordKnockoutResult(uuid, matchId, { score1: s1, score2: s2 })
+            await recordKnockoutResult(uuid, matchId, {
+                score1: s1,
+                score2: s2,
+                penalties1,
+                penalties2,
+            })
             await onChanged()
             onClose()
         } catch {
@@ -2279,39 +2218,48 @@ export function BracketLiveMatchDialog({
                     <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
                         <Dialog.Header pb="2">
                             <Dialog.Title flex="1">
-                                {/* Big scoreboard header: pill + ⋯ menu, BIG timer
-                                    with pause/play, phase label, teams + score. */}
-                                <LiveConsoleHeader
-                                    team1Name={match.team1Name ?? null}
-                                    team2Name={match.team2Name ?? null}
-                                    score1={score.s1}
-                                    score2={score.s2}
-                                    isLive={!isFinished}
-                                    isFinished={isFinished}
-                                    isTimer={isTimer}
-                                    liveStartedAt={match.liveStartedAt}
-                                    firstHalfEndedAt={firstHalfEndedAt}
-                                    secondHalfStartedAt={secondHalfStartedAt}
-                                    livePausedAt={livePausedAt}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                    onPause={handlePause}
-                                    onResume={handleResume}
-                                    pauseBusy={pauseBusy}
-                                    belowTeams={
-                                        !shootout && !resultOnly ? (
-                                            <FoulControls
-                                                uuid={uuid}
-                                                matchId={matchId}
-                                                half={secondHalfStartedAt ? 2 : 1}
-                                                fouls1First={match.fouls1First}
-                                                fouls1Second={match.fouls1Second}
-                                                fouls2First={match.fouls2First}
-                                                fouls2Second={match.fouls2Second}
-                                            />
-                                        ) : undefined
-                                    }
-                                />
+                                {/* Result-only edit: the score editor below already
+                                    shows the names + score, so the big scoreboard
+                                    would just duplicate them - use a plain title. */}
+                                {resultOnly ? (
+                                    <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
+                                        Uredi rezultat
+                                    </Text>
+                                ) : (
+                                    /* Big scoreboard header: BIG timer with
+                                       pause/play, phase label, teams + score. */
+                                    <LiveConsoleHeader
+                                        team1Name={match.team1Name ?? null}
+                                        team2Name={match.team2Name ?? null}
+                                        score1={score.s1}
+                                        score2={score.s2}
+                                        isLive={!isFinished}
+                                        isFinished={isFinished}
+                                        isTimer={isTimer}
+                                        liveStartedAt={match.liveStartedAt}
+                                        firstHalfEndedAt={firstHalfEndedAt}
+                                        secondHalfStartedAt={secondHalfStartedAt}
+                                        livePausedAt={livePausedAt}
+                                        halfLengthMin={halfLengthMin}
+                                        halfCount={halfCount}
+                                        onPause={handlePause}
+                                        onResume={handleResume}
+                                        pauseBusy={pauseBusy}
+                                        belowTeams={
+                                            !shootout ? (
+                                                <FoulControls
+                                                    uuid={uuid}
+                                                    matchId={matchId}
+                                                    half={secondHalfStartedAt ? 2 : 1}
+                                                    fouls1First={match.fouls1First}
+                                                    fouls1Second={match.fouls1Second}
+                                                    fouls2First={match.fouls2First}
+                                                    fouls2Second={match.fouls2Second}
+                                                />
+                                            ) : undefined
+                                        }
+                                    />
+                                )}
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body>
@@ -2374,9 +2322,9 @@ export function BracketLiveMatchDialog({
                                 )}
 
                                 {/* Direct score entry - only for a result-only
-                                    finished match (no scorers). A level score
-                                    routes to the penalty shootout. A live match
-                                    tracks goals below instead. */}
+                                    finished match (no scorers). A level score just
+                                    adds a penalty tally (below); no guided shootout.
+                                    A live match tracks goals below instead. */}
                                 {!shootout && resultOnly && (
                                     <DirectScoreEditor
                                         team1Name={match.team1Name ?? null}
@@ -2385,7 +2333,61 @@ export function BracketLiveMatchDialog({
                                         initialS2={match.score2 ?? 0}
                                         saving={savingScore}
                                         onSave={handleSaveDirectScore}
+                                        onChange={(a, b) => setDirectScore({ s1: a, s2: b })}
+                                        hideSaveButton
                                     />
+                                )}
+
+                                {/* Penalty tally - only when the result-only score
+                                    is level (a knockout can't end drawn). Simple
+                                    number inputs, not a kick-by-kick shootout. */}
+                                {!shootout && resultOnly && directScore.s1 === directScore.s2 && (
+                                    <Box borderWidth="1px" borderColor="border" rounded="lg" p="3" bg="bg.surfaceTint">
+                                        <Text
+                                            fontSize="2xs"
+                                            fontWeight="semibold"
+                                            letterSpacing="wider"
+                                            textTransform="uppercase"
+                                            color="fg.muted"
+                                            textAlign="center"
+                                            mb="2"
+                                        >
+                                            Penali (neriješeno)
+                                        </Text>
+                                        <HStack align="flex-start" gap="2">
+                                            <VStack gap="1.5" flex="1" minW="0">
+                                                <Text fontSize="12px" fontWeight={700} color="fg.ink" truncate maxW="full" title={match.team1Name ?? "-"}>
+                                                    {match.team1Name ?? "-"}
+                                                </Text>
+                                                <Input
+                                                    size="sm"
+                                                    w="64px"
+                                                    inputMode="numeric"
+                                                    textAlign="center"
+                                                    fontWeight={800}
+                                                    value={directPens.p1}
+                                                    onChange={(e) => setDirectPens((p) => ({ ...p, p1: e.target.value.replace(/[^\d]/g, "") }))}
+                                                />
+                                            </VStack>
+                                            <Text fontFamily="mono" fontSize="lg" fontWeight={800} color="fg.muted" pt="6">
+                                                :
+                                            </Text>
+                                            <VStack gap="1.5" flex="1" minW="0">
+                                                <Text fontSize="12px" fontWeight={700} color="fg.ink" truncate maxW="full" title={match.team2Name ?? "-"}>
+                                                    {match.team2Name ?? "-"}
+                                                </Text>
+                                                <Input
+                                                    size="sm"
+                                                    w="64px"
+                                                    inputMode="numeric"
+                                                    textAlign="center"
+                                                    fontWeight={800}
+                                                    value={directPens.p2}
+                                                    onChange={(e) => setDirectPens((p) => ({ ...p, p2: e.target.value.replace(/[^\d]/g, "") }))}
+                                                />
+                                            </VStack>
+                                        </HStack>
+                                    </Box>
                                 )}
 
                                 {/* Add-event - fast one-tap entry. Shown for a
@@ -2466,6 +2468,17 @@ export function BracketLiveMatchDialog({
                                 <Button variant="ghost" onClick={onClose} flexShrink={0}>
                                     Zatvori
                                 </Button>
+                                {/* Result-only: save the direct score from the footer. */}
+                                {!shootout && resultOnly && (
+                                    <Button
+                                        colorPalette="pitch"
+                                        flex="1"
+                                        loading={savingScore}
+                                        onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
+                                    >
+                                        <FiEdit2 /> Spremi rezultat
+                                    </Button>
+                                )}
                                 {!isFinished && !shootout && (
                                     canEndFirstHalf ? (
                                         <Button

@@ -50,6 +50,25 @@ public class PlayersRepository implements AppRepository<Player, Long> {
     }
 
     /**
+     * Every real (non-demo) player of a tournament with their team name, for
+     * the end-of-tournament award pickers (MVP / scorer / goalkeeper). Ordered
+     * by team then roster order. Each element is {@code Object[2]}:
+     * [String playerName, String teamName].
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object[]> findByTournamentWithTeamName(Long tournamentId) {
+        return em.createQuery("""
+                        select p.name, p.team.name
+                        from Player p
+                        where p.team.tournament.id = :tid
+                          and p.demo = false
+                        order by p.team.name asc, p.sortOrder asc nulls last, p.id asc
+                        """)
+                .setParameter("tid", tournamentId)
+                .getResultList();
+    }
+
+    /**
      * All-time goal tally per player, grouped by the (uppercase) name so the
      * same person scoring across multiple tournaments/teams aggregates into
      * one row - the "vječna lista strijelaca". Each element is an

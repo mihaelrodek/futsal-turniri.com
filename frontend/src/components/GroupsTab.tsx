@@ -1403,8 +1403,7 @@ export default function GroupsTab({
                         >
                             {expandedGroups.has(g.id) ? (
                                 <VStack align="stretch" gap="1.5">
-                                    {matchesByKickoff(g.matches).map(renderFixture)}
-                                    <Flex justify="center" pt="1">
+                                    <Flex justify="center" pb="1">
                                         <Button
                                             size="xs"
                                             variant="ghost"
@@ -1414,6 +1413,7 @@ export default function GroupsTab({
                                             <FiChevronUp /> Sakrij utakmice
                                         </Button>
                                     </Flex>
+                                    {matchesByKickoff(g.matches).map(renderFixture)}
                                 </VStack>
                             ) : (
                                 <Flex justify="center">
@@ -1812,6 +1812,12 @@ export function GroupLiveMatchDialog({
     const [deletingId, setDeletingId] = useState<number | null>(null)
     /** Saving a directly-entered final score (no scorers). */
     const [savingScore, setSavingScore] = useState(false)
+    /** Live value of the result-only score editor, so the footer "Spremi
+     *  rezultat" button (which sits outside the editor) can read it. */
+    const [directScore, setDirectScore] = useState<{ s1: number; s2: number }>({
+        s1: match.score1 ?? 0,
+        s2: match.score2 ?? 0,
+    })
 
     // Load events once (rosters are owned by LiveGoalEntry).
     useEffect(() => {
@@ -2070,27 +2076,34 @@ export function GroupLiveMatchDialog({
                     <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
                         <Dialog.Header pb="2">
                             <Dialog.Title flex="1">
-                                {/* Big scoreboard header: pill + ⋯ menu, BIG timer
-                                    with pause/play, phase label, teams + score. */}
-                                <LiveConsoleHeader
-                                    team1Name={match.team1Name ?? null}
-                                    team2Name={match.team2Name ?? null}
-                                    score1={score.s1}
-                                    score2={score.s2}
-                                    isLive={!isFinished}
-                                    isFinished={isFinished}
-                                    isTimer={isTimer}
-                                    liveStartedAt={match.liveStartedAt}
-                                    firstHalfEndedAt={firstHalfEndedAt}
-                                    secondHalfStartedAt={secondHalfStartedAt}
-                                    livePausedAt={livePausedAt}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                    onPause={handlePause}
-                                    onResume={handleResume}
-                                    pauseBusy={pauseBusy}
-                                    belowTeams={
-                                        !resultOnly ? (
+                                {/* Result-only edit: the score editor below already
+                                    shows the names + score, so the big scoreboard
+                                    would just duplicate them - use a plain title. */}
+                                {resultOnly ? (
+                                    <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
+                                        Uredi rezultat
+                                    </Text>
+                                ) : (
+                                    /* Big scoreboard header: BIG timer with
+                                       pause/play, phase label, teams + score. */
+                                    <LiveConsoleHeader
+                                        team1Name={match.team1Name ?? null}
+                                        team2Name={match.team2Name ?? null}
+                                        score1={score.s1}
+                                        score2={score.s2}
+                                        isLive={!isFinished}
+                                        isFinished={isFinished}
+                                        isTimer={isTimer}
+                                        liveStartedAt={match.liveStartedAt}
+                                        firstHalfEndedAt={firstHalfEndedAt}
+                                        secondHalfStartedAt={secondHalfStartedAt}
+                                        livePausedAt={livePausedAt}
+                                        halfLengthMin={halfLengthMin}
+                                        halfCount={halfCount}
+                                        onPause={handlePause}
+                                        onResume={handleResume}
+                                        pauseBusy={pauseBusy}
+                                        belowTeams={
                                             <FoulControls
                                                 uuid={uuid}
                                                 matchId={matchId}
@@ -2100,9 +2113,9 @@ export function GroupLiveMatchDialog({
                                                 fouls2First={match.fouls2First}
                                                 fouls2Second={match.fouls2Second}
                                             />
-                                        ) : undefined
-                                    }
-                                />
+                                        }
+                                    />
+                                )}
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body>
@@ -2120,6 +2133,8 @@ export function GroupLiveMatchDialog({
                                         initialS2={match.score2 ?? 0}
                                         saving={savingScore}
                                         onSave={handleSaveDirectScore}
+                                        onChange={(a, b) => setDirectScore({ s1: a, s2: b })}
+                                        hideSaveButton
                                     />
                                 )}
 
@@ -2203,6 +2218,17 @@ export function GroupLiveMatchDialog({
                                 <Button variant="ghost" onClick={onClose} flexShrink={0}>
                                     Zatvori
                                 </Button>
+                                {/* Result-only: save the direct score from the footer. */}
+                                {resultOnly && (
+                                    <Button
+                                        colorPalette="pitch"
+                                        flex="1"
+                                        loading={savingScore}
+                                        onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
+                                    >
+                                        <FiEdit2 /> Spremi rezultat
+                                    </Button>
+                                )}
                                 {!isFinished && (
                                     canEndFirstHalf ? (
                                         <Button

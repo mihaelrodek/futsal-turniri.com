@@ -5,6 +5,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.*;
 import hr.mrodek.apps.futsal_turniri.dtos.SelfRegisterTeamRequest;
 import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
 import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.MatchEventMapper;
@@ -453,30 +454,38 @@ public class TournamentController {
             return Response.ok(tournamentMapper.toDetails(t)).build();
         }
 
-        var active = teamRepo.findByTournament_Id(t.getId())
-                .stream()
-                .filter(p -> !p.isEliminated())
-                .toList();
-
-        if (active.size() != 1) {
-            return Response.status(Response.Status.CONFLICT)
-                    .entity("EXACTLY_ONE_ACTIVE_TEAM_REQUIRED").build();
+        // Champion = the FINAL match's winner (both knockout formats have a
+        // final). We derive it from winnerTeam (a real FK, always set once the
+        // final is recorded) rather than the unreliable `eliminated` flag,
+        // which the group/knockout flow never maintains. Fall back to the
+        // already-set winnerName for any legacy shape without a FINAL match.
+        var finalMatch = matchesRepo.find(
+                "tournament = ?1 and stage = ?2", t, MatchStage.FINAL).firstResult();
+        Teams winner = finalMatch != null && finalMatch.getStatus() == MatchStatus.FINISHED
+                ? finalMatch.getWinnerTeam() : null;
+        boolean haveChampion = winner != null
+                || (t.getWinnerName() != null && !t.getWinnerName().isBlank());
+        if (!haveChampion) {
+            // Can't finish before the final decides a winner.
+            return Response.status(Response.Status.CONFLICT).entity("FINAL_NOT_DECIDED").build();
         }
 
-        var winner = active.get(0);
-
-        // Ensure elimination flags reflect the final state
-        var allTeams = teamRepo.findByTournament_Id(t.getId());
-        for (var p : allTeams) {
-            boolean shouldBeEliminated = !Objects.equals(p.getId(), winner.getId());
-            if (p.isEliminated() != shouldBeEliminated) {
-                p.setEliminated(shouldBeEliminated);
+        // Keep the elimination flags consistent (winner active, rest out) when
+        // we know the actual winner team.
+        if (winner != null) {
+            for (var p : teamRepo.findByTournament_Id(t.getId())) {
+                boolean shouldBeEliminated = !Objects.equals(p.getId(), winner.getId());
+                if (p.isEliminated() != shouldBeEliminated) {
+                    p.setEliminated(shouldBeEliminated);
+                }
             }
         }
 
         t.setStatus(TournamentStatus.FINISHED);
-        t.setWinnerName(winner.getName());
+        if (winner != null) t.setWinnerName(winner.getName());
         t.setUpdatedAt(OffsetDateTime.now());
+
+        String winnerName = winner != null ? winner.getName() : t.getWinnerName();
 
         // Email the tournament's followers the final result. Fire-and-forget:
         // a mail hiccup must not fail the finish. No-op when SMTP is unconfigured.
@@ -487,7 +496,7 @@ public class TournamentController {
                     "Turnir je završen",
                     "<p><strong>" + EmailService.escapeHtml(t.getName()) + "</strong> je završen.</p>"
                             + "<p style=\"font-size:17px;\">🏆 Pobjednik: <strong>"
-                            + EmailService.escapeHtml(winner.getName()) + "</strong></p>"
+                            + EmailService.escapeHtml(winnerName) + "</strong></p>"
                             + "<p>Pogledaj konačni poredak, strijelce i statistiku na stranici turnira.</p>",
                     url, "Pogledaj rezultate");
             emailService.sendToTournamentSubscribers(
@@ -591,9 +600,10 @@ public class TournamentController {
     /**
      * Data-driven suggestions for the three end-of-tournament awards. Best
      * scorer + best player come from the goal tally (most goals, podium as
-     * tiebreak); best goalkeeper is a hint pointing at the strongest-defence
-     * team since the keeper player can't be inferred from the data.
-     * Organizer-or-admin only - it's part of the finish flow.
+     * tiebreak); best goalkeeper points at the team that went FURTHEST and
+     * then conceded the fewest per match (the keeper player can't be inferred,
+     * so the organiser picks it). Also returns the full player list so each
+     * award can be chosen from a dropdown. Organizer-or-admin only.
      */
     @GET
     @Path("/{uuid}/awards/suggestions")
@@ -635,23 +645,103 @@ public class TournamentController {
             }
         }
 
-        // Best goalkeeper hint - fewest conceded, podium as tiebreak.
+        // Best goalkeeper - recommend the team that went FURTHEST, then
+        // conceded the fewest per match. Progression dominates: a finalist that
+        // conceded 5 outranks a group-stage team that conceded 2. One pass over
+        // the FINISHED matches (group + knockout) builds, per team,
+        // [conceded, played, progression].
+        var acc = new java.util.LinkedHashMap<Long, int[]>();
+        var teamById = new java.util.HashMap<Long, Teams>();
+        for (Matches m : matchesRepo.list("tournament = ?1 and status = ?2", t, MatchStatus.FINISHED)) {
+            Integer s1 = m.getScore1();
+            Integer s2 = m.getScore2();
+            // A bye/walkover proves the team advanced but has no score - it
+            // counts toward progression, not the conceded average.
+            boolean scored = s1 != null && s2 != null;
+            accumulateGk(acc, teamById, m.getTeam1(), m, scored ? s2 : null);
+            accumulateGk(acc, teamById, m.getTeam2(), m, scored ? s1 : null);
+        }
         AwardSuggestionsDto.GoalkeeperHint gkHint = null;
-        for (Object[] row : matchesRepo.concededGoalsByTeam(t)) {
-            var team = (Teams) row[0];
-            long conceded = (Long) row[1];
-            if (team == null) continue;
-            if (gkHint == null
-                    || conceded < gkHint.goalsConceded()
-                    || (conceded == gkHint.goalsConceded()
-                        && podiumRank.apply(team.getName()) < podiumRank.apply(gkHint.teamName()))) {
-                gkHint = new AwardSuggestionsDto.GoalkeeperHint(team.getName(), conceded);
+        int bestProg = Integer.MIN_VALUE;
+        double bestAvg = Double.MAX_VALUE;
+        for (var e : acc.entrySet()) {
+            int[] r = e.getValue(); // [conceded, played, progression]
+            int prog = r[2];
+            double avg = r[1] == 0 ? Double.MAX_VALUE : (double) r[0] / r[1];
+            if (prog > bestProg || (prog == bestProg && avg < bestAvg)) {
+                bestProg = prog;
+                bestAvg = avg;
+                Teams team = teamById.get(e.getKey());
+                gkHint = new AwardSuggestionsDto.GoalkeeperHint(
+                        team.getName(), r[0], progressionLabel(prog));
             }
+        }
+
+        // Every real player of the tournament, so the organiser can pick each
+        // award (MVP / scorer / keeper) from a dropdown.
+        var players = new java.util.ArrayList<AwardSuggestionsDto.PlayerOption>();
+        for (Object[] row : playerRepo.findByTournamentWithTeamName(t.getId())) {
+            players.add(new AwardSuggestionsDto.PlayerOption((String) row[0], (String) row[1]));
         }
 
         // best player mirrors the top scorer - goals + a deep run is the only
         // signal available; the organiser overrides when they disagree.
-        return Response.ok(new AwardSuggestionsDto(topScorer, topScorer, gkHint)).build();
+        return Response.ok(new AwardSuggestionsDto(topScorer, topScorer, gkHint, players)).build();
+    }
+
+    /** Fold one side of a match into the best-goalkeeper accumulator: bump the
+     *  team's max progression, and (when {@code conceded} is non-null) add to
+     *  its conceded total + played count. */
+    private static void accumulateGk(
+            java.util.Map<Long, int[]> acc, java.util.Map<Long, Teams> teamById,
+            Teams team, Matches m, Integer conceded) {
+        if (team == null) return;
+        teamById.putIfAbsent(team.getId(), team);
+        int[] r = acc.computeIfAbsent(team.getId(), k -> new int[3]);
+        boolean won = m.getWinnerTeam() != null
+                && m.getWinnerTeam().getId().equals(team.getId());
+        int prog = won ? stageWinnerProgression(m.getStage()) : stageProgression(m.getStage());
+        if (prog > r[2]) r[2] = prog;
+        if (conceded != null) { r[0] += conceded; r[1] += 1; }
+    }
+
+    /** Progression score for reaching (playing in) a stage - loser's view.
+     *  Higher = further. THIRD_PLACE/FINAL winners get a bump in
+     *  {@link #stageWinnerProgression}. Never rank MatchStage by ordinal
+     *  (THIRD_PLACE's ordinal sits above FINAL's). */
+    private static int stageProgression(MatchStage s) {
+        if (s == null) return 0;
+        return switch (s) {
+            case FINAL -> 11;        // runner-up
+            case THIRD_PLACE -> 9;   // 4th (lost the 3rd-place match)
+            case SEMIFINAL -> 8;     // only decisive if no 3rd-place match exists
+            case QUARTERFINAL -> 6;
+            case ROUND_OF_16 -> 4;
+            case ROUND_OF_32 -> 2;
+            case GROUP -> 0;
+        };
+    }
+
+    /** Progression score when the team WON that stage's match. */
+    private static int stageWinnerProgression(MatchStage s) {
+        if (s == MatchStage.FINAL) return 12;        // champion
+        if (s == MatchStage.THIRD_PLACE) return 10;  // 3rd place
+        return stageProgression(s);
+    }
+
+    /** Human label for a progression score, shown as the goalkeeper hint. */
+    private static String progressionLabel(int prog) {
+        return switch (prog) {
+            case 12 -> "PRVAK";
+            case 11 -> "FINALE";
+            case 10 -> "3. MJESTO";
+            case 9 -> "4. MJESTO";
+            case 8 -> "POLUFINALE";
+            case 6 -> "ČETVRTFINALE";
+            case 4 -> "OSMINA FINALA";
+            case 2 -> "ŠESNAESTINA FINALA";
+            default -> "SKUPINA";
+        };
     }
 
     /**

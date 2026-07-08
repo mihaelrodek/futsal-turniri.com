@@ -795,11 +795,11 @@ export default function GuidePage() {
                     <VStack align="stretch" gap="3">
                         <FeatureCard f={{ icon: LuTimer, title: "Mjerač po poluvremenima", desc: "1. poluvrijeme → pauza → 2. poluvrijeme → kraj. Sat se zaustavlja na isteku i čeka tebe." }} />
                         <FeatureCard f={{ icon: LuRadioTower, title: "Golovi i događaji", desc: "Gol jednim dodirom na igrača - minuta se upiše sama. Žuti/crveni kartoni, prekršaji (deveterac) i penali." }} />
-                        <FeatureCard f={{ icon: LuMonitorPlay, title: "TV / semafor prikaz", desc: "Fullscreen semafor za dvoranu - sve što upišeš u zapisnik odmah je na velikom ekranu." }} />
+                        <FeatureCard f={{ icon: LuMonitorPlay, title: "Turnir mode / TV prikaz", desc: "Fullscreen semafor za dvoranu - sve što upišeš u zapisnik odmah je na velikom ekranu." }} />
                     </VStack>
                     <Shot
                         src="/vodic/uzivo.webp"
-                        alt="Fullscreen semafor: rezultat uživo, mjerač 2. poluvremena, prekršaji i strijelci"
+                        alt="Turnir mode: rezultat uživo, mjerač 2. poluvremena, prekršaji i strijelci"
                         width={1600}
                         height={1000}
                         caption="Semafor uživo - rezultat, mjerač, akumulirani prekršaji i strijelci u stvarnom vremenu."

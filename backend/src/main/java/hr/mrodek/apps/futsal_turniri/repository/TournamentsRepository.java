@@ -79,35 +79,49 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
         return list("startAt >= ?1", Sort.by("startAt").ascending(), now);
     }
 
+    // A tournament counts as "finished" for the public listings when it is
+    // explicitly FINISHED, OR it was never run through the site (still DRAFT)
+    // and its start passed more than a day ago - so an abandoned draft auto-
+    // drops out of "Nadolazeći" after 24h instead of lingering there forever.
+    // A DRAFT with no date, or a managed (STARTED) tournament, is never auto-
+    // finished; the organizer finishes those explicitly.
+    private static final String EFFECTIVELY_FINISHED =
+            "status = ?1 or (status = ?2 and startAt is not null and startAt < ?3)";
+    private static final String NOT_EFFECTIVELY_FINISHED =
+            "status <> ?1 and not (status = ?2 and startAt is not null and startAt < ?3)";
+
+    /** Start-of-grace cutoff: drafts whose start is older than this are done. */
+    private static OffsetDateTime draftFinishedCutoff() {
+        return OffsetDateTime.now().minusHours(24);
+    }
+
     /**
-     * "Finished" listing is gated on explicit {@code status == FINISHED} now,
-     * not on the start date. A tournament's clock can pass {@code startAt}
-     * while the organizer is still entering results - those rows belong in
-     * the in-progress bucket, not under "Završeni". Paged so the SPA can
-     * lazy-load older results behind a "Učitaj više" button.
+     * "Finished" listing - explicitly FINISHED tournaments plus abandoned
+     * drafts whose date passed >24h ago (see {@link #EFFECTIVELY_FINISHED}).
+     * Paged so the SPA can lazy-load older results behind a "Učitaj više" button.
      */
     public List<Tournaments> findFinishedPaged(int offset, int limit) {
-        return find("status = ?1",
+        return find(EFFECTIVELY_FINISHED,
                 Sort.by("startAt").descending(),
-                TournamentStatus.FINISHED)
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff())
                 .page(Page.of(offset / Math.max(1, limit), Math.max(1, limit)))
                 .list();
     }
 
     public long countFinished() {
-        return count("status = ?1", TournamentStatus.FINISHED);
+        return count(EFFECTIVELY_FINISHED,
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff());
     }
 
     /**
-     * "Upcoming / in progress" listing - anything not yet {@code FINISHED}.
-     * Mirrors the user's mental model where any tournament not explicitly
-     * marked finished is treated as still alive, regardless of whether its
-     * scheduled start has passed.
+     * "Upcoming / in progress" listing - everything not (effectively) finished:
+     * not FINISHED, and not an abandoned draft whose date passed >24h ago (those
+     * move to the finished bucket so they leave "Nadolazeći").
      */
     public List<Tournaments> findNotFinishedOrderByStartAtAsc() {
-        return list("status <> ?1",
+        return list(NOT_EFFECTIVELY_FINISHED,
                 Sort.by("startAt").ascending(),
-                TournamentStatus.FINISHED);
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff());
     }
 
     /**

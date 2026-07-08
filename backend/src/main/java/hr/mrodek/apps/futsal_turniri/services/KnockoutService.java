@@ -160,13 +160,21 @@ public class KnockoutService {
         // those reserved times so the freshly-built bracket inherits them - the
         // day split (group stage on early days, knockout on later days) survives
         // materialization instead of being lost with the wiped placeholders.
-        List<java.time.OffsetDateTime> reservedKickoffs = matchesRepo
-                .list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP)
-                .stream()
-                .map(Matches::getKickoffAt)
-                .filter(java.util.Objects::nonNull)
-                .sorted()
-                .collect(Collectors.toList());
+        //
+        // Read the kickoffs as a SCALAR projection, NOT as entities: loading the
+        // old knockout Matches as managed entities here would leave them in the
+        // persistence context after the bulk-delete below wipes their rows and
+        // their round is removed, so the next autoflush would fail with
+        // "TransientObjectException: ... unsaved transient instance of Rounds".
+        List<java.time.OffsetDateTime> reservedKickoffs = matchesRepo.getEntityManager()
+                .createQuery(
+                        "select m.kickoffAt from Matches m "
+                                + "where m.tournament = ?1 and m.stage <> ?2 "
+                                + "and m.kickoffAt is not null order by m.kickoffAt",
+                        java.time.OffsetDateTime.class)
+                .setParameter(1, t)
+                .setParameter(2, MatchStage.GROUP)
+                .getResultList();
 
         // Wipe any prior knockout matches and their now-empty rounds.
         matchesRepo.delete("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);

@@ -20,16 +20,18 @@ export async function fetchPlayers(
     return data
 }
 
-/** Add a new player to a team's roster. */
+/** Add a new player to a team's roster. Pass `{ silent: true }` to suppress
+ *  the per-player toast (used by the bulk import, which shows one summary). */
 export async function createPlayer(
     tournamentUuid: string,
     teamId: number,
     payload: { name: string; number?: number | null },
+    opts?: { silent?: boolean },
 ): Promise<PlayerDto> {
     const { data } = await http.post<PlayerDto>(
         `/tournaments/${tournamentUuid}/teams/${teamId}/players`,
         payload,
-        { successMessage: "Igrač je dodan." } as any,
+        (opts?.silent ? { silent: true } : { successMessage: "Igrač je dodan." }) as any,
     )
     return data
 }

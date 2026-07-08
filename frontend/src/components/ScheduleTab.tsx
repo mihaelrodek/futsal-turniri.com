@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import {
     Box,
     Button,
@@ -15,6 +15,7 @@ import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiEdit2, FiFilter, FiR
 import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
 import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
+import { DateTimeField } from "./DateTimeField"
 import { fetchGroups } from "../api/groups"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
@@ -125,6 +126,32 @@ function LiveBadge() {
         >
             &#x25CF; Uživo
         </Box>
+    )
+}
+
+/* -- Day divider --------------------------------------------------------- */
+/** Thin labelled separator inserted before the first match of each day, so a
+ *  multi-day schedule reads as distinct days. Purely visual - carries no
+ *  drag attributes, so the reorder pointer logic skips right over it. */
+function DayDivider({ label, first }: { label: string; first?: boolean }) {
+    return (
+        <Flex align="center" gap="3" pt={first ? "0" : "2"} pb="0.5" aria-hidden>
+            <Box flex="1" h="1px" bg="border.emphasized" />
+            <HStack gap="1.5" flexShrink={0} color="fg.muted">
+                <FiCalendar size={12} />
+                <Text
+                    fontFamily="mono"
+                    fontSize="2xs"
+                    fontWeight={800}
+                    letterSpacing="0.08em"
+                    textTransform="uppercase"
+                    whiteSpace="nowrap"
+                >
+                    {label}
+                </Text>
+            </HStack>
+            <Box flex="1" h="1px" bg="border.emphasized" />
+        </Flex>
     )
 }
 
@@ -327,33 +354,23 @@ function MatchRow({
                         )}
                     </HStack>
 
-                    {/* Center: kickoff time / editor - fixed to its content
-                        width and centred between the two equal-flex side
-                        clusters (dead-centre above the score). */}
-                    <Box flexShrink={0} maxW="100%" display="flex" justifyContent="center">
+                    {/* Center: kickoff time / editor - centred between the two
+                        equal-flex side clusters (dead-centre above the score).
+                        Uses the shared HR date+time picker (dd/MM/yyyy HH:mm,
+                        24h) instead of the native datetime-local input, which
+                        rendered in the browser's US MM/DD/YYYY hh:mm AM/PM. */}
+                    <Box flexShrink={0} w="200px" maxW="100%">
                         {canEdit ? (
-                            <chakra.input
-                                type="datetime-local"
-                                value={isoToLocal(match.kickoffAt)}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    onTimeChange(match, e.target.value)
-                                }
-                                css={{
-                                    border: "1px solid var(--chakra-colors-border)",
-                                    borderRadius: "var(--chakra-radii-md)",
-                                    padding: "3px 8px",
-                                    fontSize: "0.8rem",
-                                    fontFamily: "inherit",
-                                    color: "var(--chakra-colors-fg)",
-                                    background: "var(--chakra-colors-bg-panel)",
-                                    outline: "none",
-                                    cursor: "pointer",
-                                    minWidth: 0,
-                                    maxWidth: "100%",
-                                    _focus: {
-                                        boxShadow: "0 0 0 2px var(--chakra-colors-brand-focusRing)",
-                                        borderColor: "var(--chakra-colors-brand-solid)",
-                                    },
+                            <DateTimeField
+                                compact
+                                value={match.kickoffAt ? new Date(match.kickoffAt) : null}
+                                onChange={(d) => {
+                                    if (!d) return
+                                    const p = (n: number) => String(n).padStart(2, "0")
+                                    const local =
+                                        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+                                        `T${p(d.getHours())}:${p(d.getMinutes())}`
+                                    onTimeChange(match, local)
                                 }}
                             />
                         ) : match.kickoffAt ? (
@@ -836,6 +853,17 @@ export default function ScheduleTab({
     })()
     const multiDay = dayOptions.length > 1
 
+    // Compact label for the in-list day divider, e.g. "1. dan · pon 08.07.".
+    // Unscheduled matches (no kickoff) group under "Bez termina".
+    const dividerLabel = (key: string): string => {
+        if (!key) return "Bez termina"
+        const [y, mo, da] = key.split("-").map(Number)
+        const wd = new Date(y, mo - 1, da).toLocaleDateString("hr-HR", { weekday: "short" })
+        const p = (n: number) => String(n).padStart(2, "0")
+        const num = dayOptions.indexOf(key) + 1
+        return `${num}. dan · ${wd} ${p(da)}.${p(mo)}.`
+    }
+
     const anyFilter = !!teamFilter || !!groupFilter || !!(multiDay && dayFilter)
     function clearFilters() {
         setTeamFilter("")
@@ -1273,12 +1301,21 @@ export default function ScheduleTab({
                             padding="4"
                         >
                             <VStack align="stretch" gap="2">
-                                {upcomingMatches.map((m) => {
-                                    if (!(reorderEnabled && m.status === "SCHEDULED" && m.kickoffAt != null)) return renderRow(m)
-                                    return renderRow(m, {
-                                        isOver: overId === m.matchId && dragId != null && dragId !== m.matchId,
-                                        isDragging: dragId === m.matchId,
-                                        handle: (
+                                {upcomingMatches.map((m, idx) => {
+                                    // Day separator before the first match of each
+                                    // day (multi-day tournaments only). Doesn't touch
+                                    // the drag order - it's not a [data-sched-row].
+                                    const curKey = dateKey(m.kickoffAt)
+                                    const prevKey = idx > 0 ? dateKey(upcomingMatches[idx - 1].kickoffAt) : null
+                                    const dayNode = multiDay && curKey !== prevKey
+                                        ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
+                                        : null
+                                    const row = !(reorderEnabled && m.status === "SCHEDULED" && m.kickoffAt != null)
+                                        ? renderRow(m)
+                                        : renderRow(m, {
+                                            isOver: overId === m.matchId && dragId != null && dragId !== m.matchId,
+                                            isDragging: dragId === m.matchId,
+                                            handle: (
                                             <Box
                                                 onPointerDown={(e) => {
                                                     e.preventDefault()
@@ -1310,6 +1347,12 @@ export default function ScheduleTab({
                                             </Box>
                                         ),
                                     })
+                                    return (
+                                        <Fragment key={m.matchId}>
+                                            {dayNode}
+                                            {row}
+                                        </Fragment>
+                                    )
                                 })}
                             </VStack>
                         </SectionCard>
@@ -1321,7 +1364,19 @@ export default function ScheduleTab({
                             padding="4"
                         >
                             <VStack align="stretch" gap="2">
-                                {finishedMatches.map((m) => renderRow(m))}
+                                {finishedMatches.map((m, idx) => {
+                                    const curKey = dateKey(m.kickoffAt)
+                                    const prevKey = idx > 0 ? dateKey(finishedMatches[idx - 1].kickoffAt) : null
+                                    const dayNode = multiDay && curKey !== prevKey
+                                        ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
+                                        : null
+                                    return (
+                                        <Fragment key={m.matchId}>
+                                            {dayNode}
+                                            {renderRow(m)}
+                                        </Fragment>
+                                    )
+                                })}
                             </VStack>
                         </SectionCard>
                     )}

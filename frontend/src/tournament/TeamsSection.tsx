@@ -40,7 +40,9 @@ import {
 } from "../api/players"
 import PodiumEditor from "../components/PodiumEditor"
 import PlayerNameAutocomplete from "../components/PlayerNameAutocomplete"
+import { BulkImportDialog } from "../components/BulkImportDialog"
 import { EmptyState, Panel } from "../ui/primitives"
+import { showError, showSuccess } from "../toaster"
 import { TeamAvatar } from "./parts"
 
 /* "Ekipe" section - team management as a master-detail.
@@ -67,6 +69,8 @@ type TeamsSectionProps = {
     /** Adds a team (persists immediately via PUT) and resolves to the
      *  newly-created team so the list can open it straight into edit mode. */
     addTeam: () => Promise<TeamShort | null>
+    /** Bulk-adds several teams at once (one name per pasted line). */
+    onBulkAddTeams: (names: string[]) => Promise<void>
     changeTeamName: (id: number, name: string) => void
     onTeamNameBlur: (p: TeamShort) => void
     removeTeam: (id: number) => void
@@ -90,6 +94,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
         teamRequestsCollapsed,
         setTeamRequestsCollapsed,
         addTeam,
+        onBulkAddTeams,
         changeTeamName,
         onTeamNameBlur,
         removeTeam,
@@ -99,6 +104,8 @@ export default function TeamsSection(props: TeamsSectionProps) {
         onSelfRegisterClick,
         onPodiumUpdated,
     } = props
+
+    const [bulkTeamsOpen, setBulkTeamsOpen] = useState(false)
 
     const tournamentLocked = t?.status === "FINISHED"
     const activeTeams = teams.filter((p) => !p.isEliminated)
@@ -470,24 +477,47 @@ export default function TeamsSection(props: TeamsSectionProps) {
                              team persists immediately (PUT) and opens it for
                              renaming, so there's no separate "Spremi promjene". */}
                         {!tournamentLocked && !tournamentAlready && !drawGenerated && canEdit && (
-                            <Button
-                                size="sm"
-                                variant="solid"
-                                colorPalette="brand"
-                                onClick={handleAddTeam}
-                                disabled={atCapacity}
-                                title={
-                                    atCapacity
-                                        ? `Maksimalan broj ekipa (${capacity})`
-                                        : "Dodaj novu ekipu"
-                                }
-                            >
-                                <FiPlus /> Dodaj ekipu
-                            </Button>
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorPalette="brand"
+                                    onClick={() => setBulkTeamsOpen(true)}
+                                    disabled={atCapacity}
+                                    title="Uvezi više ekipa odjednom"
+                                >
+                                    <FiPlus /> Uvezi više
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    colorPalette="brand"
+                                    onClick={handleAddTeam}
+                                    disabled={atCapacity}
+                                    title={
+                                        atCapacity
+                                            ? `Maksimalan broj ekipa (${capacity})`
+                                            : "Dodaj novu ekipu"
+                                    }
+                                >
+                                    <FiPlus /> Dodaj ekipu
+                                </Button>
+                            </>
                         )}
                     </HStack>
                 </HStack>
             </Panel>
+
+            {/* Bulk team import - one team name per line. */}
+            <BulkImportDialog
+                open={bulkTeamsOpen}
+                onClose={() => setBulkTeamsOpen(false)}
+                title="Uvezi ekipe"
+                description="Zalijepi ekipe - jedna ekipa u svaki red. Sve iz liste dodaju se odjednom."
+                placeholder={"Ekipa 1\nEkipa 2\nEkipa 3"}
+                submitLabel="Uvezi ekipe"
+                onSubmit={async (lines) => { await onBulkAddTeams(lines) }}
+            />
 
             {!tournamentAlready && openRequests.length > 0 && (
                 <Panel bg="brand.subtle" borderColor="brand.emphasized" p={{ base: "4", md: "5" }}>
@@ -650,6 +680,7 @@ function RosterPanel({
     const [newName, setNewName] = useState("")
     const [newNumber, setNewNumber] = useState("")
     const [savingNew, setSavingNew] = useState(false)
+    const [bulkOpen, setBulkOpen] = useState(false)
 
     const [editingId, setEditingId] = useState<number | null>(null)
     const [editName, setEditName] = useState("")
@@ -699,6 +730,43 @@ function RosterPanel({
             /* toaster surfaces the error */
         } finally {
             setSavingNew(false)
+        }
+    }
+
+    /** Parse one pasted roster line: "IME PREZIME" or "IME PREZIME, 10"
+     *  (the jersey number after a comma is optional). Names are uppercased
+     *  to match how the roster stores them. */
+    function parsePlayerLine(line: string): { name: string; number: number | null } | null {
+        const ci = line.indexOf(",")
+        const namePart = ci >= 0 ? line.slice(0, ci) : line
+        const numPart = ci >= 0 ? line.slice(ci + 1) : ""
+        const name = namePart.trim().toUpperCase()
+        if (!name) return null
+        return { name, number: parseNumber(numPart) }
+    }
+
+    // Bulk import: create each parsed player (silent, so it's one summary toast
+    // instead of one per player). Resilient - a single failed row doesn't abort
+    // the rest.
+    async function submitBulkPlayers(lines: string[]) {
+        const parsed = lines
+            .map(parsePlayerLine)
+            .filter((p): p is { name: string; number: number | null } => p != null)
+        if (parsed.length === 0) return
+        const created: PlayerDto[] = []
+        let failed = 0
+        for (const p of parsed) {
+            try {
+                created.push(await createPlayer(uuid, team.id, p, { silent: true }))
+            } catch {
+                failed++
+            }
+        }
+        if (created.length > 0) setPlayers((ps) => [...ps, ...created])
+        if (failed > 0) {
+            showError("Djelomičan uvoz", `Dodano ${created.length}, neuspješno ${failed}.`)
+        } else {
+            showSuccess("Igrači su uvezeni.", `Dodano ${created.length} igrača.`)
         }
     }
 
@@ -857,18 +925,43 @@ function RosterPanel({
                                 </IconButton>
                             )}
                             {!adding && (
-                                <Button
-                                    size="sm"
-                                    variant="solid"
-                                    colorPalette="brand"
-                                    onClick={() => setAdding(true)}
-                                >
-                                    <FiPlus /> Dodaj igrača
-                                </Button>
+                                <>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorPalette="brand"
+                                        onClick={() => setBulkOpen(true)}
+                                        title="Uvezi više igrača odjednom"
+                                    >
+                                        <FiPlus /> Uvezi više
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="solid"
+                                        colorPalette="brand"
+                                        onClick={() => setAdding(true)}
+                                    >
+                                        <FiPlus /> Dodaj igrača
+                                    </Button>
+                                </>
                             )}
                         </HStack>
                     )}
                 </Stack>
+
+                {/* Bulk player import - one player per line, optional ", broj". */}
+                <BulkImportDialog
+                    open={bulkOpen}
+                    onClose={() => setBulkOpen(false)}
+                    title="Uvezi igrače"
+                    description={
+                        "Zalijepi igrače - jedan igrač u svaki red. Iza imena i prezimena " +
+                        "možeš (ali ne moraš) dodati broj dresa, odvojen zarezom."
+                    }
+                    placeholder={"Ivan Horvat, 7\nMarko Marić, 10\nLuka Novak"}
+                    submitLabel="Uvezi igrače"
+                    onSubmit={submitBulkPlayers}
+                />
 
                 {canEdit && adding && (
                     <Box

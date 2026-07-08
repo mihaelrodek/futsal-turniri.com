@@ -17,7 +17,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { FiArrowLeft, FiCode, FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
 import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
-import TournamentAwards from "../components/TournamentAwards"
+import TournamentResults from "../components/TournamentResults"
 import { showError, showSuccess } from "../toaster"
 
 import type { TournamentDetails } from "../types/tournaments"
@@ -34,6 +34,7 @@ import {
     approveTeam,
     deleteTeam,
     deleteTournament,
+    finishTournament,
     selfRegisterTeam,
     featureTournament,
     unfeatureTournament,
@@ -606,11 +607,47 @@ export default function TournamentDetailsPage() {
             savingTeamsRef.current = false
         }
     }
+    // Bulk-add teams: append every pasted name in one replaceTeams save.
+    async function bulkAddTeams(names: string[]): Promise<void> {
+        if (!uuid || names.length === 0) return
+        if (savingTeamsRef.current) return
+        if (teams.some((p) => !p.name || p.name.trim() === "")) {
+            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
+            return
+        }
+        savingTeamsRef.current = true
+        try {
+            const saved = await replaceTeams(uuid, [
+                ...buildTeamsPayload(),
+                ...names.map((name) => ({ name, isEliminated: false })),
+            ])
+            setTeams(saved)
+            showSuccess("Ekipe su uvezene.", `Dodano ${names.length} ekipa.`)
+        } catch {
+            /* error toasted by the http interceptor */
+        } finally {
+            savingTeamsRef.current = false
+        }
+    }
     function changeTeamName(id: number, name: string) {
         setTeams((ps) => ps.map((p) => (p.id === id ? { ...p, name } : p)))
     }
     function removeTeam(id: number) {
         setTeams((ps) => ps.filter((p) => p.id !== id))
+    }
+
+    // Mark the tournament finished (organizer, once the final decided a winner).
+    const [finishingTournament, setFinishingTournament] = useState(false)
+    async function runFinishTournament() {
+        if (!uuid) return
+        try {
+            setFinishingTournament(true)
+            setT(await finishTournament(uuid))
+        } catch {
+            /* error toasted by the http interceptor */
+        } finally {
+            setFinishingTournament(false)
+        }
     }
 
     // Single-flight guard for the team-list bulk save.
@@ -819,7 +856,7 @@ export default function TournamentDetailsPage() {
             />
             <HeaderAction
                 icon={<FiMaximize2 size={15} />}
-                label="Fullscreen"
+                label="Turnir mode"
                 onClick={() =>
                     window.open(`/turniri/${t.slug ?? t.uuid}/fullscreen`, "_blank", "noopener")
                 }
@@ -876,6 +913,24 @@ export default function TournamentDetailsPage() {
                     if (next) setSection(next.key)
                 }}
             />
+
+            {/* Golden "Rezultati turnira" - pinned at the very top (right below
+                the tabs) once the tournament is over: either explicitly FINISHED
+                or the champion has been decided (the final set winnerName). Shown
+                to everyone, on every tab. */}
+            {(t.status === "FINISHED" || !!t.winnerName) && (
+                <TournamentResults
+                    t={t}
+                    canEdit={canEdit}
+                    onSaved={(updated) => setT(updated)}
+                    onFinish={
+                        canEdit && t.status !== "FINISHED"
+                            ? runFinishTournament
+                            : undefined
+                    }
+                    finishing={finishingTournament}
+                />
+            )}
 
             {/* ===== ACTIVE SECTION ===== */}
             <Box>
@@ -946,20 +1001,6 @@ export default function TournamentDetailsPage() {
                     />
                 )}
 
-                {/* Individual awards - only on the Detalji tab, and only
-                    when the tournament is finished (or the organizer wants
-                    to fill them in). The component self-hides for visitors
-                    when nothing is set. */}
-                {section === "details" && !editingDetails && t.status === "FINISHED" && (
-                    <Box mt="4">
-                        <TournamentAwards
-                            t={t}
-                            canEdit={canEdit}
-                            onSaved={(updated) => setT(updated)}
-                        />
-                    </Box>
-                )}
-
                 {section === "live" && canEdit && <LiveControlTab uuid={t.uuid} />}
 
                 {section === "teams" && (
@@ -979,6 +1020,7 @@ export default function TournamentDetailsPage() {
                         teamRequestsCollapsed={teamRequestsCollapsed}
                         setTeamRequestsCollapsed={setTeamRequestsCollapsed}
                         addTeam={addTeam}
+                        onBulkAddTeams={bulkAddTeams}
                         changeTeamName={changeTeamName}
                         onTeamNameBlur={onTeamNameBlur}
                         removeTeam={removeTeam}

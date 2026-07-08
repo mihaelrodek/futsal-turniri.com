@@ -26,6 +26,16 @@
     transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
+/* Compact variant for tight rows (schedule list kickoff editor). */
+.futsal-datepicker-input--compact {
+    height: 30px;
+    padding: 0 8px;
+    font-size: 13px;
+    text-align: center;
+    background: var(--chakra-colors-bg-panel);
+    cursor: pointer;
+}
+
 .futsal-datepicker-input::placeholder {
     color: var(--chakra-colors-fg-muted);
 }

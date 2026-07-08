@@ -528,6 +528,8 @@ export function DirectScoreEditor({
     initialS2,
     saving,
     onSave,
+    onChange,
+    hideSaveButton = false,
 }: {
     team1Name: string | null
     team2Name: string | null
@@ -535,9 +537,16 @@ export function DirectScoreEditor({
     initialS2: number
     saving?: boolean
     onSave: (s1: number, s2: number) => void
+    /** Reported on every stepper change, so a caller that renders its own save
+     *  button (e.g. in a dialog footer) can read the current score. */
+    onChange?: (s1: number, s2: number) => void
+    /** Hide the built-in "Spremi rezultat" button (the caller renders one). */
+    hideSaveButton?: boolean
 }) {
     const [s1, setS1] = useState<number>(Math.max(0, initialS1 ?? 0))
     const [s2, setS2] = useState<number>(Math.max(0, initialS2 ?? 0))
+    const update1 = (n: number) => { setS1(n); onChange?.(n, s2) }
+    const update2 = (n: number) => { setS2(n); onChange?.(s1, n) }
 
     const Stepper = ({
         name,
@@ -599,17 +608,19 @@ export function DirectScoreEditor({
                 Unesi rezultat (bez strijelaca)
             </Text>
             <HStack align="center" gap="2">
-                <Stepper name={team1Name} value={s1} set={setS1} />
+                <Stepper name={team1Name} value={s1} set={update1} />
                 <Text fontFamily="mono" fontSize="lg" fontWeight={800} color="fg.muted" pt="4">
                     :
                 </Text>
-                <Stepper name={team2Name} value={s2} set={setS2} />
+                <Stepper name={team2Name} value={s2} set={update2} />
             </HStack>
-            <Flex justify="center" mt="3">
-                <Button size="sm" colorPalette="pitch" loading={saving} onClick={() => onSave(s1, s2)}>
-                    <FiEdit2 /> Spremi rezultat
-                </Button>
-            </Flex>
+            {!hideSaveButton && (
+                <Flex justify="center" mt="3">
+                    <Button size="sm" colorPalette="pitch" loading={saving} onClick={() => onSave(s1, s2)}>
+                        <FiEdit2 /> Spremi rezultat
+                    </Button>
+                </Flex>
+            )}
         </Box>
     )
 }
