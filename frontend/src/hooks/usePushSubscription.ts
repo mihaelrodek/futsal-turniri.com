@@ -55,29 +55,20 @@ export function usePushSubscription() {
 
         let cancelled = false
 
+        // Runs AFTER permission is granted. iOS-critical: the permission
+        // request itself must happen synchronously inside the tap (see the
+        // gesture wiring below) BEFORE any await - so this function never asks
+        // for permission, it only subscribes. Safe to await freely here.
         const runSubscribeFlow = async () => {
             try {
+                if (Notification.permission !== "granted") return
+
                 // Wait for the SW to be ready (it registers in main.tsx
                 // after `load`). If it never registers - e.g. in dev
                 // mode where the SW is intentionally not shipped - we
                 // bail without warning.
                 const reg = await navigator.serviceWorker.ready
                 if (cancelled) return
-
-                // Ask for permission only if not already decided. On
-                // iOS this MUST be called from inside a user gesture
-                // (see the listener wiring further down) - by the time
-                // we get here, we're already inside that gesture.
-                if (Notification.permission === "default") {
-                    const result = await Notification.requestPermission()
-                    if (cancelled) return
-                    if (result !== "granted") {
-                        console.info("[push] permission not granted:", result)
-                        return
-                    }
-                } else if (Notification.permission !== "granted") {
-                    return
-                }
 
                 // Already subscribed? Re-send to the backend in case
                 // the server-side row got deleted (rare but possible
@@ -131,28 +122,39 @@ export function usePushSubscription() {
             }
         }
 
-        // Permission === "default". Defer the prompt to the next
-        // user gesture. iOS Safari REQUIRES this; Android tolerates
-        // either approach. We listen for the broadest set of gesture
-        // events to catch whichever fires first on whichever device.
+        // Permission === "default". Defer the prompt to the next user gesture.
+        // iOS Safari REQUIRES this - and crucially requires that
+        // Notification.requestPermission() be the FIRST thing called in the
+        // gesture, SYNCHRONOUSLY, before any await (an await drops the
+        // transient user activation and the prompt silently never appears).
+        // So we call requestPermission here directly and only subscribe once
+        // it resolves granted. We use `touchend`/`click` (which grant
+        // activation on iOS); `pointerdown` is unreliable there and would
+        // steal the one-shot from the events that do work.
         const onFirstGesture = () => {
-            document.removeEventListener("pointerdown", onFirstGesture, true)
             document.removeEventListener("touchend", onFirstGesture, true)
             document.removeEventListener("click", onFirstGesture, true)
-            document.removeEventListener("keydown", onFirstGesture, true)
-            void runSubscribeFlow()
+            try {
+                void Notification.requestPermission()
+                    .then((result) => {
+                        if (cancelled) return
+                        if (result === "granted") void runSubscribeFlow()
+                        else console.info("[push] permission not granted:", result)
+                    })
+                    .catch((err) => console.warn("[push] requestPermission failed:", err))
+            } catch (err) {
+                // Older Safari used a callback-only requestPermission; nothing
+                // we can do from here, and iOS < 16.4 has no PWA push anyway.
+                console.warn("[push] requestPermission threw:", err)
+            }
         }
-        document.addEventListener("pointerdown", onFirstGesture, { capture: true, once: true })
         document.addEventListener("touchend", onFirstGesture, { capture: true, once: true })
         document.addEventListener("click", onFirstGesture, { capture: true, once: true })
-        document.addEventListener("keydown", onFirstGesture, { capture: true, once: true })
 
         return () => {
             cancelled = true
-            document.removeEventListener("pointerdown", onFirstGesture, true)
             document.removeEventListener("touchend", onFirstGesture, true)
             document.removeEventListener("click", onFirstGesture, true)
-            document.removeEventListener("keydown", onFirstGesture, true)
         }
     }, [user?.uid, loading])
 }
