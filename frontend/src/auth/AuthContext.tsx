@@ -8,22 +8,34 @@ import { syncProfile } from "../api/userMe"
 // first-paint bundle - see firebase.ts. Only the `User` type is imported
 // statically (type-only, erased at compile time).
 
+/** True when running as an installed PWA (launched from the home screen). */
+function isStandalonePwa(): boolean {
+    if (typeof window === "undefined") return false
+    return (
+        window.matchMedia?.("(display-mode: standalone)").matches === true ||
+        (navigator as any)?.standalone === true // iOS home-screen PWA
+    )
+}
+
 /**
  * Whether to use the full-page redirect flow instead of a popup for Google
- * sign-in. On mobile (and installed PWAs / in-app browsers) a "popup" is
- * really a new browser tab that, thanks to Cross-Origin-Opener-Policy, can't
- * close itself afterwards - so the user gets stranded on the Google tab
- * instead of returning to the app. signInWithRedirect navigates the same tab
- * to Google and back, which behaves correctly everywhere on mobile.
+ * sign-in. Used ONLY for a plain mobile browser tab (not an installed PWA):
+ * there a "popup" is really a new browser tab that, thanks to
+ * Cross-Origin-Opener-Policy, can't close itself afterwards, stranding the
+ * user on the Google tab - so the same-tab redirect behaves better.
+ *
+ * Installed PWAs (standalone) are deliberately EXCLUDED: there
+ * signInWithRedirect silently loses the session on return (the return lands in
+ * a partitioned storage context, so getRedirectResult / onAuthStateChanged
+ * never see the sign-in and the user is bounced to the start screen "as if not
+ * logged in"). Those use the popup flow instead, which returns the credential
+ * to the still-alive app context. See Firebase "redirect-best-practices".
  */
 function prefersRedirect(): boolean {
     if (typeof navigator === "undefined" || typeof window === "undefined") return false
     const ua = navigator.userAgent || ""
     const mobileUA = /Android|iPhone|iPad|iPod|Mobi|Windows Phone/i.test(ua)
-    const standalone =
-        window.matchMedia?.("(display-mode: standalone)").matches === true ||
-        (navigator as any).standalone === true // iOS home-screen PWA
-    return mobileUA || standalone
+    return mobileUA && !isStandalonePwa()
 }
 
 type AuthValue = {
@@ -124,24 +136,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             async signInWithGoogle() {
                 const [{ auth, googleProvider }, { signInWithPopup, signInWithRedirect }] =
                     await Promise.all([getFirebase(), import("firebase/auth")])
-                // Mobile / PWA → full-page redirect (popup tabs can't close
-                // themselves there and strand the user on the Google tab).
+                // Plain mobile browser tab → full-page redirect (popup tabs
+                // can't close themselves there and strand the user on Google).
                 if (prefersRedirect()) {
                     await signInWithRedirect(auth, googleProvider)
                     return // page navigates away; onAuthStateChanged finishes on return
                 }
-                // Desktop → popup. If the browser blocks/cancels it (or the
-                // environment doesn't support popups), fall back to redirect.
+                // Desktop AND installed PWAs → popup. In an installed PWA the
+                // redirect flow silently loses the session on return, so popup
+                // (credential returned to the live context) is the reliable path.
                 try {
                     await signInWithPopup(auth, googleProvider)
                 } catch (e: any) {
                     const code = e?.code ?? ""
-                    if (
+                    const popupFailed =
                         code === "auth/popup-blocked" ||
                         code === "auth/popup-closed-by-user" ||
                         code === "auth/cancelled-popup-request" ||
                         code === "auth/operation-not-supported-in-this-environment"
-                    ) {
+                    // Fall back to redirect only in a real browser tab. In an
+                    // installed PWA redirect is broken (lost session), so surface
+                    // the error rather than bounce the user through a dead flow.
+                    if (popupFailed && !isStandalonePwa()) {
                         await signInWithRedirect(auth, googleProvider)
                         return
                     }

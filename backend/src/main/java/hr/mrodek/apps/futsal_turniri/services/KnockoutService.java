@@ -24,10 +24,13 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,10 +42,18 @@ import hr.mrodek.apps.futsal_turniri.dtos.ManualBracketRequest;
  * Knockout-bracket engine (Phase E3).
  *
  * <p>Generates a single-elimination bracket from the group qualifiers (or
- * all teams, for KNOCKOUT_ONLY), seeds it with standard cross-seeding,
- * links each match to the next via {@code nextMatch}/{@code nextSlot}, and
- * propagates winners (and semi-final losers into the third-place match) as
- * results are recorded. A third-place playoff is always created.
+ * all teams, for KNOCKOUT_ONLY), links each match to the next via
+ * {@code nextMatch}/{@code nextSlot}, and propagates winners (and semi-final
+ * losers into the third-place match) as results are recorded. A third-place
+ * playoff is always created.
+ *
+ * <p>Seeding: KNOCKOUT_ONLY uses standard cross-seeding of the seed list.
+ * GROUPS_KNOCKOUT is fully DETERMINISTIC (same standings → identical bracket,
+ * never shuffled): the classic mirror cross-pairing when exactly two advance
+ * per group (A1-D2, C1-B2, B1-C2, D1-A2 for four groups), otherwise a
+ * constraint-based seeding that forbids same-group pairs in round one and
+ * keeps group-mates in opposite bracket halves whenever possible - see
+ * {@link #groupRoundOnePairs}.
  */
 @ApplicationScoped
 public class KnockoutService {
@@ -88,8 +99,10 @@ public class KnockoutService {
      * moved to the top seeds, which is exactly where standard seeding places the
      * byes. Null/empty → automatic (best seeds get the byes).
      *
-     * <p>{@code shuffleRest} randomly reorders the non-bye teams (the automatic
-     * draw path), so the rest of the bracket isn't always the same.
+     * <p>{@code shuffleRest} randomly reorders the non-bye teams - the
+     * automatic draw for KNOCKOUT_ONLY. IGNORED for GROUPS_KNOCKOUT: a bracket
+     * built from a finished group stage is always deterministic (same
+     * standings → identical bracket).
      */
     @Transactional
     public BracketDto generateBracket(Tournaments t, List<Long> byeTeamIds, boolean shuffleRest) {
@@ -112,10 +125,18 @@ public class KnockoutService {
         if (qs.size() < 2) {
             throw new BadRequestException("Need at least 2 teams for a knockout bracket");
         }
+        // Defensive: a duplicated id would silently void the bye pull-front
+        // below while groupRoundOnePairs still pinned the team via its bye
+        // class - keep the two in agreement by de-duplicating up front.
+        if (byeTeamIds != null) {
+            byeTeamIds = new ArrayList<>(new LinkedHashSet<>(byeTeamIds));
+        }
         // Organizer-chosen byes: pull those teams to the top seeds, where the
         // standard seeding (below) hands out the round-one byes. The non-bye
-        // teams keep their seed order, or are shuffled for the automatic draw.
-        if ((byeTeamIds != null && !byeTeamIds.isEmpty()) || shuffleRest) {
+        // teams keep their seed order; only the KNOCKOUT_ONLY automatic draw
+        // may shuffle them - a GROUPS_KNOCKOUT bracket is NEVER shuffled.
+        boolean shuffle = shuffleRest && t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT;
+        if ((byeTeamIds != null && !byeTeamIds.isEmpty()) || shuffle) {
             Set<Long> byeSet = byeTeamIds == null ? Set.of() : new HashSet<>(byeTeamIds);
             List<Teams> front = new ArrayList<>();
             if (byeTeamIds != null) {
@@ -129,7 +150,7 @@ public class KnockoutService {
             for (Teams tm : qs) {
                 if (!byeSet.contains(tm.getId())) rest.add(tm);
             }
-            if (shuffleRest) Collections.shuffle(rest);
+            if (shuffle) Collections.shuffle(rest);
             front.addAll(rest);
             if (front.size() == qs.size()) qs = front;
         }
@@ -195,18 +216,16 @@ public class KnockoutService {
             }
         }
 
-        // Seed round one. Seed s (1-based) → the s-th-best qualifier; seeds
-        // beyond the qualifier count are byes (null opponent).
-        int[] slots = seedSlots(n);
+        // Seed round one. GROUPS_KNOCKOUT gets the deterministic group
+        // cross-pairing; KNOCKOUT_ONLY the plain standard seeding (seed s vs
+        // seed n+1-s). Seeds beyond the qualifier count are byes.
+        List<Teams[]> roundOnePairs = t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
+                ? groupRoundOnePairs(t, qs, byeTeamIds, n)
+                : pairsFromSeedOrder(qs, n);
         List<Matches> round1 = byRound.get(0);
         for (int i = 0; i < round1.size(); i++) {
-            int seedA = slots[2 * i];
-            int seedB = slots[2 * i + 1];
-            round1.get(i).setTeam1(seedA <= q ? qs.get(seedA - 1) : null);
-            round1.get(i).setTeam2(seedB <= q ? qs.get(seedB - 1) : null);
-        }
-        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
-            repairSameGroup(round1);
+            round1.get(i).setTeam1(roundOnePairs.get(i)[0]);
+            round1.get(i).setTeam2(roundOnePairs.get(i)[1]);
         }
 
         // Third-place playoff - fed by the semi-final losers.
@@ -855,35 +874,238 @@ public class KnockoutService {
         return order;
     }
 
+    /** Round-one pairs straight from a seed-ordered team list, laid out on the
+     *  standard bracket slots (seed s meets seed n+1-s); seeds beyond the team
+     *  count are byes (null side). */
+    private static List<Teams[]> pairsFromSeedOrder(List<Teams> seedOrder, int n) {
+        int q = seedOrder.size();
+        int[] slots = seedSlots(n);
+        List<Teams[]> pairs = new ArrayList<>();
+        for (int i = 0; i < n / 2; i++) {
+            int seedA = slots[2 * i];
+            int seedB = slots[2 * i + 1];
+            pairs.add(new Teams[]{
+                    seedA <= q ? seedOrder.get(seedA - 1) : null,
+                    seedB <= q ? seedOrder.get(seedB - 1) : null});
+        }
+        return pairs;
+    }
+
+    /* ─────────────── deterministic group cross-pairing ────────────────── */
+
     /**
-     * Best-effort fix so two teams from the same group don't meet again in
-     * round one: when a match pairs same-group teams, swap one side with
-     * another match's same-side team if that resolves the clash.
+     * Round-one pairings for a GROUPS_KNOCKOUT bracket. Fully deterministic -
+     * the same group standings always produce the identical bracket (no
+     * shuffling of any kind). Two strategies:
+     *
+     * <p><b>Classic mirror cross</b> - when exactly two advance per group with
+     * no extra qualifiers and no byes (group count 2, 4, 8, …): the winner of
+     * group i plays the runner-up of the mirror group (last-first). Four
+     * groups → QF: A1-D2, C1-B2, B1-C2, D1-A2; SF: W(A1-D2)-W(C1-B2) and
+     * W(B1-C2)-W(D1-A2) - so two teams of the same group can only meet again
+     * in the final.
+     *
+     * <p><b>Constraint seeding</b> - every other shape (best-third qualifiers,
+     * byes, wildcards, advance ≠ 2, group count not a power of two). Teams
+     * keep their performance-ranked seed tiers (winners are the top seeds,
+     * then runners-up, then the best next-placed) but are permuted WITHIN a
+     * tier so that: (1) round one never pairs two teams of the same group -
+     * e.g. a best-third qualifier never meets the winner of its own group;
+     * (2) group-mates land in opposite bracket halves (meet in the final at
+     * the earliest) whenever mathematically possible, relaxing gradually
+     * (semi-final, quarter-final, …) only when it is not. With three groups
+     * of which two advance plus two best thirds, this yields: the two
+     * best-ranked group winners each play a third-placed team from another
+     * group, the remaining winner plays the weakest runner-up (other group),
+     * and the two remaining runners-up play each other.
      */
-    private void repairSameGroup(List<Matches> round1) {
-        for (int i = 0; i < round1.size(); i++) {
-            Matches m = round1.get(i);
-            if (m.getTeam1() == null || m.getTeam2() == null) continue;
-            if (!sameGroup(m.getTeam1(), m.getTeam2())) continue;
-            for (int j = 0; j < round1.size(); j++) {
-                if (j == i) continue;
-                Matches o = round1.get(j);
-                if (o.getTeam2() == null) continue;
-                Teams a = m.getTeam2();
-                Teams b = o.getTeam2();
-                if (!sameGroup(m.getTeam1(), b)
-                        && (o.getTeam1() == null || !sameGroup(o.getTeam1(), a))) {
-                    m.setTeam2(b);
-                    o.setTeam2(a);
-                    break;
+    private List<Teams[]> groupRoundOnePairs(
+            Tournaments t, List<Teams> qs, List<Long> byeTeamIds, int n) {
+        List<GroupDto> groups = groupStageService.standings(t.getId());
+
+        List<Teams[]> classic = classicCrossPairs(t, qs, byeTeamIds, groups, n);
+        if (classic != null) return classic;
+
+        // Seed tier of every team = its placement in its group (0 = winner).
+        // Organizer-chosen bye teams sit in front of the list as their own
+        // tier (-1) so the search can't move them off the bye seeds.
+        Map<Long, Integer> tierOf = new HashMap<>();
+        for (GroupDto g : groups) {
+            for (int r = 0; r < g.standings().size(); r++) {
+                tierOf.put(g.standings().get(r).teamId(), r);
+            }
+        }
+        Set<Long> byeSet = byeTeamIds == null ? Set.of() : new HashSet<>(byeTeamIds);
+        int[] classOf = new int[qs.size()];
+        for (int i = 0; i < qs.size(); i++) {
+            Long id = qs.get(i).getId();
+            classOf[i] = byeSet.contains(id) ? -1
+                    : tierOf.getOrDefault(id, Integer.MAX_VALUE);
+        }
+        return pairsFromSeedOrder(constraintSeed(qs, classOf, n), n);
+    }
+
+    /**
+     * The classic mirror cross-pairing, or null when this bracket shape
+     * doesn't qualify for it (see {@link #groupRoundOnePairs}). Match i pairs
+     * the winner of group i with the runner-up of group (G-1-i); matches are
+     * laid out so that each pair of mirror matches (which share two groups)
+     * ends up in opposite bracket halves.
+     */
+    private List<Teams[]> classicCrossPairs(
+            Tournaments t, List<Teams> qs, List<Long> byeTeamIds,
+            List<GroupDto> groups, int n) {
+        int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
+        int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+        if (adv != 2 || bestThird != 0) return null;
+        if (byeTeamIds != null && !byeTeamIds.isEmpty()) return null;
+        int g = groups.size();
+        // Needs exactly 2 qualifiers from each of the G groups filling the
+        // whole bracket (2G a power of two → G = 2, 4, 8, …).
+        if (g < 2 || qs.size() != 2 * g || n != qs.size()) return null;
+        for (GroupDto grp : groups) {
+            if (grp.standings().size() < 2) return null;
+        }
+
+        Map<Long, Teams> byId = qs.stream()
+                .collect(Collectors.toMap(Teams::getId, x -> x));
+        Teams[] winner = new Teams[g];
+        Teams[] second = new Teams[g];
+        for (int i = 0; i < g; i++) {
+            winner[i] = byId.get(groups.get(i).standings().get(0).teamId());
+            second[i] = byId.get(groups.get(i).standings().get(1).teamId());
+            if (winner[i] == null || second[i] == null) return null;
+        }
+        List<Teams[]> matches = new ArrayList<>();
+        for (int i = 0; i < g; i++) {
+            matches.add(new Teams[]{winner[i], second[g - 1 - i]});
+        }
+        // Interleaved order: even-indexed matches fill the first half of the
+        // bracket, odd the second (recursively), so match i and its mirror
+        // match G-1-i - the only two carrying the same groups - are always in
+        // opposite halves. Four groups → order [0, 2, 1, 3]:
+        // [A1-D2, C1-B2 | B1-C2, D1-A2].
+        List<Teams[]> ordered = new ArrayList<>();
+        for (int idx : interleaveOrder(g)) ordered.add(matches.get(idx));
+        return ordered;
+    }
+
+    /** [0..count-1] recursively interleaved: evens first, then odds -
+     *  e.g. 4 → [0, 2, 1, 3]; 8 → [0, 4, 2, 6, 1, 5, 3, 7]. */
+    private static List<Integer> interleaveOrder(int count) {
+        List<Integer> idx = new ArrayList<>();
+        for (int i = 0; i < count; i++) idx.add(i);
+        return interleave(idx);
+    }
+
+    private static List<Integer> interleave(List<Integer> in) {
+        if (in.size() <= 1) return in;
+        List<Integer> evens = new ArrayList<>();
+        List<Integer> odds = new ArrayList<>();
+        for (int k = 0; k < in.size(); k++) {
+            (k % 2 == 0 ? evens : odds).add(in.get(k));
+        }
+        List<Integer> out = new ArrayList<>(interleave(evens));
+        out.addAll(interleave(odds));
+        return out;
+    }
+
+    /**
+     * Deterministically permute the qualifiers WITHIN their seed tiers
+     * ({@code classOf} - non-decreasing over the list) so that same-group
+     * teams are spread as far apart in the bracket as possible.
+     *
+     * <p>Per group the ideal separation is computed from its qualifier count
+     * (2 mates → opposite halves, 3-4 → different quarters, …) and relaxed
+     * one round at a time until an assignment exists; not pairing same-group
+     * teams in round one is the last constraint to go (practically always
+     * satisfiable). The first valid assignment in tier-rank order is chosen -
+     * no randomness, so the result is stable across regenerations.
+     */
+    private List<Teams> constraintSeed(List<Teams> qs, int[] classOf, int n) {
+        int q = qs.size();
+        int[] slots = seedSlots(n);
+        int[] posOfSeed = new int[n + 1];
+        for (int i = 0; i < n; i++) posOfSeed[slots[i]] = i;
+        int rounds = Integer.numberOfTrailingZeros(n); // log2(n)
+
+        Map<Long, Integer> counts = new HashMap<>();
+        for (Teams tm : qs) {
+            Long g = groupIdOf(tm);
+            if (g != null) counts.merge(g, 1, Integer::sum);
+        }
+        // minMeet: same-group teams may first meet in this round or later
+        // (1 = round one allowed, rounds = final only).
+        Map<Long, Integer> minMeet = new HashMap<>();
+        for (Map.Entry<Long, Integer> e : counts.entrySet()) {
+            int cnt = e.getValue();
+            int spread = 32 - Integer.numberOfLeadingZeros(cnt - 1); // ceil(log2)
+            minMeet.put(e.getKey(), Math.min(rounds, Math.max(2, rounds - spread + 1)));
+        }
+
+        while (true) {
+            Teams[] out = new Teams[q];
+            int[] budget = {500_000}; // search-node cap; overrun → relax
+            if (placeSeed(0, qs, classOf, posOfSeed, minMeet, out, new boolean[q], budget)) {
+                return new ArrayList<>(Arrays.asList(out));
+            }
+            boolean relaxed = false;
+            for (Map.Entry<Long, Integer> e : minMeet.entrySet()) {
+                if (e.getValue() > 2) { e.setValue(e.getValue() - 1); relaxed = true; }
+            }
+            if (!relaxed) {
+                boolean lowered = false;
+                for (Map.Entry<Long, Integer> e : minMeet.entrySet()) {
+                    if (e.getValue() > 1) { e.setValue(1); lowered = true; }
                 }
+                if (!lowered) return qs; // constraint-free - keep base order
             }
         }
     }
 
-    private boolean sameGroup(Teams a, Teams b) {
-        return a != null && b != null
-                && a.getGroup() != null && b.getGroup() != null
-                && a.getGroup().getId().equals(b.getGroup().getId());
+    /** Depth-first assignment of seed index {@code i}: try the remaining teams
+     *  of that seed's tier in rank order, keeping every same-group pair at or
+     *  beyond its {@code minMeet} round. First full assignment wins. */
+    private boolean placeSeed(
+            int i, List<Teams> qs, int[] classOf, int[] posOfSeed,
+            Map<Long, Integer> minMeet, Teams[] out, boolean[] used, int[] budget) {
+        if (i == qs.size()) return true;
+        if (--budget[0] < 0) return false;
+        for (int j = 0; j < qs.size(); j++) {
+            if (used[j] || classOf[j] != classOf[i]) continue;
+            Teams cand = qs.get(j);
+            Long g = groupIdOf(cand);
+            boolean ok = true;
+            if (g != null) {
+                int need = minMeet.getOrDefault(g, 1);
+                for (int k = 0; k < i && ok; k++) {
+                    if (g.equals(groupIdOf(out[k]))
+                            && meetRound(posOfSeed[i + 1], posOfSeed[k + 1]) < need) {
+                        ok = false;
+                    }
+                }
+            }
+            if (!ok) continue;
+            used[j] = true;
+            out[i] = cand;
+            if (placeSeed(i + 1, qs, classOf, posOfSeed, minMeet, out, used, budget)) {
+                return true;
+            }
+            used[j] = false;
+            out[i] = null;
+        }
+        return false;
+    }
+
+    /** The round (1 = round one, log2(n) = final) in which the two bracket
+     *  slot positions would first meet. */
+    private static int meetRound(int p1, int p2) {
+        int k = 1;
+        while ((p1 >> k) != (p2 >> k)) k++;
+        return k;
+    }
+
+    private static Long groupIdOf(Teams t) {
+        return t != null && t.getGroup() != null ? t.getGroup().getId() : null;
     }
 }

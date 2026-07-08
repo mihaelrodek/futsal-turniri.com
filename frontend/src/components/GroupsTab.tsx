@@ -871,6 +871,17 @@ export default function GroupsTab({
         )
     }
 
+    // Group fixtures in play order: by scheduled kickoff (soonest first), so a
+    // rescheduled match lands in the right spot instead of staying in id order.
+    // Matches without a kickoff (not yet scheduled) fall to the end, by id.
+    const matchesByKickoff = (ms: GroupMatch[]) =>
+        [...ms].sort((a, b) => {
+            const ta = a.kickoffAt ? new Date(a.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+            const tb = b.kickoffAt ? new Date(b.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+            if (ta !== tb) return ta - tb
+            return a.matchId - b.matchId
+        })
+
     const renderFixture = (m: GroupMatch) => {
         const editable = m.team1Id != null && m.team2Id != null
         const editing = editingId === m.matchId
@@ -1392,7 +1403,7 @@ export default function GroupsTab({
                         >
                             {expandedGroups.has(g.id) ? (
                                 <VStack align="stretch" gap="1.5">
-                                    {g.matches.map(renderFixture)}
+                                    {matchesByKickoff(g.matches).map(renderFixture)}
                                     <Flex justify="center" pt="1">
                                         <Button
                                             size="xs"
