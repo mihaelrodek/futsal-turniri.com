@@ -102,8 +102,49 @@ function extractServerMessage(err: AxiosError): string | null {
     return null
 }
 
+/**
+ * True when a response body is an HTML *document* rather than our JSON API.
+ *
+ * During a production deploy the host serves a static "Nadogradnja u tijeku"
+ * page for EVERY route - including `/api/*`. The already-loaded SPA then fires
+ * an XHR and gets that HTML back instead of JSON. Without this guard the error
+ * interceptor would dump the raw HTML source straight into a red toast.
+ */
+function isHtmlDocument(data: unknown, headers: unknown): boolean {
+    const ct = String((headers as Record<string, unknown> | undefined)?.["content-type"] ?? "").toLowerCase()
+    if (ct.includes("text/html")) return true
+    if (typeof data === "string") return /^\s*<(!doctype\s+html|html[\s>])/i.test(data)
+    return false
+}
+
+/** Specifically the deploy "Nadogradnja u tijeku" maintenance page. */
+function isMaintenanceHtml(data: unknown): boolean {
+    return typeof data === "string" && /nadogradnja u tijeku/i.test(data)
+}
+
+/**
+ * Reload the tab so the browser navigates to the host's maintenance page (a
+ * full document that auto-refreshes every 20 s and boots the fresh app once
+ * the deploy finishes). Guarded so several in-flight requests failing at once
+ * can't trigger a reload loop.
+ */
+let maintenanceReloadStarted = false
+function goToMaintenancePage() {
+    if (maintenanceReloadStarted) return
+    maintenanceReloadStarted = true
+    if (typeof window !== "undefined") window.location.reload()
+}
+
 http.interceptors.response.use(
     (resp: AxiosResponse) => {
+        // A 2xx whose body is an HTML document means the host served the
+        // maintenance/upgrade page in place of our JSON (deploy in progress).
+        // Reload so the browser lands on that page instead of the SPA trying
+        // to render an HTML string as data.
+        if (isHtmlDocument(resp.data, resp.headers)) {
+            goToMaintenancePage()
+            return resp
+        }
         const cfg = (resp.config ?? {}) as InternalAxiosRequestConfig
         if (cfg.silent) return resp
         const method = (cfg.method ?? "get").toLowerCase()
@@ -121,6 +162,24 @@ http.interceptors.response.use(
             || (Array.isArray(cfg.silentErrorStatuses)
                 && typeof status === "number"
                 && cfg.silentErrorStatuses.includes(status))
+
+        // The response is an HTML page, not our JSON API - almost always the
+        // deploy maintenance page (served for every route mid-release) or a
+        // proxy/CDN error page. NEVER show the raw HTML source in a toast.
+        // Reload onto the maintenance page when we recognise it; otherwise show
+        // a short, friendly "temporarily unavailable" message.
+        if (isHtmlDocument(err.response?.data, err.response?.headers)) {
+            if (isMaintenanceHtml(err.response?.data)) {
+                goToMaintenancePage()
+            } else if (!suppress) {
+                showError(
+                    "Trenutno nedostupno",
+                    "Usluga se ažurira ili je privremeno nedostupna. Pokušaj ponovno za koji trenutak.",
+                )
+            }
+            return Promise.reject(err)
+        }
+
         if (!suppress) {
             const serverMsg = extractServerMessage(err)
             const fallback = statusFallback(status)
