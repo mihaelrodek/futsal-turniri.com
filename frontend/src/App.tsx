@@ -122,6 +122,36 @@ export default function App() {
             </Suspense>
         )
     }
+
+    // The single-match live page gets its own full-height frame: the app nav
+    // stays put (top NavBar on web, bottom nav on mobile), the match header is
+    // pinned, and ONLY the timeline scrolls - the page itself never scrolls.
+    if (/^\/turniri\/[^/]+\/utakmica\/[^/]+$/.test(pathname)) {
+        return (
+            <Flex direction="column" h="100dvh" overflow="hidden" bg="bg.canvas">
+                <NavBar />
+                <PushBootstrap />
+                <ThemeSync />
+                <Box
+                    flex="1"
+                    minH="0"
+                    overflow="hidden"
+                    // Clear the fixed mobile bottom nav (matches the app's <main>
+                    // padding); no-op on desktop where there's no bottom bar.
+                    pb={{ base: "calc(92px + env(safe-area-inset-bottom, 0px))", md: "0" }}
+                >
+                    <Suspense fallback={<RouteLoading />}>
+                        <Routes>
+                            <Route path="/turniri/:uuid/utakmica/:matchId" element={<MatchLivePage />} />
+                            <Route path="*" element={<Navigate to="/turniri" replace />} />
+                        </Routes>
+                    </Suspense>
+                </Box>
+                <MobileBottomNav />
+            </Flex>
+        )
+    }
+
     return (
         <>
             <NavBar />

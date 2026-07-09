@@ -879,15 +879,22 @@ export function PageTitle({
     statusLabel?: string
     action?: ReactNode
 }) {
+    // Shrink a long title so it stays on the left and never pushes the action
+    // buttons onto a new line (which used to waste a big band of vertical space
+    // when the tournament name was long). Only measurable for string titles.
+    const titleLen = typeof title === "string" ? title.length : 0
     return (
         <Flex
             justify="space-between"
-            align={{ base: "flex-start", md: "flex-end" }}
+            align={{ base: "flex-start", md: "flex-start" }}
             gap="4"
             mb="6"
-            wrap="wrap"
+            // Desktop: never wrap - the actions stay pinned top-right and the
+            // title shrinks/clamps to fit. Mobile: allow the (icon-only) actions
+            // to drop below the big title as before.
+            wrap={{ base: "wrap", md: "nowrap" }}
         >
-            <Box minW="0">
+            <Box minW="0" flex="1">
                 {kicker ? (
                     <Box mb="1">
                         <MonoLabel color="pitch.500" letterSpacing="0.2em">
@@ -898,11 +905,18 @@ export function PageTitle({
                 <Heading
                     as="h1"
                     fontFamily="heading"
-                    fontSize={{ base: "28px", md: "34px" }}
+                    fontSize={
+                        titleLen > 44
+                            ? { base: "22px", md: "26px" }
+                            : titleLen > 30
+                                ? { base: "24px", md: "30px" }
+                                : { base: "28px", md: "34px" }
+                    }
                     fontWeight={800}
                     letterSpacing="-0.025em"
                     lineHeight={1.1}
                     color="fg.ink"
+                    lineClamp={{ base: "3", md: "2" }}
                 >
                     {title}
                 </Heading>
@@ -912,7 +926,7 @@ export function PageTitle({
                     </Text>
                 ) : null}
             </Box>
-            <HStack gap="3" align="center">
+            <HStack gap="3" align="center" flexShrink={0}>
                 {status && statusLabel ? <StatusChip status={status} label={statusLabel} size="lg" /> : null}
                 {action}
             </HStack>

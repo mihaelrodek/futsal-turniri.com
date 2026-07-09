@@ -1121,6 +1121,20 @@ export default function BracketTab({
                 display="flex"
                 alignItems="center"
                 justifyContent="stretch"
+                // iOS/WebKit renders HTML inside an SVG <foreignObject>
+                // unreliably: tall cards (live "Uživo" / scheduled "Start")
+                // spill out of their box and overlap neighbouring cards, while
+                // desktop Chrome (incl. its mobile emulation) is fine. Forcing a
+                // dedicated compositing layer + an isolated stacking context
+                // nudges Safari to lay the card out like Chrome does. (No
+                // overflow:hidden here on purpose - if the nudge doesn't fully
+                // take, a clip would HIDE the button rather than just overlap.)
+                position="relative"
+                css={{
+                    transform: "translateZ(0)",
+                    WebkitTransform: "translateZ(0)",
+                    isolation: "isolate",
+                }}
                 ref={(el: HTMLDivElement | null) => {
                     // Track refs for every match by id. The auto-scroll
                     // effect picks the LIVE one out of this map and

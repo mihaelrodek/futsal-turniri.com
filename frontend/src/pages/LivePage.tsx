@@ -405,6 +405,29 @@ function LiveMatchCard({
             </Box>
             {/* End of clickable region */}
 
+            {/* Toggle bar - sits right under the score (above the timeline). It's
+                 the single show/hide control: "Prikaži događaje" when collapsed,
+                 "Sakrij događaje" when open, so the hide button is reachable at
+                 the top without scrolling past the whole timeline. */}
+            <Flex
+                align="center"
+                justify="center"
+                gap="1.5"
+                px="4"
+                py="2.5"
+                borderTopWidth="1px"
+                borderColor="border"
+                color="fg.muted"
+                cursor="pointer"
+                _hover={{ color: "fg.ink" }}
+                onClick={() => setExpanded((v) => !v)}
+            >
+                {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                <Text fontSize="12px" fontWeight={600}>
+                    {expanded ? "Sakrij događaje" : "Prikaži događaje"}
+                </Text>
+            </Flex>
+
             {/* Expanded scorer timeline - only mounted when open so the
                  polled fetch isn't spent for every card in the grid. */}
             {expanded && (
@@ -442,69 +465,51 @@ function LiveMatchCard({
                 </Box>
             )}
 
-            {/* Footer - split into expand toggle (left) and open-tournament
-                 navigation (right). Stops propagation so clicking the link
-                 doesn't also toggle expand. */}
-            <Box
-                display="grid"
-                gridTemplateColumns="1fr auto 1fr"
-                alignItems="center"
-                px="4"
-                py="2.5"
-                borderTopWidth="1px"
-                borderColor="border"
-                gap="2"
-            >
-                <Box
-                    as="span"
-                    fontSize="12px"
-                    fontWeight={700}
-                    color="pitch.500"
-                    cursor="pointer"
-                    justifySelf="start"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        onOpen()
-                    }}
-                    css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-                    _hover={{ textDecoration: "underline" }}
-                >
-                    ← na turnir
-                </Box>
+            {/* Footer - "na turnir" (left) + "na utakmicu" (right). Shown ONLY
+                 when the card is expanded; a collapsed card keeps just the
+                 toggle bar above. */}
+            {expanded && (
                 <Flex
                     align="center"
-                    gap="1.5"
-                    color="fg.muted"
-                    cursor="pointer"
-                    justifySelf="center"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        setExpanded((v) => !v)
-                    }}
-                    _hover={{ color: "fg.ink" }}
+                    justify="space-between"
+                    px="4"
+                    py="2.5"
+                    borderTopWidth="1px"
+                    borderColor="border"
+                    gap="2"
                 >
-                    {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
-                    <Text fontSize="12px" fontWeight={600}>
-                        {expanded ? "Sakrij događaje" : "Prikaži događaje"}
-                    </Text>
+                    <Box
+                        as="span"
+                        fontSize="12px"
+                        fontWeight={700}
+                        color="pitch.500"
+                        cursor="pointer"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onOpen()
+                        }}
+                        css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        _hover={{ textDecoration: "underline" }}
+                    >
+                        ← na turnir
+                    </Box>
+                    <Box
+                        as="span"
+                        fontSize="12px"
+                        fontWeight={700}
+                        color="pitch.500"
+                        cursor="pointer"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenMatch()
+                        }}
+                        css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        _hover={{ textDecoration: "underline" }}
+                    >
+                        na utakmicu →
+                    </Box>
                 </Flex>
-                <Box
-                    as="span"
-                    fontSize="12px"
-                    fontWeight={700}
-                    color="pitch.500"
-                    cursor="pointer"
-                    justifySelf="end"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenMatch()
-                    }}
-                    css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-                    _hover={{ textDecoration: "underline" }}
-                >
-                    na utakmicu →
-                </Box>
-            </Box>
+            )}
         </Box>
     )
 }

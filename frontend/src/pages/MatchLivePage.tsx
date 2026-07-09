@@ -16,9 +16,10 @@ import type { Schedule, ScheduledMatch } from "../types/schedule"
    :matchId). Think SofaScore match screen: a spectator opens this URL on their
    phone and follows one game live.
 
-   Layout: a full-viewport overlay with a faint Futsal Turniri logo watermark.
-   The team names + score sit FIXED at the top; the timeline (goals + cards,
-   newest first, SofaScore style) scrolls beneath.
+   Rendered as a normal in-chrome page (NOT a full-screen overlay), so the app
+   navigation stays put - the top NavBar on the web and the bottom nav on
+   mobile. A faint logo watermark sits behind the teams + score header and the
+   timeline (goals + cards, oldest → newest, split into 1./2. poluvrijeme).
 
    Data (no dedicated endpoint - same sources the fullscreen display uses):
      • fetchSchedule(uuid)  → the match's teams (+ ids), status, half config,
@@ -80,19 +81,6 @@ export default function MatchLivePage() {
         setScorerTick((t) => t + 1)
     })
 
-    // Lock the underlying document scroll while the overlay is mounted - only
-    // the inner timeline column should scroll.
-    useEffect(() => {
-        const prevBody = document.body.style.overflow
-        const prevHtml = document.documentElement.style.overflow
-        document.body.style.overflow = "hidden"
-        document.documentElement.style.overflow = "hidden"
-        return () => {
-            document.body.style.overflow = prevBody
-            document.documentElement.style.overflow = prevHtml
-        }
-    }, [])
-
     const scheduled = useMemo<ScheduledMatch | null>(
         () => schedule?.matches.find((m) => m.matchId === matchId) ?? null,
         [schedule, matchId],
@@ -129,24 +117,21 @@ export default function MatchLivePage() {
 
     if (loading && !scheduled) {
         return (
-            <MatchShell onBack={goBack} onShare={share}>
-                <Flex flex="1" align="center" justify="center" gap="3">
-                    <Spinner size="lg" color="brand.solid" />
-                    <Text color="fg.muted">Učitavanje…</Text>
-                </Flex>
-            </MatchShell>
+            <Flex h="100%" align="center" justify="center" gap="3">
+                <Spinner size="lg" color="brand.solid" />
+                <Text color="fg.muted">Učitavanje…</Text>
+            </Flex>
         )
     }
 
     if (!scheduled) {
         return (
-            <MatchShell onBack={goBack} onShare={share}>
-                <Flex flex="1" align="center" justify="center" px="6">
-                    <Text color="fg.muted" textAlign="center">
-                        Utakmica nije pronađena.
-                    </Text>
-                </Flex>
-            </MatchShell>
+            <VStack h="100%" justify="center" gap="4" px="6">
+                <Text color="fg.muted" textAlign="center">Utakmica nije pronađena.</Text>
+                <IconButton aria-label="Natrag" variant="outline" onClick={goBack}>
+                    <FiArrowLeft />
+                </IconButton>
+            </VStack>
         )
     }
 
@@ -164,88 +149,170 @@ export default function MatchLivePage() {
     const title = tournamentName ?? live?.tournamentName ?? null
     const hasPens = scheduled.penalties1 != null && scheduled.penalties2 != null
 
-    // Centre column of the header: status pill/clock, big score (or kickoff for
-    // a match that hasn't started), and any penalty-shootout line.
-    const centre = (
-        <VStack gap="1" align="center" flexShrink={0}>
-            {isLive ? (
-                <HStack gap="2">
-                    <Box
-                        as="span"
-                        px="2"
-                        py="0.5"
-                        rounded="full"
-                        bg="red.solid"
-                        color="white"
-                        fontSize="2xs"
-                        fontWeight={800}
-                        letterSpacing="wider"
-                        textTransform="uppercase"
-                    >
-                        Uživo
-                    </Box>
-                    {isTimer && (
-                        <LiveClock
-                            liveStartedAt={live?.liveStartedAt}
-                            firstHalfEndedAt={live?.firstHalfEndedAt}
-                            secondHalfStartedAt={live?.secondHalfStartedAt}
-                            livePausedAt={live?.livePausedAt}
-                            halfLengthMin={halfLengthMin}
-                            halfCount={halfCount}
-                            showLabel
-                        />
-                    )}
-                </HStack>
-            ) : (
-                <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted">
-                    {isFinished ? "Završeno" : "Nije počelo"}
-                </Text>
-            )}
+    // Shrink the team-name font when a club name is long, so it stays readable
+    // and fits (wrapping to at most two lines) instead of truncating hard.
+    const maxNameLen = Math.max(team1Name.length, team2Name.length)
+    const teamFont =
+        maxNameLen > 34
+            ? { base: "xs", md: "sm" }
+            : maxNameLen > 22
+                ? { base: "sm", md: "md" }
+                : { base: "md", md: "lg" }
 
-            {isScheduled ? (
-                <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap">
-                    {formatKickoff(scheduled.kickoffAt)}
-                </Text>
-            ) : (
-                <Text
-                    fontFamily="mono"
-                    fontSize="3xl"
-                    fontWeight={800}
-                    fontVariantNumeric="tabular-nums"
-                    lineHeight="1"
-                    color={isLive ? "red.fg" : "fg.ink"}
-                    whiteSpace="nowrap"
-                >
-                    {score1} : {score2}
-                </Text>
-            )}
-
-            {hasPens && (
-                <Text fontSize="2xs" fontWeight={700} color="fg.muted" whiteSpace="nowrap">
-                    ({scheduled.penalties1} : {scheduled.penalties2} penali)
-                </Text>
-            )}
-        </VStack>
-    )
+    // (Status pill/clock, the big score and the penalty line are rendered
+    // inline in the header below - the status sits ABOVE the teams+score row so
+    // the team names and the score share ONE horizontal line.)
 
     return (
-        <MatchShell onBack={goBack} onShare={share} title={title} subtitle={phaseLbl}>
-            {/* FIXED header: team names + score. */}
-            <Box flexShrink={0} borderBottomWidth="1px" borderColor="border" bg="bg.panel" px="4" pb="4" pt="1">
+        <Flex direction="column" h="100%" position="relative" bg="bg.canvas">
+            {/* Faint centred logo watermark behind the content. */}
+            <Box
+                position="absolute"
+                inset="0"
+                zIndex={0}
+                pointerEvents="none"
+                opacity={0.05}
+                css={{
+                    backgroundImage: "url(/futsal-turniri-symbol.svg)",
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                    backgroundSize: "min(60vw, 360px)",
+                }}
+            />
+
+            {/* PINNED header: back · tournament · share, then teams + score. */}
+            <Box
+                flexShrink={0}
+                position="relative"
+                zIndex={1}
+                px={{ base: 4, md: 6 }}
+                pt="2"
+                pb="3"
+                borderBottomWidth="1px"
+                borderColor="border"
+                bg="bg.panel"
+            >
+                {/* Slim top bar: back · tournament name (→ tournament page) · share. */}
+                <Flex align="center" gap="2" mb="2">
+                    <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
+                        <FiArrowLeft />
+                    </IconButton>
+                    <VStack gap="0" flex="1" minW="0" align="center">
+                        {title && (
+                            <Text
+                                as="button"
+                                onClick={() => navigate(`/turniri/${uuid}`)}
+                                fontSize="sm"
+                                fontWeight={700}
+                                color="fg"
+                                lineClamp={1}
+                                maxW="full"
+                                cursor="pointer"
+                                _hover={{ textDecoration: "underline" }}
+                            >
+                                {title}
+                            </Text>
+                        )}
+                        {phaseLbl && (
+                            <Text fontSize="2xs" color="fg.muted" lineClamp={1} maxW="full">
+                                {phaseLbl}
+                            </Text>
+                        )}
+                    </VStack>
+                    <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
+                        <FiShare2 />
+                    </IconButton>
+                </Flex>
+
+                {/* Status line (centred) ABOVE the teams+score row so the
+                    pill/clock never pushes the score off the team-name line. */}
+                <Flex justify="center" align="center" minH="5" mb="1">
+                    {isLive ? (
+                        <HStack gap="2">
+                            <Box
+                                as="span"
+                                px="2"
+                                py="0.5"
+                                rounded="full"
+                                bg="red.solid"
+                                color="white"
+                                fontSize="2xs"
+                                fontWeight={800}
+                                letterSpacing="wider"
+                                textTransform="uppercase"
+                            >
+                                Uživo
+                            </Box>
+                            {isTimer && (
+                                <LiveClock
+                                    liveStartedAt={live?.liveStartedAt}
+                                    firstHalfEndedAt={live?.firstHalfEndedAt}
+                                    secondHalfStartedAt={live?.secondHalfStartedAt}
+                                    livePausedAt={live?.livePausedAt}
+                                    halfLengthMin={halfLengthMin}
+                                    halfCount={halfCount}
+                                    showLabel
+                                />
+                            )}
+                        </HStack>
+                    ) : (
+                        <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted">
+                            {isFinished ? "Završeno" : "Nije počelo"}
+                        </Text>
+                    )}
+                </Flex>
+
+                {/* Teams + score - the team name and the score sit on ONE
+                    horizontal line (grid is vertically centred and the score is
+                    the only thing in the centre cell). */}
                 <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
-                    <Text fontSize={{ base: "md", md: "lg" }} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="2" minW="0">
+                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="2" minW="0">
                         {team1Name}
                     </Text>
-                    {centre}
-                    <Text fontSize={{ base: "md", md: "lg" }} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="2" minW="0">
+                    {isScheduled ? (
+                        <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
+                            {formatKickoff(scheduled.kickoffAt)}
+                        </Text>
+                    ) : (
+                        <Text
+                            fontFamily="mono"
+                            fontSize="3xl"
+                            fontWeight={800}
+                            fontVariantNumeric="tabular-nums"
+                            lineHeight="1"
+                            color={isLive ? "red.fg" : "fg.ink"}
+                            whiteSpace="nowrap"
+                            flexShrink={0}
+                        >
+                            {score1} : {score2}
+                        </Text>
+                    )}
+                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="2" minW="0">
                         {team2Name}
                     </Text>
                 </Box>
+
+                {/* Penalty shootout result under the score (centred). */}
+                {hasPens && (
+                    <Text fontSize="2xs" fontWeight={700} color="fg.muted" textAlign="center" mt="1" whiteSpace="nowrap">
+                        ({scheduled.penalties1} : {scheduled.penalties2} penali)
+                    </Text>
+                )}
             </Box>
 
-            {/* SCROLLABLE timeline. */}
-            <Box flex="1" overflowY="auto" px="4" py="5" css={{ WebkitOverflowScrolling: "touch" }}>
-                <Box maxW="640px" mx="auto">
+            {/* SCROLLABLE timeline - the ONLY scrolling region on the page. */}
+            <Box
+                flex="1"
+                minH="0"
+                overflowY="auto"
+                position="relative"
+                zIndex={1}
+                px={{ base: 4, md: 6 }}
+                pt="4"
+                pb="6"
+                css={{ WebkitOverflowScrolling: "touch" }}
+            >
+                <Box maxW="640px" mx="auto" w="full">
                     <Box bg="bg.panel" rounded="xl" borderWidth="1px" borderColor="border" p="4">
                         <Text
                             fontFamily="mono"
@@ -266,8 +333,6 @@ export default function MatchLivePage() {
                             halfLengthMin={halfLengthMin}
                             pollMs={isLive ? POLL_MS : undefined}
                             refreshSignal={scorerTick}
-                            showRunningScore
-                            newestFirst
                             emptyNote={
                                 isFinished
                                     ? "Prikazan samo krajnji rezultat bez strijelca."
@@ -279,67 +344,7 @@ export default function MatchLivePage() {
                     </Box>
                 </Box>
             </Box>
-        </MatchShell>
-    )
-}
-
-/* ── Full-viewport overlay shell: logo watermark background, a slim top bar
-   (back · tournament name/stage · share) and the caller's fixed header +
-   scrollable body. Covers the app chrome so the match reads as its own page. */
-function MatchShell({
-    children,
-    onBack,
-    onShare,
-    title,
-    subtitle,
-}: {
-    children: React.ReactNode
-    onBack: () => void
-    onShare: () => void
-    title?: string | null
-    subtitle?: string | null
-}) {
-    return (
-        <Box position="fixed" inset="0" zIndex={9999} bg="bg.canvas" color="fg" overflow="hidden">
-            {/* Faint centred logo watermark. */}
-            <Box
-                position="absolute"
-                inset="0"
-                zIndex={0}
-                pointerEvents="none"
-                opacity={0.05}
-                css={{
-                    backgroundImage: "url(/futsal-turniri-symbol.svg)",
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
-                    backgroundSize: "min(72vw, 420px)",
-                }}
-            />
-            <Flex direction="column" h="100dvh" position="relative" zIndex={1}>
-                {/* Top bar. */}
-                <Flex align="center" gap="2" px="2" py="2" flexShrink={0}>
-                    <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={onBack}>
-                        <FiArrowLeft />
-                    </IconButton>
-                    <VStack gap="0" flex="1" minW="0" align="center">
-                        {title && (
-                            <Text fontSize="xs" fontWeight={700} color="fg" lineClamp={1} maxW="full">
-                                {title}
-                            </Text>
-                        )}
-                        {subtitle && (
-                            <Text fontSize="2xs" color="fg.muted" lineClamp={1} maxW="full">
-                                {subtitle}
-                            </Text>
-                        )}
-                    </VStack>
-                    <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={onShare}>
-                        <FiShare2 />
-                    </IconButton>
-                </Flex>
-                {children}
-            </Flex>
-        </Box>
+        </Flex>
     )
 }
 

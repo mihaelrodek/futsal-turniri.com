@@ -56,7 +56,15 @@ import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEven
 type EditForm = { s1: string; s2: string }
 
 /** Mono header cell for the SofaScore-style standings grid. */
-function StHead({ label, mdOnly = false }: { label: string; mdOnly?: boolean }) {
+function StHead({
+    label,
+    mdOnly = false,
+    align = "center",
+}: {
+    label: string
+    mdOnly?: boolean
+    align?: "left" | "center"
+}) {
     return (
         <Text
             display={mdOnly ? { base: "none", md: "block" } : undefined}
@@ -65,7 +73,7 @@ function StHead({ label, mdOnly = false }: { label: string; mdOnly?: boolean }) 
             color="fg.muted"
             letterSpacing="0.08em"
             fontWeight={700}
-            textAlign="center"
+            textAlign={align}
         >
             {label}
         </Text>
@@ -1285,7 +1293,7 @@ export default function GroupsTab({
                             <StHead label="I" />
                             <StHead label="GR" />
                             <StHead label="GOL" mdOnly />
-                            <StHead label="ZADNJIH 5" mdOnly />
+                            <StHead label="ZADNJIH 5" mdOnly align="left" />
                             <StHead label="BOD" />
                         </Box>
 
@@ -1345,11 +1353,14 @@ export default function GroupsTab({
                                     />
                                     {/* GOL (dani:primljeni) - md only */}
                                     <StNum value={`${row.goalsFor}:${row.goalsAgainst}`} mdOnly />
-                                    {/* Zadnjih 5 - md only */}
+                                    {/* Zadnjih 5 - md only. Left-aligned so the
+                                        badges line up across rows even when
+                                        teams have played a different number of
+                                        matches. */}
                                     <HStack
                                         display={{ base: "none", md: "flex" }}
                                         gap="1"
-                                        justify="center"
+                                        justify="flex-start"
                                     >
                                         {(row.form ?? []).map((res, i) => {
                                             const isW = res === "W"

@@ -831,8 +831,6 @@ export function GoalscorersPanel({
     hideEmpty = false,
     emptyNote,
     refreshSignal,
-    showRunningScore = false,
-    newestFirst = false,
 }: {
     tournamentUuid: string
     matchId: number
@@ -857,12 +855,6 @@ export function GoalscorersPanel({
     /** Bump this (from a WebSocket live-update) to refetch immediately - the
      *  instant path; polling above is the fallback. */
     refreshSignal?: number
-    /** SofaScore-style: show the running score as a pill on each goal row. */
-    showRunningScore?: boolean
-    /** SofaScore-style: latest event on top (sections + rows reversed) and,
-     *  when both halves have events, a "Poluvrijeme s1 : s2" score divider
-     *  between them instead of the "1./2. poluvrijeme" labels. */
-    newestFirst?: boolean
 }) {
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
 
@@ -991,29 +983,19 @@ export function GoalscorersPanel({
             sections.push({ key: "pen", title: "Penali", events: penalties })
         }
 
-        // Running score for the goal pills + the half-time score divider (both
-        // SofaScore-style, opt-in). Cumulative over the minute-sorted regulation
-        // goals - only GOAL/OWN_GOAL move the score; cards don't.
+        // Running score for the goal pills (SofaScore-style, shown centred on
+        // the line). Cumulative over the minute-sorted regulation goals - only
+        // GOAL/OWN_GOAL move the score; cards don't.
         const scoreLabels = new Map<number, string>()
         let rs1 = 0
         let rs2 = 0
-        let ht1 = 0
-        let ht2 = 0
         for (const e of regulation) {
             if (e.type === "GOAL" || e.type === "OWN_GOAL") {
                 if (e.teamId === t1Id) rs1++
                 else rs2++
                 scoreLabels.set(e.id, `${rs1} - ${rs2}`)
-                if (hl != null && e.minute < hl) {
-                    ht1 = rs1
-                    ht2 = rs2
-                }
             }
         }
-        const hasSecond = sections.some((s) => s.key === "h2")
-        // Newest-first: penalties → 2nd half → 1st half, rows within each
-        // reversed so the latest minute sits on top.
-        const ordered = newestFirst ? [...sections].reverse() : sections
 
         return (
             <Box position="relative" w="full">
@@ -1033,21 +1015,11 @@ export function GoalscorersPanel({
                     zIndex={0}
                 />
                 <VStack align="stretch" gap="0" w="full" position="relative" zIndex={1}>
-                {ordered.map((sec) => {
-                    const evs = newestFirst ? [...sec.events].reverse() : sec.events
-                    // Newest-first swaps the "1./2. poluvrijeme" labels for a
-                    // single half-time score divider between the halves.
-                    const title = !newestFirst
-                        ? sec.title
-                        : sec.key === "h1"
-                            ? hasSecond ? `Poluvrijeme  ${ht1} : ${ht2}` : ""
-                            : sec.key === "pen"
-                                ? "Penali"
-                                : ""
-                    return (
+                {sections.map((sec) => (
                     <Box key={sec.key} w="full">
-                        {/* Section header - centred, masks the line behind it. */}
-                        {title && (
+                        {/* Section header ("1./2. poluvrijeme" / "Penali") -
+                            centred, masks the dashed line behind it. */}
+                        {sec.title && (
                             <Flex justify="center" py="2">
                                 <Text
                                     px="3"
@@ -1059,21 +1031,20 @@ export function GoalscorersPanel({
                                     textAlign="center"
                                     whiteSpace="nowrap"
                                 >
-                                    {title}
+                                    {sec.title}
                                 </Text>
                             </Flex>
                         )}
-                        {evs.map((evt) => (
+                        {sec.events.map((evt) => (
                             <TimelineEventLine
                                 key={evt.id}
                                 evt={evt}
                                 isLeft={evt.teamId === t1Id}
-                                scoreLabel={showRunningScore ? scoreLabels.get(evt.id) ?? null : null}
+                                scoreLabel={scoreLabels.get(evt.id) ?? null}
                             />
                         ))}
                     </Box>
-                    )
-                })}
+                ))}
                 </VStack>
             </Box>
         )
@@ -1149,7 +1120,9 @@ export function TimelineEventLine({
             {icon}
         </Text>
     )
-    // SofaScore-style running-score pill (goals only), sitting nearest the line.
+    // SofaScore-style running-score pill (goals only). Rendered in the CENTRE
+    // of the row in place of the dot, so the scorer name keeps the full side
+    // width (and can wrap to two lines instead of truncating).
     const pillEl = scoreLabel ? (
         <Box
             as="span"
@@ -1197,7 +1170,13 @@ export function TimelineEventLine({
     )
 
     return (
-        <Box display="grid" gridTemplateColumns="minmax(0,1fr) 28px minmax(0,1fr)" w="full" alignItems="stretch">
+        // The centre column is a FIXED width (not `auto`) so the icons on each
+        // side line up in one vertical column regardless of what sits in the
+        // centre - a wide running-score pill (goal) or a small dot (card). With
+        // `auto`, the pill widened the centre and pushed goal icons outward while
+        // card icons hugged the line; a fixed width keeps every row's icon at the
+        // same distance from the centre.
+        <Box display="grid" gridTemplateColumns="minmax(0,1fr) 3.5rem minmax(0,1fr)" w="full" alignItems="stretch">
             {/* Left cell (team1) - pushed toward the centre line. */}
             <Flex align="center" justify="flex-end" gap="1.5" pr="2" py="1.5" minW="0" overflow="hidden">
                 {isLeft && (
@@ -1205,20 +1184,19 @@ export function TimelineEventLine({
                         {nameEl}
                         {minuteEl}
                         {iconEl}
-                        {pillEl}
                     </>
                 )}
             </Flex>
-            {/* Centre: the coloured dot, sitting on the continuous central
+            {/* Centre: the running-score pill for goals (e.g. "0 - 1"), else a
+                coloured (ink) dot; both sit centred on the continuous central
                 line drawn by the panel behind this row. */}
-            <Flex align="center" justify="center">
-                <Box boxSize="10px" rounded="full" bg={dotColor} />
+            <Flex align="center" justify="center" px="1">
+                {pillEl ?? <Box boxSize="10px" rounded="full" bg={dotColor} />}
             </Flex>
             {/* Right cell (team2) - pushed toward the centre line. */}
             <Flex align="center" justify="flex-start" gap="1.5" pl="2" py="1.5" minW="0" overflow="hidden">
                 {!isLeft && (
                     <>
-                        {pillEl}
                         {iconEl}
                         {minuteEl}
                         {nameEl}
