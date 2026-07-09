@@ -34,7 +34,16 @@ import type {
     MatchLiveMode,
 } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
+import { useLiveSocket } from "../hooks/useLiveSocket"
+import { usePolling } from "../hooks/usePolling"
 import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
+import {
+    liveGroupStandings,
+    liveThirdTable,
+    type LiveField,
+    type LiveGroupStandings,
+    type LiveThirdRow,
+} from "./liveStandings"
 import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
@@ -263,10 +272,52 @@ export default function GroupsTab({
         return scheduled[0].matchId
     }, [groups])
 
-    /** Re-fetch the groups (after a live action changed the score / status). */
+    // Live standings overlay - the backend rows count FINISHED matches only,
+    // so LIVE scores are folded in client-side (provisional points / GD /
+    // form, re-ranked with the backend's tie-break rules) with per-cell
+    // change-tracking that the grid paints red. See liveStandings.ts.
+    const liveOverlays = useMemo(() => {
+        const map = new Map<number, LiveGroupStandings>()
+        for (const g of groups ?? []) map.set(g.id, liveGroupStandings(g))
+        return map
+    }, [groups])
+    /** True while any group match is in progress - drives the live refresh. */
+    const anyGroupLive = useMemo(
+        () => (groups ?? []).some((g) => g.matches.some((m) => m.status === "LIVE")),
+        [groups],
+    )
+    // Third-place rows: backend truth when nothing is live (it carries any
+    // manual ranking), re-derived from the overlaid groups during a match.
+    const thirdRows = useMemo<LiveThirdRow[]>(() => {
+        if (!thirdTable || !groups) return []
+        if (anyGroupLive) return liveThirdTable(thirdTable, groups, liveOverlays)
+        return thirdTable.rows.map((tr) => ({
+            ...tr,
+            standing: { ...tr.standing, liveChanged: new Set<LiveField>(), liveForm: null },
+        }))
+    }, [thirdTable, groups, anyGroupLive, liveOverlays])
+
+    // Keep the tables fresh for spectators while matches run: refetch on every
+    // websocket push for this tournament (goal, finish, recorded result - the
+    // finish push is also what clears the red overlay), plus a light poll as
+    // fallback while any group match is LIVE.
+    useLiveSocket((msg) => {
+        if (msg.tournamentUuid && msg.tournamentUuid !== uuid) return
+        void reloadGroups()
+    }, (groups?.length ?? 0) > 0)
+    usePolling(() => { void reloadGroups() }, 10_000, anyGroupLive)
+
+    /** Re-fetch the groups (after a live action changed the score / status).
+     *  Sequenced: with the socket push + 10s poll both firing this, a slow
+     *  earlier response could otherwise resolve after a newer one and revert
+     *  the table to a stale snapshot (goal briefly "disappearing"). Only the
+     *  latest in-flight request is allowed to apply. */
+    const reloadSeqRef = useRef(0)
     async function reloadGroups() {
+        const seq = ++reloadSeqRef.current
         try {
-            setGroups(await fetchGroups(uuid))
+            const g = await fetchGroups(uuid)
+            if (seq === reloadSeqRef.current) setGroups(g)
         } catch {
             /* error toast surfaced by the http interceptor */
         }
@@ -1283,18 +1334,20 @@ export default function GroupsTab({
                     </Flex>
 
                     {/* v3 compact standings - CSS grid, not <table>.
-                         Columns: # | EKIPA (w/ micro W·D·L | gf:ga line) | UT | GR | BOD.
-                         Mobile drops UT column for room. Advancing rows
-                         get green-tint bg + 3px green left border. */}
+                         Columns: # | EKIPA | UT | P | N | I | GR | (GOL |
+                         ZADNJIH 5 md-only) | BOD. LIVE matches count in
+                         provisionally - cells they modified render red until
+                         the match finishes. Advancing rows get green-tint bg
+                         + 3px green left border. */}
                     <Box>
                         {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
-                            Mobile keeps P·N·I + GR + BOD; md adds UT/GOL/
+                            Mobile keeps UT + P·N·I + GR + BOD; md adds GOL/
                             Zadnjih 5. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "22px 1fr 22px 22px 22px 30px 32px",
+                                base: "22px 1fr 20px 20px 20px 20px 28px 30px",
                                 md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                             }}
                             gap="1.5"
@@ -1314,7 +1367,7 @@ export default function GroupsTab({
                             >
                                 EKIPA
                             </Text>
-                            <StHead label="UT" mdOnly />
+                            <StHead label="UT" />
                             <StHead label="P" />
                             <StHead label="N" />
                             <StHead label="I" />
@@ -1324,16 +1377,18 @@ export default function GroupsTab({
                             <StHead label="BOD" />
                         </Box>
 
-                        {/* Standings rows */}
-                        {g.standings.map((row, idx) => {
+                        {/* Standings rows - live-overlaid: cells a LIVE match
+                            modified render red until the result is persisted. */}
+                        {(liveOverlays.get(g.id)?.rows ?? []).map((row, idx) => {
                             const advances =
                                 effectiveAdvance != null && idx < effectiveAdvance
+                            const lc = (f: LiveField) => row.liveChanged.has(f)
                             return (
                                 <Box
                                     key={row.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "22px 1fr 22px 22px 22px 30px 32px",
+                                        base: "22px 1fr 20px 20px 20px 20px 28px 30px",
                                         md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                                     }}
                                     gap="1.5"
@@ -1360,18 +1415,36 @@ export default function GroupsTab({
                                     <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
                                         {row.teamName}
                                     </Text>
-                                    {/* UT (odigrano) - md only */}
-                                    <StNum value={row.played} mdOnly />
+                                    {/* UT (odigrano) */}
+                                    <StNum
+                                        value={row.played}
+                                        color={lc("played") ? "accent.red" : undefined}
+                                        weight={lc("played") ? 700 : undefined}
+                                    />
                                     {/* P · N · I */}
-                                    <StNum value={row.won} />
-                                    <StNum value={row.drawn} />
-                                    <StNum value={row.lost} />
+                                    <StNum
+                                        value={row.won}
+                                        color={lc("won") ? "accent.red" : undefined}
+                                        weight={lc("won") ? 700 : undefined}
+                                    />
+                                    <StNum
+                                        value={row.drawn}
+                                        color={lc("drawn") ? "accent.red" : undefined}
+                                        weight={lc("drawn") ? 700 : undefined}
+                                    />
+                                    <StNum
+                                        value={row.lost}
+                                        color={lc("lost") ? "accent.red" : undefined}
+                                        weight={lc("lost") ? 700 : undefined}
+                                    />
                                     {/* GR (gol-razlika) - shown on mobile too */}
                                     <StNum
-                                        weight={600}
+                                        weight={lc("goalDiff") ? 700 : 600}
                                         value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                                         color={
-                                            row.goalDiff > 0
+                                            lc("goalDiff")
+                                                ? "accent.red"
+                                                : row.goalDiff > 0
                                                 ? "pitch.500"
                                                 : row.goalDiff < 0
                                                 ? "accent.red"
@@ -1379,17 +1452,27 @@ export default function GroupsTab({
                                         }
                                     />
                                     {/* GOL (dani:primljeni) - md only */}
-                                    <StNum value={`${row.goalsFor}:${row.goalsAgainst}`} mdOnly />
+                                    <StNum
+                                        value={`${row.goalsFor}:${row.goalsAgainst}`}
+                                        mdOnly
+                                        color={lc("goals") ? "accent.red" : undefined}
+                                        weight={lc("goals") ? 700 : undefined}
+                                    />
                                     {/* Zadnjih 5 - md only. Left-aligned so the
                                         badges line up across rows even when
                                         teams have played a different number of
-                                        matches. */}
+                                        matches. A team playing right now gets a
+                                        red OUTLINED provisional badge appended. */}
                                     <HStack
                                         display={{ base: "none", md: "flex" }}
                                         gap="1"
                                         justify="flex-start"
                                     >
-                                        {(row.form ?? []).map((res, i) => {
+                                        {/* Cap at 5 badges total: drop the oldest
+                                            finished result while the provisional
+                                            live badge is appended, so the strip
+                                            never overflows its 92px track. */}
+                                        {(row.liveForm ? (row.form ?? []).slice(-4) : row.form ?? []).map((res, i) => {
                                             const isW = res === "W"
                                             const isL = res === "L"
                                             return (
@@ -1411,13 +1494,31 @@ export default function GroupsTab({
                                                 </Flex>
                                             )
                                         })}
+                                        {row.liveForm && (
+                                            <Flex
+                                                w="16px"
+                                                h="16px"
+                                                rounded="sm"
+                                                align="center"
+                                                justify="center"
+                                                fontFamily="mono"
+                                                fontSize="9px"
+                                                fontWeight={800}
+                                                color="accent.red"
+                                                borderWidth="2px"
+                                                borderColor="accent.red"
+                                                title="Utakmica u tijeku"
+                                            >
+                                                {row.liveForm === "W" ? "P" : row.liveForm === "L" ? "I" : "N"}
+                                            </Flex>
+                                        )}
                                     </HStack>
                                     {/* BOD (bodovi) */}
                                     <Text
                                         fontFamily="heading"
                                         fontSize="18px"
                                         fontWeight={800}
-                                        color="fg.ink"
+                                        color={lc("points") ? "accent.red" : "fg.ink"}
                                         letterSpacing="-0.02em"
                                         textAlign="center"
                                     >
@@ -1475,7 +1576,7 @@ export default function GroupsTab({
                  width when the group count is even. Not collapsible - it's
                  shown expanded like the group tables. Only when the organizer
                  enabled it at draw time and the tier exists. */}
-            {thirdTable && thirdTable.bestThirdCount > 0 && thirdTable.rows.length > 0 && (
+            {thirdTable && thirdTable.bestThirdCount > 0 && thirdRows.length > 0 && (
                 <Box
                     gridColumn={{ lg: (groups!.length % 2 === 0) ? "1 / -1" : undefined }}
                     borderWidth="1px"
@@ -1508,9 +1609,16 @@ export default function GroupsTab({
                         </Box>
                     </Flex>
 
+                    {/* Same column set as the group tables (plus GRP): mobile
+                        shows GRP + UT + P·N·I + GR + BOD, md adds GOL and
+                        Zadnjih 5. Live-modified cells render red, identically
+                        to the group standings. */}
                     <Box
                         display="grid"
-                        gridTemplateColumns={{ base: "22px 1fr 30px 24px 32px", md: "24px 1fr 44px 26px 40px 48px 34px" }}
+                        gridTemplateColumns={{
+                            base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
+                            md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
+                        }}
                         gap="1.5"
                         px={{ base: "3", md: "4" }}
                         py="2"
@@ -1523,19 +1631,27 @@ export default function GroupsTab({
                             EKIPA
                         </Text>
                         <StHead label="GRP" />
-                        <StHead label="UT" mdOnly />
-                        <StHead label="GR" mdOnly />
+                        <StHead label="UT" />
+                        <StHead label="P" />
+                        <StHead label="N" />
+                        <StHead label="I" />
+                        <StHead label="GR" />
                         <StHead label="GOL" mdOnly />
+                        <StHead label="ZADNJIH 5" mdOnly align="left" />
                         <StHead label="BOD" />
                     </Box>
 
-                    {thirdTable.rows.map((tr, idx) => {
+                    {thirdRows.map((tr, idx) => {
                         const q = tr.qualifies
+                        const lc = (f: LiveField) => tr.standing.liveChanged.has(f)
                         return (
                             <Box
                                 key={tr.standing.teamId}
                                 display="grid"
-                                gridTemplateColumns={{ base: "22px 1fr 30px 24px 32px", md: "24px 1fr 44px 26px 40px 48px 34px" }}
+                                gridTemplateColumns={{
+                                    base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
+                                    md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
+                                }}
                                 gap="1.5"
                                 alignItems="center"
                                 px={{ base: "3", md: "4" }}
@@ -1555,15 +1671,108 @@ export default function GroupsTab({
                                 <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted" textAlign="center">
                                     {tr.groupName}
                                 </Text>
-                                <StNum value={tr.standing.played} mdOnly />
+                                {/* UT (odigrano) */}
                                 <StNum
-                                    mdOnly
-                                    weight={600}
-                                    value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
-                                    color={tr.standing.goalDiff > 0 ? "pitch.500" : tr.standing.goalDiff < 0 ? "accent.red" : "fg.muted"}
+                                    value={tr.standing.played}
+                                    color={lc("played") ? "accent.red" : undefined}
+                                    weight={lc("played") ? 700 : undefined}
                                 />
-                                <StNum value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`} mdOnly />
-                                <Text fontFamily="mono" fontSize="14px" fontWeight={800} color={q ? "pitch.500" : "fg.ink"} textAlign="center">
+                                {/* P · N · I */}
+                                <StNum
+                                    value={tr.standing.won}
+                                    color={lc("won") ? "accent.red" : undefined}
+                                    weight={lc("won") ? 700 : undefined}
+                                />
+                                <StNum
+                                    value={tr.standing.drawn}
+                                    color={lc("drawn") ? "accent.red" : undefined}
+                                    weight={lc("drawn") ? 700 : undefined}
+                                />
+                                <StNum
+                                    value={tr.standing.lost}
+                                    color={lc("lost") ? "accent.red" : undefined}
+                                    weight={lc("lost") ? 700 : undefined}
+                                />
+                                {/* GR (gol-razlika) - shown on mobile too */}
+                                <StNum
+                                    weight={lc("goalDiff") ? 700 : 600}
+                                    value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
+                                    color={
+                                        lc("goalDiff")
+                                            ? "accent.red"
+                                            : tr.standing.goalDiff > 0
+                                            ? "pitch.500"
+                                            : tr.standing.goalDiff < 0
+                                            ? "accent.red"
+                                            : "fg.muted"
+                                    }
+                                />
+                                {/* GOL (dani:primljeni) - md only */}
+                                <StNum
+                                    value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`}
+                                    mdOnly
+                                    color={lc("goals") ? "accent.red" : undefined}
+                                    weight={lc("goals") ? 700 : undefined}
+                                />
+                                {/* Zadnjih 5 - md only, with the red outlined
+                                    provisional badge while the team plays. */}
+                                <HStack
+                                    display={{ base: "none", md: "flex" }}
+                                    gap="1"
+                                    justify="flex-start"
+                                >
+                                    {(tr.standing.liveForm
+                                        ? (tr.standing.form ?? []).slice(-4)
+                                        : tr.standing.form ?? []
+                                    ).map((res, i) => {
+                                        const isW = res === "W"
+                                        const isL = res === "L"
+                                        return (
+                                            <Flex
+                                                key={i}
+                                                w="16px"
+                                                h="16px"
+                                                rounded="sm"
+                                                align="center"
+                                                justify="center"
+                                                fontFamily="mono"
+                                                fontSize="9px"
+                                                fontWeight={800}
+                                                color="white"
+                                                bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
+                                                title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
+                                            >
+                                                {isW ? "P" : isL ? "I" : "N"}
+                                            </Flex>
+                                        )
+                                    })}
+                                    {tr.standing.liveForm && (
+                                        <Flex
+                                            w="16px"
+                                            h="16px"
+                                            rounded="sm"
+                                            align="center"
+                                            justify="center"
+                                            fontFamily="mono"
+                                            fontSize="9px"
+                                            fontWeight={800}
+                                            color="accent.red"
+                                            borderWidth="2px"
+                                            borderColor="accent.red"
+                                            title="Utakmica u tijeku"
+                                        >
+                                            {tr.standing.liveForm === "W" ? "P" : tr.standing.liveForm === "L" ? "I" : "N"}
+                                        </Flex>
+                                    )}
+                                </HStack>
+                                {/* BOD (bodovi) */}
+                                <Text
+                                    fontFamily="mono"
+                                    fontSize="14px"
+                                    fontWeight={800}
+                                    color={lc("points") ? "accent.red" : q ? "pitch.500" : "fg.ink"}
+                                    textAlign="center"
+                                >
                                     {tr.standing.points}
                                 </Text>
                             </Box>

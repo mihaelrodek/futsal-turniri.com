@@ -218,26 +218,43 @@ const config = defineConfig({
                 // sets the `dark` class that Chakra's `_dark` condition reads.
                 // Dark surfaces are neutral GRAY (near-slate, no green cast) -
                 // the brand green stays reserved for accents/CTAs so it pops.
+                //
+                // ── Why `_light` is spelled out next to `base` ────────────────
+                // Chakra's own defaults key their light value under `_light`,
+                // not `base`. `createSystem(defaultConfig, config)` DEEP-MERGES
+                // the two `value` objects, so overriding a token Chakra already
+                // defines (bg.panel, fg.muted, border.*, …) leaves Chakra's
+                // `_light` in place alongside our `base`. The emitted CSS puts
+                // them on different selectors:
+                //
+                //   base    -> &:where(html, .chakra-theme)
+                //   _light  -> :root &, .light &            ← higher specificity
+                //
+                // …so a `base`-only override silently loses in light mode and
+                // the token renders Chakra's neutral zinc. Setting BOTH makes
+                // ours win on either selector. Tokens Chakra doesn't define
+                // (bg.canvas, fg.ink, accent.*, pitch.*) have no `_light`
+                // sibling and work with `base` alone - they're left as-is.
                 bg: {
-                    DEFAULT: { value: { base: "{colors.surface.base}", _dark: "#232629" } },
+                    DEFAULT: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#232629" } },
                     canvas: { value: { base: "{colors.surface.canvas}", _dark: "#191b1d" } },
-                    panel: { value: { base: "{colors.surface.base}", _dark: "#232629" } },
-                    subtle: { value: { base: "{colors.surface.tint2}", _dark: "#282b2e" } },
-                    muted: { value: { base: "{colors.surface.tint}", _dark: "#303437" } },
+                    panel: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#232629" } },
+                    subtle: { value: { base: "{colors.surface.tint2}", _light: "{colors.surface.tint2}", _dark: "#282b2e" } },
+                    muted: { value: { base: "{colors.surface.tint}", _light: "{colors.surface.tint}", _dark: "#303437" } },
                     surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#303437" } },
                     surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#282b2e" } },
                 },
                 fg: {
-                    DEFAULT: { value: { base: "{colors.ink}", _dark: "#edeeef" } },
+                    DEFAULT: { value: { base: "{colors.ink}", _light: "{colors.ink}", _dark: "#edeeef" } },
                     ink: { value: { base: "{colors.ink}", _dark: "#edeeef" } },
                     soft: { value: { base: "{colors.ink.soft}", _dark: "#c3c7ca" } },
-                    muted: { value: { base: "{colors.ink.mute}", _dark: "#9aa0a5" } },
-                    subtle: { value: { base: "{colors.ink.mute}", _dark: "#878d92" } },
+                    muted: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#9aa0a5" } },
+                    subtle: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#878d92" } },
                 },
                 border: {
-                    DEFAULT: { value: { base: "{colors.line}", _dark: "#3b4045" } },
-                    emphasized: { value: { base: "{colors.line.strong}", _dark: "#4c5257" } },
-                    subtle: { value: { base: "{colors.line}", _dark: "#33383c" } },
+                    DEFAULT: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#3b4045" } },
+                    emphasized: { value: { base: "{colors.line.strong}", _light: "{colors.line.strong}", _dark: "#4c5257" } },
+                    subtle: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#33383c" } },
                     strong: { value: { base: "{colors.line.strong}", _dark: "#4c5257" } },
                 },
                 // Make `colorPalette="pitch"` fully wired. Dark: solid pops a

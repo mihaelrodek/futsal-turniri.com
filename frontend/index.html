@@ -52,6 +52,31 @@
       />
     </noscript>
 
+    <!-- ── Google Analytics 4 ──────────────────────────────────────────
+         Replace G-XXXXXXXXXX with the Measurement ID from
+         analytics.google.com (Admin → Data streams → Web). Guarded so it
+         loads ONLY on the production domain - dev / preview traffic never
+         pollutes the stats - and no-ops entirely until the real ID is set.
+         SPA route changes are tracked by GA4's "Enhanced measurement"
+         (History events; on by default in the data-stream settings). -->
+    <script>
+      (function () {
+        var GA_ID = "G-XXXXXXXXXX";
+        var h = location.hostname;
+        if (h !== "futsal-turniri.com" && h !== "www.futsal-turniri.com") return;
+        if (GA_ID.indexOf("XXXX") !== -1) return; /* not configured yet */
+        var s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        window.gtag = gtag;
+        gtag("js", new Date());
+        gtag("config", GA_ID);
+      })();
+    </script>
+
     <!-- ── PWA / Add to Home Screen ─────────────────────────────────────
          Installable web app metadata. With the manifest below, Chrome
          (Android/desktop) shows an "Install app" option in the URL bar;

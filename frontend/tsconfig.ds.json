@@ -23,5 +23,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
+  /* Seed only the entry + the DS layer. The presentational components that
+     ds-entry.tsx re-exports are pulled in transitively; seeding all of
+     src/components would drag in BracketTab and its untyped bracket lib. */
   "include": ["src/ds-entry.tsx", "src/ui", "src/system.ts"]
 }

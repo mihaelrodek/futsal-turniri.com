@@ -6,6 +6,7 @@
   "buildCmd": "npm --prefix frontend run build:ds",
   "tsconfig": "tsconfig.app.json",
   "cssEntry": "src/ds-styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
   "provider": {
     "component": "PitchProvider"
   },
@@ -23,6 +24,23 @@
       "cardMode": "single",
       "primaryStory": "Danger",
       "viewport": "720x440"
+    },
+    "BulkImportDialog": {
+      "cardMode": "single",
+      "viewport": "720x520"
+    },
+    "HelpFab": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "Footer": {
+      "cardMode": "column"
+    },
+    "FormatSketch": {
+      "cardMode": "column"
+    },
+    "LocationAutocomplete": {
+      "cardMode": "column"
     }
   },
   "libOverrides": {
@@ -57,6 +75,18 @@
     "EmptyState": "src/ui/primitives.tsx",
     "Meta": "src/ui/primitives.tsx",
     "Loader": "src/ui/primitives.tsx",
+
+    "Logo": "src/components/Logo.tsx",
+    "Footer": "src/components/Footer.tsx",
+    "NotFoundView": "src/components/NotFoundView.tsx",
+    "HelpFab": "src/components/HelpFab.tsx",
+    "AvatarPreview": "src/components/AvatarPreview.tsx",
+    "IosInstallSteps": "src/components/IosInstallSteps.tsx",
+    "BulkImportDialog": "src/components/BulkImportDialog.tsx",
+    "FormatSketch": "src/components/FormatSketch.tsx",
+    "LiveSyncIndicator": "src/components/LiveSyncIndicator.tsx",
+    "LocationAutocomplete": "src/components/LocationAutocomplete.tsx",
+
     "PitchProvider": null
   }
 }

@@ -127,6 +127,11 @@ If any other component gains a generic, expect the same and pin it the same way.
 - Every `[RENDER_THIN]` / `[RENDER_BLANK]` warning seen during this sync was an
   unauthored component showing the floor card, and each was resolved by
   authoring its preview. None outstanding.
+- `[TOKENS_MISSING]` for `--chakra-colors-{border,bg,fg,bg-panel,fg-muted,
+  border-emphasized,blue-solid}` is **expected and non-blocking**. Chakra v3
+  injects those at runtime via `PitchProvider`; no stylesheet defines them, by
+  design. The tag's own text says as much ("check a rendered preview before
+  chasing") — the render check passes 36/36.
 
 ## Traps found while authoring
 
@@ -153,6 +158,67 @@ If any other component gains a generic, expect the same and pin it the same way.
 - `PillTabBar` is controlled — a static preview passes a fixed `active` and
   `onChange={() => {}}`.
 
+## `DateTimeField` is excluded on purpose — do not re-add without a fix
+
+react-datepicker@7.6.0's `main` is CommonJS (`dist/index.js`). Inside the IIFE
+bundle its default export resolves to an **object**, so `DateTimeField` throws
+`Element type is invalid: … but got: object` wherever it renders — the component
+is broken in the bundle, not in its preview. Fixing it would mean forking
+`lib/bundle.mjs` (mainFields / interop shim), which the skill forbids because
+that file defines the output contract with the app's self-check.
+
+It was also the single biggest bundle contributor (react-datepicker +
+`date-fns/locale`). Dropping it took the bundle from 2164 KB back down.
+
+If it is ever needed: give the DS a real ESM build of the datepicker, or wrap it
+in a small local module that does `import * as DP from 'react-datepicker'` and
+re-exports `DP.default ?? DP`, then re-add it to `ds-entry.tsx` and
+`componentSrcMap`. Its stylesheet (`frontend/src/datepicker.css`) is also NOT in
+`cssEntry`, so the open calendar would render unstyled — the `compact` prop is a
+no-op for the same reason.
+
+## Component quirks worth knowing (phase-2 set)
+
+- `HelpFab` is `position: fixed`. It is contained inside its card by a
+  `position: relative; transform: translateZ(0)` wrapper in its preview (a
+  transform creates a containing block). Its first-run coach-mark is gated by a
+  2 s timeout + localStorage, so it never appears in a capture.
+- `Footer` is `display={{ base: "none", md: "block" }}` — invisible below ~768px.
+  Its preview forces a `minWidth: 820` wrapper.
+- `AvatarPreview`'s zoom popup is internal state with no `open` prop, so it
+  cannot be previewed statically. Its real axis is `src` truthy vs falsy.
+- `LocationAutocomplete` queries the Nominatim API on typing. Captures have no
+  network, so only the resting/filled/disabled input states are previewed — the
+  suggestion dropdown is deliberately not faked.
+- The DS exports no Avatar primitive; `AvatarPreview`'s preview draws its own
+  circle.
+
+## Two more code findings (verified, not fixed — app code)
+
+- **`LiveSyncIndicator`'s green "Spremljeno" branch is dead code.** It requires
+  `online && !syncing && pending === 0`, which is exactly the condition the
+  early `return null` on line 19 catches. `FiCheckCircle` and the `green`
+  palette can never render. Only the orange (offline) and blue (draining)
+  states are reachable.
+- **`Logo` hard-codes absolute asset paths** (`/logo/mark-light.svg`,
+  `/logo/mark-green.svg`) that live in `frontend/public`. Nothing outside the
+  app serves them, so the mark would 404 in any design the agent builds. This
+  sync copies the two SVGs into `ds-bundle/logo/` and uploads them so
+  `/logo/*.svg` resolves from the project root. **The build wipes `ds-bundle/`,
+  so the copy must be re-done after every build:**
+
+      mkdir -p ds-bundle/logo && cp frontend/public/logo/mark-{light,green}.svg ds-bundle/logo/
+
+  `Footer` embeds `Logo` and is affected too.
+
+- **The capture harness's MIME map has no `.svg`.** `.ds-sync/storybook/
+  http-serve.mjs` serves unknown extensions as `application/octet-stream`, and
+  Chromium refuses to render an `<img>` SVG without `image/svg+xml`. The Logo
+  mark therefore photographed as a broken-image glyph even though the file was
+  served 200 with the right bytes — a **false negative**, not a real defect.
+  Patch the `MIME` map (add `.svg`, and the jpg/webp/woff2 entries) after every
+  `cp -r` of the staged scripts, or the Logo/Footer cards will look broken again.
+
 ## Authoring process notes
 
 - `package-capture.mjs` takes ~2 min and can exceed a 2-minute foreground shell
@@ -164,6 +230,90 @@ If any other component gains a generic, expect the same and pin it the same way.
   empty containers.
 - Nice-to-have for a future converter: freeze CSS animations before capture
   (`animation-play-state: paused`) so pulsing dots photograph at full opacity.
+
+## FINDING: semantic-token overrides in system.ts do not take effect
+
+Verified at runtime (headless chromium, real bundle, real `system`): in
+`frontend/src/system.ts`, semantic tokens whose names **collide with Chakra v3's
+own defaults** are silently ignored; Chakra's neutral zinc values win.
+
+| token | system.ts intends | actually renders |
+|---|---|---|
+| `fg.muted` | `#728176` | `#52525b` |
+| `fg.subtle` | `#728176` | `#a1a1aa` |
+| `fg` (DEFAULT) | `#0e1f15` | `#09090B` |
+| `border` | `#dde5d8` | `#e4e4e7` |
+| `border.emphasized` | `#c9d4c2` | `#d4d4d8` |
+| `border.subtle` | `#dde5d8` | `#fafafa` |
+| `bg.subtle` | `#f7faf5` | `#fafafa` |
+| `bg.muted` | `#eaf1e7` | `#f4f4f5` |
+
+Tokens with **new** names all work: `fg.ink`, `bg.canvas`, `bg.surfaceTint`,
+`bg.surfaceTint2`, `accent.*`, `pitch.*`, `team.*`, and the base ramps
+(`--chakra-colors-line` = `#dde5d8`, `--chakra-colors-ink-mute` = `#728176` are
+both registered correctly — only the semantic layer that should point at them is
+being overridden back to defaults).
+
+**This affects the live app, not just previews**: `src/main.tsx` mounts the same
+`<ChakraProvider value={system}>`. Every `borderColor="border"` and
+`color="fg.muted"` in the app paints a neutral gray instead of the designed
+green-tinted value. Visually subtle but systematic — the green-tinted border
+ladder from the design handoff is not reaching the screen.
+
+### Root cause
+
+`system.ts` writes its light-mode value under **`base`**. Chakra's own defaults
+write theirs under **`_light`**. The two deep-merge instead of replacing, so the
+merged token carries both:
+
+    border.DEFAULT.value = { _light: "{colors.gray.200}",   // Chakra's, survives
+                             base:   "{colors.line}",       // ours
+                             _dark:  "#3b4045" }
+
+and Chakra emits them to different selectors:
+
+    base    ->  &:where(html, .chakra-theme)      "var(--chakra-colors-line)"
+    _light  ->  :root &, .light &                 "var(--chakra-colors-gray-200)"   <-- wins
+
+`:root &, .light &` outranks `&:where(html, .chakra-theme)`, so a `base`-only
+override can never win in light mode. Tokens whose names Chakra doesn't define
+(`fg.ink`, `fg.soft`, `bg.canvas`, `bg.surfaceTint*`, `accent.*`, `pitch.*`,
+`brand.*`, `team.*`, `border.strong`) have no `_light` sibling, so their `base`
+applies — which is exactly why those work.
+
+### The fix — APPLIED to system.ts (2026-07-09)
+
+Each colliding semantic token now carries **both** `base` and `_light` with the
+same value:
+
+    { base: "{colors.line}", _light: "{colors.line}", _dark: "#3b4045" }
+    -> &:where(html, .chakra-theme)  "var(--chakra-colors-line)"
+       :root &, .light &            "var(--chakra-colors-line)"   <-- ours now wins
+       .dark &                      "#3b4045"
+
+(`_light` alone also works but leaves the unconditional `base` slot emitting an
+empty string, so both are set.)
+
+The 10 patched tokens: `bg.DEFAULT`, `bg.panel`, `bg.subtle`, `bg.muted`;
+`fg.DEFAULT`, `fg.muted`, `fg.subtle`; `border.DEFAULT`, `border.emphasized`,
+`border.subtle`. Tokens Chakra doesn't define (`bg.canvas`, `bg.surfaceTint*`,
+`fg.ink`, `fg.soft`, `border.strong`, `accent.*`, `pitch.*`, `brand.*`,
+`team.*`) keep `base` alone — they never had an `_light` sibling to lose to.
+
+Verified by asserting on `system.getTokenCss()` that every patched var declares
+the Pitch value on both selectors, with no `gray/zinc` default surviving and no
+empty declaration. `tsc -b` and `eslint` both pass. Dark mode is unchanged.
+
+**Live-app effect:** borders `#e4e4e7` → `#dde5d8`, secondary text `#52525b` →
+`#728176`, `bg.subtle`/`bg.muted` pick up their green-tinted fills.
+
+> ⚠ **The uploaded design system predates this fix.** Its `_ds_bundle.js` was
+> built from the old `system.ts`, so its 35 cards still render Chakra's zinc,
+> and `.design-sync/conventions.md` still carries a "Known theme quirk"
+> paragraph describing that. Both are self-consistent today. **On the next
+> re-sync the fix ships, and that paragraph becomes false — delete it from
+> `conventions.md` then**, and expect every card's borders/muted text to shift
+> green-tinted (the render hashes will change; grades will re-verify).
 
 ## Re-sync risks
 
@@ -185,25 +335,110 @@ If any other component gains a generic, expect the same and pin it the same way.
 - `frontend/src/ds-entry.tsx` is excluded from the app's own `tsc -b` only by
   virtue of nothing importing it; it IS type-checked by `tsconfig.app.json`
   (which includes all of `src`). Keep it compiling or `npm run build` breaks.
+- **Two local patches do not survive re-staging the scripts** (`cp -r` from the
+  skill overwrites `.ds-sync/`): the `.svg` MIME entry in
+  `storybook/http-serve.mjs`, and the `.design-sync/node_modules` symlink the
+  `overrides/dts.mjs` fork needs. Both are in the re-sync recipe above. Forget
+  the first and the Logo/Footer cards photograph as broken images; forget the
+  second and the build fails to load the fork.
+- **`ds-bundle/logo/` is re-created by hand after every build.** It is not
+  produced by the converter, so a build → upload sequence that skips step 5
+  silently ships a project whose Logo mark 404s.
+- The `overrides/dts.mjs` fork is a full copy of `lib/dts.mjs` with one changed
+  return. Diff it against the bundled `lib/dts.mjs` on re-sync and merge
+  upstream changes before trusting the emitted contracts.
 
-## Phase 2 (not done in this sync)
+## conventions.md
 
-The user asked for "everything importable", including `frontend/src/components/`
-(40 files). Findings from the audit, for whoever picks this up:
+`.design-sync/conventions.md` is prepended to the generated README (via
+`cfg.readmeHeader`) and inlined into the design agent's system prompt. It is
+human-editable and **belongs to its authors** — a re-sync must *validate* it
+against the fresh build and report drift, never rewrite it.
 
-- 8 are already decoupled: `AvatarPreview`, `BulkImportDialog`, `DateTimeField`,
-  `FormatSketch`, `IosInstallSteps`, `LiveSyncIndicator`, `LocationAutocomplete`,
-  `TeamRow`.
-- 6 need only a router: `Logo`, `Footer`, `NotFoundView`, `HelpFab`,
-  `LiveNavItem`, plus `RequireAuth` (which renders nothing).
-- 4 render `null` by design and can never have a meaningful card:
-  `AppToaster`, `PushBootstrap`, `RequireAuth`, `ThemeSync`.
-- The rest bind Firebase auth, the REST API, or Leaflet.
-- 29 of the 40 use `export default`, so each needs a named re-export in
-  `ds-entry.tsx` before the converter can discover it.
+Two things in it are easy to get wrong and were verified for this sync:
+
+- The bundle **inlines but does not export** `react-icons`. `BallIcon` is the
+  only icon that ships. Any snippet importing `Fi*` would not resolve for the
+  design agent.
+- `PitchProvider` has no `components/` directory (excluded via
+  `componentSrcMap`), so validate its existence against the **bundle text**,
+  not the component tree.
+
+## Upload
+
+Project: `https://claude.ai/design/p/0fccd852-af77-41f0-a918-bc8b0e4d9d67`
+(pinned as `projectId` in config.json). 183 files: 35 components x 4, 35
+`_preview/*.js`, 2 `_vendor/*`, 2 `logo/*.svg`, `_ds_bundle.js`,
+`_ds_bundle.css`, `styles.css`, `README.md`, plus the sentinel and
+`_ds_sync.json`. No `fonts/`, `tokens/` or `guidelines/` — see the notes above
+for why each is legitimately empty.
+
+**The upload plan must include `logo/**`** in both `writes` and `deletes`, or
+the Logo/Footer marks 404 in every design.
+
+## Exact re-sync recipe (do these in order)
+
+    # 1. re-stage scripts (a stale .ds-sync runs an old converter)
+    cp -r <skill>/package-*.mjs <skill>/resync.mjs <skill>/lib <skill>/storybook .ds-sync/
+    (cd .ds-sync && npm i esbuild ts-morph @types/react typescript@5.9.3 playwright@1.61.0)
+
+    # 2. re-apply the two local patches the cp just clobbered
+    #    a) add '.svg': 'image/svg+xml' to MIME in .ds-sync/storybook/http-serve.mjs
+    #    b) recreate the fork's node_modules link (needed by overrides/dts.mjs)
+    ln -sfn ../.ds-sync/node_modules .design-sync/node_modules
+
+    # 3. rebuild the declarations (load-bearing — see above). Wipe first.
+    rm -rf frontend/dist-ds && npm --prefix frontend run build:ds
+
+    # 4. fetch the anchor, then run the driver
+    #    (DesignSync get_file _ds_sync.json -> .design-sync/.cache/remote-sync.json)
+    node .ds-sync/resync.mjs --config .design-sync/config.json \
+      --node-modules frontend/node_modules --entry ./frontend/src/ds-entry.tsx \
+      --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json
+
+    # 5. re-stage the Logo assets (every build wipes ds-bundle/)
+    mkdir -p ds-bundle/logo && cp frontend/public/logo/mark-{light,green}.svg ds-bundle/logo/
+
+## Phase 2 — the 11 presentational app components (DONE)
+
+`ds-entry.tsx` also re-exports 11 decoupled components from
+`frontend/src/components/`, bringing the synced surface to **36**:
+
+- Router-only (`<Link>`): `Logo`, `Footer`, `NotFoundView`, `HelpFab`
+- Fully decoupled: `AvatarPreview`, `IosInstallSteps`, `BulkImportDialog`,
+  `DateTimeField`, `FormatSketch`, `LiveSyncIndicator`, `LocationAutocomplete`
+
+Most use `export default`, so each gets an explicit named re-export.
+
+**`PitchProvider` supplies a `MemoryRouter` only when `useInRouterContext()` is
+false.** That keeps the four `<Link>` components renderable in a standalone
+design while staying a no-op inside a real app that owns a `BrowserRouter`.
+
+**Bundle cost of phase 2: 1204 KB → 2164 KB.** Almost all of it is
+`react-router-dom`, `react-datepicker` and `date-fns/locale`. Every design the
+agent builds loads this. If the bundle ever needs to shrink, dropping
+`DateTimeField` (react-datepicker + date-fns) is the single biggest win.
+
+The declaration build's `include` is deliberately narrow (`ds-entry.tsx`,
+`src/ui`, `src/system.ts`). Seeding `src/components` instead pulls in
+`BracketTab`, whose `@g-loot/react-tournament-brackets` import has no types, and
+`tsc` fails with TS7016. The 11 components are pulled in transitively via
+`ds-entry.tsx`, which is also a useful proof they carry no data coupling: a
+clean `dist-ds/` contains only them, `ui/`, `system` and `types/tournaments`.
+
+**`tsc` emits even when it errors** (`noEmitOnError` defaults to false), so a
+failed `build:ds` leaves stale `.d.ts` behind and the next run looks like it
+succeeded. When changing the DS surface, `rm -rf frontend/dist-ds` first.
+
+### Deliberately NOT synced
+
+- `TeamRow` — a dead file (`export {}`; its own comment says "safe to delete").
+- `LiveNavItem` — polls the live-match API via react-query.
+- `AppToaster`, `PushBootstrap`, `RequireAuth`, `ThemeSync` — render `null` by
+  design; they could never have a meaningful card.
+- Everything else in `src/components/` binds Firebase auth, the REST API, or
+  Leaflet. Adding them would drag firebase, leaflet, react-leaflet, react-joyride
+  and the bracket lib into `_ds_bundle.js`.
 - `frontend/src/api/http.ts` reads `import.meta.env`, which esbuild cannot
-  represent in an IIFE — expect a warning and verify the bundle still loads.
-- **Cost to weigh:** pulling these in drags firebase, leaflet, react-leaflet,
-  react-joyride, react-datepicker and the bracket lib into `_ds_bundle.js`,
-  which **every design the agent builds** must load. Today the bundle is
-  ~1.2 MB; that would multiply it.
+  represent in an IIFE. Not currently reachable from the DS entry — if a future
+  phase pulls it in, expect a warning and verify the bundle still loads.
