@@ -43,7 +43,6 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { usePolling } from "../hooks/usePolling"
 import {
-    BallIcon,
     DateStamp,
     MonoLabel,
     PitchBackdrop,
@@ -211,14 +210,105 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 </HStack>
             </Flex>
 
-            {/* Centre scoreboard - compact */}
-            <Grid
+            {/* ── Mobile scoreboard (base only) - one vertical column. The
+                 order is deliberately different from the desktop 3-column
+                 layout: tournament name + phase sit ABOVE the home team, the
+                 score sits between the two teams, and the site watermark drops
+                 BELOW the away team. The CTA below is centred. */}
+            <VStack
+                display={{ base: "flex", md: "none" }}
                 position="relative"
-                templateColumns={{ base: "1fr", md: "1fr auto 1fr" }}
+                gap="0"
+                px="4"
+                py="4"
+                textAlign="center"
+            >
+                {match.tournamentName && (
+                    <Box
+                        fontFamily="heading"
+                        fontSize="16px"
+                        fontWeight={800}
+                        letterSpacing="-0.01em"
+                        lineHeight={1.15}
+                    >
+                        {match.tournamentName}
+                    </Box>
+                )}
+                <Box
+                    fontFamily="mono"
+                    color="accent.goal"
+                    letterSpacing="0.14em"
+                    fontWeight={700}
+                    fontVariantNumeric="tabular-nums"
+                    mt="0.5"
+                    mb="2"
+                >
+                    {heroClock && (
+                        <Flex justify="center" align="center" gap="1.5" fontSize="15px">
+                            <FiClock size={13} />
+                            {heroClock.display}
+                        </Flex>
+                    )}
+                    <Box fontSize="11px" mt={heroClock ? "0.5" : "0"}>
+                        {heroHalfLabel}
+                    </Box>
+                </Box>
+                {/* Home team */}
+                <Box
+                    fontFamily="heading"
+                    fontSize="16px"
+                    fontWeight={700}
+                    letterSpacing="-0.02em"
+                    lineHeight={1.2}
+                >
+                    {match.team1Name ?? "-"}
+                </Box>
+                {/* Score */}
+                <Box
+                    fontFamily="mono"
+                    fontSize="40px"
+                    fontWeight={800}
+                    letterSpacing="-0.05em"
+                    lineHeight={1}
+                    my="1.5"
+                >
+                    {match.score1 ?? 0}
+                    <Box as="span" color="rgba(255,255,255,0.35)" px="2.5">
+                        :
+                    </Box>
+                    {match.score2 ?? 0}
+                </Box>
+                {/* Away team */}
+                <Box
+                    fontFamily="heading"
+                    fontSize="16px"
+                    fontWeight={700}
+                    letterSpacing="-0.02em"
+                    lineHeight={1.2}
+                >
+                    {match.team2Name ?? "-"}
+                </Box>
+                {/* Site watermark - below the away team */}
+                <MonoLabel
+                    color="rgba(255,255,255,0.5)"
+                    letterSpacing="0.15em"
+                    mt="2.5"
+                    display="block"
+                >
+                    FUTSAL-TURNIRI.COM
+                </MonoLabel>
+            </VStack>
+
+            {/* ── Desktop scoreboard (md+) - the classic 3-column layout with
+                 the team names flanking the centred score/tournament block. */}
+            <Grid
+                display={{ base: "none", md: "grid" }}
+                position="relative"
+                templateColumns="1fr auto 1fr"
                 alignItems="center"
-                gap={{ base: 4, md: 6 }}
-                px={{ base: 4, md: 8 }}
-                py={{ base: 4, md: 5 }}
+                gap="6"
+                px="8"
+                py="5"
             >
                 <Box textAlign={{ base: "center", md: "right" }}>
                     <Box
@@ -310,21 +400,11 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 bg="rgba(0,0,0,0.3)"
                 px={{ base: 4, md: 7 }}
                 py="2.5"
-                justify="space-between"
+                justify="center"
                 align="center"
                 gap="3"
                 wrap="wrap"
             >
-                <HStack
-                    gap="2"
-                    fontFamily="mono"
-                    fontSize="11px"
-                    color="rgba(255,255,255,0.7)"
-                    letterSpacing="0.05em"
-                >
-                    <BallIcon size={12} color="#f5b921" />
-                    <Box>Pratite tijek utakmice u stvarnom vremenu</Box>
-                </HStack>
                 <Button
                     asChild
                     size="sm"
