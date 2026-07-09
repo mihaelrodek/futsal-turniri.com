@@ -3,10 +3,27 @@
   "shape": "package",
   "pkg": "frontend",
   "globalName": "PitchDS",
+  "buildCmd": "npm --prefix frontend run build:ds",
   "tsconfig": "tsconfig.app.json",
   "cssEntry": "src/ds-styles.css",
   "provider": {
     "component": "PitchProvider"
+  },
+  "overrides": {
+    "TournamentPoster": {
+      "cardMode": "column"
+    },
+    "ConfirmDialog": {
+      "cardMode": "single",
+      "primaryStory": "Danger",
+      "viewport": "720x440"
+    }
+  },
+  "libOverrides": {
+    "dts.mjs": "qualify bare React type names (CSSProperties) against the emitted import * as React prelude"
+  },
+  "dtsPropsFor": {
+    "PillTabBar": "  /** The tab labels, in display order. */\n  tabs: string[] /* @arr */;\n  /** The currently-selected tab; must be one of `tabs`. */\n  active: string;\n  /** Fired with the newly-selected tab. */\n  onChange: (next: string) => void /* @fn */;\n  children?: React.ReactNode;\n  className?: string;\n  id?: string;\n  style?: React.CSSProperties;"
   },
   "componentSrcMap": {
     "PitchBackdrop": "src/ui/pitch.tsx",

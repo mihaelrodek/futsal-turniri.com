@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "types": "dist-ds/ds-entry.d.ts",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ds": "tsc -p tsconfig.ds.json",
     "lint": "eslint .",
     "preview": "vite preview"
   },

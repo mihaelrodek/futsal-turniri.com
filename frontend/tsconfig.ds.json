@@ -1,0 +1,27 @@
+{
+  /* Declaration-only build of the "Pitch" design-system surface.
+   *
+   * The app itself has no library build, but claude.ai/design (see
+   * /design-sync) reads each component's `.d.ts` as the API contract its
+   * design agent codes against. Without real declarations every component's
+   * props collapse to `[key: string]: unknown` and the agent misuses them.
+   *
+   *   npm run build:ds   →   dist-ds/ds-entry.d.ts (+ ui/, system.d.ts)
+   *
+   * `types` in package.json points at the emitted entry. Emits no JS. */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "rootDir": "src",
+    "outDir": "dist-ds",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.ds.tsbuildinfo",
+    /* The app lints with these on; a declaration emit shouldn't fail on an
+       unused import in a file it merely pulls in transitively. */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/ds-entry.tsx", "src/ui", "src/system.ts"]
+}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
     Box,
     Button,
@@ -20,7 +20,9 @@ import { Link as RouterLink } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import {
+    FiBell,
     FiCalendar,
+    FiEdit3,
     FiChevronDown,
     FiChevronRight,
     FiChevronUp,
@@ -153,6 +155,11 @@ function useTournamentPrefetch() {
    renders the score block (team names, no abbreviation badges).
    ────────────────────────────────────────────────────────────────────── */
 
+/** Shared min-height for the two home-hero slides so the promo banner and the
+ *  live scoreboard swap in place without reflowing. Tuned to the scoreboard's
+ *  natural height per breakpoint. */
+const HERO_MIN_H = { base: "330px", md: "260px" } as const
+
 function LiveHero({ match }: { match: LiveMatch }) {
     const queryClient = useQueryClient()
     // Warm the featured match's tournament (detail + schedule) on hover/press so
@@ -214,10 +221,12 @@ function LiveHero({ match }: { match: LiveMatch }) {
     return (
         <Box
             position="relative"
-            rounded="2xl"
             overflow="hidden"
             color="white"
-            mb="7"
+            minH={HERO_MIN_H}
+            flex="1 0 auto"
+            display="flex"
+            flexDirection="column"
             bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
         >
             <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
@@ -256,6 +265,8 @@ function LiveHero({ match }: { match: LiveMatch }) {
             <VStack
                 display={{ base: "flex", md: "none" }}
                 position="relative"
+                flex="1"
+                justify="center"
                 gap="0"
                 px="4"
                 py="4"
@@ -342,6 +353,8 @@ function LiveHero({ match }: { match: LiveMatch }) {
             <Grid
                 display={{ base: "none", md: "grid" }}
                 position="relative"
+                flex="1"
+                alignContent="center"
                 templateColumns="1fr auto 1fr"
                 alignItems="center"
                 gap="6"
@@ -465,6 +478,579 @@ function LiveHero({ match }: { match: LiveMatch }) {
                     </RouterLink>
                 </Button>
             </Flex>
+        </Box>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Promo heroes - the two marketing slides that share the home hero slot with
+   the live scoreboard. Same outer shell (gradient panel, pitch backdrop,
+   diagonal stripes) and the shared HERO_MIN_H / flex-fill so every slide is the
+   same height and swaps in place without the layout jumping. There are two
+   variants - one aimed at organisers, one at followers - so the carousel always
+   has something to page through even when nothing is live.
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Shared shell for the faux "app screenshot" cards. Plain divs (not images) so
+   they stay crisp and theme-proof; text is pinned dark since the cards always
+   sit on a white surface. The cards are desktop-only (hidden on mobile). */
+const MOCK_SHELL = {
+    bg: "rgba(255,255,255,0.97)",
+    color: "#0e1f15",
+    rounded: "xl",
+    overflow: "hidden",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
+    borderWidth: "1px",
+    borderColor: "rgba(0,0,0,0.06)",
+} as const
+
+/* Follower: a live scoreboard with a goal + a yellow-card event logged. */
+function PromoMockLive() {
+    return (
+        <Box {...MOCK_SHELL} w="210px">
+            <Flex
+                align="center"
+                justify="space-between"
+                px="3"
+                py="1.5"
+                bg="rgba(193,18,31,0.08)"
+                borderBottomWidth="1px"
+                borderColor="rgba(0,0,0,0.06)"
+            >
+                <HStack gap="1.5">
+                    <PulseDot color="#c1121f" size={6} glow />
+                    <Box
+                        fontFamily="mono"
+                        fontSize="9.5px"
+                        fontWeight={800}
+                        letterSpacing="0.14em"
+                        color="#c1121f"
+                        css={{ animation: "pitchPulse 1.6s infinite" }}
+                    >
+                        UŽIVO
+                    </Box>
+                </HStack>
+                <HStack gap="1" fontFamily="mono" fontSize="10px" fontWeight={700} color="rgba(0,0,0,0.55)">
+                    <FiClock size={10} />
+                    <Box>12:34</Box>
+                </HStack>
+            </Flex>
+            <VStack align="stretch" gap="1" px="3" py="2">
+                <Flex align="center" justify="space-between">
+                    <Box fontSize="12px" fontWeight={700}>Sokol</Box>
+                    <Box fontFamily="mono" fontSize="17px" fontWeight={800}>2</Box>
+                </Flex>
+                <Flex align="center" justify="space-between">
+                    <Box fontSize="12px" fontWeight={700}>Dinamo MŽ</Box>
+                    <Box fontFamily="mono" fontSize="17px" fontWeight={800}>1</Box>
+                </Flex>
+            </VStack>
+            <VStack
+                align="stretch"
+                gap="0"
+                borderTopWidth="1px"
+                borderColor="rgba(0,0,0,0.08)"
+                bg="rgba(0,0,0,0.02)"
+            >
+                <Flex align="center" gap="2" px="3" py="1.5">
+                    <Box fontSize="11px">⚽</Box>
+                    <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
+                        <Box as="span" fontWeight={700} color="#0e1f15">12'</Box> Marko Horvat
+                    </Box>
+                </Flex>
+                <Flex
+                    align="center"
+                    gap="2"
+                    px="3"
+                    py="1.5"
+                    borderTopWidth="1px"
+                    borderColor="rgba(0,0,0,0.06)"
+                >
+                    <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
+                    <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
+                        <Box as="span" fontWeight={700} color="#0e1f15">18'</Box> Ivan Kovač
+                    </Box>
+                </Flex>
+            </VStack>
+        </Box>
+    )
+}
+
+/* Follower: a push notification announcing a goal. */
+function PromoMockNotif() {
+    return (
+        <Box {...MOCK_SHELL} w="216px">
+            <Flex align="center" gap="2.5" px="3" py="2.5">
+                <Flex
+                    align="center"
+                    justify="center"
+                    w="26px"
+                    h="26px"
+                    rounded="lg"
+                    bg="#0b6b3a"
+                    color="white"
+                    flexShrink={0}
+                >
+                    <FiBell size={13} />
+                </Flex>
+                <Box flex="1" minW="0">
+                    <Flex align="center" justify="space-between" gap="2">
+                        <Box
+                            fontSize="9.5px"
+                            fontWeight={700}
+                            color="rgba(0,0,0,0.55)"
+                            whiteSpace="nowrap"
+                            overflow="hidden"
+                            textOverflow="ellipsis"
+                        >
+                            futsal-turniri.com
+                        </Box>
+                        <Box fontSize="9px" color="rgba(0,0,0,0.4)" flexShrink={0}>sada</Box>
+                    </Flex>
+                    <Box fontSize="11.5px" fontWeight={800} mt="0.5">⚽ GOL! Sokol 2–1</Box>
+                    <Box fontSize="10px" color="rgba(0,0,0,0.55)">Marko Horvat, 12'</Box>
+                </Box>
+            </Flex>
+        </Box>
+    )
+}
+
+/* Follower mock cluster: the live card with the goal notification popping over. */
+function PromoMockFollower() {
+    return (
+        <Box position="relative" w="250px" h="180px">
+            <Box position="absolute" left="0" bottom="0" transform="rotate(-3deg)">
+                <PromoMockLive />
+            </Box>
+            <Box position="absolute" right="0" top="0" transform="rotate(2.5deg)" zIndex={1}>
+                <PromoMockNotif />
+            </Box>
+        </Box>
+    )
+}
+
+/* Organiser: the match-record console (zapisnik) with faux add controls. */
+function PromoMockZapisnik() {
+    return (
+        <Box {...MOCK_SHELL} w="205px">
+            <Flex align="center" justify="space-between" px="3" py="1.5" bg="#0b6b3a" color="white">
+                <HStack gap="1.5">
+                    <FiEdit3 size={11} />
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
+                        ZAPISNIK
+                    </Box>
+                </HStack>
+                <Box fontFamily="mono" fontSize="11px" fontWeight={800}>2 : 1</Box>
+            </Flex>
+            <VStack align="stretch" gap="0" px="3" pt="1.5" pb="1">
+                <Flex align="center" gap="2" py="1">
+                    <Box fontSize="11px">⚽</Box>
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                        12'
+                    </Box>
+                    <Box
+                        fontSize="10.5px"
+                        fontWeight={600}
+                        flex="1"
+                        whiteSpace="nowrap"
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                    >
+                        Marko Horvat
+                    </Box>
+                </Flex>
+                <Flex
+                    align="center"
+                    gap="2"
+                    py="1"
+                    borderTopWidth="1px"
+                    borderColor="rgba(0,0,0,0.06)"
+                >
+                    <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                        18'
+                    </Box>
+                    <Box fontSize="10.5px" fontWeight={600} flex="1">Ivan Kovač</Box>
+                </Flex>
+            </VStack>
+            <Flex gap="1.5" px="3" pb="2.5" pt="1">
+                <Box
+                    flex="1"
+                    textAlign="center"
+                    fontSize="9.5px"
+                    fontWeight={700}
+                    color="white"
+                    bg="#0b6b3a"
+                    rounded="md"
+                    py="1"
+                >
+                    + Gol
+                </Box>
+                <Box
+                    flex="1"
+                    textAlign="center"
+                    fontSize="9.5px"
+                    fontWeight={700}
+                    color="#0e1f15"
+                    bg="rgba(0,0,0,0.06)"
+                    rounded="md"
+                    py="1"
+                >
+                    + Karton
+                </Box>
+            </Flex>
+        </Box>
+    )
+}
+
+/* Organiser: a mini elimination bracket. */
+function PromoMockBracket() {
+    const pair = (a: string, b: string, aWins: boolean) => (
+        <Box borderWidth="1px" borderColor="rgba(0,0,0,0.1)" rounded="md" overflow="hidden" bg="rgba(0,0,0,0.02)">
+            <Box
+                fontSize="9px"
+                fontWeight={aWins ? 800 : 600}
+                color={aWins ? "#0b6b3a" : "#0e1f15"}
+                px="1.5"
+                py="0.5"
+                whiteSpace="nowrap"
+                overflow="hidden"
+                textOverflow="ellipsis"
+            >
+                {a}
+            </Box>
+            <Box h="1px" bg="rgba(0,0,0,0.08)" />
+            <Box
+                fontSize="9px"
+                fontWeight={aWins ? 600 : 800}
+                color={aWins ? "#0e1f15" : "#0b6b3a"}
+                px="1.5"
+                py="0.5"
+                whiteSpace="nowrap"
+                overflow="hidden"
+                textOverflow="ellipsis"
+            >
+                {b}
+            </Box>
+        </Box>
+    )
+    return (
+        <Box {...MOCK_SHELL} w="200px">
+            <Flex align="center" gap="1.5" px="3" py="1.5" bg="#0b6b3a" color="white">
+                <FiGrid size={11} />
+                <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
+                    ELIMINACIJA
+                </Box>
+            </Flex>
+            <Flex align="center" gap="1.5" px="3" py="2.5">
+                <VStack gap="2" flex="1" minW="0">
+                    {pair("Sokol", "Dinamo", true)}
+                    {pair("Mladost", "Zrinski", false)}
+                </VStack>
+                <Box w="8px" h="1px" bg="rgba(0,0,0,0.18)" flexShrink={0} />
+                <Box flex="1" minW="0">
+                    {pair("Sokol", "Mladost", true)}
+                    <Box
+                        fontSize="7.5px"
+                        fontWeight={700}
+                        color="#0b6b3a"
+                        letterSpacing="0.12em"
+                        textAlign="center"
+                        mt="1"
+                    >
+                        FINALE
+                    </Box>
+                </Box>
+            </Flex>
+        </Box>
+    )
+}
+
+/* Organiser mock cluster: the bracket behind, the live record console in front. */
+function PromoMockOrganizer() {
+    return (
+        <Box position="relative" w="250px" h="180px">
+            <Box position="absolute" left="0" top="0" transform="rotate(-4deg)">
+                <PromoMockBracket />
+            </Box>
+            <Box position="absolute" right="0" bottom="0" transform="rotate(3deg)" zIndex={1}>
+                <PromoMockZapisnik />
+            </Box>
+        </Box>
+    )
+}
+
+type PromoSlide = {
+    kicker: string
+    title: string
+    gold: string
+    subtitle: string
+    /** Two-card collage - shown on both breakpoints, scaled down on mobile. */
+    mock: React.ReactNode
+}
+
+const PROMO_SLIDES: PromoSlide[] = [
+    {
+        kicker: "ZA ORGANIZATORE",
+        title: "Organiziraš turnir?",
+        gold: "Od sada to možeš potpuno besplatno!",
+        subtitle:
+            "Prijavi ekipe, izvuci ždrijeb, vodi zapisnik utakmice — bez Excela i papira, potpuno automatizirano.",
+        mock: <PromoMockOrganizer />,
+    },
+    {
+        kicker: "ZA PRATITELJE",
+        title: "Prati sve turnire uživo.",
+        gold: "Na jednom mjestu.",
+        subtitle:
+            "Prati svoju ekipu uživo, primaj obavijesti o golovima i pronađi turnire u blizini na karti.",
+        mock: <PromoMockFollower />,
+    },
+]
+
+function PromoHero({ data }: { data: PromoSlide }) {
+    return (
+        <Box
+            position="relative"
+            overflow="hidden"
+            color="white"
+            minH={HERO_MIN_H}
+            maxH={HERO_MIN_H}
+            flex="1 0 auto"
+            display="flex"
+            flexDirection="column"
+            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+        >
+            <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
+            <Box
+                position="absolute"
+                inset="0"
+                pointerEvents="none"
+                bg="repeating-linear-gradient(90deg, transparent 0, transparent 70px, rgba(0,0,0,0.05) 70px, rgba(0,0,0,0.05) 140px)"
+            />
+
+            {/* Top sub-bar - the audience kicker, mirroring the UŽIVO bar on the
+                live hero so every slide opens the same way. */}
+            <Flex
+                position="relative"
+                align="center"
+                px={{ base: 4, md: 7 }}
+                py="2.5"
+                borderBottomWidth="1px"
+                borderColor="rgba(255,255,255,0.12)"
+                bg="rgba(11, 107, 58, 0.32)"
+                gap="3"
+            >
+                <HStack gap="2.5">
+                    <PulseDot color="accent.goal" size={8} glow />
+                    <Box fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.15em">
+                        {data.kicker}
+                    </Box>
+                </HStack>
+            </Flex>
+
+            {/* Body - landing-style split: copy + faux app "screenshot". On
+                desktop the copy sits left with the full mock collage right; on
+                mobile the copy stacks above a single mock card (the subtitle is
+                dropped there to keep everything inside the fixed hero height). */}
+            <Flex
+                position="relative"
+                flex="1"
+                minH="0"
+                direction={{ base: "column", md: "row" }}
+                align="center"
+                justify="center"
+                gap={{ base: 3, md: 8 }}
+                px={{ base: 5, md: 8 }}
+                py={{ base: 3, md: 4 }}
+            >
+                {/* Copy column */}
+                <VStack
+                    flex={{ md: "1" }}
+                    maxW={{ md: "430px" }}
+                    align={{ base: "center", md: "flex-start" }}
+                    textAlign={{ base: "center", md: "left" }}
+                    gap={{ base: "1.5", md: "2" }}
+                >
+                    <Box
+                        fontFamily="heading"
+                        fontWeight={800}
+                        letterSpacing="-0.02em"
+                        lineHeight={1.1}
+                        fontSize={{ base: "18px", md: "26px" }}
+                    >
+                        {data.title}
+                    </Box>
+                    <Box
+                        fontFamily="heading"
+                        fontWeight={800}
+                        letterSpacing="-0.01em"
+                        lineHeight={1.05}
+                        fontSize={{ base: "15.5px", md: "22px" }}
+                        color="accent.goal"
+                    >
+                        {data.gold}
+                    </Box>
+                    <Text
+                        fontSize={{ base: "11px", md: "13.5px" }}
+                        color="rgba(255,255,255,0.85)"
+                        lineHeight={{ base: 1.35, md: 1.45 }}
+                        maxW="42ch"
+                        mt="1"
+                    >
+                        {data.subtitle}
+                    </Text>
+                </VStack>
+
+                {/* Faux app screenshots - the full two-card collage on both
+                    breakpoints, just scaled down to fit the tighter fixed height
+                    on mobile (the scaled wrapper reserves only its shrunk box). */}
+                <Box display={{ base: "none", md: "flex" }} flexShrink={0} justifyContent="center">
+                    {data.mock}
+                </Box>
+                <Box
+                    display={{ base: "flex", md: "none" }}
+                    w="full"
+                    h="122px"
+                    justifyContent="center"
+                    alignItems="flex-start"
+                    overflow="visible"
+                >
+                    <Box transform="scale(0.66)" transformOrigin="top center" flexShrink={0}>
+                        {data.mock}
+                    </Box>
+                </Box>
+            </Flex>
+        </Box>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Home hero carousel - the top slot on the listing page. A swipeable (touch +
+   mouse) carousel over the two promo slides plus the live scoreboard when a
+   match is in progress. Auto-advances every 5s, snaps on drag release, and
+   shows paging dots. All slides share HERO_MIN_H / flex-fill so paging never
+   reflows the page.
+   ────────────────────────────────────────────────────────────────────── */
+
+function HomeHero({ match }: { match: LiveMatch | null }) {
+    // Two promo slides (organiser + follower) are always present; the live
+    // scoreboard joins them whenever a match is in progress.
+    const promos = PROMO_SLIDES.map((p) => <PromoHero key={p.kicker} data={p} />)
+    const slides = match ? [...promos, <LiveHero key="live" match={match} />] : promos
+    const count = slides.length
+    const [idx, setIdx] = useState(0)
+    const active = idx % count
+    const go = (n: number) => setIdx(((n % count) + count) % count)
+
+    // Autoplay every 5s - paused while the user drags (the count guard is just
+    // defensive; there are always at least the two promo slides).
+    const [paused, setPaused] = useState(false)
+    useEffect(() => {
+        if (count < 2 || paused) return
+        const id = setInterval(() => setIdx((i) => (i + 1) % count), 5000)
+        return () => clearInterval(id)
+    }, [count, paused])
+
+    // Touch / mouse drag - follow the pointer, then snap to the nearest slide
+    // on release. `touch-action: pan-y` lets vertical page scrolling through.
+    const viewportRef = useRef<HTMLDivElement>(null)
+    const drag = useRef({ active: false, startX: 0, dx: 0, moved: false })
+    const [dragX, setDragX] = useState(0)
+    const [dragging, setDragging] = useState(false)
+
+    const onPointerDown = (e: React.PointerEvent) => {
+        if (count < 2) return
+        drag.current = { active: true, startX: e.clientX, dx: 0, moved: false }
+        setPaused(true)
+    }
+    const onPointerMove = (e: React.PointerEvent) => {
+        const d = drag.current
+        if (!d.active) return
+        d.dx = e.clientX - d.startX
+        if (!d.moved && Math.abs(d.dx) > 8) {
+            d.moved = true
+            setDragging(true)
+            try { viewportRef.current?.setPointerCapture(e.pointerId) } catch { /* noop */ }
+        }
+        if (d.moved) setDragX(d.dx)
+    }
+    const endDrag = (e: React.PointerEvent) => {
+        const d = drag.current
+        if (!d.active) return
+        d.active = false
+        const w = viewportRef.current?.offsetWidth ?? 1
+        const threshold = Math.min(80, w * 0.2)
+        if (d.moved) {
+            if (d.dx <= -threshold) go(active + 1)
+            else if (d.dx >= threshold) go(active - 1)
+        }
+        setDragX(0)
+        setDragging(false)
+        setPaused(false)
+        try { viewportRef.current?.releasePointerCapture(e.pointerId) } catch { /* noop */ }
+    }
+    // Swallow the click that ends a real swipe so the CTA link inside the slide
+    // doesn't fire when the user was only swiping.
+    const onClickCapture = (e: React.MouseEvent) => {
+        if (drag.current.moved) {
+            e.preventDefault()
+            e.stopPropagation()
+            drag.current.moved = false
+        }
+    }
+
+    return (
+        <Box mb="7">
+            <Box
+                ref={viewportRef}
+                position="relative"
+                overflow="hidden"
+                rounded="2xl"
+                css={{ touchAction: "pan-y" }}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                onClickCapture={onClickCapture}
+            >
+                <Flex
+                    align="stretch"
+                    style={{
+                        transform: `translate3d(calc(${-active * 100}% + ${dragX}px), 0, 0)`,
+                        transition: dragging
+                            ? "none"
+                            : "transform 600ms cubic-bezier(0.22, 1, 0.36, 1)",
+                    }}
+                >
+                    {slides.map((slide, i) => (
+                        <Box key={i} flex="0 0 100%" minW="100%" display="flex" flexDirection="column">
+                            {slide}
+                        </Box>
+                    ))}
+                </Flex>
+            </Box>
+
+            {/* Dots - only when there's more than the promo to page through. */}
+            {count > 1 && (
+                <Flex justify="center" align="center" gap="2" mt="3">
+                    {slides.map((_, i) => (
+                        <Box
+                            as="button"
+                            key={i}
+                            aria-label={`Prikaži slajd ${i + 1}`}
+                            onClick={() => go(i)}
+                            h="8px"
+                            w={i === active ? "22px" : "8px"}
+                            rounded="full"
+                            bg="accent.goal"
+                            opacity={i === active ? 1 : 0.3}
+                            transition="width 300ms ease, opacity 300ms ease"
+                            cursor="pointer"
+                        />
+                    ))}
+                </Flex>
+            )}
         </Box>
     )
 }
@@ -1431,7 +2017,7 @@ export default function TournamentsPage() {
     return (
         <VStack align="stretch" gap="7">
             <HelpFab />
-            {liveTop ? <LiveHero match={liveTop} /> : null}
+            <HomeHero match={liveTop} />
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}
             <Box>
