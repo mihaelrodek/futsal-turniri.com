@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
+import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -41,12 +42,24 @@ public class BrandOgController {
     private static final Color INK = new Color(0x0E, 0x1F, 0x15);   // fg.ink
     private static final Color WHITE = new Color(0xFF, 0xFF, 0xFF);
 
+    @Inject
+    hr.mrodek.apps.futsal_turniri.services.RenderCache renderCache;
+
     @GET
     @Path("/default.png")
     @Produces("image/png")
     public Response defaultImage() {
         try {
-            return Response.ok(render())
+            // The card never changes between deploys - render once, then serve
+            // the cached bytes for every subsequent hit (bounded concurrency).
+            byte[] png = renderCache.get("og:default", () -> {
+                try {
+                    return render();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            return Response.ok(png)
                     // Effectively static between deploys - cache for a day.
                     .header("Cache-Control", "public, max-age=86400, s-maxage=86400")
                     .build();

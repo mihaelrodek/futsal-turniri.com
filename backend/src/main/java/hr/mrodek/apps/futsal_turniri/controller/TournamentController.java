@@ -37,6 +37,8 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import io.quarkus.narayana.jta.QuarkusTransaction;
+import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
@@ -52,6 +54,7 @@ import java.util.stream.Collectors;
 public class TournamentController {
 
     @Inject TournamentMapper tournamentMapper;
+    @Inject hr.mrodek.apps.futsal_turniri.services.RenderCache renderCache;
     @Inject TeamMapper teamMapper;
     @Inject PlayerMapper playerMapper;
     @Inject RoundMatchMapper roundMatchMapper;
@@ -385,26 +388,38 @@ public class TournamentController {
     @POST
     @Path("/geocode-missing")
     @RolesAllowed("admin")
-    @Transactional
     public Response geocodeMissing() {
-        var all = tournamentsRepo.listAll();
-        int attempted = 0, resolved = 0, skipped = 0;
-        for (var t : all) {
-            if (t.getLocation() == null || t.getLocation().isBlank()) { skipped++; continue; }
-            if (t.getLatitude() != null && t.getLongitude() != null) { skipped++; continue; }
-            applyGeocoding(t);
+        // NOT a single @Transactional over the whole loop: the previous version
+        // pinned one DB connection + kept a transaction open for the entire run
+        // (N × 1.1s sleep + Nominatim latency = minutes), tripping leak
+        // detection and holding back vacuum. Instead: collect candidate ids in a
+        // short read tx, then geocode + persist EACH tournament in its own short
+        // transaction, with the throttle sleep OUTSIDE any transaction.
+        java.util.List<Long> ids = QuarkusTransaction.requiringNew().call(() ->
+                tournamentsRepo.listAll().stream()
+                        .filter(t -> t.getLocation() != null && !t.getLocation().isBlank())
+                        .filter(t -> t.getLatitude() == null || t.getLongitude() == null)
+                        .map(hr.mrodek.apps.futsal_turniri.model.Tournaments::getId)
+                        .toList());
+
+        int attempted = 0, resolved = 0;
+        for (Long id : ids) {
+            boolean ok = Boolean.TRUE.equals(QuarkusTransaction.requiringNew().call(() -> {
+                var t = tournamentsRepo.findById(id);
+                if (t == null) return false;
+                applyGeocoding(t);
+                return t.getLatitude() != null;
+            }));
             attempted++;
-            if (t.getLatitude() != null) resolved++;
+            if (ok) resolved++;
             try { Thread.sleep(1100); } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         return Response.ok(java.util.Map.of(
-                "total", all.size(),
                 "attempted", attempted,
-                "resolved", resolved,
-                "skipped", skipped
+                "resolved", resolved
         )).build();
     }
 
@@ -1081,10 +1096,21 @@ public class TournamentController {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         try {
-            byte[] png = hr.mrodek.apps.futsal_turniri.services.ShareImageRenderer.render(t);
+            // Server-side cache keyed by id + updatedAt: re-serves cached bytes
+            // for repeat hits (viral share / crawler storm), re-renders only
+            // when the tournament actually changes. Bounded-concurrency render.
+            byte[] png = renderCache.get(
+                    "share:" + t.getId() + ":" + t.getUpdatedAt(),
+                    () -> {
+                        try {
+                            return hr.mrodek.apps.futsal_turniri.services.ShareImageRenderer.render(t);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
             return Response.ok(png)
-                    // 5-minute cache so a viral share doesn't recompute every
-                    // fetch. Organizer edits invalidate via the SPA route,
+                    // 5-minute client cache so a viral share doesn't recompute
+                    // every fetch. Organizer edits invalidate via the SPA route,
                     // not via this image URL.
                     .header("Cache-Control", "public, max-age=300, s-maxage=300")
                     .build();
@@ -1110,7 +1136,17 @@ public class TournamentController {
                 ? t.getSlug() : t.getUuid().toString();
         String url = base + "/turniri/" + ref;
         try {
-            byte[] png = hr.mrodek.apps.futsal_turniri.services.QrCodeRenderer.render(url, 512);
+            // Deterministic from the URL - cache by it (only changes if the slug
+            // changes). Bounded-concurrency render.
+            byte[] png = renderCache.get(
+                    "qr:" + url,
+                    () -> {
+                        try {
+                            return hr.mrodek.apps.futsal_turniri.services.QrCodeRenderer.render(url, 512);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
             return Response.ok(png)
                     .header("Cache-Control", "public, max-age=86400, s-maxage=86400")
                     .build();
@@ -1832,6 +1868,18 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+
+        // Knockout matches must be finalised through the bracket result endpoint
+        // (POST /bracket/matches/{id}/result), which also advances the winner,
+        // feeds the third-place playoff and writes the podium. Finishing one via
+        // this generic live endpoint would set FINISHED without any of that and
+        // wedge the bracket - so reject it. (The UI already routes knockout
+        // finishes to the bracket path; this is a defence-in-depth guard.)
+        if (match.getStage() != null && match.getStage() != MatchStage.GROUP) {
+            throw new ClientErrorException(
+                    "Knockout matches must be finished via the bracket result endpoint.",
+                    Response.Status.CONFLICT);
+        }
 
         match.setStatus(MatchStatus.FINISHED);
         match.setLivePausedAt(null);

@@ -27,18 +27,26 @@ public record UserProfileDto(
          * hasn't picked one yet - frontend falls back to its own default.
          */
         @Size(max = 10, message = "colorMode must be at most 10 characters")
-        String colorMode
+        String colorMode,
+
+        // First/last name. Also accepted on PUT (profile edit). `slug` above is
+        // the username (the public /profil/{slug} handle), also writable on PUT.
+        @Size(max = 120, message = "firstName must be at most 120 characters")
+        String firstName,
+
+        @Size(max = 120, message = "lastName must be at most 120 characters")
+        String lastName
 ) {
     /** Two-arg convenience for callers that only manage phone fields. */
     public UserProfileDto(String phoneCountry, String phone) {
-        this(phoneCountry, phone, null, null, null, null);
+        this(phoneCountry, phone, null, null, null, null, null, null);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug) {
-        this(phoneCountry, phone, displayName, slug, null, null);
+        this(phoneCountry, phone, displayName, slug, null, null, null, null);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug, String avatarUrl) {
-        this(phoneCountry, phone, displayName, slug, avatarUrl, null);
+        this(phoneCountry, phone, displayName, slug, avatarUrl, null, null, null);
     }
 }

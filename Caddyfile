@@ -24,6 +24,12 @@
 {
 	# Email Let's Encrypt uses for expiry warnings. Update if you switch.
 	email mihael.rodek1@gmail.com
+
+	# `rate_limit` is provided by the caddy-ratelimit module (baked into the
+	# custom Caddy binary - see frontend/Dockerfile). It's a non-standard
+	# directive, so it must be ordered explicitly: run it BEFORE reverse_proxy
+	# so a throttled request is rejected (429) before it ever hits the backend.
+	order rate_limit before reverse_proxy
 }
 
 futsal-turniri.com, www.futsal-turniri.com {
@@ -59,12 +65,53 @@ futsal-turniri.com, www.futsal-turniri.com {
 		}
 	}
 
+	# ─── 0. Block Quarkus non-application endpoints from the public ─────
+	# /api/q/* is the SmallRye health / OpenAPI / metrics namespace. It must
+	# NOT be reachable from the internet (it leaks datasource up/down state and
+	# the internal stack). The docker-compose healthcheck hits the container
+	# directly on the internal network, so nothing legitimate needs this path
+	# through Caddy. Placed BEFORE the /api/* handler so it wins the match.
+	handle /api/q/* {
+		respond 404
+	}
+
+	# ─── 1a. Tight throttle on the expensive anonymous image renderers ─
+	# share-image.png / qr.png / og/* each render a PNG per request (CPU +
+	# multi-MB alloc). Social crawlers fetch them once per share; no legit
+	# user hammers them. A tight per-IP cap blunts the CPU-amplification
+	# vector. (The backend render cache is the primary defence; this is
+	# belt-and-suspenders.) {remote_host} is the real client IP - Caddy is
+	# the TLS edge with no CDN in front; add trusted_proxies + XFF if that
+	# ever changes.
+	@render path /api/og/* */share-image.png */qr.png
+	handle @render {
+		rate_limit {
+			zone renders {
+				key    {remote_host}
+				events 120
+				window 1m
+			}
+		}
+		reverse_proxy backend:8085
+	}
+
 	# ─── 1. API - pass through to backend ─────────────────────────────
 	# lb_try_duration makes Caddy keep retrying the backend for a few
 	# seconds when it's briefly unreachable (cold start right after a
 	# deploy, or a container restart) instead of immediately returning 502
 	# to the SPA. Smooths the "first load after deploy fails" window.
+	#
+	# Generous per-IP request cap so a single host can't flood the API and
+	# exhaust the DB pool / CPU. Set high (~50 req/s) so a venue crowd behind
+	# ONE NAT IP never hits it, but far below what a flooding host does.
 	handle /api/* {
+		rate_limit {
+			zone api {
+				key    {remote_host}
+				events 3000
+				window 1m
+			}
+		}
 		reverse_proxy backend:8085 {
 			lb_try_duration 10s
 			lb_try_interval 250ms
@@ -283,6 +330,25 @@ futsal-turniri.com, www.futsal-turniri.com {
 		# Don't advertise the server name.
 		-Server
 	}
+
+	# ─── Content-Security-Policy (ENFORCING) ───────────────────────────
+	# Scoped to everything EXCEPT /embed/* - embed widgets must stay frameable
+	# (they set their own `frame-ancestors *` CSP above; a global
+	# frame-ancestors 'none' here would intersect to 'none' and break embeds).
+	#
+	# Source list reflects exactly what the app loads:
+	#   - script/style 'unsafe-inline'  → the inline theme (no-flash) script in
+	#     index.html + Chakra's injected styles.
+	#   - fonts.googleapis.com / fonts.gstatic.com → the Google Fonts stylesheet
+	#     (@import in ds-styles.css) + the font files.
+	#   - img 'self' data: blob: https:  → CARTO map tiles, MinIO images, avatars.
+	#   - connect 'self' https: wss:     → the API + WebSocket, Firebase Auth,
+	#     Nominatim geocoding (all browser-side over https).
+	#   - frame-src firebaseapp.com / google → Firebase Auth's hidden iframe +
+	#     Google sign-in.
+	# object-src / base-uri / form-action / frame-ancestors are locked down.
+	@notembed not path /embed/*
+	header @notembed Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
 	# Smaller-than-default access log to stderr; tweak when you wire up
 	# log aggregation.

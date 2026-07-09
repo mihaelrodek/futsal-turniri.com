@@ -46,6 +46,7 @@ import {
 } from "../api/publicProfile"
 import type { MyTournamentParticipation } from "../api/userMe"
 import { deleteAvatar, getProfile, syncProfile, updateColorMode, updateProfile, uploadAvatar } from "../api/userMe"
+import { checkUsernameAvailable } from "../api/auth"
 import AvatarPreview from "../components/AvatarPreview"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
@@ -733,7 +734,6 @@ function ProfileHeader({
             {isOwner && (
                 <EditProfileDialog
                     open={editOpen}
-                    initialName={profile.displayName ?? ""}
                     onClose={() => setEditOpen(false)}
                     onSaved={async () => {
                         setEditOpen(false)
@@ -755,36 +755,61 @@ function flagFor(dialCode: string | null | undefined): string {
     return parts[0] ?? ""
 }
 
+type UsernameStatus =
+    | { state: "idle" }
+    | { state: "unchanged" }
+    | { state: "checking" }
+    | { state: "ok"; normalized: string }
+    | { state: "taken"; normalized: string }
+    | { state: "short" }
+
+/** Client-side approximation of the backend slug rule (backend is authoritative). */
+function slugify(s: string): string {
+    return s
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/đ/g, "d").replace(/Đ/g, "d")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "")
+}
+
 function EditProfileDialog({
     open,
-    initialName,
     onClose,
     onSaved,
 }: {
     open: boolean
-    initialName: string
     onClose: () => void
     onSaved: () => Promise<void> | void
 }) {
-    const [name, setName] = useState(initialName)
+    const navigate = useNavigate()
+    const [firstName, setFirstName] = useState("")
+    const [lastName, setLastName] = useState("")
+    const [username, setUsername] = useState("")
+    const originalUsernameRef = useRef("")
     const [country, setCountry] = useState<string>("+385")
     const [phone, setPhone] = useState("")
     const [saving, setSaving] = useState(false)
     const [loadingPhone, setLoadingPhone] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [uStatus, setUStatus] = useState<UsernameStatus>({ state: "idle" })
 
     // Re-seed every time the dialog opens - covers cancel-and-reopen and the
     // case where the underlying profile was changed elsewhere in the meantime.
     useEffect(() => {
         if (!open) return
-        setName(initialName)
         setError(null)
+        setUStatus({ state: "idle" })
         setLoadingPhone(true)
         ;(async () => {
             try {
                 const p = await getProfile()
-                if (p.phoneCountry) setCountry(p.phoneCountry)
-                else setCountry("+385")
+                setFirstName(p.firstName ?? "")
+                setLastName(p.lastName ?? "")
+                setUsername(p.slug ?? "")
+                originalUsernameRef.current = p.slug ?? ""
+                setCountry(p.phoneCountry || "+385")
                 setPhone(p.phone ?? "")
             } catch {
                 setCountry("+385")
@@ -793,37 +818,80 @@ function EditProfileDialog({
                 setLoadingPhone(false)
             }
         })()
-    }, [open, initialName])
+    }, [open])
+
+    // Debounced username-availability check. Skipped when unchanged from the
+    // current username (which would otherwise report as "taken" by yourself).
+    useEffect(() => {
+        const u = username.trim()
+        if (!u) { setUStatus({ state: "idle" }); return }
+        if (slugify(u) === slugify(originalUsernameRef.current)) {
+            setUStatus({ state: "unchanged" })
+            return
+        }
+        if (slugify(u).length < 3) { setUStatus({ state: "short" }); return }
+        setUStatus({ state: "checking" })
+        let cancelled = false
+        const id = window.setTimeout(async () => {
+            try {
+                const res = await checkUsernameAvailable(u)
+                if (cancelled) return
+                if (res.tooShort) setUStatus({ state: "short" })
+                else if (res.available) setUStatus({ state: "ok", normalized: res.normalized })
+                else setUStatus({ state: "taken", normalized: res.normalized })
+            } catch {
+                if (!cancelled) setUStatus({ state: "idle" })
+            }
+        }, 400)
+        return () => { cancelled = true; clearTimeout(id) }
+    }, [username])
+
+    const usernameValid = uStatus.state === "ok" || uStatus.state === "unchanged"
 
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault()
-        const trimmed = name.trim()
-        if (!trimmed) {
-            setError("Ime ne može biti prazno.")
+        if (!firstName.trim() || !lastName.trim()) {
+            setError("Ime i prezime su obavezni.")
+            return
+        }
+        if (!usernameValid) {
+            setError("Odaberi dostupno korisničko ime.")
             return
         }
         try {
             setSaving(true)
             setError(null)
-            // Firebase displayName is the source of truth - update it first
-            // so any subsequent token refresh carries the new name. The
-            // backend mirror lands via /user/me/sync.
+            const displayName = `${firstName.trim()} ${lastName.trim()}`.trim()
+            // Firebase displayName is the source of truth - update it first so a
+            // subsequent token refresh carries the new name.
             const [{ auth }, { updateProfile: fbUpdateProfile }] =
                 await Promise.all([getFirebase(), import("firebase/auth")])
             const fbUser = auth.currentUser
-            if (fbUser && fbUser.displayName !== trimmed) {
-                await fbUpdateProfile(fbUser, { displayName: trimmed })
+            if (fbUser && fbUser.displayName !== displayName) {
+                await fbUpdateProfile(fbUser, { displayName })
             }
-            await syncProfile(trimmed)
-            // Phone is optional; null both fields if blank so the backend
-            // doesn't keep a stale country code with no number.
-            await updateProfile({
+            await syncProfile(displayName)
+            const updated = await updateProfile({
                 phoneCountry: phone.trim() ? country : null,
                 phone: phone.trim() || null,
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                username: username.trim(),
             })
+            // Changing the username moves the public URL - navigate to the new
+            // /profil/{slug} so the page doesn't 404 on the old slug.
+            const newSlug = updated.slug ?? null
+            if (newSlug && newSlug !== originalUsernameRef.current) {
+                onClose()
+                navigate(`/profil/${newSlug}`, { replace: true })
+                return
+            }
             await onSaved()
         } catch (e: any) {
-            setError(e?.response?.data ?? e?.message ?? "Greška pri spremanju.")
+            const status = e?.response?.status
+            if (status === 409) setError("Korisničko ime je zauzeto. Odaberi drugo.")
+            else if (status === 400) setError("Korisničko ime je prekratko (najmanje 3 znaka).")
+            else setError(e?.response?.data ?? e?.message ?? "Greška pri spremanju.")
         } finally {
             setSaving(false)
         }
@@ -841,16 +909,54 @@ function EditProfileDialog({
                         <Dialog.Header>Uredi profil</Dialog.Header>
                         <Dialog.Body>
                             <VStack align="stretch" gap="4">
-                                <Field.Root required invalid={!!error}>
-                                    <Field.Label>Ime <Field.RequiredIndicator /></Field.Label>
+                                <HStack gap="3" align="start">
+                                    <Field.Root required>
+                                        <Field.Label>Ime <Field.RequiredIndicator /></Field.Label>
+                                        <Input
+                                            size="sm"
+                                            autoFocus
+                                            value={firstName}
+                                            onChange={(e) => setFirstName(e.target.value)}
+                                            placeholder="Marko"
+                                        />
+                                    </Field.Root>
+                                    <Field.Root required>
+                                        <Field.Label>Prezime <Field.RequiredIndicator /></Field.Label>
+                                        <Input
+                                            size="sm"
+                                            value={lastName}
+                                            onChange={(e) => setLastName(e.target.value)}
+                                            placeholder="Marković"
+                                        />
+                                    </Field.Root>
+                                </HStack>
+
+                                <Field.Root required>
+                                    <Field.Label>Korisničko ime <Field.RequiredIndicator /></Field.Label>
                                     <Input
                                         size="sm"
-                                        autoFocus
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        placeholder="npr. Marko Marković"
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value)}
+                                        placeholder="marko-markovic"
                                     />
-                                    {error && <Field.ErrorText>{error}</Field.ErrorText>}
+                                    {uStatus.state === "checking" && (
+                                        <Field.HelperText>Provjeravam dostupnost…</Field.HelperText>
+                                    )}
+                                    {uStatus.state === "unchanged" && (
+                                        <Field.HelperText>Tvoje trenutno korisničko ime.</Field.HelperText>
+                                    )}
+                                    {uStatus.state === "ok" && (
+                                        <Field.HelperText color="green.fg">✓ „{uStatus.normalized}" je dostupno</Field.HelperText>
+                                    )}
+                                    {uStatus.state === "taken" && (
+                                        <Field.HelperText color="red.fg">„{uStatus.normalized}" je zauzeto — odaberi drugo</Field.HelperText>
+                                    )}
+                                    {uStatus.state === "short" && (
+                                        <Field.HelperText color="red.fg">Prekratko (najmanje 3 znaka).</Field.HelperText>
+                                    )}
+                                    {uStatus.state === "idle" && (
+                                        <Field.HelperText>Mijenjanjem se mijenja i adresa profila (/profil/…).</Field.HelperText>
+                                    )}
                                 </Field.Root>
 
                                 <Field.Root>
@@ -889,6 +995,12 @@ function EditProfileDialog({
                                         </HStack>
                                     )}
                                 </Field.Root>
+
+                                {error && (
+                                    <Box borderWidth="1px" borderColor="red.muted" bg="red.subtle" rounded="md" p="2">
+                                        <Text fontSize="sm" color="red.fg">{error}</Text>
+                                    </Box>
+                                )}
                             </VStack>
                         </Dialog.Body>
                         <Dialog.Footer>
@@ -900,7 +1012,7 @@ function EditProfileDialog({
                                 colorPalette="pitch"
                                 type="submit"
                                 loading={saving}
-                                disabled={saving || !name.trim() || loadingPhone}
+                                disabled={saving || loadingPhone || !firstName.trim() || !lastName.trim() || !usernameValid}
                             >
                                 Spremi
                             </Button>

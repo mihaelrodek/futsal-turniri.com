@@ -438,9 +438,14 @@ public class GroupStageService {
      * (or null for a draw) is set and the standings recompute live.
      */
     @Transactional
-    public void recordGroupResult(Long matchId, int score1, int score2) {
+    public void recordGroupResult(Long tournamentId, Long matchId, int score1, int score2) {
         Matches m = matchesRepo.findByIdOptional(matchId)
                 .orElseThrow(() -> new NotFoundException("Match not found"));
+        // Scope guard: the match MUST belong to the authorized tournament
+        // (prevents cross-tournament IDOR on group results).
+        if (m.getTournament() == null || !m.getTournament().getId().equals(tournamentId)) {
+            throw new NotFoundException("Match not found");
+        }
         if (m.getStage() != MatchStage.GROUP) {
             throw new BadRequestException("Not a group match");
         }
@@ -465,9 +470,15 @@ public class GroupStageService {
      * tiebreaker, which only makes sense on a complete group).
      */
     @Transactional
-    public void reorderGroup(Long groupId, List<Long> orderedTeamIds) {
+    public void reorderGroup(Long tournamentId, Long groupId, List<Long> orderedTeamIds) {
         Groups g = groupsRepo.findByIdOptional(groupId)
                 .orElseThrow(() -> new NotFoundException("Group not found"));
+        // Scope guard: the group MUST belong to the authorized tournament
+        // (prevents cross-tournament IDOR that could re-seed another
+        // tournament's qualifiers).
+        if (g.getTournament() == null || !g.getTournament().getId().equals(tournamentId)) {
+            throw new NotFoundException("Group not found");
+        }
         List<Teams> teams = teamsRepo.list("group.id", g.getId());
 
         long unfinished = matchesRepo.count(

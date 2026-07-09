@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { Box, Container, Flex, Spinner, Text } from '@chakra-ui/react'
 import NavBar from './components/NavBar'
@@ -24,21 +24,49 @@ import NotFoundPage from "./pages/NotFoundPage"
    in a separate tab). Splitting them shaves ~30% off the initial
    bundle so first-paint on mobile 4G is faster.
    ────────────────────────────────────────────────────────────────────── */
-const CreateTournamentPage = lazy(() => import('./pages/CreateTournamentPage'))
-const TournamentDetailsPage = lazy(() => import('./pages/TournamentDetailsPage'))
-const FullscreenTournamentPage = lazy(() => import('./pages/FullscreenTournamentPage'))
-const MatchLivePage = lazy(() => import('./pages/MatchLivePage'))
-const FindTeamPage = lazy(() => import('./pages/FindTeamPage'))
-const LivePage = lazy(() => import('./pages/LivePage'))
-const MapPage = lazy(() => import('./pages/MapPage'))
-const StatsPage = lazy(() => import('./pages/StatsPage'))
-const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
-const GuidePage = lazy(() => import('./pages/GuidePage'))
-const ProfileRedirect = lazy(() => import('./pages/ProfileRedirect'))
-const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'))
-const ClaimTeamPage = lazy(() => import('./pages/ClaimTeamPage'))
-const ClaimNamePage = lazy(() => import('./pages/ClaimNamePage'))
-const EmbedTournamentPage = lazy(() => import('./pages/EmbedTournamentPage'))
+/**
+ * Wrap a lazy import so a FAILED dynamic import - almost always a stale chunk
+ * after a new deploy (the old hashed /assets file no longer exists) - triggers
+ * ONE full reload to pull the fresh build manifest, instead of white-screening.
+ * If it still fails right after that reload, the error propagates to the
+ * top-level ErrorBoundary (which shows a friendly "refresh" screen).
+ */
+function lazyWithReload<T extends ComponentType<any>>(
+    factory: () => Promise<{ default: T }>,
+) {
+    return lazy(async () => {
+        const KEY = "chunk-reload-once"
+        try {
+            const mod = await factory()
+            sessionStorage.removeItem(KEY) // fresh build loaded fine
+            return mod
+        } catch (err) {
+            if (!sessionStorage.getItem(KEY)) {
+                sessionStorage.setItem(KEY, "1")
+                window.location.reload()
+                // Hold the Suspense fallback until the reload takes over.
+                return new Promise<never>(() => {})
+            }
+            throw err // already reloaded once → let the ErrorBoundary catch it
+        }
+    })
+}
+
+const CreateTournamentPage = lazyWithReload(() => import('./pages/CreateTournamentPage'))
+const TournamentDetailsPage = lazyWithReload(() => import('./pages/TournamentDetailsPage'))
+const FullscreenTournamentPage = lazyWithReload(() => import('./pages/FullscreenTournamentPage'))
+const MatchLivePage = lazyWithReload(() => import('./pages/MatchLivePage'))
+const FindTeamPage = lazyWithReload(() => import('./pages/FindTeamPage'))
+const LivePage = lazyWithReload(() => import('./pages/LivePage'))
+const MapPage = lazyWithReload(() => import('./pages/MapPage'))
+const StatsPage = lazyWithReload(() => import('./pages/StatsPage'))
+const PrivacyPage = lazyWithReload(() => import('./pages/PrivacyPage'))
+const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
+const ProfileRedirect = lazyWithReload(() => import('./pages/ProfileRedirect'))
+const PublicProfilePage = lazyWithReload(() => import('./pages/PublicProfilePage'))
+const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
+const ClaimNamePage = lazyWithReload(() => import('./pages/ClaimNamePage'))
+const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournamentPage'))
 
 /** Suspense fallback while a route chunk is being fetched. Sized to
  *  the main content area so the page doesn't jump when the real page

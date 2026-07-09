@@ -67,3 +67,14 @@ backend/uploads/
 
 # Maintenance flag - toggled at deploy time by ops/deploy.sh, never committed
 ops/maintenance/ENABLED
+
+# ──────────────────────────────────────────────────────────
+# design-sync (claude.ai/design) - generated + machine state.
+# The durable inputs under .design-sync/ (config.json, NOTES.md,
+# conventions.md, previews/, overrides/) ARE committed.
+# ──────────────────────────────────────────────────────────
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

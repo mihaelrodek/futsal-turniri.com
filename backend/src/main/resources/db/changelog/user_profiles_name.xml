@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        First + last name captured at registration (the username/slug is derived
+        from them by default). Nullable so existing rows and Google sign-ups
+        (which may only carry a single displayName) stay valid.
+    -->
+    <changeSet id="2026-07-09-user-profiles-name" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="first_name" type="varchar(120)"/>
+            <column name="last_name" type="varchar(120)"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+        Backfill first/last name from the existing display_name: the first token
+        becomes first_name, the remainder becomes last_name (null when there's
+        only one token). Best-effort - users can correct it in profile settings.
+    -->
+    <changeSet id="2026-07-09-user-profiles-name-backfill" author="mrodek">
+        <sql><![CDATA[
+            UPDATE user_profiles
+            SET first_name = split_part(trim(display_name), ' ', 1),
+                last_name = CASE
+                    WHEN position(' ' in trim(display_name)) > 0
+                    THEN NULLIF(trim(substring(trim(display_name) from position(' ' in trim(display_name)) + 1)), '')
+                    ELSE NULL
+                END
+            WHERE display_name IS NOT NULL AND trim(display_name) <> '';
+        ]]></sql>
+    </changeSet>
+</databaseChangeLog>

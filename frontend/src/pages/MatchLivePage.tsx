@@ -5,6 +5,8 @@ import { FiArrowLeft, FiShare2 } from "react-icons/fi"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
 import { fetchTournamentDetails } from "../api/tournaments"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
@@ -38,10 +40,21 @@ export default function MatchLivePage() {
     const navigate = useNavigate()
     const location = useLocation()
 
-    const [schedule, setSchedule] = useState<Schedule | null>(null)
-    const [live, setLive] = useState<LiveMatch | null>(null)
-    const [tournamentName, setTournamentName] = useState<string | null>(null)
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed from the shared caches (schedule + live list already warmed by the
+    // tournament tabs and /uzivo, tournament name by the detail page/prefetch)
+    // so opening a match paints instantly instead of a cold spinner.
+    const cachedSchedule = uuid ? queryClient.getQueryData<Schedule>(qk.schedule(uuid)) : undefined
+    const cachedLive =
+        (queryClient.getQueryData<LiveMatch[]>(qk.liveMatches) ?? []).find((m) => m.matchId === matchId) ?? null
+    const cachedName = uuid
+        ? queryClient.getQueryData<{ name: string }>(qk.tournamentDetails(uuid))?.name ?? null
+        : null
+
+    const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
+    const [live, setLive] = useState<LiveMatch | null>(cachedLive)
+    const [tournamentName, setTournamentName] = useState<string | null>(cachedName)
+    const [loading, setLoading] = useState(!cachedSchedule)
     // Bumped on every relevant WebSocket live-update so the timeline refetches
     // instantly (GoalscorersPanel refreshSignal).
     const [scorerTick, setScorerTick] = useState(0)
@@ -51,24 +64,35 @@ export default function MatchLivePage() {
     useEffect(() => {
         if (!uuid) return
         let cancelled = false
-        fetchTournamentDetails(uuid)
+        // Reuse the cached tournament (from the detail page / card prefetch) -
+        // the name rarely changes, so a 30 s stale window avoids a refetch.
+        queryClient
+            .fetchQuery({ queryKey: qk.tournamentDetails(uuid), queryFn: () => fetchTournamentDetails(uuid), staleTime: 30_000 })
             .then((t) => { if (!cancelled) setTournamentName(t.name) })
             .catch(() => { /* name is non-critical */ })
         return () => { cancelled = true }
-    }, [uuid])
+    }, [uuid, queryClient])
 
     const loadAll = useCallback(() => {
         if (!uuid || !Number.isFinite(matchId)) return
         Promise.all([
             fetchSchedule(uuid).catch(() => null),
-            fetchLiveMatches().catch(() => [] as LiveMatch[]),
+            fetchLiveMatches().catch(() => null),
         ])
             .then(([sched, liveList]) => {
-                if (sched) setSchedule(sched)
-                setLive(liveList.find((m) => m.matchId === matchId) ?? null)
+                // Fresh each poll (this IS the live refresh) but also written to
+                // the shared caches so the tabs / /uzivo stay warm.
+                if (sched) {
+                    setSchedule(sched)
+                    queryClient.setQueryData(qk.schedule(uuid), sched)
+                }
+                if (liveList) {
+                    queryClient.setQueryData(qk.liveMatches, liveList)
+                    setLive(liveList.find((m) => m.matchId === matchId) ?? null)
+                }
             })
             .finally(() => setLoading(false))
-    }, [uuid, matchId])
+    }, [uuid, matchId, queryClient])
 
     // Fallback poll (paused while the tab is hidden).
     usePolling(loadAll, POLL_MS)

@@ -12,6 +12,7 @@ import {
     useBreakpointValue,
 } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath, useNavigate } from "react-router-dom"
+import { queryClient, PERSIST_KEY } from "../queryClient"
 import { FiLogOut, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
 import { getProfile } from "../api/userMe"
@@ -160,6 +161,10 @@ export default function NavBar() {
         try {
             await signOut()
         } finally {
+            // Drop all cached data + its persisted copy so the next (anonymous
+            // or different) session never briefly sees the previous user's data.
+            queryClient.clear()
+            try { localStorage.removeItem(PERSIST_KEY) } catch { /* private mode */ }
             navigate("/turniri")
         }
     }

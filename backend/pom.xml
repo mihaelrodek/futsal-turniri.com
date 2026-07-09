@@ -15,7 +15,10 @@
         <!-- Quarkus platform coords -->
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.version>3.15.3</quarkus.platform.version>
+        <!-- 3.15 LTS micro bumped 3.15.3 -> 3.15.6: pulls Netty >= 4.1.118.Final
+             (fixes CVE-2025-24970 / CVE-2025-25193) and patched Vert.x. Drop-in
+             BOM bump - all io.quarkus deps are unversioned and inherit it. -->
+        <quarkus.platform.version>3.15.6</quarkus.platform.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
@@ -51,11 +54,12 @@
             <version>8.5.8</version>
         </dependency>
 
-        <!-- For FilenameUtils used in StorageService -->
+        <!-- For FilenameUtils used in StorageService. Bumped 2.15.1 -> 2.16.1
+             so we no longer downgrade below the Quarkus-BOM-managed version. -->
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
-            <version>2.15.1</version>
+            <version>2.16.1</version>
         </dependency>
 
         <!-- JSON / Validation / JDBC -->

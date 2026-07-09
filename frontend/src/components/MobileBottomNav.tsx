@@ -2,7 +2,9 @@ import { useState } from "react"
 import { Box, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath } from "react-router-dom"
 import { FiBarChart2, FiList, FiMap, FiPlus, FiRadio } from "react-icons/fi"
+import { useQueryClient } from "@tanstack/react-query"
 import { fetchLiveMatches } from "../api/live"
+import { qk } from "../queryClient"
 import { usePolling } from "../hooks/usePolling"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -171,13 +173,20 @@ function CreateFab() {
 }
 
 export default function MobileBottomNav() {
-    const [liveCount, setLiveCount] = useState(0)
+    const queryClient = useQueryClient()
+    // Seed the live dot from the shared cache so it's correct immediately.
+    const [liveCount, setLiveCount] = useState(
+        () => (queryClient.getQueryData<unknown[]>(qk.liveMatches)?.length ?? 0),
+    )
 
     // 30s polling - same cadence as LiveNavItem so the live dot stays in
     // sync. usePolling pauses while the tab is hidden.
     usePolling(() => {
         fetchLiveMatches()
-            .then((l) => setLiveCount(l.length))
+            .then((l) => {
+                queryClient.setQueryData(qk.liveMatches, l)
+                setLiveCount(l.length)
+            })
             .catch(() => {
                 /* offline - treat as nothing live */
             })

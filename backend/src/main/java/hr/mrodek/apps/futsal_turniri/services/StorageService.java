@@ -93,6 +93,12 @@ public class StorageService {
                 throw new IllegalArgumentException(
                         "Unsupported image type. Allowed: jpg, jpeg, png, webp.");
             }
+            // Reject "decompression bombs" BEFORE recompress() decodes the full
+            // raster. A few-hundred-KB PNG/JPEG (under the byte cap) can declare
+            // e.g. 25000x25000 and force a ~2.5 GB BufferedImage allocation ->
+            // OutOfMemoryError (an Error, so not caught below) crashing the JVM.
+            // We read only the header dimensions (no pixel decode) and cap area.
+            assertImageDimensionsSane(path);
             {
                 String originalName = file.fileName();
                 // The bytes' actual (sniffed) type always wins over the
@@ -169,6 +175,45 @@ public class StorageService {
      * any decode/encode failure so the caller falls back to the original bytes
      * - a picture we can't decode is stored verbatim rather than rejected.
      */
+    /**
+     * Guard against image "decompression bombs": read ONLY the header
+     * dimensions via an ImageReader (no raster decode / no big allocation) and
+     * reject anything above a generous megapixel budget. Real phone photos are
+     * ~12-108 MP; 40 MP is a safe ceiling that still blocks the 25000x25000
+     * (~625 MP) style attack. Formats ImageIO can't read (e.g. WebP) fall
+     * through - they aren't decoded here anyway and stay bounded by the byte cap.
+     */
+    private void assertImageDimensionsSane(java.nio.file.Path path) {
+        final long MAX_PIXELS = 40_000_000L; // ~40 megapixels
+        javax.imageio.stream.ImageInputStream iis = null;
+        javax.imageio.ImageReader reader = null;
+        try {
+            iis = javax.imageio.ImageIO.createImageInputStream(path.toFile());
+            if (iis == null) return;
+            java.util.Iterator<javax.imageio.ImageReader> readers =
+                    javax.imageio.ImageIO.getImageReaders(iis);
+            if (!readers.hasNext()) return;
+            reader = readers.next();
+            reader.setInput(iis, true, true);
+            long w = reader.getWidth(0);
+            long h = reader.getHeight(0);
+            if (w > 0 && h > 0 && w * h > MAX_PIXELS) {
+                throw new IllegalArgumentException(
+                        "Slika ima previše piksela (najviše ~40 MP). Smanji razlučivost pa pokušaj ponovno.");
+            }
+        } catch (IllegalArgumentException iae) {
+            throw iae;
+        } catch (Exception e) {
+            // Header unreadable → let recompress()/passthrough handle it; the
+            // byte-size cap already bounds truly huge files.
+        } finally {
+            if (reader != null) reader.dispose();
+            if (iis != null) {
+                try { iis.close(); } catch (Exception ignored) { }
+            }
+        }
+    }
+
     private byte[] recompress(java.nio.file.Path path, String ext, int maxDim) {
         try {
             var out = new java.io.ByteArrayOutputStream(256 * 1024);

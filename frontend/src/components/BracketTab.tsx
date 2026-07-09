@@ -49,6 +49,8 @@ import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
 import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { useNavigate } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -301,8 +303,12 @@ export default function BracketTab({
      *  team list instead of group standings. */
     format?: string | null
 }) {
-    const [bracket, setBracket] = useState<Bracket | null>(null)
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed from the react-query cache so returning to the Eliminacija tab (or a
+    // recently-viewed tournament) paints instantly instead of refetching.
+    const cachedBracket = queryClient.getQueryData<Bracket>(qk.bracket(uuid))
+    const [bracket, setBracket] = useState<Bracket | null>(cachedBracket ?? null)
+    const [loading, setLoading] = useState(!cachedBracket)
     const [generating, setGenerating] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [form, setForm] = useState<EditForm>({ s1: "", s2: "", p1: "", p2: "" })
@@ -340,12 +346,16 @@ export default function BracketTab({
 
     useEffect(() => {
         let cancelled = false
-        setLoading(true)
-        fetchBracket(uuid)
+        // Only spinner on a cold load; a cache hit is already painted.
+        if (!queryClient.getQueryData(qk.bracket(uuid))) setLoading(true)
+        queryClient
+            .fetchQuery({ queryKey: qk.bracket(uuid), queryFn: () => fetchBracket(uuid), staleTime: 15_000 })
             .then((b) => { if (!cancelled) setBracket(b) })
             .catch(() => { if (!cancelled) setBracket(null) })
             .finally(() => { if (!cancelled) setLoading(false) })
-        fetchSchedule(uuid)
+        // Schedule is shared with the Grupe + Raspored tabs - one cache entry.
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
             .then((s) => {
                 if (cancelled) return
                 setHalfLengthMin(s.halfLengthMin ?? null)
@@ -361,6 +371,12 @@ export default function BracketTab({
             .catch(() => { /* leave defaults - manual draw stays gated */ })
         return () => { cancelled = true }
     }, [uuid])
+
+    // Mirror the bracket into the cache so a tab-switch / reopen reflects the
+    // latest scores + progression instead of a stale snapshot.
+    useEffect(() => {
+        if (bracket) queryClient.setQueryData(qk.bracket(uuid), bracket)
+    }, [bracket, uuid, queryClient])
 
     /** Re-fetch the bracket (after a live action changed the score / status). */
     async function reloadBracket() {

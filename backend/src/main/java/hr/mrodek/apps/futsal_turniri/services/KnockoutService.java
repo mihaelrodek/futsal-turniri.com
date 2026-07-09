@@ -679,9 +679,15 @@ public class KnockoutService {
      * playoff. A level score requires a (differing) penalty-shootout result.
      */
     @Transactional
-    public void recordResult(Long matchId, KnockoutResultRequest req) {
+    public void recordResult(Long tournamentId, Long matchId, KnockoutResultRequest req) {
         Matches m = matchesRepo.findByIdOptional(matchId)
                 .orElseThrow(() -> new NotFoundException("Match not found"));
+        // Scope guard: the match MUST belong to the authorized tournament.
+        // Without this, an owner of any throwaway tournament could record
+        // results on another tournament's matches (cross-tournament IDOR).
+        if (m.getTournament() == null || !m.getTournament().getId().equals(tournamentId)) {
+            throw new NotFoundException("Match not found");
+        }
         if (m.getStage() == MatchStage.GROUP) {
             throw new BadRequestException("Not a knockout match");
         }

@@ -9,6 +9,8 @@ import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.GET;
@@ -157,9 +159,10 @@ public class KnockoutController {
     public BracketDto recordResult(
             @PathParam("uuid") String uuid,
             @PathParam("matchId") Long matchId,
-            KnockoutResultRequest body) {
+            @Valid KnockoutResultRequest body) {
+        if (body == null) throw new BadRequestException("Request body is required.");
         Tournaments t = assertCanEdit(uuid);
-        knockoutService.recordResult(matchId, body);
+        knockoutService.recordResult(t.getId(), matchId, body);
         if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), matchId);
         return knockoutService.bracket(t.getId());
     }

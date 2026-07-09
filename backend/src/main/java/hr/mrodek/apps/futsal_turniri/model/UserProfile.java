@@ -28,6 +28,15 @@ public class UserProfile {
     @Column(name = "display_name", length = 200)
     private String displayName;
 
+    /** First name, captured at registration. The username/slug defaults to
+     *  {@code firstName-lastName}. Backfilled from displayName for older rows. */
+    @Column(name = "first_name", length = 120)
+    private String firstName;
+
+    /** Last name, captured at registration (may be null for single-name accounts). */
+    @Column(name = "last_name", length = 120)
+    private String lastName;
+
     /**
      * Email address, mirrored from the Firebase ID token's {@code email} claim
      * on every /user/me/sync. Used to send tournament-notification emails.

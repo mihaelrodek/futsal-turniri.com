@@ -169,7 +169,7 @@ public class ScheduleController {
             @PathParam("matchId") Long matchId,
             UpdateKickoffRequest body) {
         Tournaments t = assertCanEdit(uuid);
-        schedulingService.updateKickoff(matchId, body.kickoffAt());
+        schedulingService.updateKickoff(t.getId(), matchId, body.kickoffAt());
         return schedulingService.schedule(t);
     }
 }

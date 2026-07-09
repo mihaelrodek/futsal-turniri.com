@@ -54,10 +54,31 @@ export type UserProfile = {
     phoneCountry: string | null
     phone: string | null
     displayName?: string | null
+    /** The username (also the public /profil/{slug} handle). */
     slug?: string | null
     avatarUrl?: string | null
     /** "light" or "dark"; null until the user picks one. */
     colorMode?: "light" | "dark" | null
+    firstName?: string | null
+    lastName?: string | null
+}
+
+/**
+ * Complete registration: set the chosen username + first/last name right after
+ * the Firebase sign-up. Silent - the register form owns the messaging (incl.
+ * the 409 "username taken", which rejects here for the caller to handle).
+ */
+export async function registerProfile(payload: {
+    firstName: string
+    lastName: string
+    username: string
+}): Promise<UserProfile> {
+    const { data } = await http.post<UserProfile>(
+        "/user/me/register-profile",
+        payload,
+        { silent: true } as any,
+    )
+    return data
 }
 
 export async function getProfile(): Promise<UserProfile> {
@@ -65,11 +86,24 @@ export async function getProfile(): Promise<UserProfile> {
     return data
 }
 
-export async function updateProfile(payload: { phoneCountry: string | null; phone: string | null }): Promise<UserProfile> {
+export async function updateProfile(payload: {
+    phoneCountry: string | null
+    phone: string | null
+    firstName?: string | null
+    lastName?: string | null
+    /** New username; sent to the backend in the DTO's `slug` field. */
+    username?: string | null
+}): Promise<UserProfile> {
+    const { firstName, lastName, username, ...rest } = payload
+    const body: Record<string, unknown> = { ...rest }
+    if (firstName !== undefined) body.firstName = firstName
+    if (lastName !== undefined) body.lastName = lastName
+    if (username != null && username !== "") body.slug = username
     const { data } = await http.put<UserProfile>(
         "/user/me/profile",
-        payload,
-        { successMessage: "Profil je spremljen." } as any,
+        body,
+        // 400 (too short) / 409 (taken) are shown inline by the edit form.
+        { successMessage: "Profil je spremljen.", silentErrorStatuses: [400, 409] } as any,
     )
     return data
 }

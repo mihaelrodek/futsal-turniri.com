@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
 import type { User as FirebaseUser } from "firebase/auth"
 import { getFirebase } from "../firebase"
-import { syncProfile } from "../api/userMe"
+import { syncProfile, registerProfile } from "../api/userMe"
+import { emailForUsername } from "../api/auth"
 
 // NB: everything from "firebase/auth" is imported DYNAMICALLY (inside the
 // effect / sign-in handlers) so the Firebase SDK stays out of the critical
@@ -51,8 +52,21 @@ type AuthValue = {
     mySlug: string | null
     /** Email + password sign-in. */
     signIn: (email: string, password: string) => Promise<void>
-    /** Email + password registration. Optional displayName is set on the user profile. */
-    signUp: (email: string, password: string, displayName?: string) => Promise<void>
+    /**
+     * Sign in with EITHER an email or a username. A username (no "@") is
+     * resolved to its account email via the backend, then Firebase signs in.
+     */
+    signInWithIdentifier: (identifier: string, password: string) => Promise<void>
+    /**
+     * Email + password registration with the chosen username + first/last name.
+     * Sets the Firebase displayName to "First Last" and registers the username
+     * (+ names) on the backend.
+     */
+    signUp: (
+        email: string,
+        password: string,
+        profile: { firstName: string; lastName: string; username: string },
+    ) => Promise<void>
     /** Google OAuth sign-in (popup on desktop; SDK handles redirect fallback). */
     signInWithGoogle: () => Promise<void>
     /** Sign out the current user. */
@@ -125,13 +139,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     await Promise.all([getFirebase(), import("firebase/auth")])
                 await signInWithEmailAndPassword(auth, email, password)
             },
-            async signUp(email, password, displayName) {
+            async signInWithIdentifier(identifier, password) {
+                const id = identifier.trim()
+                // An email contains "@"; anything else is treated as a username
+                // and resolved to its account email via the backend first.
+                let email = id
+                if (!id.includes("@")) {
+                    const resolved = await emailForUsername(id)
+                    if (!resolved) {
+                        // Shape it like a Firebase error so LoginPage's mapper
+                        // shows the same "wrong username/email or password".
+                        const err: any = new Error("username-not-found")
+                        err.code = "auth/invalid-credential"
+                        throw err
+                    }
+                    email = resolved
+                }
+                const [{ auth }, { signInWithEmailAndPassword }] =
+                    await Promise.all([getFirebase(), import("firebase/auth")])
+                await signInWithEmailAndPassword(auth, email, password)
+            },
+            async signUp(email, password, profile) {
                 const [{ auth }, { createUserWithEmailAndPassword, updateProfile }] =
                     await Promise.all([getFirebase(), import("firebase/auth")])
                 const cred = await createUserWithEmailAndPassword(auth, email, password)
-                if (displayName && displayName.trim()) {
-                    await updateProfile(cred.user, { displayName: displayName.trim() })
+                const displayName = `${profile.firstName} ${profile.lastName}`.trim()
+                if (displayName) {
+                    await updateProfile(cred.user, { displayName })
                 }
+                // Register the chosen username + names on the backend. cred.user
+                // is signed in now, so this request carries the auth token. Any
+                // error (e.g. 409 username taken) propagates to the register form.
+                await registerProfile({
+                    firstName: profile.firstName.trim(),
+                    lastName: profile.lastName.trim(),
+                    username: profile.username.trim(),
+                })
             },
             async signInWithGoogle() {
                 const [{ auth, googleProvider }, { signInWithPopup, signInWithRedirect }] =

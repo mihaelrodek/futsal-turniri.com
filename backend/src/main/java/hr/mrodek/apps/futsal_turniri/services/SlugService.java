@@ -24,6 +24,34 @@ public class SlugService {
     /** Hard fallback when displayName / email are both empty. */
     private static final String DEFAULT_BASE = "igrac";
 
+    /** Minimum length of a (normalized) username. */
+    public static final int MIN_USERNAME_LENGTH = 3;
+
+    /** Normalize a user-typed username to the stored/URL form (lowercase,
+     *  diacritics stripped, non-alphanumerics → single hyphen). Same shape as
+     *  a slug, so username == the public /profil/{slug} handle. */
+    public String normalizeUsername(String raw) {
+        return baseSlug(raw);
+    }
+
+    /** Default username from first + last name, e.g. "marko-horvat". */
+    public String defaultUsername(String firstName, String lastName) {
+        String combined = ((firstName == null ? "" : firstName) + " "
+                + (lastName == null ? "" : lastName)).trim();
+        return baseSlug(combined);
+    }
+
+    /**
+     * True when {@code normalized} (already-normalized username) is free, or is
+     * already owned by {@code exceptUid} (so re-saving your own doesn't flag it
+     * as taken). Too-short values are never available.
+     */
+    public boolean isUsernameAvailable(String normalized, String exceptUid) {
+        if (normalized == null || normalized.length() < MIN_USERNAME_LENGTH) return false;
+        String owner = profileRepo.findBySlug(normalized).map(UserProfile::getUserUid).orElse(null);
+        return owner == null || owner.equals(exceptUid);
+    }
+
     /** Normalize a free-form name into a slug base - never returns blank. */
     public String baseSlug(String displayName) {
         String src = displayName == null ? "" : displayName.trim();

@@ -1,7 +1,9 @@
 import { useState } from "react"
 import { Box, HStack } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { fetchLiveMatches } from "../api/live"
+import { qk } from "../queryClient"
 import { usePolling } from "../hooks/usePolling"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -17,7 +19,12 @@ import { usePolling } from "../hooks/usePolling"
    the live-red treatment on the page itself.
    ────────────────────────────────────────────────────────────────────── */
 export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
-    const [liveCount, setLiveCount] = useState(0)
+    const queryClient = useQueryClient()
+    // Seed the badge from the shared live cache (warmed by /uzivo, the home hero
+    // and the detail page) so it's correct immediately, then the poll refreshes.
+    const [liveCount, setLiveCount] = useState(
+        () => (queryClient.getQueryData<unknown[]>(qk.liveMatches)?.length ?? 0),
+    )
 
     const resolved = useResolvedPath("/uzivo")
     const match = useMatch({ path: resolved.pathname, end: false })
@@ -27,7 +34,10 @@ export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
     // usePolling pauses while the tab is hidden (and refreshes on return).
     usePolling(() => {
         fetchLiveMatches()
-            .then((l) => setLiveCount(l.length))
+            .then((l) => {
+                queryClient.setQueryData(qk.liveMatches, l)
+                setLiveCount(l.length)
+            })
             .catch(() => {
                 /* offline / endpoint down - treat as nothing live */
             })

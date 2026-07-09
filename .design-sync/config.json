@@ -1,0 +1,39 @@
+{
+  "projectId": "0fccd852-af77-41f0-a918-bc8b0e4d9d67",
+  "shape": "package",
+  "pkg": "frontend",
+  "globalName": "PitchDS",
+  "tsconfig": "tsconfig.app.json",
+  "cssEntry": "src/ds-styles.css",
+  "provider": {
+    "component": "PitchProvider"
+  },
+  "componentSrcMap": {
+    "PitchBackdrop": "src/ui/pitch.tsx",
+    "BallIcon": "src/ui/pitch.tsx",
+    "MonoLabel": "src/ui/pitch.tsx",
+    "PulseDot": "src/ui/pitch.tsx",
+    "StatusChip": "src/ui/pitch.tsx",
+    "SectionCard": "src/ui/pitch.tsx",
+    "FilterChip": "src/ui/pitch.tsx",
+    "PillTabBar": "src/ui/pitch.tsx",
+    "AccentStat": "src/ui/pitch.tsx",
+    "DateStamp": "src/ui/pitch.tsx",
+    "TournamentPoster": "src/ui/pitch.tsx",
+    "PrimaryButton": "src/ui/pitch.tsx",
+    "GhostButton": "src/ui/pitch.tsx",
+    "TintButton": "src/ui/pitch.tsx",
+    "PageTitle": "src/ui/pitch.tsx",
+    "BackLink": "src/ui/pitch.tsx",
+    "ConfirmDialog": "src/ui/primitives.tsx",
+    "FormSectionCard": "src/ui/primitives.tsx",
+    "Panel": "src/ui/primitives.tsx",
+    "IconChip": "src/ui/primitives.tsx",
+    "SectionHeader": "src/ui/primitives.tsx",
+    "StatTile": "src/ui/primitives.tsx",
+    "EmptyState": "src/ui/primitives.tsx",
+    "Meta": "src/ui/primitives.tsx",
+    "Loader": "src/ui/primitives.tsx",
+    "PitchProvider": null
+  }
+}

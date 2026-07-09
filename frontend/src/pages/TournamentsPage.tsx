@@ -17,6 +17,8 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import {
     FiCalendar,
     FiChevronDown,
@@ -35,7 +37,8 @@ import {
     FiX,
 } from "react-icons/fi"
 import type { TournamentCard } from "../types/tournaments"
-import { fetchTournaments, fetchTournamentsCount } from "../api/tournaments"
+import { fetchTournaments, fetchTournamentsCount, fetchTournamentDetails } from "../api/tournaments"
+import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, pickFeaturedFirst, type LiveMatch } from "../api/live"
 import { useUserLocation } from "../hooks/useUserLocation"
 import { haversineKm } from "../utils/distance"
@@ -126,6 +129,24 @@ function classifyStatus(
     return { status: "upcoming", label: rel?.label ?? "Nadolazeći" }
 }
 
+/** Prefetch a tournament's detail data into the react-query cache so opening it
+ *  (click / tap) renders instantly instead of showing a spinner + refetch. The
+ *  key is slug-or-uuid to match EXACTLY what TournamentDetailsPage reads. */
+function useTournamentPrefetch() {
+    const queryClient = useQueryClient()
+    return useCallback(
+        (idOrSlug?: string | null) => {
+            if (!idOrSlug) return
+            queryClient.prefetchQuery({
+                queryKey: qk.tournamentDetails(idOrSlug),
+                queryFn: () => fetchTournamentDetails(idOrSlug),
+                staleTime: 30_000,
+            })
+        },
+        [queryClient],
+    )
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Live scoreboard hero - the dark gradient panel that opens the page when
    at least one match is live. Pulls the highest-watching live match and
@@ -133,6 +154,23 @@ function classifyStatus(
    ────────────────────────────────────────────────────────────────────── */
 
 function LiveHero({ match }: { match: LiveMatch }) {
+    const queryClient = useQueryClient()
+    // Warm the featured match's tournament (detail + schedule) on hover/press so
+    // "Prati uživo →" opens its match page instantly.
+    const warm = () => {
+        const idOrSlug = match.tournamentSlug ?? match.tournamentUuid
+        if (!idOrSlug) return
+        queryClient.prefetchQuery({
+            queryKey: qk.tournamentDetails(idOrSlug),
+            queryFn: () => fetchTournamentDetails(idOrSlug),
+            staleTime: 30_000,
+        })
+        queryClient.prefetchQuery({
+            queryKey: qk.schedule(idOrSlug),
+            queryFn: () => fetchSchedule(idOrSlug),
+            staleTime: 15_000,
+        })
+    }
     // Tick every second so the live minute keeps counting between the
     // WebSocket-pushed refreshes (which deliver fresh instants/scores).
     const [, setHeroTick] = useState(0)
@@ -420,6 +458,8 @@ function LiveHero({ match }: { match: LiveMatch }) {
                                 ? `/turniri/${match.tournamentSlug ?? match.tournamentUuid}/utakmica/${match.matchId}`
                                 : "/uzivo"
                         }
+                        onMouseEnter={warm}
+                        onPointerDown={warm}
                     >
                         Prati uživo →
                     </RouterLink>
@@ -514,10 +554,14 @@ function TournamentCardView({
     const price = fmtEuro(t.entryPrice)
     const prize = fmtEuro(t.prizeTotal)
     const winner = (t.winnerName ?? "").trim()
+    const prefetch = useTournamentPrefetch()
+    const warm = () => prefetch(t.slug ?? t.uuid)
 
     return (
         <RouterLink
             to={`/turniri/${t.slug ?? t.uuid}`}
+            onMouseEnter={warm}
+            onPointerDown={warm}
             style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
         >
             <Box
@@ -925,9 +969,13 @@ function groupByMonth(items: TournamentCard[]): MonthGroup[] {
 
 /** A single tournament row in the list view. */
 function ListRow({ t }: { t: TournamentCard }) {
+    const prefetch = useTournamentPrefetch()
+    const warm = () => prefetch(t.slug ?? t.uuid)
     return (
         <RouterLink
             to={`/turniri/${t.slug ?? t.uuid}`}
+            onMouseEnter={warm}
+            onPointerDown={warm}
             style={{ textDecoration: "none" }}
         >
             <Flex
@@ -1179,16 +1227,29 @@ export default function TournamentsPage() {
         canonical: "https://futsal-turniri.com/turniri",
     })
 
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed the upcoming list from the react-query cache so returning to this
+    // page within the stale window (30 s) paints INSTANTLY - no skeleton, no
+    // refetch. First-ever visit has no cache → normal loading spinner.
+    const cachedUpcoming = queryClient.getQueryData<TournamentCardWithUuid[]>(qk.tournamentsUpcoming)
+    const cachedFinished = queryClient.getQueryData<TournamentCardWithUuid[]>(qk.tournamentsFinishedFirst)
+    const cachedFinishedTotal = queryClient.getQueryData<number>(qk.tournamentsFinishedCount)
+    const [loading, setLoading] = useState(!cachedUpcoming)
     const [error, setError] = useState<string | null>(null)
-    const [loadingFinished, setLoadingFinished] = useState(true)
+    const [loadingFinished, setLoadingFinished] = useState(!cachedFinished)
     const [errorFinished, setErrorFinished] = useState<string | null>(null)
 
-    const [upcoming, setUpcoming] = useState<TournamentCardWithUuid[]>([])
-    const [finished, setFinished] = useState<TournamentCardWithUuid[]>([])
-    const [finishedTotal, setFinishedTotal] = useState(0)
+    const [upcoming, setUpcoming] = useState<TournamentCardWithUuid[]>(cachedUpcoming ?? [])
+    const [finished, setFinished] = useState<TournamentCardWithUuid[]>(cachedFinished ?? [])
+    const [finishedTotal, setFinishedTotal] = useState(cachedFinishedTotal ?? 0)
     const [loadingMoreFinished, setLoadingMoreFinished] = useState(false)
-    const [liveTop, setLiveTop] = useState<LiveMatch | null>(null)
+    // Seed the featured-match hero from the shared live cache (warmed by the
+    // nav-bar live badge, /uzivo, and the tournament detail page) so on a return
+    // visit the hero paints together with the (also-cached) list instead of
+    // popping in a beat later after its own network round-trip.
+    const [liveTop, setLiveTop] = useState<LiveMatch | null>(
+        () => pickFeaturedFirst(queryClient.getQueryData<LiveMatch[]>(qk.liveMatches) ?? [])[0] ?? null,
+    )
 
     // ---- Search + filters ----
     const [filtersOpen, setFiltersOpen] = useState(false)
@@ -1236,11 +1297,14 @@ export default function TournamentsPage() {
     const loadLive = useCallback(async () => {
         try {
             const live = await fetchLiveMatches()
+            // Share the full live list with the /uzivo page's cache so opening
+            // it from here paints instantly.
+            queryClient.setQueryData(qk.liveMatches, live)
             setLiveTop(pickFeaturedFirst(live)[0] ?? null)
         } catch {
             /* keep the last value; the poll / socket will retry */
         }
-    }, [])
+    }, [queryClient])
 
     // Keep the hero current: poll while the tab is visible, and refetch the
     // instant the backend pushes a live change (goal, finish, …) so a goal
@@ -1252,14 +1316,30 @@ export default function TournamentsPage() {
         let cancelled = false
         ;(async () => {
             try {
-                setLoading(true)
+                // Spinners only on a cold load; cache hits are already painted.
+                if (!queryClient.getQueryData(qk.tournamentsUpcoming)) setLoading(true)
                 setError(null)
-                setLoadingFinished(true)
+                if (!queryClient.getQueryData(qk.tournamentsFinishedFirst)) setLoadingFinished(true)
                 setErrorFinished(null)
                 const [dataUpcoming, dataFinishedPage, finishedTotalCount] = await Promise.all([
-                    fetchTournaments("upcoming"),
-                    fetchTournaments("finished", { offset: 0, limit: FINISHED_PREVIEW_LIMIT }),
-                    fetchTournamentsCount("finished"),
+                    // Cache-aware: returns the cached list instantly when fresh
+                    // (< staleTime) and dedupes with any in-flight prefetch;
+                    // otherwise fetches once and populates the cache.
+                    queryClient.fetchQuery({
+                        queryKey: qk.tournamentsUpcoming,
+                        queryFn: () => fetchTournaments("upcoming"),
+                        staleTime: 30_000,
+                    }),
+                    queryClient.fetchQuery({
+                        queryKey: qk.tournamentsFinishedFirst,
+                        queryFn: () => fetchTournaments("finished", { offset: 0, limit: FINISHED_PREVIEW_LIMIT }),
+                        staleTime: 30_000,
+                    }),
+                    queryClient.fetchQuery({
+                        queryKey: qk.tournamentsFinishedCount,
+                        queryFn: () => fetchTournamentsCount("finished"),
+                        staleTime: 30_000,
+                    }),
                 ])
                 if (!cancelled) {
                     setUpcoming(dataUpcoming as TournamentCardWithUuid[])

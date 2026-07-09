@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, Text, VStack } from "@chakra-ui/react"
 import { FiAward, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { Loader } from "../ui/primitives"
 import {
     AccentStat,
@@ -129,16 +131,21 @@ function ScorerRow({ scorer, rank }: { scorer: ScorerDto; rank: number }) {
 }
 
 export default function StatsSection({ uuid }: { uuid: string }) {
-    const [scorers, setScorers] = useState<ScorerDto[]>([])
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed from cache so returning to the Statistika tab paints instantly.
+    const cachedScorers = queryClient.getQueryData<ScorerDto[]>(qk.scorers(uuid))
+    const [scorers, setScorers] = useState<ScorerDto[]>(cachedScorers ?? [])
+    const [loading, setLoading] = useState(!cachedScorers)
 
     useEffect(() => {
         if (!uuid) return
         let cancelled = false
-        setLoading(true)
-        fetchScorers(uuid)
+        if (!queryClient.getQueryData(qk.scorers(uuid))) setLoading(true)
+        queryClient
+            .fetchQuery({ queryKey: qk.scorers(uuid), queryFn: () => fetchScorers(uuid), staleTime: 15_000 })
             .then((list) => {
                 if (!cancelled) {
+                    // fetchQuery already populated the cache under qk.scorers.
                     setScorers(list)
                     setLoading(false)
                 }
@@ -152,7 +159,7 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         return () => {
             cancelled = true
         }
-    }, [uuid])
+    }, [uuid, queryClient])
 
     // Derived headline stats - currently from the scorers payload only.
     const totalGoals = useMemo(

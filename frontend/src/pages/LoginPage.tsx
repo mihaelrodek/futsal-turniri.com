@@ -15,6 +15,7 @@ import { FcGoogle } from "react-icons/fc"
 import { getFirebase } from "../firebase"
 import { useAuth } from "../auth/AuthContext"
 import { pickSafeNext } from "../utils/safeNextPath"
+import { emailForUsername } from "../api/auth"
 
 /** Translate Firebase auth error codes into Croatian, user-friendly messages. */
 function authErrorMessage(err: any): string {
@@ -23,7 +24,7 @@ function authErrorMessage(err: any): string {
         case "auth/invalid-credential":
         case "auth/wrong-password":
         case "auth/user-not-found":
-            return "Pogrešan email ili lozinka."
+            return "Pogrešan email/korisničko ime ili lozinka."
         case "auth/invalid-email":
             return "Neispravan format email adrese."
         case "auth/user-disabled":
@@ -42,8 +43,9 @@ export default function LoginPage() {
     const navigate = useNavigate()
     const location = useLocation()
     const [searchParams] = useSearchParams()
-    const { signIn, signInWithGoogle, user, loading: authLoading } = useAuth()
+    const { signInWithIdentifier, signInWithGoogle, user, loading: authLoading } = useAuth()
 
+    // Holds an email OR a username; resolved in signInWithIdentifier.
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [submitting, setSubmitting] = useState(false)
@@ -84,12 +86,12 @@ export default function LoginPage() {
         setError(null)
         setResetMsg(null)
         if (!email.trim() || !password) {
-            setError("Unesi email i lozinku.")
+            setError("Unesi email ili korisničko ime i lozinku.")
             return
         }
         try {
             setSubmitting(true)
-            await signIn(email.trim(), password)
+            await signInWithIdentifier(email.trim(), password)
             navigate(redirectTo, { replace: true })
         } catch (e: any) {
             const msg = authErrorMessage(e)
@@ -114,14 +116,26 @@ export default function LoginPage() {
     async function onResetPassword() {
         setError(null)
         setResetMsg(null)
-        if (!email.trim()) {
-            setError("Upiši email u polje iznad i ponovi.")
+        const idInput = email.trim()
+        if (!idInput) {
+            setError("Upiši email ili korisničko ime u polje iznad i ponovi.")
             return
         }
         try {
+            // Password reset needs an email. If the user typed a username,
+            // resolve it to the account email first.
+            let resetEmail = idInput
+            if (!idInput.includes("@")) {
+                const resolved = await emailForUsername(idInput)
+                if (!resolved) {
+                    setError("Za promjenu lozinke upiši svoju email adresu.")
+                    return
+                }
+                resetEmail = resolved
+            }
             const [{ auth }, { sendPasswordResetEmail }] =
                 await Promise.all([getFirebase(), import("firebase/auth")])
-            await sendPasswordResetEmail(auth, email.trim())
+            await sendPasswordResetEmail(auth, resetEmail)
             setResetMsg("Poslali smo ti link za promjenu lozinke. Provjeri email.")
         } catch (e: any) {
             setError(authErrorMessage(e))
@@ -153,12 +167,13 @@ export default function LoginPage() {
                         <form onSubmit={onSubmit}>
                             <VStack align="stretch" gap="3">
                                 <Field.Root required>
-                                    <Field.Label>Email</Field.Label>
+                                    <Field.Label>Email ili korisničko ime</Field.Label>
                                     <Input
-                                        type="email"
-                                        autoComplete="email"
+                                        type="text"
+                                        autoComplete="username"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="email@primjer.com ili marko-horvat"
                                     />
                                 </Field.Root>
                                 <Field.Root required>

@@ -17,6 +17,8 @@ import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorde
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
 import { DateTimeField } from "./DateTimeField"
 import { fetchGroups } from "../api/groups"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
@@ -573,8 +575,12 @@ export default function ScheduleTab({
      *  row is scrolled into view + briefly highlighted. */
     focusMatchId?: number | null
 }) {
-    const [schedule, setSchedule] = useState<Schedule | null>(null)
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed from the shared schedule cache so returning to the Raspored tab (or a
+    // recently-viewed tournament) paints instantly instead of refetching.
+    const cachedSchedule = queryClient.getQueryData<Schedule>(qk.schedule(uuid))
+    const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
+    const [loading, setLoading] = useState(!cachedSchedule)
     const [generating, setGenerating] = useState(false)
     const [confirming, setConfirming] = useState(false)
     const [clearing, setClearing] = useState(false)
@@ -614,8 +620,10 @@ export default function ScheduleTab({
 
     useEffect(() => {
         let cancelled = false
-        setLoading(true)
-        fetchSchedule(uuid)
+        // Only spinner on a cold load; a cache hit is already painted.
+        if (!queryClient.getQueryData(qk.schedule(uuid))) setLoading(true)
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
             .then((s) => {
                 if (cancelled) return
                 setSchedule(s)
@@ -641,7 +649,8 @@ export default function ScheduleTab({
         // "draw done" from the groups instead, so "Generiraj raspored" unlocks
         // as soon as the groups are drawn.
         if (format === "GROUPS_KNOCKOUT") {
-            fetchGroups(uuid)
+            queryClient
+                .fetchQuery({ queryKey: qk.groups(uuid), queryFn: () => fetchGroups(uuid), staleTime: 15_000 })
                 .then((gs) => { if (!cancelled) setGroupsDrawn(gs.length > 0) })
                 .catch(() => { /* leave default - stays gated */ })
         } else {
@@ -651,6 +660,12 @@ export default function ScheduleTab({
             cancelled = true
         }
     }, [uuid, format])
+
+    // Mirror the schedule into the shared cache so the Grupe/Eliminacija tabs
+    // and a reopen see the latest generated/edited schedule, not a stale one.
+    useEffect(() => {
+        if (schedule) queryClient.setQueryData(qk.schedule(uuid), schedule)
+    }, [schedule, uuid, queryClient])
 
     // Scroll to + highlight the match the user tapped on /uzivo. Runs once
     // the schedule has loaded so the target row exists in the DOM.

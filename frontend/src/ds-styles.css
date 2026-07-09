@@ -1,0 +1,48 @@
+/**
+ * Global stylesheet for the Pitch design system bundle (see /design-sync).
+ *
+ * Chakra v3 injects the Pitch tokens at runtime via `PitchProvider`, so there
+ * is no compiled component stylesheet to ship. Two things nevertheless live
+ * outside the JS bundle in the real app (in `frontend/index.html`), and both
+ * must be reproduced here or every design renders subtly wrong:
+ *
+ *   1. The three brand families, loaded from Google Fonts.
+ *   2. The global `pitchPulse` keyframes. Chakra v3's `globalCss` type rejects
+ *      raw @keyframes blocks, so `system.ts` cannot define them; components
+ *      reference the animation by name and silently render a static dot
+ *      without it.
+ */
+
+/* Brand families: Inter (body), Bricolage Grotesque (heading), JetBrains Mono
+   (scoreboard numerics). Loaded remotely, exactly as index.html does. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap");
+
+/* The live/now pulsing dot animation. Used by `PulseDot`, `StatusChip`
+   (live variant), `FilterChip` (pulse=true), and the live navbar item.
+   Verbatim from frontend/index.html. */
+@keyframes pitchPulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* Live-tournament map marker ping, used by the Leaflet DivIcon markup.
+   Verbatim from frontend/index.html. */
+@keyframes mapLivePing {
+    0% {
+        transform: translate(-50%, -50%) scale(0.4);
+        opacity: 0.7;
+    }
+    70% {
+        transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+}

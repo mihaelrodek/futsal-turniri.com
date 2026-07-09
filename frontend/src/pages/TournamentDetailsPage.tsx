@@ -14,6 +14,8 @@ import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
 import "../datepicker.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
 import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
@@ -146,12 +148,18 @@ export default function TournamentDetailsPage() {
     const location = useLocation()
     const { user, isAdmin, loading: authLoading } = useAuth()
 
+    const queryClient = useQueryClient()
+    // Seed the detail from the react-query cache so opening a tournament that
+    // was prefetched (card hover / press) or recently viewed paints INSTANTLY -
+    // no spinner, no cold refetch. First-ever open has no cache → normal load.
+    const cachedT = uuid ? queryClient.getQueryData<TournamentDetails>(qk.tournamentDetails(uuid)) : undefined
+
     /* ---------- Core state ---------- */
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(!cachedT)
     // Kept for state-tracking (set on fetch failure); the render shows the
     // friendly NotFoundView rather than the raw axios message.
     const [, setError] = useState<string | null>(null)
-    const [t, setT] = useState<TournamentDetails | null>(null)
+    const [t, setT] = useState<TournamentDetails | null>(cachedT ?? null)
     const [teams, setTeams] = useState<TeamShort[]>([])
     // Live matches of THIS tournament - powers the small "active match"
     // overview below the tabs (same slot as the end-of-tournament results).
@@ -239,9 +247,13 @@ export default function TournamentDetailsPage() {
     // are disabled once the tournament is FINISHED (nothing left to be live).
     const loadLiveMatches = useCallback(() => {
         fetchLiveMatches()
-            .then((all) => setLiveMatches(all.filter((m) => m.tournamentUuid === t?.uuid)))
+            .then((all) => {
+                // Share the full live list so /uzivo + nav badges stay warm.
+                queryClient.setQueryData(qk.liveMatches, all)
+                setLiveMatches(all.filter((m) => m.tournamentUuid === t?.uuid))
+            })
             .catch(() => { /* silent - the overview just stays hidden */ })
-    }, [t?.uuid])
+    }, [t?.uuid, queryClient])
     const liveOverviewEnabled = !!t && t.status !== "FINISHED"
     usePolling(loadLiveMatches, 8000, liveOverviewEnabled)
     useLiveSocket((msg) => {
@@ -279,11 +291,13 @@ export default function TournamentDetailsPage() {
     useEffect(() => {
         if (!uuid || infoTeamId == null) return
         let cancelled = false
-        fetchSchedule(uuid)
+        // Reuse the schedule the tabs already cached instead of a fresh fetch.
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
             .then((s) => { if (!cancelled) setInfoMatches(s.matches) })
             .catch(() => { /* leave previous - dialog shows the empty state */ })
         return () => { cancelled = true }
-    }, [uuid, infoTeamId])
+    }, [uuid, infoTeamId, queryClient])
 
     /* ---------- Details edit mode ---------- */
     const [editingDetails, setEditingDetails] = useState(false)
@@ -470,10 +484,20 @@ export default function TournamentDetailsPage() {
     /* ──────────────────────────────────────────────────────────────────────
        Data loading
        ────────────────────────────────────────────────────────────────────── */
-    async function refreshAll() {
+    // `useCache` (mount only): pull the tournament detail through the
+    // react-query cache so a prefetched / recently-viewed tournament resolves
+    // instantly. Explicit refreshes (post-mutation) pass nothing → always fresh.
+    async function refreshAll(useCache = false) {
         if (!uuid) return
+        const detailsP = useCache
+            ? queryClient.fetchQuery({
+                  queryKey: qk.tournamentDetails(uuid),
+                  queryFn: () => fetchTournamentDetails(uuid),
+                  staleTime: 30_000,
+              })
+            : fetchTournamentDetails(uuid)
         const [details, teamList, prList] = await Promise.all([
-            fetchTournamentDetails(uuid),
+            detailsP,
             fetchTournamentTeams(uuid),
             listTeamRequestsForTournament(uuid).catch(() => [] as TeamRequest[]),
         ])
@@ -487,10 +511,13 @@ export default function TournamentDetailsPage() {
         let cancelled = false
         ;(async () => {
             try {
-                setLoading(true)
-                setError(null)
                 if (!uuid) throw new Error("Missing tournament id")
-                await refreshAll()
+                // Only show the full-page spinner on a cold open (no cached
+                // copy). With a cache hit the page is already painted from the
+                // seed above and just revalidates quietly in the background.
+                if (!queryClient.getQueryData(qk.tournamentDetails(uuid))) setLoading(true)
+                setError(null)
+                await refreshAll(true)
             } catch (e: any) {
                 if (!cancelled) setError(e?.message ?? "Failed to load tournament")
             } finally {
@@ -501,6 +528,12 @@ export default function TournamentDetailsPage() {
             cancelled = true
         }
     }, [uuid, authLoading, user?.uid])
+
+    // Mirror every local tournament update into the react-query cache so the
+    // next open (or a card prefetch) reflects edits instead of a stale snapshot.
+    useEffect(() => {
+        if (t && uuid) queryClient.setQueryData(qk.tournamentDetails(uuid), t)
+    }, [t, uuid, queryClient])
 
     // Keep the draw sub-tab valid for the tournament's format - a
     // KNOCKOUT_ONLY tournament has no group stage, so it always shows

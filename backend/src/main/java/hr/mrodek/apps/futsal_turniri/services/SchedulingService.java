@@ -403,11 +403,16 @@ public class SchedulingService {
         }
     }
 
-    /** Override one match's kickoff time. */
+    /** Override one match's kickoff time (scoped to its tournament). */
     @Transactional
-    public void updateKickoff(Long matchId, OffsetDateTime kickoffAt) {
+    public void updateKickoff(Long tournamentId, Long matchId, OffsetDateTime kickoffAt) {
         Matches m = matchesRepo.findByIdOptional(matchId)
                 .orElseThrow(() -> new NotFoundException("Match not found"));
+        // Scope guard: the match MUST belong to the authorized tournament
+        // (prevents cross-tournament IDOR on kickoff times).
+        if (m.getTournament() == null || !m.getTournament().getId().equals(tournamentId)) {
+            throw new NotFoundException("Match not found");
+        }
         m.setKickoffAt(kickoffAt);
     }
 

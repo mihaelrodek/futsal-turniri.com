@@ -10,7 +10,8 @@ import {
     type LiveMatch,
     type UpcomingMatch,
 } from "../api/live"
-import { fetchFeaturedTournament } from "../api/tournaments"
+import { fetchFeaturedTournament, fetchTournamentDetails } from "../api/tournaments"
+import { fetchSchedule } from "../api/schedule"
 import type { TournamentCard } from "../types/tournaments"
 import {
     MonoLabel,
@@ -22,6 +23,8 @@ import {
 } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { usePolling } from "../hooks/usePolling"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { GoalscorersPanel, LiveClock, matchPhase } from "../components/liveMatch"
 import MatchNotificationBell from "../components/MatchNotificationBell"
@@ -243,6 +246,7 @@ function LiveMatchCard({
     match,
     onOpen,
     onOpenMatch,
+    onWarm,
     refreshSignal,
 }: {
     match: LiveMatch
@@ -250,6 +254,8 @@ function LiveMatchCard({
     onOpen: () => void
     /** Navigate to this match's own live page ("na utakmicu"). */
     onOpenMatch: () => void
+    /** Prefetch the match's data on hover/press so opening it is instant. */
+    onWarm?: () => void
     refreshSignal?: number
 }) {
     // Long club names shrink a touch and wrap up to three lines so they stay
@@ -286,6 +292,8 @@ function LiveMatchCard({
             transition="box-shadow .15s, transform .15s"
             _hover={{ shadow: "md" }}
             css={{ boxShadow: "0 0 0 3px rgba(220,38,38,0.06)" }}
+            onMouseEnter={onWarm}
+            onPointerDown={onWarm}
         >
             {/* Header + scoreboard wrap - clicking anywhere on this region
                  toggles the expanded scorer timeline below. */}
@@ -521,8 +529,13 @@ function LiveMatchCard({
 type MatchDayGroup = { key: string; date: Date; matches: UpcomingMatch[] }
 
 export default function LivePage() {
-    const [matches, setMatches] = useState<LiveMatch[]>([])
-    const [matchesLoading, setMatchesLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed the live list from the cache (populated here on each poll AND by the
+    // home page's hero) so opening /uzivo paints instantly, then polling below
+    // keeps it fresh.
+    const cachedLive = queryClient.getQueryData<LiveMatch[]>(qk.liveMatches)
+    const [matches, setMatches] = useState<LiveMatch[]>(cachedLive ?? [])
+    const [matchesLoading, setMatchesLoading] = useState(!cachedLive)
     const [upcomingMatches, setUpcomingMatches] = useState<UpcomingMatch[]>([])
     const [upcomingLoading, setUpcomingLoading] = useState(true)
     const [featured, setFeatured] = useState<TournamentCard | null>(null)
@@ -537,10 +550,11 @@ export default function LivePage() {
         fetchLiveMatches()
             .then((l) => {
                 setMatches(l)
+                queryClient.setQueryData(qk.liveMatches, l)
                 setMatchesLoading(false)
             })
             .catch(() => setMatchesLoading(false))
-    }, [])
+    }, [queryClient])
 
     // Realtime: the backend pushes a ping whenever any live match changes;
     // refetch the live list immediately and nudge the open timelines. Polling
@@ -595,6 +609,27 @@ export default function LivePage() {
     function goToMatchPage(m: LiveMatch) {
         navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}/utakmica/${m.matchId}`)
     }
+
+    // Prefetch a match's tournament (detail + schedule) on hover/press so
+    // opening it - or its tournament page - from /uzivo is instant. These are
+    // CROSS-tournament links, so unlike navigating within a tournament's own
+    // tabs, the schedule usually isn't cached yet.
+    const warmTournament = useCallback(
+        (idOrSlug?: string | null) => {
+            if (!idOrSlug) return
+            queryClient.prefetchQuery({
+                queryKey: qk.tournamentDetails(idOrSlug),
+                queryFn: () => fetchTournamentDetails(idOrSlug),
+                staleTime: 30_000,
+            })
+            queryClient.prefetchQuery({
+                queryKey: qk.schedule(idOrSlug),
+                queryFn: () => fetchSchedule(idOrSlug),
+                staleTime: 15_000,
+            })
+        },
+        [queryClient],
+    )
 
     // Upcoming matches grouped by day, soonest first. Each day's matches
     // are already kickoff-sorted by the backend; we keep that order.
@@ -728,6 +763,7 @@ export default function LivePage() {
                                         match={featured}
                                         onOpen={() => goToMatch(featured)}
                                         onOpenMatch={() => goToMatchPage(featured)}
+                                        onWarm={() => warmTournament(featured.tournamentSlug || featured.tournamentUuid)}
                                         refreshSignal={liveTick}
                                     />
                                 </Box>
@@ -751,6 +787,7 @@ export default function LivePage() {
                                                 match={m}
                                                 onOpen={() => goToMatch(m)}
                                                 onOpenMatch={() => goToMatchPage(m)}
+                                                onWarm={() => warmTournament(m.tournamentSlug || m.tournamentUuid)}
                                                 refreshSignal={liveTick}
                                             />
                                         ))}
@@ -821,6 +858,8 @@ export default function LivePage() {
                                                 role="button"
                                                 tabIndex={0}
                                                 onClick={openMatch}
+                                                onMouseEnter={() => warmTournament(m.tournamentSlug || m.tournamentUuid)}
+                                                onPointerDown={() => warmTournament(m.tournamentSlug || m.tournamentUuid)}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter" || e.key === " ") {
                                                         e.preventDefault()

@@ -11,6 +11,8 @@ import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.GET;
@@ -116,9 +118,10 @@ public class GroupController {
     public List<GroupDto> recordResult(
             @PathParam("uuid") String uuid,
             @PathParam("matchId") Long matchId,
-            GroupResultRequest body) {
+            @Valid GroupResultRequest body) {
+        if (body == null) throw new BadRequestException("Request body is required.");
         Tournaments t = assertCanEdit(uuid);
-        groupStageService.recordGroupResult(matchId, body.score1(), body.score2());
+        groupStageService.recordGroupResult(t.getId(), matchId, body.score1(), body.score2());
         if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), matchId);
         return groupStageService.standings(t.getId());
     }
@@ -133,7 +136,7 @@ public class GroupController {
             @PathParam("groupId") Long groupId,
             GroupReorderRequest body) {
         Tournaments t = assertCanEdit(uuid);
-        groupStageService.reorderGroup(groupId, body.teamIds());
+        groupStageService.reorderGroup(t.getId(), groupId, body.teamIds());
         return groupStageService.standings(t.getId());
     }
 }

@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.dtos.MyTournamentParticipationDto;
+import hr.mrodek.apps.futsal_turniri.dtos.RegisterProfileRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.SyncProfileRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.UserProfileDto;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
@@ -23,9 +24,11 @@ import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
@@ -142,18 +145,54 @@ public class UserMeController {
             existing = new UserProfile();
             existing.setUserUid(uid);
         }
-        existing.setPhoneCountry(blank(body.phoneCountry()));
-        existing.setPhone(blank(body.phone()));
-        // body.avatarUrl is intentionally ignored - avatars are managed via
-        // the dedicated /avatar endpoints, not via PUT /profile.
-        // Theme: accept "light" or "dark", silently ignore anything else
-        // (defensive against stale clients).
+        // Theme: accept "light" or "dark" on ANY request (the color-mode toggle
+        // sends ONLY colorMode). Ignore anything else (defensive vs stale clients).
         if (body.colorMode() != null) {
             String cm = body.colorMode().trim().toLowerCase();
             if ("light".equals(cm) || "dark".equals(cm)) {
                 existing.setColorMode(cm);
             }
         }
+
+        // A colorMode-only request (the theme toggle) must NOT wipe the fields it
+        // doesn't carry. Only apply phone / name / username for a genuine profile
+        // settings save (which always sends the name fields).
+        boolean profileSave = body.phoneCountry() != null || body.phone() != null
+                || body.firstName() != null || body.lastName() != null
+                || (body.slug() != null && !body.slug().isBlank());
+        if (profileSave) {
+            existing.setPhoneCountry(blank(body.phoneCountry()));
+            existing.setPhone(blank(body.phone()));
+            // body.avatarUrl is intentionally ignored - avatars are managed via
+            // the dedicated /avatar endpoints, not via PUT /profile.
+
+            String first = blank(body.firstName());
+            String last = blank(body.lastName());
+            if (first != null || last != null) {
+                existing.setFirstName(first);
+                existing.setLastName(last);
+                String dn = buildDisplayName(first, last);
+                if (dn != null) existing.setDisplayName(dn);
+            }
+
+            // Username change - the DTO's `slug` field carries the desired
+            // username. Normalized + unique (excluding self); changing it moves
+            // the public /profil/{slug} URL, which the SPA handles by navigating.
+            if (body.slug() != null && !body.slug().isBlank()) {
+                String norm = slugService.normalizeUsername(body.slug());
+                if (norm == null || norm.length() < SlugService.MIN_USERNAME_LENGTH) {
+                    throw new BadRequestException("Korisničko ime je prekratko (najmanje "
+                            + SlugService.MIN_USERNAME_LENGTH + " znaka).");
+                }
+                if (!norm.equals(existing.getSlug())) {
+                    if (!slugService.isUsernameAvailable(norm, uid)) {
+                        throw new ClientErrorException("Korisničko ime je zauzeto.", Response.Status.CONFLICT);
+                    }
+                    existing.setSlug(norm);
+                }
+            }
+        }
+
         profileRepo.persist(existing);
         return toDto(existing);
     }
@@ -183,6 +222,47 @@ public class UserMeController {
             if (email != null) profile.setEmail(email);
         }
         // ensureProfile returns the persisted entity with the slug guaranteed.
+        return toDto(profile);
+    }
+
+    /**
+     * Complete registration: set the user's chosen username (stored as the
+     * slug) + first/last name. Called by the SPA right after the Firebase
+     * sign-up. The username is normalized server-side and must be unique
+     * (409 if taken). Idempotent for the same user re-saving their own name.
+     */
+    @POST
+    @Path("/register-profile")
+    @Transactional
+    public UserProfileDto registerProfile(@Valid RegisterProfileRequest body) {
+        if (body == null) throw new BadRequestException("Request body is required.");
+        String uid = jwt.getSubject();
+        String first = blank(body.firstName());
+        String last = blank(body.lastName());
+
+        // Chosen username → normalized slug form; fall back to first-last.
+        String desired = (body.username() != null && !body.username().isBlank())
+                ? slugService.normalizeUsername(body.username())
+                : slugService.defaultUsername(first, last);
+        if (desired == null || desired.length() < SlugService.MIN_USERNAME_LENGTH) {
+            throw new BadRequestException("Korisničko ime je prekratko (najmanje "
+                    + SlugService.MIN_USERNAME_LENGTH + " znaka).");
+        }
+        if (!slugService.isUsernameAvailable(desired, uid)) {
+            throw new ClientErrorException("Korisničko ime je zauzeto.", Response.Status.CONFLICT);
+        }
+
+        // ensureProfile creates the row (+ an auto-slug we immediately override).
+        var profile = slugService.ensureProfile(uid, buildDisplayName(first, last));
+        profile.setFirstName(first);
+        profile.setLastName(last);
+        profile.setSlug(desired);
+        Object emailClaim = jwt.getClaim("email");
+        if (emailClaim != null) {
+            String email = blank(emailClaim.toString());
+            if (email != null) profile.setEmail(email);
+        }
+        profileRepo.persist(profile);
         return toDto(profile);
     }
 
@@ -230,6 +310,13 @@ public class UserMeController {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
 
+    /** "First Last" from the two parts, trimmed; null when both are blank. */
+    private static String buildDisplayName(String first, String last) {
+        String combined = ((first == null ? "" : first) + " "
+                + (last == null ? "" : last)).trim();
+        return combined.isBlank() ? null : combined;
+    }
+
     /**
      * Build a UserProfileDto from an entity. Computes the proxied avatar URL
      * from the joined Resources row id; same pattern TournamentMapper uses
@@ -248,7 +335,9 @@ public class UserMeController {
                 p.getDisplayName(),
                 p.getSlug(),
                 avatarUrl,
-                p.getColorMode());
+                p.getColorMode(),
+                p.getFirstName(),
+                p.getLastName());
     }
 
     private MyTournamentParticipationDto toDto(Teams p) {

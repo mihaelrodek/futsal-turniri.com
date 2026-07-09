@@ -13,6 +13,8 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
 import { LuShuffle, LuTrophy } from "react-icons/lu"
 import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock } from "react-icons/fi"
 import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
@@ -139,8 +141,12 @@ export default function GroupsTab({
     onGoToSchedule?: () => void
 }) {
     const navigate = useNavigate()
-    const [groups, setGroups] = useState<Group[] | null>(null)
-    const [loading, setLoading] = useState(true)
+    const queryClient = useQueryClient()
+    // Seed from the react-query cache so returning to the Grupe tab (or a
+    // recently-opened tournament) renders instantly instead of refetching.
+    const cachedGroups = queryClient.getQueryData<Group[]>(qk.groups(uuid))
+    const [groups, setGroups] = useState<Group[] | null>(cachedGroups ?? null)
+    const [loading, setLoading] = useState(!cachedGroups)
     const [drawing, setDrawing] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [form, setForm] = useState<EditForm>({ s1: "", s2: "" })
@@ -203,12 +209,17 @@ export default function GroupsTab({
 
     useEffect(() => {
         let cancelled = false
-        setLoading(true)
-        fetchGroups(uuid)
+        // Only show the spinner on a cold load; a cache hit is already painted.
+        if (!queryClient.getQueryData(qk.groups(uuid))) setLoading(true)
+        queryClient
+            .fetchQuery({ queryKey: qk.groups(uuid), queryFn: () => fetchGroups(uuid), staleTime: 15_000 })
             .then((g) => { if (!cancelled) setGroups(g) })
             .catch(() => { if (!cancelled) setGroups([]) })
             .finally(() => { if (!cancelled) setLoading(false) })
-        fetchSchedule(uuid)
+        // Schedule is shared with the Raspored + Eliminacija tabs - one cache
+        // entry dedupes the clock-config fetch across all three.
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
             .then((s) => {
                 if (cancelled) return
                 setHalfLengthMin(s.halfLengthMin ?? null)
@@ -217,6 +228,12 @@ export default function GroupsTab({
             .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
         return () => { cancelled = true }
     }, [uuid])
+
+    // Mirror groups into the cache so a tab-switch / reopen reflects the latest
+    // standings instead of a stale snapshot.
+    useEffect(() => {
+        if (groups) queryClient.setQueryData(qk.groups(uuid), groups)
+    }, [groups, uuid, queryClient])
 
     // Refresh the "best third-placed" ranking whenever the standings change
     // (draw, a result, a reset). Kept in a separate effect keyed on `groups`
