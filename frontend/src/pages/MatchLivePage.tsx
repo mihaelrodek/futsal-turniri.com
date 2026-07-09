@@ -150,14 +150,16 @@ export default function MatchLivePage() {
     const hasPens = scheduled.penalties1 != null && scheduled.penalties2 != null
 
     // Shrink the team-name font when a club name is long, so it stays readable
-    // and fits (wrapping to at most two lines) instead of truncating hard.
+    // and fits (wrapping to at most three lines) instead of truncating hard.
     const maxNameLen = Math.max(team1Name.length, team2Name.length)
     const teamFont =
-        maxNameLen > 34
-            ? { base: "xs", md: "sm" }
-            : maxNameLen > 22
-                ? { base: "sm", md: "md" }
-                : { base: "md", md: "lg" }
+        maxNameLen > 44
+            ? { base: "2xs", md: "xs" }
+            : maxNameLen > 34
+                ? { base: "xs", md: "sm" }
+                : maxNameLen > 22
+                    ? { base: "sm", md: "md" }
+                    : { base: "md", md: "lg" }
 
     // (Status pill/clock, the big score and the penalty line are rendered
     // inline in the header below - the status sits ABOVE the teams+score row so
@@ -266,7 +268,7 @@ export default function MatchLivePage() {
                     horizontal line (grid is vertically centred and the score is
                     the only thing in the centre cell). */}
                 <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
-                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="2" minW="0">
+                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
                         {team1Name}
                     </Text>
                     {isScheduled ? (
@@ -287,7 +289,7 @@ export default function MatchLivePage() {
                             {score1} : {score2}
                         </Text>
                     )}
-                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="2" minW="0">
+                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
                         {team2Name}
                     </Text>
                 </Box>

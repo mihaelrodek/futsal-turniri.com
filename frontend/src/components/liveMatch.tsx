@@ -1148,7 +1148,7 @@ export function TimelineEventLine({
                 color={noName ? "fg.muted" : "fg"}
                 fontStyle={noName ? "italic" : undefined}
                 lineHeight="1.3"
-                lineClamp="2"
+                lineClamp="3"
                 css={{ overflowWrap: "anywhere" }}
                 textAlign={isLeft ? "right" : "left"}
             >
@@ -1159,7 +1159,7 @@ export function TimelineEventLine({
                     fontSize="2xs"
                     color="fg.muted"
                     lineHeight="1.3"
-                    lineClamp="2"
+                    lineClamp="3"
                     css={{ overflowWrap: "anywhere" }}
                     textAlign={isLeft ? "right" : "left"}
                 >
@@ -1178,7 +1178,7 @@ export function TimelineEventLine({
         // same distance from the centre.
         <Box display="grid" gridTemplateColumns="minmax(0,1fr) 3.5rem minmax(0,1fr)" w="full" alignItems="stretch">
             {/* Left cell (team1) - pushed toward the centre line. */}
-            <Flex align="center" justify="flex-end" gap="1.5" pr="2" py="1.5" minW="0" overflow="hidden">
+            <Flex align="center" justify="flex-end" gap="1" pr="1" py="1.5" minW="0" overflow="hidden">
                 {isLeft && (
                     <>
                         {nameEl}
@@ -1194,7 +1194,7 @@ export function TimelineEventLine({
                 {pillEl ?? <Box boxSize="10px" rounded="full" bg={dotColor} />}
             </Flex>
             {/* Right cell (team2) - pushed toward the centre line. */}
-            <Flex align="center" justify="flex-start" gap="1.5" pl="2" py="1.5" minW="0" overflow="hidden">
+            <Flex align="center" justify="flex-start" gap="1" pl="1" py="1.5" minW="0" overflow="hidden">
                 {!isLeft && (
                     <>
                         {iconEl}

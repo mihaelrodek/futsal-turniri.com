@@ -48,6 +48,7 @@ import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
 import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { useNavigate } from "react-router-dom"
 import { toPng } from "html-to-image"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -1478,6 +1479,7 @@ function MatchCard({
     onOpenLive,
     onOpenTimeline,
 }: MatchCardProps) {
+    const navigate = useNavigate()
     const editable = m.team1Id != null && m.team2Id != null
     const w1 = m.winnerTeamId != null && m.winnerTeamId === m.team1Id
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
@@ -1500,9 +1502,11 @@ function MatchCard({
             shadow={isFinal ? "md" : "xs"}
             overflow="hidden"
             cursor={editing ? "default" : "pointer"}
-            // Click anywhere on the card → read-only match timeline (tijek).
-            // Clicks on the action controls (start menu, edit/score inputs,
-            // live/result buttons) are ignored so they keep their own behaviour.
+            // Click anywhere on the card → a played (FINISHED) match opens the
+            // full "detalji utakmice" page; anything else opens the read-only
+            // match timeline (tijek) modal. Clicks on the action controls (start
+            // menu, edit/score inputs, live/result buttons) are ignored so they
+            // keep their own behaviour.
             onClick={(e) => {
                 if (editing) return
                 const t = e.target as HTMLElement
@@ -1513,7 +1517,11 @@ function MatchCard({
                 ) {
                     return
                 }
-                onOpenTimeline(m)
+                if (isFinished) {
+                    navigate(`/turniri/${uuid}/utakmica/${m.matchId}`)
+                } else {
+                    onOpenTimeline(m)
+                }
             }}
         >
             {/* Card top strip - final badge / live indicator */}

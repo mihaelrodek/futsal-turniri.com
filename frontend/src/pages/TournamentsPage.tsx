@@ -113,10 +113,10 @@ function classifyStatus(
     variant: "upcoming" | "finished",
 ): { status: "live" | "upcoming" | "soon" | "full" | "finished"; label: string } {
     if (variant === "finished") return { status: "finished", label: "Završen" }
-    if (t.liveMatch) return { status: "live", label: "UŽIVO" }
-    // A started (but not finished) tournament reads as "u tijeku" with the same
-    // red pulsing badge as a live match, even between individual matches.
-    if (t.status === "STARTED") return { status: "live", label: "U TIJEKU" }
+    // A live match OR a started (but not finished) tournament both read as the
+    // same red pulsing "U TIJEKU" badge - we no longer surface a separate
+    // "UŽIVO" label, so the status stays stable between individual matches.
+    if (t.liveMatch || t.status === "STARTED") return { status: "live", label: "U TIJEKU" }
     const isFull =
         typeof t.registeredTeams === "number" &&
         typeof t.maxTeams === "number" &&

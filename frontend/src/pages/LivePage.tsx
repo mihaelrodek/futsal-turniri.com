@@ -252,6 +252,10 @@ function LiveMatchCard({
     onOpenMatch: () => void
     refreshSignal?: number
 }) {
+    // Long club names shrink a touch and wrap up to three lines so they stay
+    // fully readable in the hero scoreboard instead of truncating.
+    const heroMaxLen = Math.max((match.team1Name ?? "").length, (match.team2Name ?? "").length)
+    const heroNameFont = heroMaxLen > 24 ? { base: "12px", md: "15px" } : { base: "13px", md: "16px" }
     const livePhase =
         match.liveMode === "TIMER"
             ? matchPhase({
@@ -366,11 +370,11 @@ function LiveMatchCard({
                 py={{ base: "3", md: "5" }}
             >
                 <Text
-                    fontSize={{ base: "13px", md: "16px" }}
+                    fontSize={heroNameFont}
                     fontWeight={700}
                     color="fg.ink"
                     textAlign="right"
-                    lineClamp="2"
+                    lineClamp="3"
                     minW="0"
                 >
                     {match.team1Name ?? "-"}
@@ -392,11 +396,11 @@ function LiveMatchCard({
                     </Box>
                 </Box>
                 <Text
-                    fontSize={{ base: "13px", md: "16px" }}
+                    fontSize={heroNameFont}
                     fontWeight={700}
                     color="fg.ink"
                     textAlign="left"
-                    lineClamp="2"
+                    lineClamp="3"
                     minW="0"
                 >
                     {match.team2Name ?? "-"}

@@ -12,6 +12,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
+import { useNavigate } from "react-router-dom"
 import { LuShuffle, LuTrophy } from "react-icons/lu"
 import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock } from "react-icons/fi"
 import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
@@ -137,6 +138,7 @@ export default function GroupsTab({
      *  raspored" shortcut shown once groups are drawn). */
     onGoToSchedule?: () => void
 }) {
+    const navigate = useNavigate()
     const [groups, setGroups] = useState<Group[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [drawing, setDrawing] = useState(false)
@@ -912,10 +914,14 @@ export default function GroupsTab({
                 onClick={() => {
                     if (editing) return
                     // Organizer clicking a LIVE match → open the management modal
-                    // (run the game). Everyone else, and non-live matches, get
-                    // the read-only timeline. Action buttons stopPropagation.
+                    // (run the game). A played (FINISHED) match opens the full
+                    // "detalji utakmice" page. Everything else (scheduled, or a
+                    // spectator on a live match) gets the read-only timeline
+                    // modal. Action buttons stopPropagation.
                     if (canEdit && editable && isLive) {
                         setLiveMatch(m)
+                    } else if (isFinished) {
+                        navigate(`/turniri/${uuid}/utakmica/${m.matchId}`)
                     } else {
                         setTimelineMatch(m)
                     }
@@ -937,7 +943,7 @@ export default function GroupsTab({
                             fontWeight={700}
                             color="fg.ink"
                             textAlign="right"
-                            lineClamp="2"
+                            lineClamp="3"
                         >
                             {m.team1Name ?? "-"}
                         </Text>
@@ -991,7 +997,7 @@ export default function GroupsTab({
                             fontWeight={700}
                             color="fg.ink"
                             textAlign="left"
-                            lineClamp="2"
+                            lineClamp="3"
                         >
                             {m.team2Name ?? "-"}
                         </Text>
@@ -1330,7 +1336,7 @@ export default function GroupsTab({
                                         {idx + 1}
                                     </Text>
                                     {/* Team name only - stats live in their own columns now */}
-                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" truncate minW="0">
+                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" minW="0">
                                         {row.teamName}
                                     </Text>
                                     {/* UT (odigrano) - md only */}
@@ -1522,7 +1528,7 @@ export default function GroupsTab({
                                 <Text fontFamily="mono" fontSize="13px" fontWeight={800} color={q ? "pitch.500" : "fg.muted"} textAlign="center">
                                     {tr.rank}
                                 </Text>
-                                <Text fontSize="14px" fontWeight={700} color="fg.ink" truncate minW="0">
+                                <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" minW="0">
                                     {tr.standing.teamName}
                                 </Text>
                                 <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted" textAlign="center">

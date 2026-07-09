@@ -34,6 +34,10 @@ export default function ActiveMatchOverview({
 
 function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }) {
     const isTimer = m.liveMode === "TIMER"
+    // Shrink the name font once a club name is long so it stays readable and
+    // wraps (up to three lines) instead of truncating with an ellipsis.
+    const maxLen = Math.max((m.team1Name ?? "").length, (m.team2Name ?? "").length)
+    const nameFont = maxLen > 26 ? { base: "12px", md: "14px" } : { base: "14px", md: "16px" }
     return (
         <RouterLink
             to={`/turniri/${uuidOrSlug}/utakmica/${m.matchId}`}
@@ -89,11 +93,11 @@ function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }
                 {/* Scoreboard: team1 — score — team2. */}
                 <Grid templateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2", md: "3" }}>
                     <Text
-                        fontSize={{ base: "14px", md: "16px" }}
+                        fontSize={nameFont}
                         fontWeight={700}
                         color="fg.ink"
                         textAlign="right"
-                        lineClamp="2"
+                        lineClamp="3"
                         minW="0"
                     >
                         {m.team1Name ?? "-"}
@@ -114,11 +118,11 @@ function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }
                         {m.score2 ?? 0}
                     </Text>
                     <Text
-                        fontSize={{ base: "14px", md: "16px" }}
+                        fontSize={nameFont}
                         fontWeight={700}
                         color="fg.ink"
                         textAlign="left"
-                        lineClamp="2"
+                        lineClamp="3"
                         minW="0"
                     >
                         {m.team2Name ?? "-"}

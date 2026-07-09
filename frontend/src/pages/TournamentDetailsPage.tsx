@@ -815,28 +815,27 @@ export default function TournamentDetailsPage() {
 
     const hasGroupStage = t.format === "GROUPS_KNOCKOUT"
 
-    // Map backend status to the Pitch StatusChip's discrete kinds. Live
-    // takes precedence over the underlying STARTED so a live match in
-    // progress reads as "UŽIVO" in the header.
+    // Map backend status to the Pitch StatusChip's discrete kinds.
+    //
+    // A live match in progress and a plain STARTED tournament now read the
+    // same: a red pulsing "U tijeku" chip. We no longer split out a separate
+    // "UŽIVO" state so the header stays stable between individual matches.
     //
     // "Nacrt" (draft) is deliberately NOT surfaced as a chip - it added
     // visual noise on every newly-created tournament and the header now
     // carries the action buttons instead. We only show a chip for the
-    // meaningful live / finished / in-progress states.
-    const statusKind: StatusKind | null = t.liveMatch
+    // meaningful running / finished states.
+    const isRunning = t.liveMatch || t.status === "STARTED" || t.status === "IN_PROGRESS"
+    const statusKind: StatusKind | null = isRunning
         ? "live"
         : t.status === "FINISHED"
             ? "finished"
-            : t.status === "STARTED" || t.status === "IN_PROGRESS"
-                ? "active"
-                : null
-    const statusLabel = t.liveMatch
-        ? "UŽIVO"
+            : null
+    const statusLabel = isRunning
+        ? "U tijeku"
         : t.status === "FINISHED"
             ? "Završeno"
-            : t.status === "STARTED" || t.status === "IN_PROGRESS"
-                ? "U tijeku"
-                : null
+            : null
 
     /** Top-right header actions: edit, share, fullscreen + bell. */
     const headerActions = (

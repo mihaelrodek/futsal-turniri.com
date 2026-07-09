@@ -907,16 +907,19 @@ export function PageTitle({
                     fontFamily="heading"
                     fontSize={
                         titleLen > 44
-                            ? { base: "22px", md: "26px" }
+                            ? { base: "20px", md: "26px" }
                             : titleLen > 30
-                                ? { base: "24px", md: "30px" }
+                                ? { base: "23px", md: "30px" }
                                 : { base: "28px", md: "34px" }
                     }
                     fontWeight={800}
                     letterSpacing="-0.025em"
                     lineHeight={1.1}
                     color="fg.ink"
-                    lineClamp={{ base: "3", md: "2" }}
+                    // Mobile allows up to 4 lines so a long tournament name
+                    // shows in full (paired with the smaller long-title font
+                    // above) instead of being clipped with an ellipsis.
+                    lineClamp={{ base: "4", md: "2" }}
                 >
                     {title}
                 </Heading>
@@ -926,10 +929,22 @@ export function PageTitle({
                     </Text>
                 ) : null}
             </Box>
-            <HStack gap="3" align="center" flexShrink={0}>
-                {status && statusLabel ? <StatusChip status={status} label={statusLabel} size="lg" /> : null}
-                {action}
-            </HStack>
+            {status && statusLabel ? (
+                // The status chip sits on its OWN row above the action buttons
+                // (row 1 = "U tijeku", row 2 = share / fullscreen / bell / …)
+                // instead of inline with them. Inline it ate the title's
+                // horizontal width and truncated long tournament names on
+                // mobile; stacked, the right cluster is only as wide as the
+                // button row, leaving the title much more room.
+                <Flex direction="column" gap="2.5" align="flex-end" flexShrink={0}>
+                    <StatusChip status={status} label={statusLabel} size="lg" />
+                    {action}
+                </Flex>
+            ) : (
+                <HStack gap="3" align="center" flexShrink={0}>
+                    {action}
+                </HStack>
+            )}
         </Flex>
     )
 }
