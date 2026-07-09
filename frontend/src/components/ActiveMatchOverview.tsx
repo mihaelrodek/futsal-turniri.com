@@ -85,7 +85,7 @@ function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }
                         />
                     ) : (
                         <Text fontSize="11px" fontWeight={700} color="pitch.500">
-                            na utakmicu →
+                            NA UTAKMICU →
                         </Text>
                     )}
                 </Flex>

@@ -290,6 +290,11 @@ function MatchRow({
     // one consistent mental model across the two screens.
     const scoreboard = isLive || isFinished
 
+    // Long club names shrink a touch and wrap (up to three lines) so they stay
+    // readable in the schedule row instead of truncating with an ellipsis.
+    const nameMaxLen = Math.max((match.team1Name ?? "").length, (match.team2Name ?? "").length)
+    const nameFont = nameMaxLen > 26 ? { base: "12px", md: "13px" } : "sm"
+
     function addToCalendar() {
         if (!match.kickoffAt) return
         const start = new Date(match.kickoffAt)
@@ -450,11 +455,11 @@ function MatchRow({
                     onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
                 >
                     <Text
-                        fontSize="sm"
+                        fontSize={nameFont}
                         fontWeight={700}
                         color="fg.ink"
                         textAlign="right"
-                        truncate
+                        lineClamp="3"
                     >
                         {match.team1Name ?? "-"}
                     </Text>
@@ -479,11 +484,11 @@ function MatchRow({
                                 : "vs"}
                     </Box>
                     <Text
-                        fontSize="sm"
+                        fontSize={nameFont}
                         fontWeight={700}
                         color="fg.ink"
                         textAlign="left"
-                        truncate
+                        lineClamp="3"
                     >
                         {match.team2Name ?? "-"}
                     </Text>
@@ -583,6 +588,9 @@ export default function ScheduleTab({
     /** "Uredi raspored" - after the tournament starts, lets the organizer edit
      *  times + reorder matches that haven't started yet. */
     const [editScheduleMode, setEditScheduleMode] = useState(false)
+    /** Read-only schedule-settings panel - collapsed by default so the filters
+     *  and the match list are the first thing the viewer sees. */
+    const [settingsOpen, setSettingsOpen] = useState(false)
     /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
     const [dragId, setDragId] = useState<number | null>(null)
     const [overId, setOverId] = useState<number | null>(null)
@@ -954,6 +962,11 @@ export default function ScheduleTab({
 
     // The schedule has a stored format once it's been generated.
     const scheduleHasConfig = schedule != null && schedule.halfLengthMin != null
+    // One-line summary shown in the collapsed settings header, e.g.
+    // "2x12min - pauze 1min/5min - ukupno termin 30min".
+    const settingsSummary = schedule
+        ? `${schedule.halfCount ?? 2}x${schedule.halfLengthMin ?? 0}min - PAUZE ${schedule.halftimeBreakMin ?? 0}min/${schedule.breakBetweenMatchesMin ?? 0}min - UKUPNO ${schedule.slotLengthMin}min`
+        : ""
     // Matches without a kickoff (e.g. knockout drawn after the group schedule).
     const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
     // The organizer sees the editable config card (only before the start); the
@@ -985,32 +998,68 @@ export default function ScheduleTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Read-only format summary - visible to everyone once the schedule
-                is generated, so all viewers see how long halves/breaks are. */}
+            {/* Read-only format summary - COLLAPSED by default so the filters and
+                the match list are the first thing on screen (especially on
+                mobile, where the five stat cards used to fill the whole first
+                view). A slim header shows a one-line summary; tapping it reveals
+                the full stat cards (+ "Uredi raspored" for the organizer). */}
             {scheduleHasConfig && !showEditableConfig && (
-                <SectionCard>
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
-                        gap="3"
+                <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" overflow="hidden">
+                    <Flex
+                        role="button"
+                        tabIndex={0}
+                        w="full"
+                        align="center"
+                        gap="2"
+                        px={{ base: "3.5", md: "5" }}
+                        py="2"
+                        cursor="pointer"
+                        onClick={() => setSettingsOpen((v) => !v)}
+                        _hover={{ bg: "bg.surfaceTint" }}
+                        transition="background-color 0.15s"
                     >
-                        <SettingStat label="Broj poluvremena" value={`${schedule.halfCount ?? 2}`} />
-                        <SettingStat label="Trajanje poluvrijeme" value={`${schedule.halfLengthMin ?? 0} min`} />
-                        <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
-                        <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
-                        <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
-                    </Box>
-                    {canEdit && tournamentStarted && (
-                        <Flex justify="center" mt="4">
-                            <PrimaryButton
-                                onClick={() => setEditScheduleMode((v) => !v)}
-                                icon={<FiEdit2 size={14} />}
+                        <Box color="fg.muted" flexShrink={0} display="inline-flex">
+                            {settingsOpen || editScheduleMode ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                        </Box>
+                        {!settingsOpen && !editScheduleMode && (
+                            <Text
+                                minW="0"
+                                fontSize="xs"
+                                color="fg.muted"
+                                fontWeight={600}
+                                fontFamily="mono"
+                                lineClamp={1}
                             >
-                                {editScheduleMode ? "Gotovo" : "Uredi raspored"}
-                            </PrimaryButton>
-                        </Flex>
+                                {settingsSummary}
+                            </Text>
+                        )}
+                    </Flex>
+                    {(settingsOpen || editScheduleMode) && (
+                        <Box px={{ base: "4", md: "6" }} pt="1" pb="5">
+                            <Box
+                                display="grid"
+                                gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
+                                gap="3"
+                            >
+                                <SettingStat label="Broj poluvremena" value={`${schedule.halfCount ?? 2}`} />
+                                <SettingStat label="Trajanje poluvrijeme" value={`${schedule.halfLengthMin ?? 0} min`} />
+                                <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
+                                <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
+                                <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
+                            </Box>
+                            {canEdit && tournamentStarted && (
+                                <Flex justify="center" mt="4">
+                                    <PrimaryButton
+                                        onClick={() => setEditScheduleMode((v) => !v)}
+                                        icon={<FiEdit2 size={14} />}
+                                    >
+                                        {editScheduleMode ? "Gotovo" : "Uredi raspored"}
+                                    </PrimaryButton>
+                                </Flex>
+                            )}
+                        </Box>
                     )}
-                </SectionCard>
+                </Box>
             )}
 
             {/* Some matches have no kickoff (typically the knockout drawn after
@@ -1280,7 +1329,7 @@ export default function ScheduleTab({
                     {upcomingMatches.length > 0 && (
                         <SectionCard
                             icon={LuCalendarClock}
-                            title="Nadolazeće utakmice"
+                            title="Raspored"
                             subtitle={
                                 reorderEnabled ? (
                                     <>

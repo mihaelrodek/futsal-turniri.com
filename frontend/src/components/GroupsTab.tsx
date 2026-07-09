@@ -901,6 +901,10 @@ export default function GroupsTab({
         const hasScore = m.score1 != null && m.score2 != null
         const scoreboard = isLive || isFinished
         const isNext = m.matchId === nextMatchId
+        // Long club names shrink a touch and wrap (up to three lines) so they
+        // stay readable instead of truncating.
+        const maxLen = Math.max((m.team1Name ?? "").length, (m.team2Name ?? "").length)
+        const nameFont = maxLen > 26 ? { base: "12px", md: "13px" } : "sm"
         return (
             <Box
                 key={m.matchId}
@@ -934,12 +938,12 @@ export default function GroupsTab({
                         TOP; the time / action row is below. */}
                     <Box
                         display="grid"
-                        gridTemplateColumns="1fr 120px 1fr"
+                        gridTemplateColumns={editing ? "1fr 120px 1fr" : "1fr 84px 1fr"}
                         alignItems="center"
                         gap={{ base: "2", sm: "4" }}
                     >
                         <Text
-                            fontSize="sm"
+                            fontSize={nameFont}
                             fontWeight={700}
                             color="fg.ink"
                             textAlign="right"
@@ -993,7 +997,7 @@ export default function GroupsTab({
                             )}
                         </Flex>
                         <Text
-                            fontSize="sm"
+                            fontSize={nameFont}
                             fontWeight={700}
                             color="fg.ink"
                             textAlign="left"
@@ -1336,7 +1340,7 @@ export default function GroupsTab({
                                         {idx + 1}
                                     </Text>
                                     {/* Team name only - stats live in their own columns now */}
-                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" minW="0">
+                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
                                         {row.teamName}
                                     </Text>
                                     {/* UT (odigrano) - md only */}
@@ -1528,7 +1532,7 @@ export default function GroupsTab({
                                 <Text fontFamily="mono" fontSize="13px" fontWeight={800} color={q ? "pitch.500" : "fg.muted"} textAlign="center">
                                     {tr.rank}
                                 </Text>
-                                <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" minW="0">
+                                <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
                                     {tr.standing.teamName}
                                 </Text>
                                 <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted" textAlign="center">
