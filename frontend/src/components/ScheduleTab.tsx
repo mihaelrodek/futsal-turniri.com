@@ -319,6 +319,74 @@ function MatchRow({
         downloadIcs(`utakmica-${safeName}.ics`, ics)
     }
 
+    // Kickoff time - editable picker for admins, read-only stamp otherwise.
+    // Extracted so the scoreboard (live/finished) and scheduled headers can
+    // share one source of truth for the time cell.
+    const timeContent = canEdit ? (
+        <DateTimeField
+            compact
+            value={match.kickoffAt ? new Date(match.kickoffAt) : null}
+            onChange={(d) => {
+                if (!d) return
+                const p = (n: number) => String(n).padStart(2, "0")
+                const local =
+                    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+                    `T${p(d.getHours())}:${p(d.getMinutes())}`
+                onTimeChange(match, local)
+            }}
+        />
+    ) : match.kickoffAt ? (
+        <HStack gap="1.5" fontSize="sm" fontWeight="600" color="fg.muted" fontFamily="mono">
+            <FiClock size={12} />
+            <Box>
+                {(() => {
+                    const v = isoToLocal(match.kickoffAt)
+                    if (!v) return "-"
+                    // YYYY-MM-DDTHH:MM → "DD.MM.YYYY HH:MM"
+                    const [d, t] = v.split("T")
+                    const [y, m, day] = d.split("-")
+                    return `${day}.${m}.${y} ${t}`
+                })()}
+            </Box>
+        </HStack>
+    ) : (
+        <Text fontSize="xs" color="fg.subtle">
+            Termin nije određen
+        </Text>
+    )
+
+    // "Add to calendar" action - scheduled rows only.
+    const calendarBtn = match.kickoffAt ? (
+        <RowButton
+            type="button"
+            display="inline-flex"
+            alignItems="center"
+            gap="1"
+            px="2"
+            py="1"
+            cursor="pointer"
+            color="pitch.500"
+            fontSize="xs"
+            fontWeight="medium"
+            bg="bg.surfaceTint"
+            border="1px solid"
+            borderColor="border"
+            borderRadius="md"
+            _hover={{ bg: "pitch.50" }}
+            onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                addToCalendar()
+            }}
+            aria-label="Dodaj u kalendar"
+            flexShrink={0}
+        >
+            <FiCalendar size={12} />
+            <chakra.span display={{ base: "none", md: "inline" }}>
+                Dodaj u kalendar
+            </chakra.span>
+        </RowButton>
+    ) : null
+
     return (
         <Panel
             px="4"
@@ -327,121 +395,35 @@ function MatchRow({
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
             <VStack align="stretch" gap="1">
-                {/* Meta header - one compact row: stage badge (+live) on the
-                    left, kickoff time/editor centred, "Dodaj u kalendar" on
-                    the right. Equal flex on the two side clusters keeps the
-                    time visually centred regardless of badge width. */}
-                <Flex align="center" gap="2" wrap="wrap">
-                    {/* Left: stage + live/next badges. flex=1 mirrors the
-                        right cluster so the kickoff time sits truly centred;
-                        minW=fit-content keeps the nowrap badge from
-                        collapsing to 0 on narrow phones. */}
-                    <HStack gap="2" flex="1" minW="fit-content" wrap="wrap">
-                        <StageBadge stage={match.stage} groupName={match.groupName} />
-                        {isLive && <LiveBadge />}
-                        {/* "Na redu" tag for the next match to start. */}
-                        {isNext && !isLive && (
-                            <Box
-                                as="span"
-                                px="2"
-                                py="0.5"
-                                rounded="full"
-                                bg="red.subtle"
-                                color="red.fg"
-                                fontFamily="mono"
-                                fontSize="9px"
-                                fontWeight={800}
-                                letterSpacing="0.1em"
-                                textTransform="uppercase"
-                                flexShrink={0}
-                                whiteSpace="nowrap"
-                            >
-                                Na redu
-                            </Box>
-                        )}
-                    </HStack>
-
-                    {/* Center: kickoff time / editor - centred between the two
-                        equal-flex side clusters (dead-centre above the score).
-                        Uses the shared HR date+time picker (dd/MM/yyyy HH:mm,
-                        24h) instead of the native datetime-local input, which
-                        rendered in the browser's US MM/DD/YYYY hh:mm AM/PM. */}
-                    <Box flexShrink={0} w="200px" maxW="100%">
-                        {canEdit ? (
-                            <DateTimeField
-                                compact
-                                value={match.kickoffAt ? new Date(match.kickoffAt) : null}
-                                onChange={(d) => {
-                                    if (!d) return
-                                    const p = (n: number) => String(n).padStart(2, "0")
-                                    const local =
-                                        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-                                        `T${p(d.getHours())}:${p(d.getMinutes())}`
-                                    onTimeChange(match, local)
-                                }}
-                            />
-                        ) : match.kickoffAt ? (
-                            <HStack
-                                gap="1.5"
-                                fontSize="sm"
-                                fontWeight="600"
-                                color="fg.muted"
-                                fontFamily="mono"
-                            >
-                                <FiClock size={12} />
-                                <Box>
-                                    {(() => {
-                                        const v = isoToLocal(match.kickoffAt)
-                                        if (!v) return "-"
-                                        // YYYY-MM-DDTHH:MM → "DD.MM.YYYY HH:MM"
-                                        const [d, t] = v.split("T")
-                                        const [y, m, day] = d.split("-")
-                                        return `${day}.${m}.${y} ${t}`
-                                    })()}
-                                </Box>
-                            </HStack>
-                        ) : (
-                            <Text fontSize="xs" color="fg.subtle">
-                                Termin nije određen
-                            </Text>
-                        )}
-                    </Box>
-
-                    {/* Right: add to calendar (scheduled matches only).
-                        flex=1 mirrors the left cluster - see comment above. */}
-                    <Flex flex="1" minW="fit-content" justify="flex-end">
-                        {!scoreboard && match.kickoffAt && (
-                            <RowButton
-                                type="button"
-                                display="inline-flex"
-                                alignItems="center"
-                                gap="1"
-                                px="2"
-                                py="1"
-                                cursor="pointer"
-                                color="pitch.500"
-                                fontSize="xs"
-                                fontWeight="medium"
-                                bg="bg.surfaceTint"
-                                border="1px solid"
-                                borderColor="border"
-                                borderRadius="md"
-                                _hover={{ bg: "pitch.50" }}
-                                onClick={(e: React.MouseEvent) => {
-                                    e.stopPropagation()
-                                    addToCalendar()
-                                }}
-                                aria-label="Dodaj u kalendar"
-                                flexShrink={0}
-                            >
-                                <FiCalendar size={12} />
-                                <chakra.span display={{ base: "none", md: "inline" }}>
-                                    Dodaj u kalendar
-                                </chakra.span>
-                            </RowButton>
-                        )}
+                {scoreboard ? (
+                    /* LIVE / FINISHED header - unchanged: stage badge on the
+                       left, kickoff time centred between two equal-flex clusters
+                       (dead-centre above the score). */
+                    <Flex align="center" gap="2" wrap="wrap">
+                        <HStack gap="2" flex="1" minW="fit-content" wrap="wrap">
+                            <StageBadge stage={match.stage} groupName={match.groupName} />
+                            {isLive && <LiveBadge />}
+                        </HStack>
+                        <Box flexShrink={0} w="200px" maxW="100%">
+                            {timeContent}
+                        </Box>
+                        <Flex flex="1" minW="fit-content" justify="flex-end" />
                     </Flex>
-                </Flex>
+                ) : (
+                    /* SCHEDULED header - stage badge (left) + "add to calendar"
+                       (right) on one row, kickoff time centred on its own row
+                       below. Fixed positions so the badge, date and calendar
+                       icon line up identically across every card regardless of
+                       badge width. The next-to-start match keeps its red border
+                       (the "Na redu" tag was dropped). */
+                    <>
+                        <Flex align="center" justify="space-between" gap="2">
+                            <StageBadge stage={match.stage} groupName={match.groupName} />
+                            {calendarBtn}
+                        </Flex>
+                        <Flex justify="center">{timeContent}</Flex>
+                    </>
+                )}
 
                 {/* Teams + score - one fixed 3-column grid used for EVERY
                     row (live, finished, scheduled). team1 is right-aligned

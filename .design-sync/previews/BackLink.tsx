@@ -22,11 +22,6 @@ export function CustomLabel() {
     )
 }
 
-/** With a `to` target - renders as an anchor-style link to another route. */
-export function WithTarget() {
-    return (
-        <div style={wrap}>
-            <BackLink to="/turniri" label="Natrag na turnire" onClick={() => {}} />
-        </div>
-    )
-}
+/* NB: no cell sweeps `to`. It only writes a `data-href` attribute and does not
+   change the render, so a cell for it would be visually identical to the one
+   above — see .design-sync/NOTES.md, "Traps found while authoring". */

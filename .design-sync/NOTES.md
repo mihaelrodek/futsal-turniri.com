@@ -119,9 +119,14 @@ If any other component gains a generic, expect the same and pin it the same way.
 
 ## Known render warns (triaged — not new)
 
-None outstanding. Every `[RENDER_THIN]` / `[RENDER_BLANK]` warning seen during
-this sync was an unauthored component showing the floor card, and each was
-resolved by authoring its preview.
+- `PulseDot` and `StatusChip` dots photograph **pastel** (accent.red reads
+  pinkish, pitch.400 pale). The `pitchPulse` keyframes animate `opacity`, and
+  the screenshot catches an arbitrary mid-animation frame. Colours are correct;
+  this is a static-capture artefact, not a preview defect. Do not "fix" it in
+  the `.tsx`.
+- Every `[RENDER_THIN]` / `[RENDER_BLANK]` warning seen during this sync was an
+  unauthored component showing the floor card, and each was resolved by
+  authoring its preview. None outstanding.
 
 ## Traps found while authoring
 
@@ -133,6 +138,32 @@ resolved by authoring its preview.
   (`"court" | "pitch"`) is the real visual axis.
 - `PitchBackdrop` is absolutely positioned and paints nothing without a sized,
   `position: relative` parent.
+- **`BackLink`'s `to` prop is not a visual axis** — it writes a `data-href`
+  attribute and nothing else. A `WithTarget` cell was authored, found to be
+  pixel-identical to `CustomLabel`, and removed. `label` is the only axis.
+- **`FormSectionCard`'s icon renders `blue.500`, not pitch green.** That is
+  deliberate (it is the Chakra `Card`-based form flow, not the Pitch card).
+  Don't "fix" it as a token bug.
+- `Panel` has **no default padding** — it is a bare BoxProps surface. Pass
+  `padding` explicitly or it hugs its children.
+- Icon prop shapes differ and getting them wrong renders nothing:
+  `SectionCard` / `SectionHeader` / `EmptyState` / `IconChip` take an
+  **ElementType reference** (`FiCalendar`); `FormSectionCard` takes a
+  **rendered node** (`<FiInfo />`). `SectionCard` accepts either.
+- `PillTabBar` is controlled — a static preview passes a fixed `active` and
+  `onChange={() => {}}`.
+
+## Authoring process notes
+
+- `package-capture.mjs` takes ~2 min and can exceed a 2-minute foreground shell
+  timeout. Run it in the background or raise the timeout.
+- Watch the repo folder name in absolute Write paths: `Nogometni-turniri.com`
+  (a mistyped `turriri` created a stray sibling directory during this sync).
+- Nesting DS exports inside container previews (`StatTile` inside `Panel`,
+  `StatusChip` inside `PageTitle`) works and produces far better cards than
+  empty containers.
+- Nice-to-have for a future converter: freeze CSS animations before capture
+  (`animation-play-state: paused`) so pulsing dots photograph at full opacity.
 
 ## Re-sync risks
 

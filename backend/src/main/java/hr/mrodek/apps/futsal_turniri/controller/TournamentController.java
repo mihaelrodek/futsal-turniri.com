@@ -1653,6 +1653,8 @@ public class TournamentController {
                             t != null && t.getUuid() != null ? t.getUuid().toString() : null,
                             t != null ? t.getSlug() : null,
                             t != null ? t.getName() : null,
+                            m.getTeam1() != null ? m.getTeam1().getId() : null,
+                            m.getTeam2() != null ? m.getTeam2().getId() : null,
                             m.getTeam1() != null ? m.getTeam1().getName() : null,
                             m.getTeam2() != null ? m.getTeam2().getName() : null,
                             m.getScore1(),
@@ -1678,13 +1680,21 @@ public class TournamentController {
     /**
      * Public endpoint - no auth required.
      * Returns SCHEDULED matches across every tournament that have a kickoff
-     * time from now onward, soonest-first, capped at 40. Powers the
-     * "Nadolazeće utakmice" stream on the /uzivo page.
+     * time, soonest-first, capped at 40. Powers the "Nadolazeće utakmice"
+     * stream on the /uzivo page.
+     *
+     * <p>Grace period: a match whose kickoff has already passed but which
+     * hasn't actually started yet (still {@code SCHEDULED}) stays in the feed
+     * for up to one hour past its planned kickoff - tournaments routinely run
+     * late, and dropping the match the instant its scheduled time arrives would
+     * hide a game that's about to be played. Once the match goes LIVE it leaves
+     * this feed anyway (status filter), and after the 1h grace it's dropped as
+     * a no-show.
      */
     @GET
     @Path("/upcoming-matches")
     public List<UpcomingMatchDto> listUpcomingMatches() {
-        return matchesRepo.findUpcomingMatches(OffsetDateTime.now(), 40)
+        return matchesRepo.findUpcomingMatches(OffsetDateTime.now().minusHours(1), 40)
                 .stream()
                 // Hidden tournaments never surface on the public upcoming feed.
                 .filter(m -> m.getTournament() == null || !m.getTournament().isHidden())

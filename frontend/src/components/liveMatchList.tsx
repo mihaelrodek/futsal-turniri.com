@@ -159,8 +159,8 @@ export function LiveMatchRow({
                     <GoalscorersPanel
                         tournamentUuid={match.tournamentUuid}
                         matchId={match.matchId}
-                        team1Id={null}
-                        team2Id={null}
+                        team1Id={match.team1Id ?? null}
+                        team2Id={match.team2Id ?? null}
                         halfLengthMin={match.halfLengthMin}
                     />
                 </Box>

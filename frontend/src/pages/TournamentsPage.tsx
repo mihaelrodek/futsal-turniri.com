@@ -158,7 +158,7 @@ function useTournamentPrefetch() {
 /** Shared min-height for the two home-hero slides so the promo banner and the
  *  live scoreboard swap in place without reflowing. Tuned to the scoreboard's
  *  natural height per breakpoint. */
-const HERO_MIN_H = { base: "330px", md: "260px" } as const
+const HERO_MIN_H = { base: "300px", md: "260px" } as const
 
 function LiveHero({ match }: { match: LiveMatch }) {
     const queryClient = useQueryClient()
@@ -911,12 +911,12 @@ function PromoHero({ data }: { data: PromoSlide }) {
                 <Box
                     display={{ base: "flex", md: "none" }}
                     w="full"
-                    h="122px"
+                    h="110px"
                     justifyContent="center"
                     alignItems="flex-start"
                     overflow="visible"
                 >
-                    <Box transform="scale(0.66)" transformOrigin="top center" flexShrink={0}>
+                    <Box transform="scale(0.6)" transformOrigin="top center" flexShrink={0}>
                         {data.mock}
                     </Box>
                 </Box>
@@ -1001,7 +1001,7 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     }
 
     return (
-        <Box mb="7">
+        <Box mb={{ base: 0, md: 7 }}>
             <Box
                 ref={viewportRef}
                 position="relative"
@@ -2015,7 +2015,7 @@ export default function TournamentsPage() {
     const gridCols = { base: "1fr", md: "1fr 1fr", lg: "repeat(3, 1fr)" }
 
     return (
-        <VStack align="stretch" gap="7">
+        <VStack align="stretch" gap={{ base: 4, md: 7 }}>
             <HelpFab />
             <HomeHero match={liveTop} />
 

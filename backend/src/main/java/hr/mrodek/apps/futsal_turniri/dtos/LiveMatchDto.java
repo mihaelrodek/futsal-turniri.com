@@ -13,6 +13,11 @@ public record LiveMatchDto(
         String tournamentUuid,
         String tournamentSlug,
         String tournamentName,
+        /** DB ids of the two teams - let the live event timeline map each
+         *  goal/card to the correct home/away side (same order as
+         *  team1Name/team2Name), instead of guessing from numeric id order. */
+        Long team1Id,
+        Long team2Id,
         String team1Name,
         String team2Name,
         Integer score1,

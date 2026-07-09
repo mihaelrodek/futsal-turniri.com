@@ -16,6 +16,11 @@ export type LiveMatch = {
     tournamentUuid: string
     tournamentSlug: string
     tournamentName: string
+    /** DB ids of the two teams (same order as team1Name/team2Name). Passed to
+     *  the events timeline so each goal/card maps to the correct home/away
+     *  side instead of the panel guessing from numeric id order. */
+    team1Id?: number | null
+    team2Id?: number | null
     team1Name: string | null
     team2Name: string | null
     score1: number | null
