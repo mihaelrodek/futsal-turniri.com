@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.repository;
 
+import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import io.quarkus.panache.common.Page;
@@ -80,15 +81,23 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     }
 
     // A tournament counts as "finished" for the public listings when it is
-    // explicitly FINISHED, OR it was never run through the site (still DRAFT)
-    // and its start passed more than a day ago - so an abandoned draft auto-
-    // drops out of "Nadolazeći" after 24h instead of lingering there forever.
-    // A DRAFT with no date, or a managed (STARTED) tournament, is never auto-
-    // finished; the organizer finishes those explicitly.
+    // explicitly FINISHED, OR it was never actually run and its start passed
+    // more than a day ago - an ABANDONED draft, which then auto-drops out of
+    // "Nadolazeći" after 24h instead of lingering there forever.
+    //
+    // "Abandoned" means: still DRAFT, past its date, AND with NO played match
+    // (no match in LIVE/FINISHED - i.e. only SCHEDULED or none). A tournament
+    // that is being played must NEVER be auto-finished: a STARTED one is
+    // already excluded (only DRAFT matches ?2), and the played-match guard
+    // additionally protects a tournament whose matches were started before the
+    // auto-STARTED transition existed (still DRAFT but clearly in progress). It
+    // stays live until the organizer finishes it explicitly.
     private static final String EFFECTIVELY_FINISHED =
-            "status = ?1 or (status = ?2 and startAt is not null and startAt < ?3)";
+            "status = ?1 or (status = ?2 and startAt is not null and startAt < ?3 "
+            + "and id not in (select m.tournament.id from Matches m where m.status <> ?4))";
     private static final String NOT_EFFECTIVELY_FINISHED =
-            "status <> ?1 and not (status = ?2 and startAt is not null and startAt < ?3)";
+            "status <> ?1 and not (status = ?2 and startAt is not null and startAt < ?3 "
+            + "and id not in (select m.tournament.id from Matches m where m.status <> ?4))";
 
     /** Start-of-grace cutoff: drafts whose start is older than this are done. */
     private static OffsetDateTime draftFinishedCutoff() {
@@ -103,14 +112,14 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     public List<Tournaments> findFinishedPaged(int offset, int limit) {
         return find(EFFECTIVELY_FINISHED,
                 Sort.by("startAt").descending(),
-                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff())
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff(), MatchStatus.SCHEDULED)
                 .page(Page.of(offset / Math.max(1, limit), Math.max(1, limit)))
                 .list();
     }
 
     public long countFinished() {
         return count(EFFECTIVELY_FINISHED,
-                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff());
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff(), MatchStatus.SCHEDULED);
     }
 
     /**
@@ -121,7 +130,7 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     public List<Tournaments> findNotFinishedOrderByStartAtAsc() {
         return list(NOT_EFFECTIVELY_FINISHED,
                 Sort.by("startAt").ascending(),
-                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff());
+                TournamentStatus.FINISHED, TournamentStatus.DRAFT, draftFinishedCutoff(), MatchStatus.SCHEDULED);
     }
 
     /**

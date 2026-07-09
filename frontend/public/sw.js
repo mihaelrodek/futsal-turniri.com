@@ -1,22 +1,30 @@
 /*
- * Minimal service worker - exists primarily so Chrome / Edge / Samsung Internet
- * fire the `beforeinstallprompt` event. Without an SW the browser refuses to
- * surface the install prompt at all, even with a perfect manifest.
+ * Service worker - exists primarily so Chrome / Edge / Samsung Internet fire
+ * the `beforeinstallprompt` event (no SW → the browser refuses the install
+ * prompt even with a perfect manifest), and to give the installed PWA a useful
+ * offline story for a tournament organizer at a venue with flaky Wi-Fi:
  *
- * It also gives us a network-first fetch handler that:
- *   - Lets every request go to the network normally (no caching surprises).
- *   - Falls back to the cached app shell when the network is unreachable, so
- *     a tournament organizer at a venue with flaky Wi-Fi can still open the
- *     installed app and see *something* (just the SPA shell - API data still
- *     needs the network).
+ *   - SPA navigations: network-first, fall back to the cached app shell so a
+ *     cold launch offline still boots index.html instead of the browser's
+ *     "no internet" page.
+ *   - API reads (GET /api/*): network-first, fall back to the LAST cached
+ *     snapshot. Online it's always fresh (and the snapshot is refreshed); the
+ *     cache is served ONLY when the network is unreachable. That lets the live
+ *     console open - and survive a reload - offline, pairing with the
+ *     localStorage write queues (goals/fouls) so scoring keeps working with no
+ *     signal and syncs on reconnect. Network-first is the key: there's no
+ *     stale-JSON surprise while connected.
+ *   - Writes (POST/PUT/PATCH/DELETE): never touched - straight to the network.
  *
- * Keeping the worker tiny is deliberate: a richer cache strategy is easy to
- * shoot yourself in the foot with (stale React bundle, stale API JSON).
- * Revisit when there's a concrete offline use case.
+ * Note: authenticated GET responses land in the API cache. That's fine on the
+ * single-user device this PWA is installed on, and only ever served offline.
  */
 
 const CACHE = "futsal-shell-v2";
+const API_CACHE = "futsal-api-v1";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest"];
+// Cap the runtime API cache so a long-running install can't grow it unbounded.
+const API_CACHE_LIMIT = 80;
 
 self.addEventListener("install", (event) => {
     // Pre-cache the SPA shell so a cold offline launch from the home-screen
@@ -30,10 +38,12 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-    // Wipe any older shell caches.
+    // Wipe any caches that aren't in the current whitelist (old shell versions);
+    // keep the shell AND the runtime API-snapshot cache.
+    const keep = new Set([CACHE, API_CACHE]);
     event.waitUntil(
         caches.keys().then((keys) =>
-            Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+            Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)))
         )
     );
     self.clients.claim();
@@ -45,43 +55,92 @@ self.addEventListener("fetch", (event) => {
     if (req.method !== "GET") return;
 
     const url = new URL(req.url);
-    // Leave cross-origin (Firebase, fonts, map tiles) and ALL /api traffic to
-    // the browser. The SW only owns top-level navigations (so an offline /
-    // mid-deploy launch still boots the SPA shell). Hashed assets under
-    // /assets/* are already cached by the browser's HTTP cache (Caddy serves
-    // them `immutable`), so the SW doesn't need to touch them - and not
-    // touching them avoids the class of bug where a failed fetch + cache miss
-    // resolved to `undefined` and crashed the worker with
+    // Leave cross-origin (Firebase, fonts, map tiles) to the browser. Hashed
+    // assets under /assets/* are already cached by the browser's HTTP cache
+    // (Caddy serves them `immutable`), so the SW doesn't need to touch them -
+    // and not touching them avoids the class of bug where a failed fetch +
+    // cache miss resolved to `undefined` and crashed the worker with
     // "Failed to convert value to 'Response'".
     if (url.origin !== self.location.origin) return;
-    if (url.pathname.startsWith("/api/")) return;
-    if (req.mode !== "navigate") return;
 
-    // SPA navigation: network-first, fall back to the cached shell, and as a
-    // last resort a tiny offline page. respondWith ALWAYS resolves to a real
-    // Response - never undefined - so a 502 / offline never breaks navigation.
-    event.respondWith(
-        (async () => {
-            try {
-                return await fetch(req);
-            } catch (_) {
-                const shell =
-                    (await caches.match("/index.html")) ||
-                    (await caches.match("/"));
-                if (shell) return shell;
-                return new Response(
-                    "<!doctype html><meta charset='utf-8'><title>Offline</title>" +
-                        "<body style='font-family:sans-serif;padding:2rem'>" +
-                        "<p>Trenutno nema veze sa serverom. Pokušaj ponovno za koji trenutak.</p>",
-                    {
-                        status: 503,
-                        headers: { "Content-Type": "text/html; charset=utf-8" },
-                    }
-                );
-            }
-        })()
-    );
+    // API reads: network-first with a last-snapshot fallback (see file header).
+    if (url.pathname.startsWith("/api/")) {
+        event.respondWith(apiNetworkFirst(req));
+        return;
+    }
+
+    // Everything else the SW owns is a top-level SPA navigation.
+    if (req.mode !== "navigate") return;
+    event.respondWith(navigationNetworkFirst(req));
 });
+
+// Network-first for GET /api/*: serve fresh when online (and refresh the
+// snapshot), fall back to the last cached snapshot offline. respondWith ALWAYS
+// resolves to a real Response - never undefined - so offline never crashes the
+// worker.
+async function apiNetworkFirst(req) {
+    let cache = null;
+    try { cache = await caches.open(API_CACHE); } catch (_) { /* private mode */ }
+    try {
+        const resp = await fetch(req);
+        // Cache only clean, complete, same-origin 200s - never errors, 206
+        // partials or opaque responses (those would poison the snapshot).
+        if (cache && resp && resp.status === 200 && resp.type === "basic") {
+            const copy = resp.clone();
+            cache.put(req, copy)
+                .then(() => trimCache(cache, API_CACHE_LIMIT))
+                .catch(() => {});
+        }
+        return resp;
+    } catch (_) {
+        if (cache) {
+            const hit = await cache.match(req);
+            if (hit) return hit;
+        }
+        // No snapshot yet - reply in a shape axios rejects (503) so the app's
+        // offline write-queues keep buffering instead of rendering bad data.
+        return new Response(
+            JSON.stringify({ offline: true }),
+            {
+                status: 503,
+                headers: { "Content-Type": "application/json; charset=utf-8" },
+            }
+        );
+    }
+}
+
+// SPA navigation: network-first, fall back to the cached shell, and as a last
+// resort a tiny offline page.
+async function navigationNetworkFirst(req) {
+    try {
+        return await fetch(req);
+    } catch (_) {
+        const shell =
+            (await caches.match("/index.html")) || (await caches.match("/"));
+        if (shell) return shell;
+        return new Response(
+            "<!doctype html><meta charset='utf-8'><title>Offline</title>" +
+                "<body style='font-family:sans-serif;padding:2rem'>" +
+                "<p>Trenutno nema veze sa serverom. Pokušaj ponovno za koji trenutak.</p>",
+            {
+                status: 503,
+                headers: { "Content-Type": "text/html; charset=utf-8" },
+            }
+        );
+    }
+}
+
+// Keep the runtime API cache bounded. Cache.keys() preserves insertion order,
+// so the oldest snapshots are at the front - evict from there when over the cap.
+async function trimCache(cache, limit) {
+    try {
+        const keys = await cache.keys();
+        const over = keys.length - limit;
+        for (let i = 0; i < over; i++) await cache.delete(keys[i]);
+    } catch (_) {
+        /* best-effort - a full cache just stops growing */
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Web Push: receive + click handling

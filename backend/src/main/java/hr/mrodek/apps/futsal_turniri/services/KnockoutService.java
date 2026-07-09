@@ -713,6 +713,8 @@ public class KnockoutService {
         m.setScore2(s2);
         m.setWinnerTeam(winner);
         m.setStatus(MatchStatus.FINISHED);
+        // Recording a result counts as the tournament having started.
+        if (m.getTournament() != null) m.getTournament().markStartedIfDraft();
 
         advanceWinner(m, winner);
 

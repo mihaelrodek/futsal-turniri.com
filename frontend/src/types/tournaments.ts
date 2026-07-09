@@ -21,6 +21,9 @@ export type TournamentCard = {
     prizeTotal?: number | null;
     winnerName?: string | null;
     registeredTeams?: number | null;
+    /** Lifecycle status (DRAFT / STARTED / FINISHED). Drives the "u tijeku"
+     *  home-list badge for a started tournament even between live matches. */
+    status?: TournamentStatus | null;
     /** True when this tournament currently has a match in progress. */
     liveMatch?: boolean;
     /** Set when an admin featured this tournament; null otherwise. The home

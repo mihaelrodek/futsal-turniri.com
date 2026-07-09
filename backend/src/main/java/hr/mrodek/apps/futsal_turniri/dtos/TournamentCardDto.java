@@ -28,6 +28,9 @@ public class TournamentCardDto {
     private BigDecimal prizeTotal;
     private String winnerName;
     private Integer registeredTeams;
+    /** Tournament lifecycle status (DRAFT / STARTED / FINISHED). Lets the home
+     *  list show "u tijeku" for a started tournament even between live matches. */
+    private String status;
     /** True when this tournament has at least one match in progress (status LIVE). */
     private boolean liveMatch;
     /** Set when an admin has featured this tournament; null otherwise. The home

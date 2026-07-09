@@ -27,6 +27,7 @@ import NotFoundPage from "./pages/NotFoundPage"
 const CreateTournamentPage = lazy(() => import('./pages/CreateTournamentPage'))
 const TournamentDetailsPage = lazy(() => import('./pages/TournamentDetailsPage'))
 const FullscreenTournamentPage = lazy(() => import('./pages/FullscreenTournamentPage'))
+const MatchLivePage = lazy(() => import('./pages/MatchLivePage'))
 const FindTeamPage = lazy(() => import('./pages/FindTeamPage'))
 const LivePage = lazy(() => import('./pages/LivePage'))
 const MapPage = lazy(() => import('./pages/MapPage'))
@@ -172,6 +173,12 @@ export default function App() {
                     <Route
                         path="/turniri/:uuid/fullscreen"
                         element={<FullscreenTournamentPage />}
+                    />
+                    {/* A single match's own live page (SofaScore-style) - public,
+                        shareable, follows the game live. */}
+                    <Route
+                        path="/turniri/:uuid/utakmica/:matchId"
+                        element={<MatchLivePage />}
                     />
                     <Route path="/uzivo" element={<LivePage />} />
                     {/* The old "Kalendar" page was merged into /uzivo (live

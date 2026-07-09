@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
     Box,
     Button,
@@ -14,7 +14,7 @@ import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
 import "../datepicker.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
-import { FiArrowLeft, FiCode, FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
+import { FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
 import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
 import TournamentResults from "../components/TournamentResults"
@@ -54,6 +54,10 @@ import GroupsTab from "../components/GroupsTab"
 import BracketTab from "../components/BracketTab"
 import ScheduleTab from "../components/ScheduleTab"
 import { MatchTimelineModal } from "../components/liveMatch"
+import ActiveMatchOverview from "../components/ActiveMatchOverview"
+import { fetchLiveMatches, type LiveMatch } from "../api/live"
+import { useLiveSocket } from "../hooks/useLiveSocket"
+import { usePolling } from "../hooks/usePolling"
 
 import {
     buildEditForm,
@@ -149,6 +153,9 @@ export default function TournamentDetailsPage() {
     const [, setError] = useState<string | null>(null)
     const [t, setT] = useState<TournamentDetails | null>(null)
     const [teams, setTeams] = useState<TeamShort[]>([])
+    // Live matches of THIS tournament - powers the small "active match"
+    // overview below the tabs (same slot as the end-of-tournament results).
+    const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([])
     // True once the draw (groups / bracket) has been generated - locks the
     // roster so teams can no longer be added or removed. Refetched on the
     // Ekipe tab so a fresh draw on another tab is reflected immediately.
@@ -187,6 +194,10 @@ export default function TournamentDetailsPage() {
     })()
     const [section, setSection] = useState<SectionKey>(initialSection)
     const [drawSub, setDrawSub] = useState<DrawSubKey>(initialDrawSub)
+    // Whether the URL explicitly named a tab at mount. If so we respect it and
+    // never auto-switch to the draw below (a shared ?tab= link wins).
+    const hadExplicitTabRef = useRef(searchParams.get("tab") != null)
+    const defaultedTabRef = useRef(false)
 
     // Write the active tab(s) back to the URL whenever they change. The
     // `details` default is encoded as "no `tab` param" so the canonical
@@ -210,6 +221,33 @@ export default function TournamentDetailsPage() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [section, drawSub])
+
+    // Once a tournament has begun (STARTED or FINISHED), default to the Ždrijeb
+    // (draw/bracket) tab when it opens - that's where the action is. Runs once,
+    // after the tournament loads, and only when the URL didn't request a tab.
+    useEffect(() => {
+        if (!t || defaultedTabRef.current) return
+        defaultedTabRef.current = true
+        if (!hadExplicitTabRef.current && (t.status === "STARTED" || t.status === "FINISHED")) {
+            setSection("bracket")
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [t])
+
+    // Keep this tournament's live matches fresh for the "active match" overview.
+    // Polled (paused while the tab is hidden) + instant WebSocket refetch; both
+    // are disabled once the tournament is FINISHED (nothing left to be live).
+    const loadLiveMatches = useCallback(() => {
+        fetchLiveMatches()
+            .then((all) => setLiveMatches(all.filter((m) => m.tournamentUuid === t?.uuid)))
+            .catch(() => { /* silent - the overview just stays hidden */ })
+    }, [t?.uuid])
+    const liveOverviewEnabled = !!t && t.status !== "FINISHED"
+    usePolling(loadLiveMatches, 8000, liveOverviewEnabled)
+    useLiveSocket((msg) => {
+        if (msg.tournamentUuid && t?.uuid && msg.tournamentUuid !== t.uuid) return
+        loadLiveMatches()
+    }, liveOverviewEnabled)
 
     // Keep the roster-lock flag current: fetch on mount and whenever the user
     // opens the Ekipe tab, so a draw generated on the Ždrijeb tab immediately
@@ -800,7 +838,7 @@ export default function TournamentDetailsPage() {
                 ? "U tijeku"
                 : null
 
-    /** Top-right header actions: edit, back, share, embed, fullscreen + bell. */
+    /** Top-right header actions: edit, share, fullscreen + bell. */
     const headerActions = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
             {/* "Uredi" only appears on the Detalji tab - otherwise it would
@@ -813,11 +851,6 @@ export default function TournamentDetailsPage() {
                     onClick={enterDetailsEdit}
                 />
             )}
-            <HeaderAction
-                icon={<FiArrowLeft size={15} />}
-                label="Natrag"
-                onClick={() => navigate("/turniri")}
-            />
             <HeaderAction
                 icon={<FiShare2 size={15} />}
                 label="Podijeli"
@@ -839,22 +872,6 @@ export default function TournamentDetailsPage() {
                 }}
             />
             <HeaderAction
-                icon={<FiCode size={15} />}
-                label="Ugradi"
-                onClick={() => {
-                    const snippet = `<iframe src="https://futsal-turniri.com/embed/turnir/${t.uuid}" width="420" height="220" frameborder="0" style="border:0; max-width:100%"></iframe>`
-                    navigator.clipboard
-                        ?.writeText(snippet)
-                        .then(() =>
-                            showSuccess(
-                                "Kopirano",
-                                "iframe kod je u clipboardu - zalijepi ga u svoju web stranicu.",
-                            ),
-                        )
-                        .catch(() => window.prompt("Kopiraj ovaj kod:", snippet))
-                }}
-            />
-            <HeaderAction
                 icon={<FiMaximize2 size={15} />}
                 label="Turnir mode"
                 onClick={() =>
@@ -871,7 +888,7 @@ export default function TournamentDetailsPage() {
     return (
         <VStack
             align="stretch"
-            gap="4"
+            gap="2"
             // Hidden tournament (visible only to creator/admin) - the whole
             // page is desaturated so it's unmistakably "not public", plus the
             // banner below spells it out.
@@ -930,6 +947,14 @@ export default function TournamentDetailsPage() {
                     }
                     finishing={finishingTournament}
                 />
+            )}
+
+            {/* Small "active match" overview - same slot as the results panel,
+                shown while a game is in progress so anyone opening the
+                tournament sees there's a match live right now. Tapping it opens
+                that match's own live page. */}
+            {liveMatches.length > 0 && (
+                <ActiveMatchOverview matches={liveMatches} uuidOrSlug={t.slug ?? t.uuid} />
             )}
 
             {/* ===== ACTIVE SECTION ===== */}

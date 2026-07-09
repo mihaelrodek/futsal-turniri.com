@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Spinner, Text, VStack } from "@chakra-ui/react"
 import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
-import { addMatchEvent, adjustMatchFouls, deleteMatchEvent, fetchMatchEvents, resetMatchFouls } from "../api/matchEvents"
+import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
+import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
 import { ConfirmDialog } from "../ui/primitives"
-import type { MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
+import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
+import type { OptimisticDisplay } from "../hooks/useOfflineMatchEvents"
 import { fetchPlayers } from "../api/players"
 import type { PlayerDto } from "../types/players"
 
@@ -829,6 +831,8 @@ export function GoalscorersPanel({
     hideEmpty = false,
     emptyNote,
     refreshSignal,
+    showRunningScore = false,
+    newestFirst = false,
 }: {
     tournamentUuid: string
     matchId: number
@@ -853,6 +857,12 @@ export function GoalscorersPanel({
     /** Bump this (from a WebSocket live-update) to refetch immediately - the
      *  instant path; polling above is the fallback. */
     refreshSignal?: number
+    /** SofaScore-style: show the running score as a pill on each goal row. */
+    showRunningScore?: boolean
+    /** SofaScore-style: latest event on top (sections + rows reversed) and,
+     *  when both halves have events, a "Poluvrijeme s1 : s2" score divider
+     *  between them instead of the "1./2. poluvrijeme" labels. */
+    newestFirst?: boolean
 }) {
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
 
@@ -981,6 +991,30 @@ export function GoalscorersPanel({
             sections.push({ key: "pen", title: "Penali", events: penalties })
         }
 
+        // Running score for the goal pills + the half-time score divider (both
+        // SofaScore-style, opt-in). Cumulative over the minute-sorted regulation
+        // goals - only GOAL/OWN_GOAL move the score; cards don't.
+        const scoreLabels = new Map<number, string>()
+        let rs1 = 0
+        let rs2 = 0
+        let ht1 = 0
+        let ht2 = 0
+        for (const e of regulation) {
+            if (e.type === "GOAL" || e.type === "OWN_GOAL") {
+                if (e.teamId === t1Id) rs1++
+                else rs2++
+                scoreLabels.set(e.id, `${rs1} - ${rs2}`)
+                if (hl != null && e.minute < hl) {
+                    ht1 = rs1
+                    ht2 = rs2
+                }
+            }
+        }
+        const hasSecond = sections.some((s) => s.key === "h2")
+        // Newest-first: penalties → 2nd half → 1st half, rows within each
+        // reversed so the latest minute sits on top.
+        const ordered = newestFirst ? [...sections].reverse() : sections
+
         return (
             <Box position="relative" w="full">
                 {/* Continuous dashed central line behind everything; the dots
@@ -999,10 +1033,21 @@ export function GoalscorersPanel({
                     zIndex={0}
                 />
                 <VStack align="stretch" gap="0" w="full" position="relative" zIndex={1}>
-                {sections.map((sec) => (
+                {ordered.map((sec) => {
+                    const evs = newestFirst ? [...sec.events].reverse() : sec.events
+                    // Newest-first swaps the "1./2. poluvrijeme" labels for a
+                    // single half-time score divider between the halves.
+                    const title = !newestFirst
+                        ? sec.title
+                        : sec.key === "h1"
+                            ? hasSecond ? `Poluvrijeme  ${ht1} : ${ht2}` : ""
+                            : sec.key === "pen"
+                                ? "Penali"
+                                : ""
+                    return (
                     <Box key={sec.key} w="full">
                         {/* Section header - centred, masks the line behind it. */}
-                        {sec.title && (
+                        {title && (
                             <Flex justify="center" py="2">
                                 <Text
                                     px="3"
@@ -1014,19 +1059,21 @@ export function GoalscorersPanel({
                                     textAlign="center"
                                     whiteSpace="nowrap"
                                 >
-                                    {sec.title}
+                                    {title}
                                 </Text>
                             </Flex>
                         )}
-                        {sec.events.map((evt) => (
+                        {evs.map((evt) => (
                             <TimelineEventLine
                                 key={evt.id}
                                 evt={evt}
                                 isLeft={evt.teamId === t1Id}
+                                scoreLabel={showRunningScore ? scoreLabels.get(evt.id) ?? null : null}
                             />
                         ))}
                     </Box>
-                ))}
+                    )
+                })}
                 </VStack>
             </Box>
         )
@@ -1040,7 +1087,17 @@ export function GoalscorersPanel({
  * central vertical line, with the event label branching to its team's side
  * (team1 → left, team2 → right). The icon always sits nearest the line.
  */
-function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolean }) {
+export function TimelineEventLine({
+    evt,
+    isLeft,
+    scoreLabel,
+}: {
+    evt: MatchEventDto
+    isLeft: boolean
+    /** SofaScore-style running score at this goal (e.g. "1 - 2"); a small pill
+     *  sits nearest the centre line on the scoring side. Null for cards. */
+    scoreLabel?: string | null
+}) {
     const isPenGoal = evt.type === "PENALTY_GOAL"
     const isPenMiss = evt.type === "PENALTY_MISSED"
     const isPenalty = isPenGoal || isPenMiss
@@ -1057,14 +1114,10 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
                 ? String.fromCodePoint(parseInt(EVENT_ICON[evt.type], 16))
                 : "•"
 
-    // Dot colour: own goal + missed penalty + red card red, yellow card amber,
-    // regular / penalty goals blue.
-    const dotColor =
-        isOwnGoal || isPenMiss || evt.type === "RED_CARD"
-            ? "red.solid"
-            : evt.type === "YELLOW_CARD"
-                ? "yellow.solid"
-                : "blue.solid"
+    // Central markers on the timeline line are a uniform ink (black) dot; the
+    // event's colour comes from its icon instead (⚽ goal / red-ball own goal /
+    // 🟨 yellow / 🟥 red), so the line reads as one clean spine.
+    const dotColor = "fg.ink"
 
     // Penalty kicks carry no meaningful match minute; regulation events do.
     const showMinute = !isPenalty
@@ -1096,14 +1149,34 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
             {icon}
         </Text>
     )
+    // SofaScore-style running-score pill (goals only), sitting nearest the line.
+    const pillEl = scoreLabel ? (
+        <Box
+            as="span"
+            px="1.5"
+            py="0.5"
+            rounded="sm"
+            bg="blue.subtle"
+            color="blue.fg"
+            fontFamily="mono"
+            fontSize="2xs"
+            fontWeight={800}
+            lineHeight="1.4"
+            whiteSpace="nowrap"
+            flexShrink={0}
+        >
+            {scoreLabel}
+        </Box>
+    ) : null
     const nameEl = (
         <VStack align={isLeft ? "flex-end" : "flex-start"} gap="0" minW="0">
             <Text
                 fontSize="xs"
                 color={noName ? "fg.muted" : "fg"}
                 fontStyle={noName ? "italic" : undefined}
-                lineHeight="1.4"
-                truncate
+                lineHeight="1.3"
+                lineClamp="2"
+                css={{ overflowWrap: "anywhere" }}
                 textAlign={isLeft ? "right" : "left"}
             >
                 {name}
@@ -1113,7 +1186,8 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
                     fontSize="2xs"
                     color="fg.muted"
                     lineHeight="1.3"
-                    truncate
+                    lineClamp="2"
+                    css={{ overflowWrap: "anywhere" }}
                     textAlign={isLeft ? "right" : "left"}
                 >
                     asist. {evt.assistPlayerName}
@@ -1123,7 +1197,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
     )
 
     return (
-        <Box display="grid" gridTemplateColumns="1fr 28px 1fr" w="full" alignItems="stretch">
+        <Box display="grid" gridTemplateColumns="minmax(0,1fr) 28px minmax(0,1fr)" w="full" alignItems="stretch">
             {/* Left cell (team1) - pushed toward the centre line. */}
             <Flex align="center" justify="flex-end" gap="1.5" pr="2" py="1.5" minW="0" overflow="hidden">
                 {isLeft && (
@@ -1131,6 +1205,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
                         {nameEl}
                         {minuteEl}
                         {iconEl}
+                        {pillEl}
                     </>
                 )}
             </Flex>
@@ -1143,6 +1218,7 @@ function TimelineEventLine({ evt, isLeft }: { evt: MatchEventDto; isLeft: boolea
             <Flex align="center" justify="flex-start" gap="1.5" pl="2" py="1.5" minW="0" overflow="hidden">
                 {!isLeft && (
                     <>
+                        {pillEl}
                         {iconEl}
                         {minuteEl}
                         {nameEl}
@@ -1221,6 +1297,7 @@ export function LiveGoalEntry({
     halfLengthMin,
     halfCount,
     onAdded,
+    onAddEvent,
     sentOffPlayerIds,
     yellowCardedPlayerIds,
 }: {
@@ -1239,6 +1316,9 @@ export function LiveGoalEntry({
     halfLengthMin: number | null
     halfCount: number | null
     onAdded: () => Promise<void> | void
+    /** Offline-aware add. When provided, events are recorded through the
+     *  optimistic/offline queue instead of a direct online POST + refetch. */
+    onAddEvent?: (payload: CreateMatchEventRequest, display: OptimisticDisplay) => void
     /** Players sent off (red card) in this match - greyed out and not
      *  selectable, since they can't score or otherwise affect play. */
     sentOffPlayerIds?: Set<number>
@@ -1249,7 +1329,7 @@ export function LiveGoalEntry({
     const isTimer = liveMode === "TIMER"
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kind, setKind] = useState<MatchEventType>("GOAL")
-    const [minute, setMinute] = useState<string>("")
+    const [minute, setMinute] = useState<string>("0")
     /** While true (TIMER) the "Min" field auto-follows the running clock; a
      *  manual edit turns it off, "Sada" turns it back on. */
     const [autoMinute, setAutoMinute] = useState(true)
@@ -1298,17 +1378,45 @@ export function LiveGoalEntry({
     const minuteNum = parseInt(minute, 10)
     const minuteValid = Number.isFinite(minuteNum) && minuteNum >= 0
 
+    // Timeline side for an event committed by `committingTeamId`: normally that
+    // team, but an own goal shows on (counts for) the OTHER side.
+    function sideFor(committingTeamId: number | null): number | null {
+        if (kind !== "OWN_GOAL") return committingTeamId
+        if (team1Id == null || team2Id == null || committingTeamId == null) return committingTeamId
+        return committingTeamId === team1Id ? team2Id : team1Id
+    }
+    /** Which roster (team) a picked player belongs to. */
+    function teamOfPlayer(p: PlayerDto): number | null {
+        if (team1Id != null && (rosters[team1Id] ?? []).some((x) => x.id === p.id)) return team1Id
+        if (team2Id != null && (rosters[team2Id] ?? []).some((x) => x.id === p.id)) return team2Id
+        return team1Id ?? team2Id
+    }
+
     async function pick(p: PlayerDto) {
         if (!minuteValid || addingId != null) return
         if (sentOffPlayerIds?.has(p.id)) return // sent off - can't affect play
-        setAddingId(p.id)
-        try {
-            await addMatchEvent(uuid, matchId, {
+        const payload: CreateMatchEventRequest = {
+            type: kind,
+            playerId: p.id,
+            minute: minuteNum,
+            assistPlayerId: null,
+        }
+        // Offline-aware path: record optimistically, queue if disconnected.
+        if (onAddEvent) {
+            const side = sideFor(teamOfPlayer(p))
+            if (side == null) return
+            onAddEvent(payload, {
                 type: kind,
                 playerId: p.id,
+                playerName: p.name,
+                teamId: side,
                 minute: minuteNum,
-                assistPlayerId: null,
             })
+            return
+        }
+        setAddingId(p.id)
+        try {
+            await addMatchEvent(uuid, matchId, payload)
             await onAdded()
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -1323,15 +1431,28 @@ export function LiveGoalEntry({
     // record only). Recorded with teamId instead of playerId.
     async function pickAnon(teamId: number) {
         if (!minuteValid || addingId != null || addingAnon != null) return
-        setAddingAnon(teamId)
-        try {
-            await addMatchEvent(uuid, matchId, {
+        const payload: CreateMatchEventRequest = {
+            type: kind,
+            playerId: null,
+            teamId,
+            minute: minuteNum,
+            assistPlayerId: null,
+        }
+        if (onAddEvent) {
+            const side = sideFor(teamId)
+            if (side == null) return
+            onAddEvent(payload, {
                 type: kind,
                 playerId: null,
-                teamId,
+                playerName: null,
+                teamId: side,
                 minute: minuteNum,
-                assistPlayerId: null,
             })
+            return
+        }
+        setAddingAnon(teamId)
+        try {
+            await addMatchEvent(uuid, matchId, payload)
             await onAdded()
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -1367,14 +1488,19 @@ export function LiveGoalEntry({
                     : "🟥 Nepoznati igrač"
 
     return (
-        <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5">
-            {/* Type toggle + minute */}
-            <Flex gap="2" align="center" justify="space-between" wrap="wrap" mb="2">
-                <HStack gap="1" wrap="wrap">
+        <Box>
+            {/* Type toggle - all four in ONE compact row (equal width); the
+                minute field sits on its own row below so nothing wraps on
+                mobile and the four card types always stay on a single line. */}
+            <VStack gap="2" align="stretch" mb="2">
+                <HStack gap="1" w="full">
                     {TYPES.map((t) => (
                         <Button
                             key={t.value}
-                            size="sm"
+                            flex="1"
+                            minW="0"
+                            px="1"
+                            size={{ base: "xs", md: "sm" }}
                             variant={kind === t.value ? "solid" : "outline"}
                             colorPalette={kind === t.value ? "brand" : "gray"}
                             onClick={() => setKind(t.value)}
@@ -1411,7 +1537,7 @@ export function LiveGoalEntry({
                         </Button>
                     )}
                 </HStack>
-            </Flex>
+            </VStack>
             
             {!minuteValid && (
                 <Text fontSize="xs" color="red.fg" mb="2">
@@ -2168,42 +2294,19 @@ export function FoulControls({
     fouls2First?: number | null
     fouls2Second?: number | null
 }) {
-    const [f, setF] = useState({
-        a1: fouls1First ?? 0,
-        b1: fouls1Second ?? 0,
-        a2: fouls2First ?? 0,
-        b2: fouls2Second ?? 0,
+    // Offline-first: taps update the counter instantly and, with no signal,
+    // queue in localStorage; the final value flushes (idempotently) on
+    // reconnect. Same store is shared by all three live consoles.
+    const { fouls, bump, reset } = useOfflineMatchFouls(uuid, matchId, {
+        fouls1First: fouls1First ?? 0,
+        fouls1Second: fouls1Second ?? 0,
+        fouls2First: fouls2First ?? 0,
+        fouls2Second: fouls2Second ?? 0,
     })
-    const [busy, setBusy] = useState(false)
-    const cur1 = half === 1 ? f.a1 : f.b1
-    const cur2 = half === 1 ? f.a2 : f.b2
+    const cur1 = half === 1 ? fouls.fouls1First : fouls.fouls1Second
+    const cur2 = half === 1 ? fouls.fouls2First : fouls.fouls2Second
 
-    async function adjust(team: 1 | 2, delta: number) {
-        if (busy) return
-        setBusy(true)
-        try {
-            const r = await adjustMatchFouls(uuid, matchId, team, half, delta)
-            setF({ a1: r.fouls1First, b1: r.fouls1Second, a2: r.fouls2First, b2: r.fouls2Second })
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setBusy(false)
-        }
-    }
-
-    async function doReset() {
-        setBusy(true)
-        try {
-            const r = await resetMatchFouls(uuid, matchId, half)
-            setF({ a1: r.fouls1First, b1: r.fouls1Second, a2: r.fouls2First, b2: r.fouls2Second })
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setBusy(false)
-        }
-    }
-
-    // Reset is destructive → confirm via a toast action before zeroing.
+    // Reset is destructive → confirm before zeroing.
     const [confirmResetOpen, setConfirmResetOpen] = useState(false)
     function confirmReset() {
         setConfirmResetOpen(true)
@@ -2217,7 +2320,7 @@ export function FoulControls({
         <>
         <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
             <Box justifySelf="end">
-                <FoulCounter count={cur1} busy={busy} onMinus={() => adjust(1, -1)} onPlus={() => adjust(1, 1)} />
+                <FoulCounter count={cur1} busy={false} onMinus={() => bump(1, half, -1)} onPlus={() => bump(1, half, 1)} />
             </Box>
             <HStack gap="1" align="center" minW="0" justifySelf="center">
                 <Text
@@ -2237,24 +2340,22 @@ export function FoulControls({
                     variant="ghost"
                     color="fg.muted"
                     onClick={confirmReset}
-                    disabled={busy}
                 >
                     <FiRotateCcw />
                 </IconButton>
             </HStack>
             <Box justifySelf="start">
-                <FoulCounter count={cur2} busy={busy} onMinus={() => adjust(2, -1)} onPlus={() => adjust(2, 1)} />
+                <FoulCounter count={cur2} busy={false} onMinus={() => bump(2, half, -1)} onPlus={() => bump(2, half, 1)} />
             </Box>
         </Box>
         <ConfirmDialog
             open={confirmResetOpen}
-            busy={busy}
             danger
             title="Resetirati prekršaje?"
             description="Akumulirani prekršaji oba tima vraćaju se na 0."
             confirmLabel="Da, resetiraj"
             onClose={() => setConfirmResetOpen(false)}
-            onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
+            onConfirm={() => { reset(half); setConfirmResetOpen(false) }}
         />
         </>
     )

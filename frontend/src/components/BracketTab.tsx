@@ -33,9 +33,7 @@ import {
 import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
 import { showError, toaster } from "../toaster"
 import {
-    deleteMatchEvent,
     endFirstHalf,
-    fetchMatchEvents,
     pauseMatch,
     resetMatch,
     resumeMatch,
@@ -44,6 +42,8 @@ import {
 } from "../api/matchEvents"
 import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
+import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
+import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
@@ -1848,7 +1848,18 @@ export function BracketLiveMatchDialog({
     const [editGoals, setEditGoals] = useState(false)
     const lockGoals = decidedOnPenalties && !editGoals
 
-    const [events, setEvents] = useState<MatchEventDto[] | null>(null)
+    // Offline-first live events: optimistic add/delete, queued while offline,
+    // replayed on reconnect (idempotent via a client key).
+    const {
+        events,
+        loaded: eventsLoaded,
+        pending: pendingCount,
+        online,
+        syncing,
+        addEvent,
+        deleteEvent,
+        refetch: refetchEvents,
+    } = useOfflineMatchEvents(uuid, matchId)
     // Players sent off (red card) - greyed out + locked in the entry roster.
     const sentOffIds = useMemo(
         () =>
@@ -1869,15 +1880,6 @@ export function BracketLiveMatchDialog({
             ),
         [events],
     )
-    const [score, setScore] = useState<{ s1: number; s2: number }>({
-        s1: match.score1 ?? 0,
-        s2: match.score2 ?? 0,
-    })
-    // Show the stored score until the organizer edits an event in this dialog
-    // (then recompute from the event log) - keeps a result-only match from
-    // flashing 0:0 when opened via "Uredi rezultat".
-    const [scoreDirty, setScoreDirty] = useState(false)
-
     /**
      * The half timing for this match. {@code secondHalfStartedAt} is tracked
      * locally so the dialog reflects the 2nd half the moment the organizer
@@ -1902,8 +1904,6 @@ export function BracketLiveMatchDialog({
     /** True once the organizer hits "Završi" on a level knockout match -
      *  shows the guided penalty shootout instead of finishing as a draw. */
     const [shootout, setShootout] = useState(false)
-    /** eventId currently being deleted. */
-    const [deletingId, setDeletingId] = useState<number | null>(null)
     // Direct final-score entry (no scorers). `pendingScore` carries an entered
     // score into the penalty shootout for a level knockout result.
     const [savingScore, setSavingScore] = useState(false)
@@ -1917,15 +1917,6 @@ export function BracketLiveMatchDialog({
     /** Penalty result (as text) for a level result-only score - a knockout
      *  can't end drawn, so a level score needs a penalty tally. */
     const [directPens, setDirectPens] = useState<{ p1: string; p2: string }>({ p1: "", p2: "" })
-
-    // Load events once (rosters are owned by LiveGoalEntry).
-    useEffect(() => {
-        let cancelled = false
-        fetchMatchEvents(uuid, matchId)
-            .then((ev) => { if (!cancelled) setEvents(ev) })
-            .catch(() => { if (!cancelled) setEvents([]) })
-        return () => { cancelled = true }
-    }, [uuid, matchId])
 
     // For TIMER matches, fetch the half config (length + count) once.
     useEffect(() => {
@@ -2067,33 +2058,16 @@ export function BracketLiveMatchDialog({
         return { s1, s2 }
     }
 
+    // Live score derives from the (optimistic) event log; before any event
+    // exists fall back to the stored score so a result-only match doesn't
+    // flash 0:0. Adding a goal offline updates this instantly.
+    const score = events.length > 0
+        ? scoreFromEvents(events)
+        : { s1: match.score1 ?? 0, s2: match.score2 ?? 0 }
+
     async function refreshAfterMutation() {
-        setScoreDirty(true)
-        try {
-            const ev = await fetchMatchEvents(uuid, matchId)
-            setEvents(ev)
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        }
+        await refetchEvents()
         await onChanged()
-    }
-
-    // Keep the score in sync with the event log once events have been edited.
-    useEffect(() => {
-        if (events && scoreDirty) setScore(scoreFromEvents(events))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [events, scoreDirty])
-
-    async function handleDelete(eventId: number) {
-        setDeletingId(eventId)
-        try {
-            await deleteMatchEvent(uuid, matchId, eventId)
-            await refreshAfterMutation()
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setDeletingId(null)
-        }
     }
 
     async function handleFinish() {
@@ -2211,7 +2185,7 @@ export function BracketLiveMatchDialog({
     // then, so the dialog collapses to just the score editor + "Poništi
     // utakmicu" (annuls the result so it can be re-entered).
     const resultOnly =
-        isFinished && !decidedOnPenalties && events != null && events.length === 0
+        isFinished && !decidedOnPenalties && eventsLoaded && events.length === 0
 
     return (
         <>
@@ -2422,6 +2396,7 @@ export function BracketLiveMatchDialog({
                                         halfLengthMin={halfLengthMin}
                                         halfCount={halfCount}
                                         onAdded={refreshAfterMutation}
+                                        onAddEvent={addEvent}
                                         sentOffPlayerIds={sentOffIds}
                                         yellowCardedPlayerIds={yellowIds}
                                     />
@@ -2440,7 +2415,7 @@ export function BracketLiveMatchDialog({
                                     >
                                         Tijek utakmice
                                     </Text>
-                                    {events == null ? (
+                                    {!eventsLoaded && events.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
                                             Učitavanje…
                                         </Text>
@@ -2458,15 +2433,20 @@ export function BracketLiveMatchDialog({
                                         <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
                                             {events.map((ev) => (
                                                 <LiveEventRow
-                                                    key={ev.id}
+                                                    key={ev.clientEventId ?? ev.id}
                                                     ev={ev}
                                                     team1Id={match.team1Id}
                                                     canDelete={!lockGoals}
-                                                    deleting={deletingId === ev.id}
-                                                    onDelete={() => handleDelete(ev.id)}
+                                                    deleting={false}
+                                                    onDelete={() => deleteEvent(ev)}
                                                 />
                                             ))}
                                         </VStack>
+                                    )}
+                                    {(!online || pendingCount > 0 || syncing) && (
+                                        <Flex justify="center" mt="2">
+                                            <LiveSyncIndicator online={online} pending={pendingCount} syncing={syncing} />
+                                        </Flex>
                                     )}
                                 </Box>
                             </VStack>

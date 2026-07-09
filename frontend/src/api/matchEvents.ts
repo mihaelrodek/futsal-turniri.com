@@ -187,6 +187,27 @@ export async function adjustMatchFouls(
     return data
 }
 
+/**
+ * SET a team's accumulated foul count for one half to an absolute value.
+ * Idempotent (unlike {@link adjustMatchFouls}'s ±1 delta) - resending the same
+ * value never over-counts - so the offline queue can safely flush the final
+ * local counter on reconnect. Silent. Returns the updated tallies.
+ */
+export async function setMatchFouls(
+    tournamentUuid: string,
+    matchId: number,
+    team: 1 | 2,
+    half: 1 | 2,
+    value: number,
+): Promise<MatchFouls> {
+    const { data } = await http.post<MatchFouls>(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/fouls/set`,
+        { team, half, value },
+        { silent: true } as any,
+    )
+    return data
+}
+
 /** Reset both teams' accumulated fouls for one half back to 0. */
 export async function resetMatchFouls(
     tournamentUuid: string,

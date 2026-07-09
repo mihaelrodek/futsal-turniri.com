@@ -3,9 +3,7 @@ import { Box, Button, Flex, HStack, Text, VStack } from "@chakra-ui/react"
 import { FiEdit2 } from "react-icons/fi"
 
 import {
-    deleteMatchEvent,
     endFirstHalf,
-    fetchMatchEvents,
     finishMatch,
     pauseMatch,
     resetMatch,
@@ -17,6 +15,8 @@ import { recordKnockoutResult } from "../api/bracket"
 import { recordGroupResult } from "../api/groups"
 import { fetchSchedule } from "../api/schedule"
 import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
+import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
+import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog } from "../ui/primitives"
 import {
     DirectScoreEditor,
@@ -95,7 +95,19 @@ export default function LiveMatchPanel({
     const isScheduled = !isLive && !isFinished
     const isTimer = match.liveMode === "TIMER"
 
-    const [events, setEvents] = useState<MatchEventDto[] | null>(null)
+    // Offline-first live events: optimistic add/delete, queued while offline,
+    // replayed on reconnect (idempotent via a client key). Score derives from
+    // these locally, so a queued goal shows instantly.
+    const {
+        events,
+        loaded: eventsLoaded,
+        pending: pendingCount,
+        online,
+        syncing,
+        addEvent,
+        deleteEvent,
+        refetch: refetchEvents,
+    } = useOfflineMatchEvents(uuid, matchId)
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
     const [firstHalfEndedAt, setFirstHalfEndedAt] = useState<string | null>(
@@ -113,7 +125,6 @@ export default function LiveMatchPanel({
     const [finishing, setFinishing] = useState(false)
     const [resetting, setResetting] = useState(false)
     const [shootout, setShootout] = useState(false)
-    const [deletingId, setDeletingId] = useState<number | null>(null)
     // Direct final-score entry (no scorers). Hidden during LIVE unless toggled
     // from the ⋯ menu; `pendingScore` carries an entered score into the penalty
     // shootout for a level knockout result.
@@ -156,15 +167,6 @@ export default function LiveMatchPanel({
         events && events.length > 0
             ? liveScore
             : { s1: match.score1 ?? 0, s2: match.score2 ?? 0 }
-
-    // Load events for this match.
-    useEffect(() => {
-        let cancelled = false
-        fetchMatchEvents(uuid, matchId)
-            .then((ev) => { if (!cancelled) setEvents(ev) })
-            .catch(() => { if (!cancelled) setEvents([]) })
-        return () => { cancelled = true }
-    }, [uuid, matchId])
 
     // Half config (length + count) for TIMER matches.
     useEffect(() => {
@@ -214,11 +216,7 @@ export default function LiveMatchPanel({
         isTimer && phase !== "FULL_TIME" && !(inFinalHalf && !hasClock)
 
     async function refreshAfterMutation() {
-        try {
-            setEvents(await fetchMatchEvents(uuid, matchId))
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        }
+        await refetchEvents()
         await onChanged()
     }
 
@@ -291,17 +289,6 @@ export default function LiveMatchPanel({
         }
     }
 
-    async function handleDelete(eventId: number) {
-        setDeletingId(eventId)
-        try {
-            await deleteMatchEvent(uuid, matchId, eventId)
-            await refreshAfterMutation()
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setDeletingId(null)
-        }
-    }
 
     async function handleFinish() {
         // A level knockout match can't end as a draw - go to penalties.
@@ -405,7 +392,11 @@ export default function LiveMatchPanel({
                 : { label: "Završi", run: requestFinish, busy: finishing }
 
     return (
-        <Box borderWidth="1px" borderColor="border.emphasized" rounded="xl" p={{ base: "4", md: "5" }}>
+        // No own border/padding - this panel always lives inside a padded
+        // Panel card (LiveControlTab), so a second frame just wasted width.
+        // Dropping it gives the scoreboard + entry noticeably more room,
+        // especially on mobile.
+        <Box>
             {/* Big scoreboard header: UŽIVO pill, big timer with pause/play,
                 phase label, teams around the score. */}
             <Box mb="3">
@@ -516,6 +507,7 @@ export default function LiveMatchPanel({
                             halfLengthMin={halfLengthMin}
                             halfCount={halfCount}
                             onAdded={refreshAfterMutation}
+                            onAddEvent={addEvent}
                             sentOffPlayerIds={sentOffIds}
                             yellowCardedPlayerIds={yellowIds}
                         />
@@ -549,12 +541,19 @@ export default function LiveMatchPanel({
                 </VStack>
             )}
 
+            {/* Offline / sync status for live scoring. */}
+            {(!online || pendingCount > 0 || syncing) && (
+                <Flex justify="center" mt="3">
+                    <LiveSyncIndicator online={online} pending={pendingCount} syncing={syncing} />
+                </Flex>
+            )}
+
             {/* Timeline - always shown (read-only when finished). */}
             <Box textAlign="center" mt="3">
                 <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1.5">
                     Tijek utakmice
                 </Text>
-                {events == null ? (
+                {!eventsLoaded && events.length === 0 ? (
                     <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
                 ) : events.length === 0 ? (
                     <Text fontSize="sm" color="fg.muted">
@@ -564,12 +563,12 @@ export default function LiveMatchPanel({
                     <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
                         {events.map((ev) => (
                             <LiveEventRow
-                                key={ev.id}
+                                key={ev.clientEventId ?? ev.id}
                                 ev={ev}
                                 team1Id={match.team1Id}
                                 canDelete={!isFinished}
-                                deleting={deletingId === ev.id}
-                                onDelete={() => handleDelete(ev.id)}
+                                deleting={false}
+                                onDelete={() => deleteEvent(ev)}
                             />
                         ))}
                     </VStack>

@@ -68,4 +68,12 @@ public class MatchEvent {
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
+
+    /**
+     * Client-generated idempotency key (UUID) for offline live-scoring. Lets a
+     * queued goal/card that gets resent on reconnect be deduped instead of
+     * inserted twice. Null for events created online without a key / pre-feature.
+     */
+    @Column(name = "client_event_id", length = 64)
+    private String clientEventId;
 }

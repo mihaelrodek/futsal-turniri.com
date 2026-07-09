@@ -18,9 +18,7 @@ import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGr
 import type { Group, GroupMatch, ThirdPlacedTable } from "../types/groups"
 import type { TeamShort } from "../types/teams"
 import {
-    deleteMatchEvent,
     endFirstHalf,
-    fetchMatchEvents,
     finishMatch,
     pauseMatch,
     resetMatch,
@@ -33,6 +31,8 @@ import type {
     MatchLiveMode,
 } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
+import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
+import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { FiRefreshCw, FiTrash2 } from "react-icons/fi"
@@ -1254,12 +1254,12 @@ export default function GroupsTab({
                     <Box>
                         {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
-                            Mobile keeps the core P·N·I + BOD; md adds UT/GR/GOL/
+                            Mobile keeps P·N·I + GR + BOD; md adds UT/GOL/
                             Zadnjih 5. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "22px 1fr 22px 22px 22px 32px",
+                                base: "22px 1fr 22px 22px 22px 30px 32px",
                                 md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                             }}
                             gap="1.5"
@@ -1283,7 +1283,7 @@ export default function GroupsTab({
                             <StHead label="P" />
                             <StHead label="N" />
                             <StHead label="I" />
-                            <StHead label="GR" mdOnly />
+                            <StHead label="GR" />
                             <StHead label="GOL" mdOnly />
                             <StHead label="ZADNJIH 5" mdOnly />
                             <StHead label="BOD" />
@@ -1298,7 +1298,7 @@ export default function GroupsTab({
                                     key={row.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "22px 1fr 22px 22px 22px 32px",
+                                        base: "22px 1fr 22px 22px 22px 30px 32px",
                                         md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
                                     }}
                                     gap="1.5"
@@ -1331,9 +1331,8 @@ export default function GroupsTab({
                                     <StNum value={row.won} />
                                     <StNum value={row.drawn} />
                                     <StNum value={row.lost} />
-                                    {/* GR (gol-razlika) - md only */}
+                                    {/* GR (gol-razlika) - shown on mobile too */}
                                     <StNum
-                                        mdOnly
                                         weight={600}
                                         value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                                         color={
@@ -1756,7 +1755,18 @@ export function GroupLiveMatchDialog({
     const isFinished = match.status === "FINISHED"
     const isTimer = match.liveMode === "TIMER"
 
-    const [events, setEvents] = useState<MatchEventDto[] | null>(null)
+    // Offline-first live events: optimistic add/delete, queued while offline,
+    // replayed on reconnect (idempotent via a client key).
+    const {
+        events,
+        loaded: eventsLoaded,
+        pending: pendingCount,
+        online,
+        syncing,
+        addEvent,
+        deleteEvent,
+        refetch: refetchEvents,
+    } = useOfflineMatchEvents(uuid, matchId)
     // Players sent off (red card) - greyed out + locked in the entry roster.
     const sentOffIds = useMemo(
         () =>
@@ -1777,16 +1787,6 @@ export function GroupLiveMatchDialog({
             ),
         [events],
     )
-    const [score, setScore] = useState<{ s1: number; s2: number }>({
-        s1: match.score1 ?? 0,
-        s2: match.score2 ?? 0,
-    })
-    // Until the organizer adds/removes an event in this dialog the scoreboard
-    // shows the stored score (so a result-only match - entered via "Unesi
-    // samo rezultat" with no goal events - doesn't flash 0:0). After any event
-    // mutation we recompute live from the event log.
-    const [scoreDirty, setScoreDirty] = useState(false)
-
     /**
      * The half timing for this match. {@code secondHalfStartedAt} is tracked
      * locally so the dialog reflects the 2nd half the moment the organizer
@@ -1808,8 +1808,6 @@ export function GroupLiveMatchDialog({
     const [pauseBusy, setPauseBusy] = useState(false)
 
     const [finishing, setFinishing] = useState(false)
-    /** eventId currently being deleted. */
-    const [deletingId, setDeletingId] = useState<number | null>(null)
     /** Saving a directly-entered final score (no scorers). */
     const [savingScore, setSavingScore] = useState(false)
     /** Live value of the result-only score editor, so the footer "Spremi
@@ -1818,15 +1816,6 @@ export function GroupLiveMatchDialog({
         s1: match.score1 ?? 0,
         s2: match.score2 ?? 0,
     })
-
-    // Load events once (rosters are owned by LiveGoalEntry).
-    useEffect(() => {
-        let cancelled = false
-        fetchMatchEvents(uuid, matchId)
-            .then((ev) => { if (!cancelled) setEvents(ev) })
-            .catch(() => { if (!cancelled) setEvents([]) })
-        return () => { cancelled = true }
-    }, [uuid, matchId])
 
     // For TIMER matches, fetch the half config (length + count) once.
     useEffect(() => {
@@ -1969,34 +1958,16 @@ export function GroupLiveMatchDialog({
         return { s1, s2 }
     }
 
+    // Live score derives from the (optimistic) event log; before any event
+    // exists fall back to the stored score so a result-only match doesn't
+    // flash 0:0. Adding a goal offline updates this instantly.
+    const score = events.length > 0
+        ? scoreFromEvents(events)
+        : { s1: match.score1 ?? 0, s2: match.score2 ?? 0 }
+
     async function refreshAfterMutation() {
-        setScoreDirty(true)
-        try {
-            const ev = await fetchMatchEvents(uuid, matchId)
-            setEvents(ev)
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        }
+        await refetchEvents()
         await onChanged()
-    }
-
-    // Keep the score in sync with the event log once the organizer has edited
-    // events (see scoreDirty above).
-    useEffect(() => {
-        if (events && scoreDirty) setScore(scoreFromEvents(events))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [events, scoreDirty])
-
-    async function handleDelete(eventId: number) {
-        setDeletingId(eventId)
-        try {
-            await deleteMatchEvent(uuid, matchId, eventId)
-            await refreshAfterMutation()
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setDeletingId(null)
-        }
     }
 
     async function handleFinish() {
@@ -2020,7 +1991,6 @@ export function GroupLiveMatchDialog({
         setSavingScore(true)
         try {
             await recordGroupResult(uuid, matchId, s1, s2)
-            setScore({ s1, s2 })
             await onChanged()
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -2059,7 +2029,7 @@ export function GroupLiveMatchDialog({
     // ("Unesi samo rezultat"). Editing scorers / cards / fouls is meaningless
     // then, so the dialog collapses to just the score editor + "Poništi
     // utakmicu" (which annuls the result so it can be re-entered).
-    const resultOnly = isFinished && events != null && events.length === 0
+    const resultOnly = isFinished && eventsLoaded && events.length === 0
 
     return (
         <>
@@ -2158,6 +2128,7 @@ export function GroupLiveMatchDialog({
                                         halfLengthMin={halfLengthMin}
                                         halfCount={halfCount}
                                         onAdded={refreshAfterMutation}
+                                        onAddEvent={addEvent}
                                         sentOffPlayerIds={sentOffIds}
                                         yellowCardedPlayerIds={yellowIds}
                                     />
@@ -2176,7 +2147,7 @@ export function GroupLiveMatchDialog({
                                     >
                                         Tijek utakmice
                                     </Text>
-                                    {events == null ? (
+                                    {!eventsLoaded && events.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
                                             Učitavanje…
                                         </Text>
@@ -2197,15 +2168,20 @@ export function GroupLiveMatchDialog({
                                         <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
                                             {events.map((ev) => (
                                                 <LiveEventRow
-                                                    key={ev.id}
+                                                    key={ev.clientEventId ?? ev.id}
                                                     ev={ev}
                                                     team1Id={match.team1Id}
                                                     canDelete
-                                                    deleting={deletingId === ev.id}
-                                                    onDelete={() => handleDelete(ev.id)}
+                                                    deleting={false}
+                                                    onDelete={() => deleteEvent(ev)}
                                                 />
                                             ))}
                                         </VStack>
+                                    )}
+                                    {(!online || pendingCount > 0 || syncing) && (
+                                        <Flex justify="center" mt="2">
+                                            <LiveSyncIndicator online={online} pending={pendingCount} syncing={syncing} />
+                                        </Flex>
                                     )}
                                 </Box>
                             </VStack>

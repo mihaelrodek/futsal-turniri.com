@@ -18,5 +18,8 @@ public record CreateMatchEventRequest(
         Long playerId,
         Long teamId,
         Integer minute,
-        Long assistPlayerId
+        Long assistPlayerId,
+        /** Optional client-generated idempotency key (UUID) for offline
+         *  live-scoring; a resent event with the same key is deduped. */
+        String clientEventId
 ) {}

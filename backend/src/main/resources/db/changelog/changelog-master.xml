@@ -43,4 +43,5 @@
     <include file="db/changelog/tournament_best_third.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_pause.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/teams_draw_position.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_event_client_id.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

@@ -31,6 +31,7 @@ public interface TournamentMapper {
             @Mapping(target = "entryPrice", source = "entryPrice"),
             @Mapping(target = "prizeTotal", expression = "java(prizeTotal(t))"),
             @Mapping(target = "winnerName", source = "winnerName"),
+            @Mapping(target = "status", source = "status", qualifiedByName = "enumToName"),
             @Mapping(target = "bannerUrl", expression = "java(publicUrl(t))"),
             @Mapping(target = "registeredTeams",
                     expression = "java(teamCountsByTournamentId.getOrDefault(t.getId(), 0L).intValue())"),

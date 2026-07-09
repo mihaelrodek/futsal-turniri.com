@@ -453,6 +453,8 @@ public class GroupStageService {
         else if (score2 > score1) m.setWinnerTeam(m.getTeam2());
         else m.setWinnerTeam(null); // draw
         m.setStatus(MatchStatus.FINISHED);
+        // Recording a result counts as the tournament having started.
+        if (m.getTournament() != null) m.getTournament().markStartedIfDraft();
     }
 
     /**

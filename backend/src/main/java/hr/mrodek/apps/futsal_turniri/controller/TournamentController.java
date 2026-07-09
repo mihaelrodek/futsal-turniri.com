@@ -1792,6 +1792,10 @@ public class TournamentController {
         match.setLiveStartedAt(java.time.OffsetDateTime.now());
         match.setLivePausedAt(null);
 
+        // First match to kick off (in any way) flips the tournament DRAFT →
+        // STARTED, so the home page shows it "u tijeku" instead of upcoming.
+        if (match.getTournament() != null) match.getTournament().markStartedIfDraft();
+
         // Notify everyone who tapped the bell on this specific match that it
         // just kicked off. Fire-and-forget - a flaky push must not abort the
         // start.
@@ -1961,6 +1965,44 @@ public class TournamentController {
         } else {
             match.setFouls1Second(0);
             match.setFouls2Second(0);
+        }
+        notifyLive(match);
+        return Response.ok(new MatchFoulsDto(
+                match.getFouls1First(), match.getFouls1Second(),
+                match.getFouls2First(), match.getFouls2Second())).build();
+    }
+
+    /**
+     * SET a team's accumulated foul count for one half to an absolute value.
+     * Organizer/admin only. Idempotent (unlike the ±1 {@link #adjustFouls}), so
+     * the offline live-scoring queue can safely flush - and resend - the
+     * organizer's final local counter when connectivity returns. Value clamped
+     * at 0. Returns the match's updated foul tallies.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/fouls/set")
+    @Authenticated
+    @Transactional
+    public Response setFouls(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId,
+            MatchFoulSetRequest body
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+        if (body == null
+                || (body.team() != 1 && body.team() != 2)
+                || (body.half() != 1 && body.half() != 2)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("team and half must be 1 or 2").build();
+        }
+        int value = Math.max(0, body.value());
+        if (body.team() == 1) {
+            if (body.half() == 1) match.setFouls1First(value);
+            else match.setFouls1Second(value);
+        } else {
+            if (body.half() == 1) match.setFouls2First(value);
+            else match.setFouls2Second(value);
         }
         notifyLive(match);
         return Response.ok(new MatchFoulsDto(
@@ -2157,6 +2199,24 @@ public class TournamentController {
         if (body == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity("Body required").build();
         }
+
+        // Idempotency: an offline-queued event may be resent on reconnect. If we
+        // already have a row for this client key, return it instead of inserting
+        // a duplicate. Short-circuits before any validation/side effects.
+        final String clientEventId =
+                body.clientEventId() != null && !body.clientEventId().isBlank()
+                        ? body.clientEventId().trim() : null;
+        if (clientEventId != null) {
+            var dup = matchEventRepo.find(
+                    "match.id = ?1 and clientEventId = ?2", matchId, clientEventId)
+                    .firstResultOptional();
+            if (dup.isPresent()) {
+                return Response.status(Response.Status.CREATED)
+                        .entity(matchEventMapper.toDto(dup.get()))
+                        .build();
+            }
+        }
+
         if (body.type() == null || body.type().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST).entity("type is required").build();
         }
@@ -2245,6 +2305,7 @@ public class TournamentController {
                 : (player == null ? eventTeam : null));
         event.setMinute(body.minute());
         event.setAssistPlayer(assist);
+        event.setClientEventId(clientEventId);
         matchEventRepo.persist(event);
 
         // A goal (own or regular) changes the score; cards never do.

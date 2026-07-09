@@ -270,4 +270,15 @@ public class Tournaments {
         if (format == null) format = TournamentFormat.GROUPS_KNOCKOUT;
         if (entryPrice == null) entryPrice = BigDecimal.ZERO;
     }
+
+    /**
+     * Flip DRAFT → STARTED the first time a match of this tournament is played -
+     * whether it was started live or just had a result recorded. No-op once the
+     * tournament is already STARTED or FINISHED, so it never rewinds the status.
+     */
+    public void markStartedIfDraft() {
+        if (status == TournamentStatus.DRAFT) {
+            status = TournamentStatus.STARTED;
+        }
+    }
 }

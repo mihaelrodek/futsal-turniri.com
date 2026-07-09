@@ -242,10 +242,14 @@ function FeaturedTournamentHero({
 function LiveMatchCard({
     match,
     onOpen,
+    onOpenMatch,
     refreshSignal,
 }: {
     match: LiveMatch
+    /** Navigate to the tournament detail page ("na turnir"). */
     onOpen: () => void
+    /** Navigate to this match's own live page ("na utakmicu"). */
+    onOpenMatch: () => void
     refreshSignal?: number
 }) {
     const livePhase =
@@ -282,18 +286,21 @@ function LiveMatchCard({
             {/* Header + scoreboard wrap - clicking anywhere on this region
                  toggles the expanded scorer timeline below. */}
             <Box cursor="pointer" onClick={() => setExpanded((v) => !v)}>
-            {/* Header strip */}
-            <Flex
-                justify="space-between"
-                align="center"
+            {/* Header strip: top row (UŽIVO · centred phase/clock · bell), then
+                the tournament name centred underneath, right above the score. */}
+            <Box
                 px="4"
                 py="2.5"
                 bg="bg.surfaceTint2"
                 borderBottomWidth="1px"
                 borderColor="border"
-                gap="2"
             >
-                <HStack gap="2" minW="0">
+                <Box
+                    display="grid"
+                    gridTemplateColumns="1fr auto 1fr"
+                    alignItems="center"
+                    gap="2"
+                >
                     <HStack
                         gap="1"
                         px="2"
@@ -305,37 +312,48 @@ function LiveMatchCard({
                         fontSize="9px"
                         fontWeight={800}
                         letterSpacing="0.1em"
+                        justifySelf="start"
+                        w="fit-content"
                     >
                         <PulseDot color="white" size={5} />
                         UŽIVO
                     </HStack>
-                    <Text fontSize="12px" fontWeight={600} color="fg.ink" truncate>
-                        {match.tournamentName}
-                    </Text>
-                </HStack>
-                <HStack gap="2">
-                    {/* Live clock - pulls minute from the same fields the
-                         tournament-page LiveMatchDialog uses, so the two
-                         views stay numerically in sync. */}
-                    {match.liveMode === "TIMER" && match.liveStartedAt && (
-                        <LiveClock
-                            liveStartedAt={match.liveStartedAt}
-                            firstHalfEndedAt={match.firstHalfEndedAt ?? null}
-                            secondHalfStartedAt={match.secondHalfStartedAt ?? null}
-                            livePausedAt={match.livePausedAt ?? null}
-                            halfLengthMin={match.halfLengthMin}
-                            halfCount={match.halfCount}
-                            size="md"
-                        />
-                    )}
-                    <MonoLabel color="fg.muted">{half}</MonoLabel>
+                    <HStack gap="2" justifySelf="center" minW="0">
+                        {/* Live clock - pulls minute from the same fields the
+                             tournament-page LiveMatchDialog uses, so the two
+                             views stay numerically in sync. */}
+                        {match.liveMode === "TIMER" && match.liveStartedAt && (
+                            <LiveClock
+                                liveStartedAt={match.liveStartedAt}
+                                firstHalfEndedAt={match.firstHalfEndedAt ?? null}
+                                secondHalfStartedAt={match.secondHalfStartedAt ?? null}
+                                livePausedAt={match.livePausedAt ?? null}
+                                halfLengthMin={match.halfLengthMin}
+                                halfCount={match.halfCount}
+                                size="md"
+                            />
+                        )}
+                        <MonoLabel color="fg.muted">{half}</MonoLabel>
+                    </HStack>
                     {/* Follow this live match - goal / finish notifications. */}
-                    <MatchNotificationBell
-                        tournamentUuid={match.tournamentUuid}
-                        matchId={match.matchId}
-                    />
-                </HStack>
-            </Flex>
+                    <Box justifySelf="end">
+                        <MatchNotificationBell
+                            tournamentUuid={match.tournamentUuid}
+                            matchId={match.matchId}
+                        />
+                    </Box>
+                </Box>
+                <Text
+                    fontSize="12px"
+                    fontWeight={600}
+                    color="fg.ink"
+                    textAlign="center"
+                    truncate
+                    mt="1.5"
+                >
+                    {match.tournamentName}
+                </Text>
+            </Box>
 
             {/* Scoreboard - tighter on mobile so the card stays one-column
                  friendly while readable. Score scales 30px→42px; long team
@@ -435,8 +453,24 @@ function LiveMatchCard({
                 py="2.5"
                 borderTopWidth="1px"
                 borderColor="border"
+                gap="2"
             >
-                <Box />
+                <Box
+                    as="span"
+                    fontSize="12px"
+                    fontWeight={700}
+                    color="pitch.500"
+                    cursor="pointer"
+                    justifySelf="start"
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onOpen()
+                    }}
+                    css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    _hover={{ textDecoration: "underline" }}
+                >
+                    ← na turnir
+                </Box>
                 <Flex
                     align="center"
                     gap="1.5"
@@ -463,12 +497,12 @@ function LiveMatchCard({
                     justifySelf="end"
                     onClick={(e) => {
                         e.stopPropagation()
-                        onOpen()
+                        onOpenMatch()
                     }}
                     css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                     _hover={{ textDecoration: "underline" }}
                 >
-                    Otvori turnir →
+                    na utakmicu →
                 </Box>
             </Box>
         </Box>
@@ -548,6 +582,9 @@ export default function LivePage() {
 
     function goToMatch(m: LiveMatch) {
         navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}`)
+    }
+    function goToMatchPage(m: LiveMatch) {
+        navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}/utakmica/${m.matchId}`)
     }
 
     // Upcoming matches grouped by day, soonest first. Each day's matches
@@ -681,6 +718,7 @@ export default function LivePage() {
                                     <LiveMatchCard
                                         match={featured}
                                         onOpen={() => goToMatch(featured)}
+                                        onOpenMatch={() => goToMatchPage(featured)}
                                         refreshSignal={liveTick}
                                     />
                                 </Box>
@@ -703,6 +741,7 @@ export default function LivePage() {
                                                 key={m.matchId}
                                                 match={m}
                                                 onOpen={() => goToMatch(m)}
+                                                onOpenMatch={() => goToMatchPage(m)}
                                                 refreshSignal={liveTick}
                                             />
                                         ))}
@@ -762,7 +801,10 @@ export default function LivePage() {
                                         const openMatch = () =>
                                             navigate(
                                                 `/turniri/${m.tournamentSlug || m.tournamentUuid}` +
-                                                    `?tab=raspored&match=${m.matchId}`,
+                                                    `?tab=bracket&match=${m.matchId}` +
+                                                    // GROUP match → grupe (default sub);
+                                                    // any knockout stage → eliminacija.
+                                                    (m.stage && m.stage !== "GROUP" ? "&sub=eliminacija" : ""),
                                             )
                                         return (
                                             <Flex

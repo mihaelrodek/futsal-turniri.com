@@ -18,5 +18,8 @@ public record MatchEventDto(
         Long teamId,
         Integer minute,
         Long assistPlayerId,
-        String assistPlayerName
+        String assistPlayerName,
+        /** Echoes the client idempotency key so the frontend can reconcile an
+         *  optimistic (offline) event with its persisted server row. */
+        String clientEventId
 ) {}

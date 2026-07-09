@@ -49,7 +49,6 @@ import {
     PitchBackdrop,
     PulseDot,
     StatusChip,
-    TintButton,
     TournamentPoster,
 } from "../ui/pitch"
 import { clockState, matchPhase } from "../components/liveMatch"
@@ -115,6 +114,9 @@ function classifyStatus(
 ): { status: "live" | "upcoming" | "soon" | "full" | "finished"; label: string } {
     if (variant === "finished") return { status: "finished", label: "Završen" }
     if (t.liveMatch) return { status: "live", label: "UŽIVO" }
+    // A started (but not finished) tournament reads as "u tijeku" with the same
+    // red pulsing badge as a live match, even between individual matches.
+    if (t.status === "STARTED") return { status: "live", label: "U TIJEKU" }
     const isFull =
         typeof t.registeredTeams === "number" &&
         typeof t.maxTeams === "number" &&
@@ -219,14 +221,12 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 py={{ base: 4, md: 5 }}
             >
                 <Box textAlign={{ base: "center", md: "right" }}>
-                    <MonoLabel color="rgba(255,255,255,0.6)">DOMAĆIN</MonoLabel>
                     <Box
                         fontFamily="heading"
                         fontSize={{ base: "15px", md: "24px" }}
                         fontWeight={700}
                         letterSpacing="-0.02em"
                         lineHeight={1.1}
-                        mt="0.5"
                     >
                         {match.team1Name ?? "-"}
                     </Box>
@@ -290,14 +290,12 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 </Box>
 
                 <Box textAlign={{ base: "center", md: "left" }}>
-                    <MonoLabel color="rgba(255,255,255,0.6)">GOST</MonoLabel>
                     <Box
                         fontFamily="heading"
                         fontSize={{ base: "15px", md: "24px" }}
                         fontWeight={700}
                         letterSpacing="-0.02em"
                         lineHeight={1.1}
-                        mt="0.5"
                     >
                         {match.team2Name ?? "-"}
                     </Box>
@@ -339,9 +337,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                     <RouterLink
                         to={
                             match.tournamentUuid
-                                ? `/turniri/${match.tournamentSlug ?? match.tournamentUuid}?tab=bracket` +
-                                  // GROUP match → groups draw; any knockout stage → bracket.
-                                  (match.stage && match.stage !== "GROUP" ? "&sub=eliminacija" : "")
+                                ? `/turniri/${match.tournamentSlug ?? match.tournamentUuid}/utakmica/${match.matchId}`
                                 : "/uzivo"
                         }
                     >
@@ -644,15 +640,15 @@ function TournamentCardView({
                     )}
 
                     <Flex
-                        justify="space-between"
                         align="center"
                         pt="3"
                         borderTopWidth="1px"
                         borderColor="border"
                         mt="auto"
                     >
-                        {/* Kotizacija + ukupna nagrada - one row, separated by
-                            a thin divider dot; wraps gracefully on narrow cards. */}
+                        {/* Kotizacija + ukupna nagrada on one row, separated by a
+                            "/". The whole card is a link, so there's no separate
+                            "Detalji" button - a tap anywhere opens the details. */}
                         <HStack gap="2" align="baseline" wrap="wrap" minW="0">
                             <HStack gap="1.5" color="pitch.500" fontWeight={700} fontSize="16px" align="baseline">
                                 {price ? (
@@ -670,8 +666,8 @@ function TournamentCardView({
                             </HStack>
                             {variant === "upcoming" && prize && (
                                 <>
-                                    <Box as="span" color="fg.subtle" fontSize="11px">
-                                        ·
+                                    <Box as="span" color="fg.subtle" fontSize="14px" fontWeight={500}>
+                                        /
                                     </Box>
                                     <HStack gap="1.5" color="accent.amber" fontWeight={700} fontSize="16px" align="baseline">
                                         <Box>{prize}</Box>
@@ -682,7 +678,6 @@ function TournamentCardView({
                                 </>
                             )}
                         </HStack>
-                        <TintButton>Detalji →</TintButton>
                     </Flex>
                 </VStack>
             </Box>

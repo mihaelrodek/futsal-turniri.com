@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Client-generated idempotency key for offline live-scoring. When the
+        organizer records a goal/card while offline the frontend queues the
+        request with a UUID; on reconnect it may resend. A unique client_event_id
+        lets the backend dedupe the replay (return the existing row instead of
+        inserting a duplicate). Nullable - events created before this / online
+        without a key have none, and Postgres treats NULLs as distinct so many
+        legacy rows coexist under the unique index.
+    -->
+    <changeSet id="2026-07-08-match-event-client-id" author="mrodek">
+        <addColumn tableName="match_events">
+            <column name="client_event_id" type="varchar(64)"/>
+        </addColumn>
+        <createIndex tableName="match_events" indexName="ux_match_events_client_event_id" unique="true">
+            <column name="client_event_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

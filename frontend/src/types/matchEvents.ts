@@ -52,6 +52,10 @@ export type MatchEventDto = {
     /** Set only for GOAL events that had an assist; null otherwise. */
     assistPlayerId: number | null
     assistPlayerName: string | null
+    /** Client idempotency key (UUID) echoed by the backend. Present for events
+     *  created through the offline-aware path; used to reconcile an optimistic
+     *  (offline) event with its persisted server row. */
+    clientEventId?: string | null
 }
 
 /** Request body for creating a new match event. */
@@ -68,4 +72,7 @@ export type CreateMatchEventRequest = {
     minute: number
     /** Optional - only meaningful for GOAL events. */
     assistPlayerId?: number | null
+    /** Optional client idempotency key (UUID). When set, the backend dedupes a
+     *  resent event so an offline-queued goal isn't inserted twice on replay. */
+    clientEventId?: string | null
 }
