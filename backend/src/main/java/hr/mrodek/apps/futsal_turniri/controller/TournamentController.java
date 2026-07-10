@@ -1165,6 +1165,20 @@ public class TournamentController {
     }
 
     /**
+     * Player count per team ({@code {teamId: count}}) so the "Ekipe" list can
+     * show how many players each team has at a glance, without fetching every
+     * roster. One grouped query; teams with no players are omitted (→ 0).
+     * Public read - roster sizes aren't sensitive.
+     */
+    @GET
+    @Path("/{uuid}/teams/player-counts")
+    public Response teamPlayerCounts(@PathParam("uuid") String uuid) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        return Response.ok(playerRepo.countByTeamForTournament(t.getId())).build();
+    }
+
+    /**
      * Build a random opaque token for the team-sharing URL. 24 bytes of
      * SecureRandom encoded base64-url-no-padding = 32 chars - short
      * enough to fit in a clipboard-friendly URL, long enough that
@@ -1835,7 +1849,7 @@ public class TournamentController {
                         match.getId(),
                         "▶️ Utakmica počinje - " + t.getName(),
                         matchVersusLine(match),
-                        tournamentScheduleUrl(t));
+                        matchUrl(t, match.getId()));
             } catch (Exception ignored) {
                 // swallowed - the match is already LIVE; push is best-effort.
             }
@@ -1893,7 +1907,7 @@ public class TournamentController {
                     t.getId(),
                     "🏁 Kraj utakmice - " + t.getName(),
                     matchScoreLine(match),
-                    tournamentScheduleUrl(t)
+                    matchUrl(t, match.getId())
             );
         }
 
@@ -2085,7 +2099,7 @@ public class TournamentController {
                     t.getId(),
                     "⏸️ Poluvrijeme - " + t.getName(),
                     matchVersusLine(match),
-                    tournamentScheduleUrl(t)
+                    matchUrl(t, match.getId())
             );
         }
 
@@ -2129,7 +2143,7 @@ public class TournamentController {
                     t.getId(),
                     "🟢 Drugo poluvrijeme - " + t.getName(),
                     matchVersusLine(match),
-                    tournamentScheduleUrl(t)
+                    matchUrl(t, match.getId())
             );
         }
 
@@ -2364,7 +2378,7 @@ public class TournamentController {
                         t.getId(),
                         "⚽ Gol - " + t.getName(),
                         matchScoreLine(match),
-                        tournamentScheduleUrl(t)
+                        matchUrl(t, match.getId())
                 );
             }
         }
@@ -2441,14 +2455,20 @@ public class TournamentController {
      * been slug-backfilled yet. Returns null only when the tournament has
      * neither identifier, which shouldn't happen for any persisted row.
      */
-    private static String tournamentScheduleUrl(Tournaments t) {
-        if (t == null) return null;
+    /**
+     * Deep link to a single match's own page ({@code /turniri/{ref}/utakmica/
+     * {matchId}}) - tapping a match push (kickoff / goal / half / finish)
+     * opens THAT match's details (score + live timeline) directly, instead of
+     * the tournament schedule.
+     */
+    private static String matchUrl(Tournaments t, Long matchId) {
+        if (t == null || matchId == null) return null;
         String ref = t.getSlug();
         if (ref == null || ref.isBlank()) {
             ref = t.getUuid() != null ? t.getUuid().toString() : null;
         }
         if (ref == null) return null;
-        return "/turniri/" + ref + "?tab=raspored";
+        return "/turniri/" + ref + "/utakmica/" + matchId;
     }
 
     /**

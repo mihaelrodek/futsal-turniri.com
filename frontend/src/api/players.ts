@@ -63,6 +63,19 @@ export async function deletePlayer(
     )
 }
 
+/** Player count per team ({@code teamId → count}) for the "Ekipe" list, so
+ *  each team row can show its roster size at a glance. One request. Silent -
+ *  it's a background enrichment, no toast on failure. */
+export async function fetchTeamPlayerCounts(
+    tournamentUuid: string,
+): Promise<Record<string, number>> {
+    const { data } = await http.get<Record<string, number>>(
+        `/tournaments/${tournamentUuid}/teams/player-counts`,
+        { silent: true } as any,
+    )
+    return data ?? {}
+}
+
 /* ── Cross-tournament player endpoints ──────────────────────────────── */
 
 /** Autocomplete: distinct existing (uppercase) player names matching `q`. */

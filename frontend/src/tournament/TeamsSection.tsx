@@ -36,6 +36,7 @@ import {
     createPlayer,
     deletePlayer,
     fetchPlayers,
+    fetchTeamPlayerCounts,
     updatePlayer,
 } from "../api/players"
 import PodiumEditor from "../components/PodiumEditor"
@@ -52,6 +53,11 @@ import { TeamAvatar } from "./parts"
    player roster. The right pane is players-only. On mobile the panes
    stack. Preserved: self-register dialog, partner-requests panel,
    approving pending teams, the podium editor on FINISHED. */
+
+/** Croatian count word for a roster size: "1 igrač" / "N igrača". */
+function playersWord(n: number): string {
+    return n === 1 ? "igrač" : "igrača"
+}
 
 type TeamsSectionProps = {
     t: TournamentDetails
@@ -158,6 +164,19 @@ export default function TeamsSection(props: TeamsSectionProps) {
         }
     }, [teams, selectedTeamId])
 
+    // Roster size per team (teamId → count) for the list rows. One request.
+    // Refetched when the team set changes and whenever the user returns to the
+    // list (selectedTeamId → null) so it reflects roster edits made in the
+    // right pane. Purely a display nice-to-have - failures are swallowed.
+    const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({})
+    useEffect(() => {
+        let cancelled = false
+        fetchTeamPlayerCounts(uuid)
+            .then((c) => { if (!cancelled) setPlayerCounts(c) })
+            .catch(() => { /* silent */ })
+        return () => { cancelled = true }
+    }, [uuid, teams.length, selectedTeamId])
+
     const selectedTeam = useMemo(
         () => teams.find((p) => p.id === selectedTeamId) ?? null,
         [teams, selectedTeamId],
@@ -180,6 +199,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
         const hasServerId = typeof p.id === "number" && p.id > 0
         const isPending = !!p.pendingApproval
         const selected = p.id === selectedTeamId
+        const playerCount = playerCounts[String(p.id)] ?? 0
 
         const isWinnerTeam =
             t?.status === "FINISHED" &&
@@ -278,6 +298,13 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         >
                             {p.name?.trim() ? p.name : "Bez imena"}
                         </Text>
+                        {/* Roster size at a glance - hidden when a team has no
+                            players yet (0 shows nothing, per request). */}
+                        {playerCount > 0 && (
+                            <Text fontSize="2xs" color="fg.muted" fontWeight={600} lineHeight="1.3">
+                                {playerCount} {playersWord(playerCount)}
+                            </Text>
+                        )}
                     </Box>
                     {hasServerId && (
                         <Box color={selected ? "brand.fg" : "fg.muted"} flexShrink={0} aria-hidden>

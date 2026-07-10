@@ -818,7 +818,9 @@ public class KnockoutService {
             String ref = tour.getSlug() != null && !tour.getSlug().isBlank()
                     ? tour.getSlug()
                     : (tour.getUuid() != null ? tour.getUuid().toString() : null);
-            String url = ref != null ? "/turniri/" + ref + "?tab=bracket" : null;
+            // Deep-link the finish push to the match's own page (score +
+            // timeline), not the bracket tab.
+            String url = ref != null ? "/turniri/" + ref + "/utakmica/" + m.getId() : null;
             try {
                 pushService.sendToMatchAndTournamentSubscribers(
                         m.getId(), tour.getId(),

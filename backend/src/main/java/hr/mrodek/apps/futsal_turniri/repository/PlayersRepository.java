@@ -22,6 +22,24 @@ public class PlayersRepository implements AppRepository<Player, Long> {
         return list("team.id", Sort.by("sortOrder").ascending().and("id").ascending(), teamId);
     }
 
+    /**
+     * Player count per team for a whole tournament, as {@code teamId -> count},
+     * in ONE grouped query (avoids N per-team counts). Teams with no players
+     * are simply absent from the map - the caller treats a missing team as 0.
+     */
+    public java.util.Map<Long, Long> countByTeamForTournament(Long tournamentId) {
+        var out = new java.util.HashMap<Long, Long>();
+        if (tournamentId == null) return out;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createQuery(
+                        "select p.team.id, count(p) from Player p " +
+                        "where p.team.tournament.id = :tid group by p.team.id")
+                .setParameter("tid", tournamentId)
+                .getResultList();
+        for (Object[] r : rows) out.put((Long) r[0], (Long) r[1]);
+        return out;
+    }
+
     /** Highest sortOrder currently used by a team's roster, or null if empty. */
     public Integer maxSortOrderForTeam(Long teamId) {
         return find("team.id", Sort.by("sortOrder").descending(), teamId)
