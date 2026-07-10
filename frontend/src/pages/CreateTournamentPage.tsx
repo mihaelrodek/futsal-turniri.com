@@ -293,19 +293,6 @@ export default function CreateTournamentPage() {
         form.rewards.third.amount,
     ])
 
-    /**
-     * True iff the user has picked a start moment in the past. Same idea as
-     * the {@code min} attribute on the input, but re-evaluated on every
-     * render so a slow form-fill can't slip behind "now". Used by submit to
-     * block creation outright.
-     */
-    const startInPast = useMemo(() => {
-        if (!form.startDate || !form.startTime) return false
-        const iso = toLocalOffsetIso(form.startDate, form.startTime)
-        if (!iso) return false
-        return new Date(iso).getTime() < Date.now()
-    }, [form.startDate, form.startTime])
-
     const onChange = <K extends keyof FormState>(key: K, value: FormState[K]) =>
         setForm((f) => ({ ...f, [key]: value }))
     /** Update one field (amount | note) of one prize place. */
@@ -377,16 +364,8 @@ export default function CreateTournamentPage() {
         // not an intent to publish.
         if (step !== 4) return
 
-        // Block past dates outright. The {@code min} attribute on the input
-        // already prevents picking earlier than now, but a slow form-fill
-        // can drift behind, and clients can bypass the attribute anyway.
-        if (startInPast) {
-            showError(
-                "Neispravan datum",
-                "Datum i vrijeme turnira ne mogu biti u prošlosti.",
-            )
-            return
-        }
+        // Past start dates are allowed (e.g. entering a tournament that already
+        // happened, or backfilling results), so no future-only guard here.
 
         // maxTeams is optional - when blank or unparseable, ship null
         // so the backend treats it as "no cap" rather than defaulting to
@@ -632,7 +611,6 @@ export default function CreateTournamentPage() {
                                         timeCaption="Vrijeme"
                                         dateFormat="dd/MM/yyyy HH:mm"
                                         locale="hr"
-                                        minDate={new Date()}
                                         placeholderText="DD/MM/GGGG HH:MM"
                                         // Stretch the underlying <input> to fill the
                                         // field width - the library renders a tiny

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Ždrijeb grupa" description="Drag & drop ždrijeb — kuglice lijevo, grupe desno, brojač ekipa po grupi, nasumično/isprazni alati" -->
+<helmet>
+<script src="./ds-base.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @keyframes zdIn { from{opacity:0; transform:translateY(-4px)} to{opacity:1; transform:none} }
+</style>
+</helmet>
+<div style="font-family:'Nunito',system-ui,sans-serif; background:#eef1e9; padding:22px; min-height:100%; color:#1c2b22; -webkit-font-smoothing:antialiased;">
+
+  <!-- Tabs -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; background:#fff; border:1.5px solid #e2e6dc; border-radius:16px; padding:6px; margin-bottom:16px;">
+    <div style="text-align:center; background:#2f6b3f; color:#fff; font-weight:800; font-size:16px; padding:13px; border-radius:11px;">Grupe</div>
+    <div style="text-align:center; color:#6b7568; font-weight:700; font-size:16px; padding:13px; border-radius:11px; cursor:pointer;">Eliminacija</div>
+  </div>
+
+  <!-- Card -->
+  <div style="background:#fff; border-radius:22px; padding:24px; box-shadow:0 1px 3px rgba(20,40,25,.06);">
+
+    <div style="font-size:22px; font-weight:800; margin-bottom:4px;">Ždrijeb grupa</div>
+    <div style="font-size:14px; font-weight:600; color:#8a927f; margin-bottom:20px;">Skica se sprema automatski — primjenjuje se tek klikom na „Potvrdi ždrijeb”.</div>
+
+    <!-- Config steppers -->
+    <div style="display:flex; gap:26px; flex-wrap:wrap; margin-bottom:22px;">
+      <div>
+        <div style="font-size:11px; font-weight:800; letter-spacing:.07em; color:#9aa393; margin-bottom:7px;">BROJ GRUPA</div>
+        <div style="display:inline-flex; align-items:center; gap:2px; border:1.5px solid #e2e6dc; border-radius:12px; overflow:hidden;">
+          <button onClick="{{ groupsMinus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">−</button>
+          <span style="min-width:44px; text-align:center; font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;">{{ numGroups }}</span>
+          <button onClick="{{ groupsPlus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">+</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:800; letter-spacing:.07em; color:#9aa393; margin-bottom:7px;">PROLAZI PO GRUPI</div>
+        <div style="display:inline-flex; align-items:center; gap:2px; border:1.5px solid #e2e6dc; border-radius:12px; overflow:hidden;">
+          <button onClick="{{ passMinus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">−</button>
+          <span style="min-width:44px; text-align:center; font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;">{{ passes }}</span>
+          <button onClick="{{ passPlus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">+</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:800; letter-spacing:.07em; color:#9aa393; margin-bottom:7px;">NAJBOLJE 2. PLASIRANE</div>
+        <div style="display:inline-flex; align-items:center; gap:2px; border:1.5px solid #e2e6dc; border-radius:12px; overflow:hidden;">
+          <button onClick="{{ bestMinus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">−</button>
+          <span style="min-width:44px; text-align:center; font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;">{{ best }}</span>
+          <button onClick="{{ bestPlus }}" style="width:38px; height:44px; border:none; background:#f6f8f3; font-size:19px; font-weight:800; color:#2f6b3f; cursor:pointer;">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 0; border-top:1.5px solid #eef1ea; border-bottom:1.5px solid #eef1ea; margin-bottom:20px;">
+      <div style="font-size:14px; font-weight:700; color:#6b7568; flex:1; min-width:200px;">{{ statusText }}</div>
+      <button onClick="{{ shuffle }}" style="display:inline-flex; align-items:center; gap:8px; background:#2f6b3f; color:#fff; border:none; border-radius:11px; padding:11px 16px; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;"><span style="font-size:15px;">⤨</span>Nasumično rasporedi</button>
+      <button onClick="{{ clearAll }}" style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#2f6b3f; border:1.5px solid #cfe0c6; border-radius:11px; padding:11px 16px; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;"><span style="font-size:15px;">↩</span>Isprazni</button>
+      <button onClick="{{ discard }}" style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#a24b3c; border:1.5px solid #edd6cf; border-radius:11px; padding:11px 16px; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;"><span style="font-size:15px;">🗑</span>Odbaci skicu</button>
+      <button onClick="{{ confirm }}" style="background:#254e2f; color:#fff; border:none; border-radius:11px; padding:11px 18px; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;">Potvrdi ždrijeb</button>
+    </div>
+
+    <!-- Board: pool (left) + groups (right) -->
+    <div style="display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start;">
+
+      <!-- POOL -->
+      <div style="position:relative;">
+        <div onDragOver="{{ onDragOver }}" onDragEnter="{{ onEnterPool }}" onDrop="{{ onDropPool }}" style="border:2px dashed #cdd5c4; border-radius:16px; padding:14px; background:#fbfcfa; min-height:280px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <span style="font-size:16px; font-weight:800;">Kuglice / ekipe</span>
+            <span style="background:#2f6b3f; color:#fff; font-size:13px; font-weight:800; padding:3px 11px; border-radius:999px; font-variant-numeric:tabular-nums;">{{ poolCount }}</span>
+          </div>
+          <sc-if value="{{ poolEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center; color:#9aa393; font-size:14px; font-weight:600; padding:34px 8px;">Sve raspoređeno — povuci ekipu ovamo da je vratiš.</div>
+          </sc-if>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ pool }}" as="t" hint-placeholder-count="6">
+              <div draggable="true" onDragStart="{{ t.onDragStart }}" onDragEnd="{{ onDragEnd }}" style="display:flex; align-items:center; gap:11px; background:#fff; border:1.5px solid #d3ddca; border-radius:11px; padding:12px 14px; cursor:grab; animation:zdIn .16s ease-out;">
+                <span style="color:#b6c1a9; font-size:15px; letter-spacing:-2px; flex-shrink:0;">⠿</span>
+                <span style="font-size:15px; font-weight:700;">{{ t.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{ poolActive }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; inset:0; border:2px solid #2f6b3f; border-radius:16px; background:rgba(47,107,63,.06); pointer-events:none;"></div>
+        </sc-if>
+      </div>
+
+      <!-- GROUPS -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:14px;">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+          <div style="position:relative;">
+            <div onDragOver="{{ onDragOver }}" onDragEnter="{{ g.onEnter }}" onDrop="{{ g.onDrop }}" style="border:1.5px solid #dce7d4; border-radius:16px; background:#f3f7f0; padding:14px; min-height:200px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                <span style="font-size:13px; font-weight:800; letter-spacing:.06em; color:#3a4a3a;">{{ g.title }}</span>
+                <span style="background:#fff; border:1.5px solid #cfe0c6; color:#2f6b3f; font-size:13px; font-weight:800; padding:3px 11px; border-radius:999px; font-variant-numeric:tabular-nums;">{{ g.countLabel }}</span>
+              </div>
+              <sc-if value="{{ g.empty }}" hint-placeholder-val="{{ true }}">
+                <div style="text-align:center; color:#9aa393; font-size:13px; font-weight:600; padding:30px 8px; border:1.5px dashed #d3ddca; border-radius:12px;">Povuci ekipu ovamo</div>
+              </sc-if>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <sc-for list="{{ g.teams }}" as="t" hint-placeholder-count="0">
+                  <div draggable="true" onDragStart="{{ t.onDragStart }}" onDragEnd="{{ onDragEnd }}" style="display:flex; align-items:center; gap:11px; background:#fff; border:1.5px solid #cfe0c6; border-radius:11px; padding:12px 14px; cursor:grab; animation:zdIn .16s ease-out;">
+                    <span style="color:#b6c1a9; font-size:15px; letter-spacing:-2px; flex-shrink:0;">⠿</span>
+                    <span style="font-size:15px; font-weight:700;">{{ t.name }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <sc-if value="{{ g.active }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute; inset:0; border:2px solid #2f6b3f; border-radius:16px; background:rgba(47,107,63,.07); pointer-events:none;"></div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ confirmed }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:18px; text-align:center; background:#eaf3ea; color:#254e2f; border-radius:12px; padding:13px; font-size:15px; font-weight:800;">{{ confirmedText }}</div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  teams = [
+    { id: 'e1', name: 'Ekipa 1' }, { id: 'e2', name: 'Ekipa 2' }, { id: 'e3', name: 'Ekipa 3' },
+    { id: 'e4', name: 'Ekipa 4' }, { id: 'e5', name: 'Ekipa 5' }, { id: 'e6', name: 'Ekipa 6' },
+    { id: 'e7', name: 'Ekipa 7' }, { id: 'e8', name: 'Ekipa 8' }, { id: 'e9', name: 'Ekipa 9' },
+    { id: 'e10', name: 'Ekipa 10' }, { id: 'e11', name: 'Ekipa 11' }, { id: 'e12', name: 'Ekipa 12' },
+  ];
+
+  state = {
+    numGroups: 3, passes: 1, best: 0,
+    zones: { pool: ['e1','e2','e3','e4','e5','e6','e7','e8','e9','e10','e11','e12'] },
+    dragZone: null, confirmed: false,
+  };
+
+  letters(n) { return Array.from({ length: n }, (_, i) => String.fromCharCode(65 + i)); }
+
+  teamName(id) { const t = this.teams.find(x => x.id === id); return t ? t.name : id; }
+
+  normalizedZones(numGroups, zones) {
+    const letters = this.letters(numGroups);
+    const z = { pool: [...(zones.pool || [])] };
+    letters.forEach(L => { z[L] = [...(zones[L] || [])]; });
+    // orphaned groups (removed) -> pool
+    for (const k in zones) {
+      if (k !== 'pool' && !letters.includes(k)) z.pool.push(...zones[k]);
+    }
+    return z;
+  }
+
+  move(id, zone) {
+    this.setState(s => {
+      const z = {};
+      for (const k in s.zones) z[k] = s.zones[k].filter(x => x !== id);
+      if (!z[zone]) z[zone] = [];
+      z[zone] = [...z[zone], id];
+      return { zones: z, dragZone: null, confirmed: false };
+    });
+  }
+
+  setGroups(n) {
+    const clamped = Math.max(1, Math.min(8, n));
+    this.setState(s => ({ numGroups: clamped, zones: this.normalizedZones(clamped, s.zones), confirmed: false }));
+  }
+
+  shuffle() {
+    const ids = this.teams.map(t => t.id);
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    const letters = this.letters(this.state.numGroups);
+    const z = { pool: [] };
+    letters.forEach(L => z[L] = []);
+    ids.forEach((id, i) => z[letters[i % letters.length]].push(id));
+    this.setState({ zones: z, confirmed: false });
+  }
+
+  clearAll() {
+    this.setState(s => {
+      const z = { pool: this.teams.map(t => t.id) };
+      this.letters(s.numGroups).forEach(L => z[L] = []);
+      return { zones: z, confirmed: false };
+    });
+  }
+
+  renderVals() {
+    const { numGroups, passes, best, zones, dragZone } = this.state;
+    const letters = this.letters(numGroups);
+    const z = this.normalizedZones(numGroups, zones);
+    const total = this.teams.length;
+    const assigned = total - z.pool.length;
+
+    const mkTeam = (id) => ({
+      name: this.teamName(id),
+      onDragStart: (e) => { this._drag = id; if (e.dataTransfer) { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; } },
+    });
+
+    const groups = letters.map(L => ({
+      title: 'SKUPINA ' + L,
+      countLabel: z[L].length + (z[L].length === 1 ? ' ekipa' : ' ekipe'),
+      teams: z[L].map(mkTeam),
+      empty: z[L].length === 0,
+      active: dragZone === L,
+      onEnter: () => { if (this.state.dragZone !== L) this.setState({ dragZone: L }); },
+      onDrop: (e) => { e.preventDefault(); const id = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || this._drag; if (id) this.move(id, L); },
+    }));
+
+    let status;
+    if (z.pool.length === 0) status = 'Povuci kuglicu u željenu skupinu. Sve ekipe su raspoređene.';
+    else status = 'Povuci kuglicu u željenu skupinu. Raspoređeno ' + assigned + '/' + total + '.';
+
+    return {
+      numGroups, passes, best,
+      statusText: status,
+      pool: z.pool.map(mkTeam),
+      poolCount: z.pool.length,
+      poolEmpty: z.pool.length === 0,
+      poolActive: dragZone === 'pool',
+      groups,
+      confirmed: this.state.confirmed,
+      confirmedText: 'Ždrijeb potvrđen — ' + numGroups + ' grupe, ' + passes + ' prolaz(a) po grupi.',
+      groupsPlus: () => this.setGroups(numGroups + 1),
+      groupsMinus: () => this.setGroups(numGroups - 1),
+      passPlus: () => this.setState({ passes: Math.min(8, passes + 1), confirmed: false }),
+      passMinus: () => this.setState({ passes: Math.max(0, passes - 1), confirmed: false }),
+      bestPlus: () => this.setState({ best: Math.min(8, best + 1), confirmed: false }),
+      bestMinus: () => this.setState({ best: Math.max(0, best - 1), confirmed: false }),
+      shuffle: () => this.shuffle(),
+      clearAll: () => this.clearAll(),
+      discard: () => this.clearAll(),
+      confirm: () => this.setState({ confirmed: true }),
+      onDragOver: (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; },
+      onDragEnd: () => this.setState({ dragZone: null }),
+      onEnterPool: () => { if (this.state.dragZone !== 'pool') this.setState({ dragZone: 'pool' }); },
+      onDropPool: (e) => { e.preventDefault(); const id = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || this._drag; if (id) this.move(id, 'pool'); },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Zapisnik uživo" description="Interaktivni prototip Zapisnik taba — priprema (odabir načina) + uživo vođenje, popis igrača, prekršaji, središnji timeline, undo" -->
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @keyframes zpPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  @keyframes zpIn { from{opacity:0; transform:translateY(-6px)} to{opacity:1; transform:none} }
+</style>
+</helmet>
+<div style="font-family:'Nunito',system-ui,sans-serif; background:#eef1e9; padding:20px; min-height:100%; color:#1c2b22; -webkit-font-smoothing:antialiased;">
+
+  <!-- Sticky score bar (live only) -->
+  <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+    <div style="background:#fff; border-radius:20px; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 1px 3px rgba(20,40,25,.06); margin-bottom:14px; position:sticky; top:10px; z-index:5;">
+      <span style="display:inline-flex; align-items:center; gap:7px; background:#c0392b; color:#fff; font-size:12px; font-weight:800; letter-spacing:.06em; padding:5px 11px; border-radius:999px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:#fff; animation:zpPulse 1.2s ease-in-out infinite;"></span>UŽIVO
+      </span>
+      <span style="font-size:22px; font-weight:800; letter-spacing:.01em;">Roma <span style="color:#c9ccc3; font-weight:700;">–</span> Đurđ</span>
+      <span style="font-size:14px; font-weight:700; color:#6b7568; display:inline-flex; align-items:center; gap:6px;">{{ halfShort }} · <span style="color:#7a1d2b; font-variant-numeric:tabular-nums;">{{ timerStr }}</span></span>
+    </div>
+  </sc-if>
+
+  <!-- Main card -->
+  <div style="background:#fff; border-radius:24px; padding:26px 26px 30px; box-shadow:0 1px 3px rgba(20,40,25,.06);">
+
+    <!-- Match selector -->
+    <div style="text-align:center; font-size:12px; font-weight:800; letter-spacing:.09em; color:#9aa393; margin-bottom:10px;">UTAKMICA ZA VOĐENJE</div>
+    <button style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; border:1.5px solid #e2e6dc; border-radius:14px; padding:15px 18px; background:#fff; font-family:inherit; cursor:pointer; margin-bottom:6px;">
+      <span style="font-weight:700; font-size:16px; text-align:left;">{{ matchPrefix }} · Roma – Đurđ · Grupa · 10. 07. 20:00</span>
+      <span style="color:#9aa393; font-size:13px; flex-shrink:0;">▾</span>
+    </button>
+
+    <!-- ===== PRE-MATCH ===== -->
+    <sc-if value="{{ isPre }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <!-- Scoreboard -->
+        <div style="display:flex; align-items:center; justify-content:center; gap:16px; margin:24px 0 8px; flex-wrap:wrap;">
+          <span style="font-size:30px; font-weight:800;">Roma</span>
+          <span style="min-width:42px; text-align:center; font-size:28px; font-weight:800; color:#7a1d2b; background:#f6eef0; border-radius:10px; padding:4px 10px; font-variant-numeric:tabular-nums;">{{ dispH }}</span>
+          <span style="font-size:26px; font-weight:800; color:#c9ccc3;">:</span>
+          <span style="min-width:42px; text-align:center; font-size:28px; font-weight:800; color:#7a1d2b; background:#f6eef0; border-radius:10px; padding:4px 10px; font-variant-numeric:tabular-nums;">{{ dispA }}</span>
+          <span style="font-size:30px; font-weight:800;">Đurđ</span>
+        </div>
+        <div style="text-align:center; color:#9aa393; font-size:15px; font-weight:600; margin-bottom:20px;">Utakmica još nije pokrenuta.</div>
+
+        <!-- Mode buttons (hidden in result-only mode) -->
+        <sc-if value="{{ notResultMode }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:16px;">
+            <button onClick="{{ startTimed }}" style="background:#7a1d2b; color:#fff; border:none; border-radius:13px; padding:15px 24px; font-family:inherit; font-size:16px; font-weight:800; cursor:pointer;">Uživo – s mjeračem vremena</button>
+            <button onClick="{{ startUntimed }}" style="background:#fff; color:#1c2b22; border:1.5px solid #e2e6dc; border-radius:13px; padding:15px 24px; font-family:inherit; font-size:16px; font-weight:700; cursor:pointer;">Uživo – bez mjerača (vlastiti sat)</button>
+          </div>
+        </sc-if>
+
+        <!-- Result-only toggle -->
+        <div style="display:flex; justify-content:center; margin-bottom:6px;">
+          <button onClick="{{ toggleResultMode }}" style="background:none; border:none; display:inline-flex; align-items:center; gap:8px; font-family:inherit; font-size:15px; font-weight:700; color:#1c2b22; cursor:pointer;"><span style="font-size:15px;">✎</span>{{ resultToggleLabel }}</button>
+        </div>
+
+        <!-- Result-only panel -->
+        <sc-if value="{{ resultMode }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#f4f6f0; border:1.5px solid #e4e9dd; border-radius:16px; padding:18px; margin:10px 0 4px;">
+            <div style="text-align:center; font-size:12px; font-weight:800; letter-spacing:.08em; color:#9aa393; margin-bottom:16px;">UNESI REZULTAT (BEZ STRIJELACA)</div>
+            <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px;">
+              <div style="text-align:center;">
+                <div style="font-size:15px; font-weight:800; letter-spacing:.03em; margin-bottom:10px;">ROMA</div>
+                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                  <button onClick="{{ manualMinusHome }}" style="width:34px; height:34px; border-radius:9px; border:1.5px solid #d9e0d3; background:#fff; font-size:19px; font-weight:800; color:#3f6b47; cursor:pointer; line-height:1;">−</button>
+                  <span style="font-size:26px; font-weight:800; min-width:24px; text-align:center; font-variant-numeric:tabular-nums;">{{ manualHome }}</span>
+                  <button onClick="{{ manualPlusHome }}" style="width:34px; height:34px; border-radius:9px; border:1.5px solid #d9e0d3; background:#fff; font-size:19px; font-weight:800; color:#3f6b47; cursor:pointer; line-height:1;">+</button>
+                </div>
+              </div>
+              <div style="font-size:22px; font-weight:800; color:#c9ccc3;">:</div>
+              <div style="text-align:center;">
+                <div style="font-size:15px; font-weight:800; letter-spacing:.03em; margin-bottom:10px;">ĐURĐ</div>
+                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                  <button onClick="{{ manualMinusAway }}" style="width:34px; height:34px; border-radius:9px; border:1.5px solid #d9e0d3; background:#fff; font-size:19px; font-weight:800; color:#3f6b47; cursor:pointer; line-height:1;">−</button>
+                  <span style="font-size:26px; font-weight:800; min-width:24px; text-align:center; font-variant-numeric:tabular-nums;">{{ manualAway }}</span>
+                  <button onClick="{{ manualPlusAway }}" style="width:34px; height:34px; border-radius:9px; border:1.5px solid #d9e0d3; background:#fff; font-size:19px; font-weight:800; color:#3f6b47; cursor:pointer; line-height:1;">+</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:center; margin-top:18px;">
+              <button onClick="{{ saveResult }}" style="background:#3f6b47; color:#fff; border:none; border-radius:12px; padding:13px 22px; font-family:inherit; font-size:16px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:8px;"><span>✎</span>Spremi rezultat</button>
+            </div>
+            <sc-if value="{{ hasSaved }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center; margin-top:14px; color:#3f6b47; font-size:14px; font-weight:800;">{{ savedText }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ===== LIVE ===== -->
+    <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <!-- Timer -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin:22px 0;">
+          <sc-if value="{{ timed }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div style="font-size:52px; font-weight:800; color:#7a1d2b; font-variant-numeric:tabular-nums; letter-spacing:.02em; line-height:1;">{{ timerStr }}</div>
+              <button onClick="{{ toggleTimer }}" style="width:48px; height:48px; border-radius:50%; border:1.5px solid #e2e6dc; background:#fff; cursor:pointer; font-size:16px; color:#1c2b22; display:flex; align-items:center; justify-content:center;">{{ playPauseIcon }}</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ untimed }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:18px; font-weight:800; color:#7a1d2b;">Bez mjerača — minuta se upisuje ručno</div>
+          </sc-if>
+          <div style="font-size:13px; font-weight:800; letter-spacing:.08em; color:#9aa393;">{{ halfLabel }}</div>
+        </div>
+
+        <!-- ENTRY -->
+        <div style="border:1.5px solid #e2e6dc; border-radius:18px; padding:16px; margin-bottom:22px;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:.08em; color:#9aa393; margin-bottom:10px;">1 · ODABERI IGRAČA</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px;">
+
+            <!-- HOME roster -->
+            <div>
+              <div style="font-size:20px; font-weight:800; display:flex; align-items:center; gap:9px; margin-bottom:9px;"><span style="width:15px; height:15px; border-radius:4px; background:#7a1d2b;"></span>Roma</div>
+              <div style="display:flex; align-items:center; justify-content:space-between; background:#faf6f0; border-radius:11px; padding:7px 12px; margin-bottom:10px;">
+                <span style="font-size:12px; font-weight:800; letter-spacing:.04em; color:#8a6a3a;">PREKRŠAJI</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <button onClick="{{ foulMinusHome }}" style="width:28px; height:28px; border-radius:8px; border:1.5px solid #e6dcc8; background:#fff; font-size:17px; font-weight:800; color:#8a6a3a; cursor:pointer; line-height:1;">−</button>
+                  <span style="font-size:18px; font-weight:800; color:#8a6a3a; min-width:18px; text-align:center; font-variant-numeric:tabular-nums;">{{ foulsHome }}</span>
+                  <button onClick="{{ foulPlusHome }}" style="width:28px; height:28px; border-radius:8px; border:1.5px solid #e6dcc8; background:#fff; font-size:17px; font-weight:800; color:#8a6a3a; cursor:pointer; line-height:1;">+</button>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <sc-for list="{{ playersHome }}" as="p" hint-placeholder-count="6">
+                  <sc-if value="{{ p.selected }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ p.onSelect }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; border:2px solid #1a6a43; background:#e6f2ea; border-radius:11px; padding:8px 10px; font-family:inherit; cursor:pointer;">
+                      <span style="width:24px; height:24px; border-radius:7px; background:#7a1d2b; color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ p.num }}</span>
+                      <span style="font-size:14px; font-weight:700; flex:1;">{{ p.name }}</span>
+                      <span style="color:#1a6a43; font-weight:800;">✓</span>
+                    </button>
+                  </sc-if>
+                  <sc-if value="{{ p.notSel }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ p.onSelect }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; border:1.5px solid #e2e6dc; background:#fff; border-radius:11px; padding:8px 10px; font-family:inherit; cursor:pointer;">
+                      <span style="width:24px; height:24px; border-radius:7px; background:#f4ece2; color:#7a1d2b; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ p.num }}</span>
+                      <span style="font-size:14px; font-weight:700; flex:1;">{{ p.name }}</span>
+                    </button>
+                  </sc-if>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- AWAY roster -->
+            <div>
+              <div style="font-size:20px; font-weight:800; display:flex; align-items:center; gap:9px; margin-bottom:9px;"><span style="width:15px; height:15px; border-radius:4px; background:#14512f;"></span>Đurđ</div>
+              <div style="display:flex; align-items:center; justify-content:space-between; background:#faf6f0; border-radius:11px; padding:7px 12px; margin-bottom:10px;">
+                <span style="font-size:12px; font-weight:800; letter-spacing:.04em; color:#8a6a3a;">PREKRŠAJI</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <button onClick="{{ foulMinusAway }}" style="width:28px; height:28px; border-radius:8px; border:1.5px solid #e6dcc8; background:#fff; font-size:17px; font-weight:800; color:#8a6a3a; cursor:pointer; line-height:1;">−</button>
+                  <span style="font-size:18px; font-weight:800; color:#8a6a3a; min-width:18px; text-align:center; font-variant-numeric:tabular-nums;">{{ foulsAway }}</span>
+                  <button onClick="{{ foulPlusAway }}" style="width:28px; height:28px; border-radius:8px; border:1.5px solid #e6dcc8; background:#fff; font-size:17px; font-weight:800; color:#8a6a3a; cursor:pointer; line-height:1;">+</button>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <sc-for list="{{ playersAway }}" as="p" hint-placeholder-count="6">
+                  <sc-if value="{{ p.selected }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ p.onSelect }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; border:2px solid #1a6a43; background:#e6f2ea; border-radius:11px; padding:8px 10px; font-family:inherit; cursor:pointer;">
+                      <span style="width:24px; height:24px; border-radius:7px; background:#14512f; color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ p.num }}</span>
+                      <span style="font-size:14px; font-weight:700; flex:1;">{{ p.name }}</span>
+                      <span style="color:#1a6a43; font-weight:800;">✓</span>
+                    </button>
+                  </sc-if>
+                  <sc-if value="{{ p.notSel }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ p.onSelect }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; border:1.5px solid #e2e6dc; background:#fff; border-radius:11px; padding:8px 10px; font-family:inherit; cursor:pointer;">
+                      <span style="width:24px; height:24px; border-radius:7px; background:#e4efe6; color:#14512f; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ p.num }}</span>
+                      <span style="font-size:14px; font-weight:700; flex:1;">{{ p.name }}</span>
+                    </button>
+                  </sc-if>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="font-size:12px; font-weight:800; letter-spacing:.08em; color:#9aa393; margin-bottom:10px;">2 · ODABERI RADNJU</div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;">
+            <button onClick="{{ actGol }}" style="display:flex; flex-direction:column; align-items:center; gap:4px; border:1.5px solid #e2e6dc; background:#e6f2ea; border-radius:12px; padding:12px 6px; font-family:inherit; font-size:13px; font-weight:800; color:#14512f; cursor:pointer;"><span style="font-size:20px;">⚽</span>Gol</button>
+            <button onClick="{{ actAg }}" style="display:flex; flex-direction:column; align-items:center; gap:4px; border:1.5px solid #e2e6dc; background:#fff; border-radius:12px; padding:12px 6px; font-family:inherit; font-size:13px; font-weight:800; color:#7a1d2b; cursor:pointer;"><span style="width:20px; height:20px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #e8635a, #b7301f); box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.10);"></span>Auto-gol</button>
+            <button onClick="{{ actYellow }}" style="display:flex; flex-direction:column; align-items:center; gap:4px; border:1.5px solid #e2e6dc; background:#fff; border-radius:12px; padding:12px 6px; font-family:inherit; font-size:13px; font-weight:800; color:#1c2b22; cursor:pointer;"><span style="width:15px; height:19px; border-radius:3px; background:#e8a01f;"></span>Žuti</button>
+            <button onClick="{{ actRed }}" style="display:flex; flex-direction:column; align-items:center; gap:4px; border:1.5px solid #e2e6dc; background:#fff; border-radius:12px; padding:12px 6px; font-family:inherit; font-size:13px; font-weight:800; color:#1c2b22; cursor:pointer;"><span style="width:15px; height:19px; border-radius:3px; background:#c0392b;"></span>Crveni</button>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="font-size:13px; font-weight:700; color:#6b7568; flex:1; min-width:180px;">{{ hint }}</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; font-weight:700; color:#9aa393;">Min.</span>
+              <input type="number" value="{{ minValue }}" onChange="{{ onMin }}" style="width:56px; text-align:center; font-family:inherit; font-size:15px; font-weight:700; border:1.5px solid #e2e6dc; border-radius:9px; padding:7px 4px; color:#1c2b22;">
+              <button onClick="{{ useNow }}" style="background:#eef1e9; border:none; border-radius:9px; padding:8px 12px; font-family:inherit; font-weight:700; font-size:13px; color:#14512f; cursor:pointer;">Sada</button>
+              <button onClick="{{ clearSel }}" style="background:#fff; border:1.5px solid #e2e6dc; border-radius:9px; padding:8px 12px; font-family:inherit; font-weight:700; font-size:13px; color:#6b7568; cursor:pointer;">Odustani</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow controls -->
+        <div style="display:flex; gap:12px; margin:14px 0 8px;">
+          <button onClick="{{ endHalf }}" style="flex:1; background:#e8a01f; color:#3a2a00; border:none; border-radius:14px; padding:15px; font-family:inherit; font-size:16px; font-weight:800; cursor:pointer;">{{ endHalfLabel }}</button>
+          <button onClick="{{ toggleOverflow }}" style="width:56px; background:#fff; border:1.5px solid #e2e6dc; border-radius:14px; font-size:22px; font-weight:800; color:#6b7568; cursor:pointer;">⋯</button>
+        </div>
+        <sc-if value="{{ overflow }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ resetMatch }}" style="width:100%; background:#fff; color:#c0392b; border:1.5px solid #f0d2ce; border-radius:12px; padding:12px; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; margin-bottom:8px;">Vrati na pripremu / poništi</button>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ===== TIMELINE (shared) ===== -->
+    <div style="text-align:center; font-size:12px; font-weight:800; letter-spacing:.09em; color:#9aa393; margin:26px 0 8px;">TIJEK UTAKMICE</div>
+
+    <sc-if value="{{ hasEvents }}" hint-placeholder-val="{{ false }}">
+      <div style="position:relative; padding:8px 0;">
+        <div style="position:absolute; left:50%; top:8px; bottom:8px; border-left:2px dashed #d5d9cf;"></div>
+        <div style="position:relative; display:flex; flex-direction:column; gap:12px;">
+          <sc-for list="{{ timeline }}" as="it" hint-placeholder-count="5">
+
+            <sc-if value="{{ it.isHalf }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; justify-content:center;">
+                <span style="background:#fff; padding:2px 14px; font-size:15px; font-weight:800; color:#7c8473;">{{ it.halfLabel }}</span>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ it.isHome }}" hint-placeholder-val="{{ false }}">
+              <div style="display:grid; grid-template-columns:1fr 96px 1fr; align-items:center;">
+                <div style="display:flex; align-items:center; justify-content:flex-end; gap:9px;">
+                  <button onClick="{{ it.onUndo }}" title="Poništi" style="margin-right:auto; width:24px; height:24px; border-radius:50%; border:1.5px solid #ecefe6; background:#fff; font-size:12px; color:#b0b7a8; cursor:pointer; line-height:1;">✕</button>
+                  <span style="font-size:15px; font-weight:700; color:#3b453a; font-style:italic;">{{ it.player }}</span>
+                  <span style="font-size:15px; font-weight:800; color:#1c2b22;">{{ it.min }}'</span>
+                  {{ it.iconEl }}
+                </div>
+                <div style="display:flex; align-items:center; justify-content:center;">{{ it.centerEl }}</div>
+                <div></div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ it.isAway }}" hint-placeholder-val="{{ false }}">
+              <div style="display:grid; grid-template-columns:1fr 96px 1fr; align-items:center;">
+                <div></div>
+                <div style="display:flex; align-items:center; justify-content:center;">{{ it.centerEl }}</div>
+                <div style="display:flex; align-items:center; justify-content:flex-start; gap:9px;">
+                  {{ it.iconEl }}
+                  <span style="font-size:15px; font-weight:800; color:#1c2b22;">{{ it.min }}'</span>
+                  <span style="font-size:15px; font-weight:700; color:#3b453a; font-style:italic;">{{ it.player }}</span>
+                  <button onClick="{{ it.onUndo }}" title="Poništi" style="margin-left:auto; width:24px; height:24px; border-radius:50%; border:1.5px solid #ecefe6; background:#fff; font-size:12px; color:#b0b7a8; cursor:pointer; line-height:1;">✕</button>
+                </div>
+              </div>
+            </sc-if>
+
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noEvents }}" hint-placeholder-val="{{ true }}">
+      <div style="text-align:center; color:#9aa393; font-size:15px; font-weight:600; padding:8px 0 4px;">Još nema zabilježenih događaja.</div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1500}}">
+class Component extends DCLogic {
+  state = {
+    phase: 'pre', timed: true,
+    running: false, seconds: 0, half: 1, minEdit: null, events: [], overflow: false, seq: 1,
+    fouls: { home: 0, away: 0 },
+    pendingTeam: null, pendingPlayer: null, pendingAction: null,
+    resultMode: false, manual: { home: 0, away: 0 }, savedText: null,
+  };
+
+  rosters = {
+    home: [
+      { id: 'h0', num: '?', name: 'Nepoznati igrač' },
+      { id: 'h1', num: 1, name: 'Ivan Kovač' },
+      { id: 'h4', num: 4, name: 'Marko Marić' },
+      { id: 'h5', num: 5, name: 'Luka Babić' },
+      { id: 'h7', num: 7, name: 'Ante Perić' },
+      { id: 'h8', num: 8, name: 'Josip Horvat' },
+      { id: 'h9', num: 9, name: 'Domagoj Šarić' },
+      { id: 'h10', num: 10, name: 'Filip Novak' },
+      { id: 'h11', num: 11, name: 'Karlo Vidović' },
+      { id: 'h14', num: 14, name: 'Petar Jurić' },
+      { id: 'h17', num: 17, name: 'Tomislav Barić' },
+    ],
+    away: [
+      { id: 'a0', num: '?', name: 'Nepoznati igrač' },
+      { id: 'a1', num: 1, name: 'Stjepan Kolar' },
+      { id: 'a3', num: 3, name: 'Bruno Matić' },
+      { id: 'a6', num: 6, name: 'Dario Knezović' },
+      { id: 'a7', num: 7, name: 'Mateo Vuković' },
+      { id: 'a8', num: 8, name: 'Roko Pavlović' },
+      { id: 'a9', num: 9, name: 'Nikola Bašić' },
+      { id: 'a10', num: 10, name: 'Ivan Radić' },
+      { id: 'a11', num: 11, name: 'Leon Grgić' },
+      { id: 'a15', num: 15, name: 'Fran Lučić' },
+      { id: 'a19', num: 19, name: 'Vid Marković' },
+    ],
+  };
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      if (this.state.phase === 'live' && this.state.timed && this.state.running) {
+        this.setState(s => ({ seconds: s.seconds + 1 }));
+      }
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  curMin() { return Math.max(1, Math.floor(this.state.seconds / 60) + (this.state.half === 2 ? 45 : 0)); }
+
+  fmt() {
+    const m = Math.floor(this.state.seconds / 60);
+    const s = this.state.seconds % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  score() {
+    let h = 0, a = 0;
+    for (const e of this.state.events) {
+      if (e.type === 'gol') { e.team === 'home' ? h++ : a++; }
+      else if (e.type === 'ag') { e.team === 'home' ? a++ : h++; }
+    }
+    return { h, a };
+  }
+
+  commit(team, type, playerId) {
+    const min = this.state.minEdit != null ? this.state.minEdit : this.curMin();
+    this.setState(s => ({
+      seq: s.seq + 1,
+      events: [...s.events, { id: s.seq, team, type, playerId, min, half: s.half }],
+      pendingTeam: null, pendingPlayer: null, pendingAction: null,
+    }));
+  }
+
+  selectPlayer(team, id) {
+    const act = this.state.pendingAction;
+    if (act) { this.commit(team, act, id); }
+    else { this.setState({ pendingTeam: team, pendingPlayer: id }); }
+  }
+
+  selectAction(type) {
+    const { pendingTeam, pendingPlayer } = this.state;
+    if (pendingPlayer) { this.commit(pendingTeam, type, pendingPlayer); }
+    else { this.setState({ pendingAction: type }); }
+  }
+
+  clearPending() { this.setState({ pendingTeam: null, pendingPlayer: null, pendingAction: null }); }
+
+  undo(id) { this.setState(s => ({ events: s.events.filter(e => e.id !== id) })); }
+
+  foul(team, delta) {
+    this.setState(s => ({ fouls: { ...s.fouls, [team]: Math.max(0, s.fouls[team] + delta) } }));
+  }
+
+  manualAdj(team, delta) {
+    this.setState(s => ({ manual: { ...s.manual, [team]: Math.max(0, s.manual[team] + delta) }, savedText: null }));
+  }
+
+  meta(type) {
+    if (type === 'gol') return { label: 'Gol', color: '#1a6a43' };
+    if (type === 'ag') return { label: 'Auto-gol', color: '#7a1d2b' };
+    if (type === 'yellow') return { label: 'Žuti karton', color: '#e8a01f' };
+    return { label: 'Crveni karton', color: '#c0392b' };
+  }
+
+  playerName(team, id) {
+    const p = this.rosters[team].find(x => x.id === id);
+    if (!p) return 'Nepoznati igrač';
+    return p.num === '?' ? p.name : (p.num + ' · ' + p.name);
+  }
+
+  mkPlayers(team) {
+    return this.rosters[team].map(p => {
+      const selected = this.state.pendingTeam === team && this.state.pendingPlayer === p.id;
+      return {
+        num: p.num, name: p.name, selected, notSel: !selected,
+        onSelect: () => this.selectPlayer(team, p.id),
+      };
+    });
+  }
+
+  iconEl(type) {
+    if (type === 'gol') {
+      return React.createElement('span', { style: { fontSize: '17px', lineHeight: 1 } }, '⚽');
+    }
+    if (type === 'ag') {
+      return React.createElement('span', { style: { width: '17px', height: '17px', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #e8635a, #b7301f)', display: 'inline-block' } });
+    }
+    const color = type === 'yellow' ? '#e8a01f' : '#c0392b';
+    return React.createElement('span', { style: { width: '14px', height: '17px', borderRadius: '3px', background: color, display: 'inline-block' } });
+  }
+
+  pillEl(h, a) {
+    return React.createElement('span', {
+      style: { background: '#e8ebfb', color: '#33407a', fontWeight: 800, fontSize: '13px', padding: '4px 11px', borderRadius: '999px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+    }, h + ' - ' + a);
+  }
+
+  dotEl() {
+    return React.createElement('span', {
+      style: { width: '12px', height: '12px', borderRadius: '50%', background: '#1c2b22', boxShadow: '0 0 0 5px #fff' },
+    });
+  }
+
+  buildTimeline() {
+    const evs = [...this.state.events].sort((x, y) => x.id - y.id);
+    const out = [{ isHalf: true, halfLabel: '1. poluvrijeme' }];
+    let h = 0, a = 0, sep2 = false;
+    for (const e of evs) {
+      if (e.half === 2 && !sep2) { out.push({ isHalf: true, halfLabel: '2. poluvrijeme' }); sep2 = true; }
+      let isGoal = false;
+      if (e.type === 'gol') { e.team === 'home' ? h++ : a++; isGoal = true; }
+      else if (e.type === 'ag') { e.team === 'home' ? a++ : h++; isGoal = true; }
+      out.push({
+        isHome: e.team === 'home', isAway: e.team === 'away',
+        min: e.min, player: this.playerName(e.team, e.playerId),
+        iconEl: this.iconEl(e.type),
+        centerEl: isGoal ? this.pillEl(h, a) : this.dotEl(),
+        onUndo: () => this.undo(e.id),
+      });
+    }
+    return out;
+  }
+
+  renderVals() {
+    const sc = this.score();
+    const isPre = this.state.phase === 'pre';
+    const isLive = this.state.phase === 'live';
+    const { pendingTeam, pendingPlayer, pendingAction, resultMode, manual } = this.state;
+    let hint = 'Odaberi igrača, zatim radnju (ili obrnuto).';
+    if (pendingPlayer) hint = 'Odabran: ' + this.playerName(pendingTeam, pendingPlayer) + ' — odaberi radnju.';
+    else if (pendingAction) hint = 'Radnja: ' + this.meta(pendingAction).label + ' — odaberi igrača.';
+
+    return {
+      isPre, isLive,
+      timed: this.state.timed, untimed: !this.state.timed,
+      matchPrefix: isPre ? '▶ NA REDU' : '● UŽIVO',
+      dispH: resultMode ? manual.home : sc.h,
+      dispA: resultMode ? manual.away : sc.a,
+      resultMode, notResultMode: !resultMode,
+      resultToggleLabel: resultMode ? 'Odustani od unosa rezultata' : 'Unesi samo rezultat',
+      manualHome: manual.home, manualAway: manual.away,
+      hasSaved: !!this.state.savedText, savedText: this.state.savedText,
+      scoreH: sc.h, scoreA: sc.a,
+      timerStr: this.fmt(),
+      halfLabel: this.state.half === 1 ? '1. POLUVRIJEME' : '2. POLUVRIJEME',
+      halfShort: this.state.half === 1 ? '1. pol.' : '2. pol.',
+      playPauseIcon: this.state.running ? '❚❚' : '►',
+      minValue: this.state.minEdit != null ? this.state.minEdit : this.curMin(),
+      overflow: this.state.overflow,
+      endHalfLabel: this.state.half === 1 ? 'Završi 1. poluvrijeme' : 'Završi utakmicu',
+      hint,
+      hasEvents: this.state.events.length > 0,
+      noEvents: this.state.events.length === 0,
+      timeline: this.buildTimeline(),
+      playersHome: this.mkPlayers('home'),
+      playersAway: this.mkPlayers('away'),
+      foulsHome: this.state.fouls.home,
+      foulsAway: this.state.fouls.away,
+      foulPlusHome: () => this.foul('home', 1),
+      foulMinusHome: () => this.foul('home', -1),
+      foulPlusAway: () => this.foul('away', 1),
+      foulMinusAway: () => this.foul('away', -1),
+      startTimed: () => this.setState({ phase: 'live', timed: true, running: true, seconds: 0, resultMode: false }),
+      startUntimed: () => this.setState({ phase: 'live', timed: false, running: false, seconds: 0, resultMode: false }),
+      toggleResultMode: () => this.setState(s => ({ resultMode: !s.resultMode, savedText: null })),
+      manualPlusHome: () => this.manualAdj('home', 1),
+      manualMinusHome: () => this.manualAdj('home', -1),
+      manualPlusAway: () => this.manualAdj('away', 1),
+      manualMinusAway: () => this.manualAdj('away', -1),
+      saveResult: () => this.setState(s => ({ savedText: 'Rezultat spremljen: ' + s.manual.home + ' : ' + s.manual.away })),
+      actGol: () => this.selectAction('gol'),
+      actAg: () => this.selectAction('ag'),
+      actYellow: () => this.selectAction('yellow'),
+      actRed: () => this.selectAction('red'),
+      clearSel: () => this.clearPending(),
+      toggleTimer: () => this.setState(s => ({ running: !s.running })),
+      onMin: (e) => { const v = parseInt(e.target.value, 10); this.setState({ minEdit: isNaN(v) ? null : v }); },
+      useNow: () => this.setState({ minEdit: null }),
+      endHalf: () => this.setState(s => s.half === 1 ? { half: 2, seconds: 0, minEdit: null } : { running: false }),
+      toggleOverflow: () => this.setState(s => ({ overflow: !s.overflow })),
+      resetMatch: () => this.setState({ phase: 'pre', timed: true, events: [], seconds: 0, half: 1, running: false, overflow: false, fouls: { home: 0, away: 0 }, pendingTeam: null, pendingPlayer: null, pendingAction: null, resultMode: false, manual: { home: 0, away: 0 }, savedText: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

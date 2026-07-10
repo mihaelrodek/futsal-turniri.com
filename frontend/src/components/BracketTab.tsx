@@ -6,9 +6,7 @@ import {
     Dialog,
     Flex,
     HStack,
-    IconButton,
     Input,
-    NativeSelect,
     Portal,
     Text,
     VStack,
@@ -25,7 +23,6 @@ import {
     generateBracket,
     generateBracketManual,
     resetBracket,
-    setBracketSeeds,
     recordKnockoutResult,
     type BracketCandidate,
     type ManualBracketPairing,
@@ -47,7 +44,8 @@ import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
-import { FiArrowDown, FiArrowUp, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { LuRotateCcw, LuShuffle } from "react-icons/lu"
 import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
@@ -285,11 +283,193 @@ function useDragPan() {
  *  mid-tournament would wipe live scores). canEdit controls visibility of
  *  result entry on individual matches; tournamentStarted controls the
  *  destructive whole-bracket draw actions. */
+/** One draggable team pill on the manual bracket board - a ⠿ handle + the
+ *  team name. Pointer-drag (works on touch/iPad), matching the group board. */
+function BracketChip({
+    name,
+    dragging,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+}: {
+    name: string | null
+    dragging: boolean
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void
+}) {
+    return (
+        <Flex
+            align="center"
+            gap="2.5"
+            w="full"
+            minW="0"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            style={{ touchAction: "none", userSelect: "none" }}
+            borderWidth="1px"
+            borderColor="border"
+            bg="bg.panel"
+            rounded="xl"
+            px="3"
+            py="2.5"
+            cursor="grab"
+            opacity={dragging ? 0.35 : 1}
+            _hover={{ borderColor: "pitch.400" }}
+            transition="border-color 120ms"
+        >
+            <Text as="span" color="fg.subtle" fontSize="md" flexShrink={0} lineHeight="1" css={{ letterSpacing: "-2px" }}>⠿</Text>
+            <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+        </Flex>
+    )
+}
+
+/** Knockout round name for a round with the given number of matches. */
+function koStageName(matchesInRound: number): string {
+    switch (matchesInRound) {
+        case 1: return "Finale"
+        case 2: return "Polufinale"
+        case 4: return "Četvrtfinale"
+        case 8: return "Osmina finala"
+        case 16: return "Šesnaestina finala"
+        default: return `Kolo (${matchesInRound})`
+    }
+}
+/** Short round tag (for "Pobjednik ..." placeholders in the sketch). */
+function koStageAbbrev(matchesInRound: number): string {
+    switch (matchesInRound) {
+        case 1: return "F"
+        case 2: return "PF"
+        case 4: return "ČF"
+        case 8: return "R16"
+        case 16: return "R32"
+        default: return `K${matchesInRound}`
+    }
+}
+
+/**
+ * Standard single-elimination seed slot order for a bracket of size n (a power
+ * of two): per slot, the 1-based seed that belongs there - e.g. n=8 →
+ * [1,8,4,5,2,7,3,6]. This is the classic bracket layout (top seed vs bottom
+ * seed, halves/quarters split by seed), so that phantom seeds (the byes) are
+ * spread evenly across the bracket the way Challonge & co. place them, instead
+ * of clustering at the top.
+ */
+function seedSlotOrder(n: number): number[] {
+    let pls = [1, 2]
+    while (pls.length < n) {
+        const sum = pls.length * 2 + 1
+        const next: number[] = []
+        for (const p of pls) { next.push(p); next.push(sum - p) }
+        pls = next
+    }
+    return pls
+}
+
+/**
+ * Lay seed-ordered team ids into a bracket of `n` slots by standard seeding.
+ * Seeds beyond the team count are phantom → empty slots, so the resulting
+ * first-round pairs put each top seed opposite a phantom (a distributed bye)
+ * rather than filling the top of the bracket with byes and the bottom with
+ * real matches.
+ */
+function standardSeedSlots(orderedIds: number[], n: number): (number | null)[] {
+    const order = seedSlotOrder(n)
+    const out: (number | null)[] = new Array(n).fill(null)
+    for (let slot = 0; slot < n; slot++) {
+        const seed = order[slot] // 1-based
+        out[slot] = seed <= orderedIds.length ? orderedIds[seed - 1] : null
+    }
+    return out
+}
+
+/** One slot in the bracket sketch: a placed team, the winner of an earlier
+ *  match (placeholder), or an empty slot (a bye's free side). */
+type SketchDisp = { kind: "team"; name: string } | { kind: "ph"; label: string } | { kind: "empty" }
+type SketchMatch = { a: SketchDisp; b: SketchDisp }
+type SketchRound = { stage: string; matches: SketchMatch[] }
+
+/**
+ * Build the full elimination sketch from the manual first-round `slots`: the
+ * real first-round pairs, then each later round fed by the previous round's
+ * winners ("Pobjednik ČF1" placeholders; a bye team propagates through).
+ */
+function buildBracketSketch(
+    slots: (number | null)[],
+    matchCount: number,
+    bracketN: number,
+    teamName: (id: number) => string,
+): SketchRound[] {
+    const nm = (id: number | null | undefined): string | null => (id != null ? teamName(id) : null)
+    // Winner of each match, computed bottom-up so byes carry forward.
+    const winners: SketchDisp[][] = []
+    const w0: SketchDisp[] = []
+    for (let i = 0; i < matchCount; i++) {
+        const a = nm(slots[2 * i])
+        const b = nm(slots[2 * i + 1])
+        if (a && b) w0.push({ kind: "ph", label: `Pobj. ${koStageAbbrev(matchCount)}${i + 1}` })
+        else if (a) w0.push({ kind: "team", name: a })
+        else if (b) w0.push({ kind: "team", name: b })
+        else w0.push({ kind: "empty" })
+    }
+    winners.push(w0)
+    const totalRounds = Math.max(1, Math.round(Math.log2(bracketN)))
+    for (let r = 1; r < totalRounds; r++) {
+        const prev = winners[r - 1]
+        const roundMatches = matchCount / Math.pow(2, r)
+        const cur: SketchDisp[] = []
+        for (let i = 0; i < roundMatches; i++) {
+            const fa = prev[2 * i]
+            const fb = prev[2 * i + 1]
+            if (fa.kind === "empty" && fb.kind === "empty") cur.push({ kind: "empty" })
+            else if (fa.kind === "empty") cur.push(fb)
+            else if (fb.kind === "empty") cur.push(fa)
+            else cur.push({ kind: "ph", label: `Pobj. ${koStageAbbrev(roundMatches)}${i + 1}` })
+        }
+        winners.push(cur)
+    }
+    // Display rounds: round 0 shows the real slots; each later round shows the
+    // two feeding matches' winners.
+    const rounds: SketchRound[] = []
+    const m0: SketchMatch[] = []
+    for (let i = 0; i < matchCount; i++) {
+        const a = nm(slots[2 * i])
+        const b = nm(slots[2 * i + 1])
+        m0.push({
+            a: a ? { kind: "team", name: a } : { kind: "empty" },
+            b: b ? { kind: "team", name: b } : { kind: "empty" },
+        })
+    }
+    rounds.push({ stage: koStageName(matchCount), matches: m0 })
+    for (let r = 1; r < totalRounds; r++) {
+        const prevWin = winners[r - 1]
+        const roundMatches = matchCount / Math.pow(2, r)
+        const ms: SketchMatch[] = []
+        for (let i = 0; i < roundMatches; i++) ms.push({ a: prevWin[2 * i], b: prevWin[2 * i + 1] })
+        rounds.push({ stage: koStageName(roundMatches), matches: ms })
+    }
+    return rounds
+}
+
+/** One line (slot) of a bracket-sketch match card. */
+function SketchLine({ disp }: { disp: SketchDisp }) {
+    const muted = disp.kind !== "team"
+    const text = disp.kind === "team" ? disp.name : disp.kind === "ph" ? disp.label : "slobodan prolaz"
+    return (
+        <Text px="3" py="2" fontSize="sm" fontWeight={muted ? 500 : 700} fontStyle={muted ? "italic" : undefined} color={muted ? "fg.muted" : "fg.ink"} truncate>
+            {text}
+        </Text>
+    )
+}
+
 export default function BracketTab({
     uuid,
     canEdit = false,
     tournamentName,
-    format,
 }: {
     uuid: string
     canEdit?: boolean
@@ -298,9 +478,7 @@ export default function BracketTab({
     tournamentStarted?: boolean
     /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
-    /** Tournament format - the manual-seed (nositelji) ordering UI is only
-     *  shown for KNOCKOUT_ONLY, where the bracket is seeded directly from the
-     *  team list instead of group standings. */
+    /** Accepted for API compatibility (was used for the removed seed UI). */
     format?: string | null
 }) {
     const queryClient = useQueryClient()
@@ -325,14 +503,22 @@ export default function BracketTab({
     const [halfCount, setHalfCount] = useState<number | null>(null)
     // Manual draw - organizer arranges teams into the bracket's first-round slots.
     const [manualOpen, setManualOpen] = useState(false)
+    // "Skiciraj završnicu" step: preview the full bracket structure before it's
+    // actually generated (only meaningful while the manual board is open).
+    const [sketchOpen, setSketchOpen] = useState(false)
     const [slots, setSlots] = useState<(number | null)[]>([])
     const [generatingManual, setGeneratingManual] = useState(false)
     const [resetting, setResetting] = useState(false)
-    // Manual seeds (nositelji) - KNOCKOUT_ONLY only. The organizer orders the
-    // teams; the auto draw then produces the same bracket every time.
-    const [seedsOpen, setSeedsOpen] = useState(false)
-    const [seedOrder, setSeedOrder] = useState<BracketCandidate[]>([])
-    const [savingSeeds, setSavingSeeds] = useState(false)
+    // Manual draw drag & drop: a team dragged from the pool into a first-round
+    // slot (same proven pointer-drag as the group draw board, incl. iPad
+    // auto-scroll). `dragOver` is the hovered slot index (as a string) or "pool".
+    const [dragTeam, setDragTeam] = useState<BracketCandidate | null>(null)
+    const [dragOver, setDragOver] = useState<string | null>(null)
+    const dragRef = useRef<BracketCandidate | null>(null)
+    const dragOverRef = useRef<string | null>(null)
+    const dragPosRef = useRef({ x: 0, y: 0 })
+    const ghostRef = useRef<HTMLDivElement | null>(null)
+    const scrollRafRef = useRef<number | null>(null)
     // Bye picker - when the qualifier count isn't a power of two, the organizer
     // chooses which teams advance directly (round-one bye) before generating.
     const [byeOpen, setByeOpen] = useState(false)
@@ -377,6 +563,10 @@ export default function BracketTab({
     useEffect(() => {
         if (bracket) queryClient.setQueryData(qk.bracket(uuid), bracket)
     }, [bracket, uuid, queryClient])
+
+    // Cancel any in-flight manual-draw auto-scroll rAF loop on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => () => stopAutoScroll(), [])
 
     /** Re-fetch the bracket (after a live action changed the score / status). */
     async function reloadBracket() {
@@ -702,13 +892,11 @@ export default function BracketTab({
     const byesNeeded = pool.length >= 2 ? bracketN - pool.length : 0
 
     function openManualBracket() {
-        // Put the teams that advance directly (byes) FIRST, at the top - each in
-        // its own match with an empty opponent - then pair up the rest below.
-        const seed: (number | null)[] = new Array(bracketN).fill(null)
-        for (let i = 0; i < byesNeeded; i++) seed[2 * i] = pool[i]?.id ?? null
-        let slot = byesNeeded * 2
-        for (let i = byesNeeded; i < pool.length; i++) seed[slot++] = pool[i]?.id ?? null
-        setSlots(seed)
+        // Standard bracket seeding of the qualifiers (already ranked): top seed
+        // vs bottom seed, so the byes land distributed across the bracket
+        // instead of stacking the free slots at the top.
+        setSlots(standardSeedSlots(pool.map((t) => t.id), bracketN))
+        setSketchOpen(false)
         setManualOpen(true)
     }
 
@@ -739,6 +927,7 @@ export default function BracketTab({
             setBracket(await generateBracketManual(uuid, pairs))
             refreshLinkedTabs()
             setManualOpen(false)
+            setSketchOpen(false)
             setEditingId(null)
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -747,181 +936,312 @@ export default function BracketTab({
         }
     }
 
-    const slotSelect = (idx: number) => (
-        <NativeSelect.Root size="sm" flex="1" minW="0">
-            <NativeSelect.Field
-                value={slots[idx] != null ? String(slots[idx]) : ""}
-                onChange={(e) =>
-                    setSlot(idx, e.target.value === "" ? null : Number(e.target.value))
-                }
-            >
-                <option value="">- prazno (prolaz) -</option>
-                {pool.map((tm) => (
-                    <option key={tm.id} value={tm.id}>
-                        {tm.name?.trim() || "Bez imena"}
-                    </option>
-                ))}
-            </NativeSelect.Field>
-        </NativeSelect.Root>
-    )
+    // ─── Manual draw drag & drop (same pointer-drag as the group board) ──
+    function moveGhost(x: number, y: number) {
+        dragPosRef.current = { x, y }
+        const el = ghostRef.current
+        if (el) el.style.transform = `translate(${x + 14}px, ${y - 14}px)`
+    }
+    function zoneAt(x: number, y: number): string | null {
+        const el = document.elementFromPoint(x, y) as HTMLElement | null
+        return el?.closest<HTMLElement>("[data-drop]")?.dataset.drop ?? null
+    }
+    function autoScrollTick() {
+        if (!dragRef.current) { scrollRafRef.current = null; return }
+        const { x, y } = dragPosRef.current
+        const EDGE = 90
+        const h = window.innerHeight
+        let dy = 0
+        if (y < EDGE) dy = -Math.ceil((EDGE - y) / 5)
+        else if (y > h - EDGE) dy = Math.ceil((y - (h - EDGE)) / 5)
+        if (dy !== 0) {
+            window.scrollBy(0, dy)
+            const z = zoneAt(x, y)
+            if (z !== dragOverRef.current) { dragOverRef.current = z; setDragOver(z) }
+        }
+        scrollRafRef.current = requestAnimationFrame(autoScrollTick)
+    }
+    function stopAutoScroll() {
+        if (scrollRafRef.current != null) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null }
+    }
+    function startDrag(e: ReactPointerEvent<HTMLElement>, tm: BracketCandidate) {
+        if (generatingManual) return
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        dragRef.current = tm
+        moveGhost(e.clientX, e.clientY)
+        setDragTeam(tm)
+        if (scrollRafRef.current == null) scrollRafRef.current = requestAnimationFrame(autoScrollTick)
+    }
+    function dragMove(e: ReactPointerEvent<HTMLElement>) {
+        if (!dragRef.current) return
+        moveGhost(e.clientX, e.clientY)
+        const z = zoneAt(e.clientX, e.clientY)
+        if (z !== dragOverRef.current) { dragOverRef.current = z; setDragOver(z) }
+    }
+    function endDrag(e: ReactPointerEvent<HTMLElement>) {
+        const tm = dragRef.current
+        if (!tm) return
+        stopAutoScroll()
+        const z = zoneAt(e.clientX, e.clientY)
+        dragRef.current = null; dragOverRef.current = null
+        setDragTeam(null); setDragOver(null)
+        if (z == null) return
+        const from = slots.findIndex((s) => s === tm.id)
+        if (z === "pool") { if (from >= 0) setSlot(from, null); return }
+        const idx = parseInt(z, 10)
+        if (!Number.isFinite(idx) || idx < 0 || idx >= bracketN || from === idx) return
+        // Drop into the target slot; a team already there swaps back to the
+        // dragged team's old slot (or the pool, if it came from the pool).
+        setSlots((s) => {
+            const c = [...s]
+            const occupant = c[idx]
+            c[idx] = tm.id
+            if (from >= 0) c[from] = occupant
+            return c
+        })
+    }
+    function cancelDrag() {
+        stopAutoScroll()
+        dragRef.current = null; dragOverRef.current = null
+        setDragTeam(null); setDragOver(null)
+    }
+
+    /** Random draw: shuffle the qualifiers to assign random seeds, then lay
+     *  them out by standard bracket seeding - so the byes stay distributed
+     *  across the bracket (Challonge-style) rather than stacked at the top. */
+    function fillBracketRandom() {
+        const ids = qualifiers.map((t) => t.id)
+        for (let i = ids.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[ids[i], ids[j]] = [ids[j], ids[i]]
+        }
+        setSlots(standardSeedSlots(ids, bracketN))
+    }
+    function clearSlots() { setSlots(new Array(bracketN).fill(null)) }
+
+    // Subtle green-tinted surfaces (adapt to light/dark) matching the group board.
+    const bPoolTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 3%, var(--chakra-colors-bg-panel))"
+    const bGroupTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 6%, var(--chakra-colors-bg-panel))"
+    const manualPool = qualifiers.filter((q) => !slots.includes(q.id))
+    const manualAssigned = qualifiers.length - manualPool.length
+
+    const renderSlot = (idx: number) => {
+        const teamId = slots[idx]
+        const tm = teamId != null ? qualifiers.find((q) => q.id === teamId) ?? null : null
+        const hovered = dragOver === String(idx)
+        return (
+            <Box position="relative">
+                <Flex
+                    data-drop={String(idx)}
+                    align="center"
+                    minH="46px"
+                    px="1.5"
+                    py="1.5"
+                    rounded="xl"
+                    borderWidth="1px"
+                    borderStyle={tm ? "solid" : "dashed"}
+                    borderColor="border"
+                    bg="bg.panel"
+                >
+                    {tm ? (
+                        <BracketChip
+                            name={tm.name}
+                            dragging={dragTeam?.id === tm.id}
+                            onPointerDown={(e) => startDrag(e, tm)}
+                            onPointerMove={dragMove}
+                            onPointerUp={endDrag}
+                            onPointerCancel={cancelDrag}
+                        />
+                    ) : (
+                        <Text fontSize="xs" color="fg.subtle" fontWeight={500} px="2">
+                            Povuci ekipu · prazno = prolaz
+                        </Text>
+                    )}
+                </Flex>
+                {hovered && (
+                    <Box position="absolute" inset="0" rounded="xl" borderWidth="2px" borderColor="pitch.500"
+                         css={{ background: "color-mix(in srgb, var(--chakra-colors-pitch-500) 9%, transparent)" }}
+                         pointerEvents="none" />
+                )}
+            </Box>
+        )
+    }
 
     const manualBracketPanel = (
-        <Panel p={{ base: "4", md: "5" }}>
-            <VStack align="stretch" gap="3">
-                <HStack justify="space-between" align="center">
-                    <Text fontWeight="bold" fontSize="sm">
-                        Ručni ždrijeb - složi parove
+        <Panel p={{ base: "4", md: "6" }}>
+            <VStack align="stretch" gap="5">
+                <Box>
+                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>Ručni ždrijeb</Text>
+                    <Text fontSize="sm" color="fg.muted" fontWeight={500}>
+                        Povuci ekipe u parove 1. kola. Prazan slot = slobodan prolaz (bye) u sljedeće kolo.
                     </Text>
-                    <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => setManualOpen(false)}
-                        disabled={generatingManual}
-                    >
+                </Box>
+
+                {/* Toolbar */}
+                <Flex align="center" gap="3" wrap="wrap" py="3.5" borderTopWidth="1px" borderBottomWidth="1px" borderColor="border">
+                    <Text fontSize="sm" fontWeight={700} color="fg.muted" flex="1" minW="180px">
+                        {manualPool.length > 0
+                            ? `Raspoređeno ${manualAssigned}/${qualifiers.length}.`
+                            : "Sve ekipe su raspoređene."}
+                    </Text>
+                    <Button size="sm" colorPalette="brand" onClick={fillBracketRandom} disabled={qualifiers.length < 2}>
+                        <LuShuffle size={15} /> Nasumično rasporedi
+                    </Button>
+                    <Button size="sm" variant="outline" colorPalette="brand" onClick={clearSlots} disabled={manualAssigned === 0}>
+                        <LuRotateCcw size={14} /> Isprazni
+                    </Button>
+                    <Button size="sm" colorPalette="brand" onClick={() => setSketchOpen(true)} disabled={manualAssigned < 2}>
+                        <FiCrosshair size={14} /> Skiciraj završnicu
+                    </Button>
+                    <Button size="sm" variant="ghost" colorPalette="gray" onClick={() => setManualOpen(false)} disabled={generatingManual}>
                         Odustani
                     </Button>
-                </HStack>
-                <Text fontSize="xs" color="fg.muted">
-                    Ljestvica za {bracketN} ({matchCount} {matchCount === 1 ? "utakmica" : "utakmica"} 1.
-                    kola). Prazno mjesto = slobodan prolaz u sljedeće kolo.
-                </Text>
-                <VStack align="stretch" gap="2">
-                    {Array.from({ length: matchCount }, (_, i) => (
-                        <HStack
-                            key={i}
-                            gap="2"
-                            align="center"
-                            borderWidth="1px"
+                </Flex>
+
+                {/* Board: pool (left) + first-round match cards (right). */}
+                <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "300px 1fr" }} gap="5" alignItems="start">
+                    <Box position="relative">
+                        <Box
+                            data-drop="pool"
+                            borderWidth="2px"
+                            borderStyle="dashed"
                             borderColor="border"
-                            rounded="lg"
-                            px="3"
-                            py="2"
+                            rounded="2xl"
+                            p="3.5"
+                            minH="280px"
+                            css={{ background: bPoolTintBg }}
                         >
-                            <Text fontSize="xs" color="fg.muted" w="22px" flexShrink={0}>
-                                {i + 1}.
-                            </Text>
-                            {slotSelect(2 * i)}
-                            <Text fontSize="xs" color="fg.muted" flexShrink={0}>
-                                vs
-                            </Text>
-                            {slotSelect(2 * i + 1)}
-                        </HStack>
-                    ))}
-                </VStack>
-                <Button
-                    colorPalette="brand"
-                    onClick={submitManualBracket}
-                    loading={generatingManual}
-                >
-                    Generiraj ljestvicu (ručno)
-                </Button>
+                            <Flex align="center" justify="space-between" mb="3">
+                                <Text fontWeight={800} fontSize="md">Ekipe</Text>
+                                <Box as="span" bg="pitch.500" color="white" fontSize="xs" fontWeight={800} px="2.5" py="1" rounded="full" fontVariantNumeric="tabular-nums">
+                                    {manualPool.length}
+                                </Box>
+                            </Flex>
+                            {manualPool.length === 0 && (
+                                <Text fontSize="sm" color="fg.muted" fontWeight={500} py="8" textAlign="center">
+                                    Sve raspoređeno — povuci ekipu ovamo da je vratiš.
+                                </Text>
+                            )}
+                            <VStack align="stretch" gap="2">
+                                {manualPool.map((tm) => (
+                                    <BracketChip
+                                        key={tm.id}
+                                        name={tm.name}
+                                        dragging={dragTeam?.id === tm.id}
+                                        onPointerDown={(e) => startDrag(e, tm)}
+                                        onPointerMove={dragMove}
+                                        onPointerUp={endDrag}
+                                        onPointerCancel={cancelDrag}
+                                    />
+                                ))}
+                            </VStack>
+                        </Box>
+                        {dragOver === "pool" && (
+                            <Box position="absolute" inset="0" rounded="2xl" borderWidth="2px" borderColor="pitch.500"
+                                 css={{ background: "color-mix(in srgb, var(--chakra-colors-pitch-500) 8%, transparent)" }}
+                                 pointerEvents="none" />
+                        )}
+                    </Box>
+
+                    <VStack align="stretch" gap="3">
+                        <Text fontSize="xs" fontWeight={800} letterSpacing="0.08em" textTransform="uppercase" color="fg.muted">
+                            {koStageName(matchCount)} · parovi 1. kola
+                        </Text>
+                        {Array.from({ length: matchCount }, (_, i) => (
+                            <Flex
+                                key={i}
+                                direction={{ base: "column", sm: "row" }}
+                                align={{ base: "stretch", sm: "center" }}
+                                gap="2"
+                                borderWidth="1px"
+                                borderColor="border"
+                                rounded="2xl"
+                                px="3"
+                                py="2.5"
+                                css={{ background: bGroupTintBg }}
+                            >
+                                <Box flex="1" minW="0">{renderSlot(2 * i)}</Box>
+                                <Text px="1" fontSize="2xs" fontWeight={800} color="fg.muted" flexShrink={0} textAlign="center">vs</Text>
+                                <Box flex="1" minW="0">{renderSlot(2 * i + 1)}</Box>
+                            </Flex>
+                        ))}
+                    </VStack>
+                </Box>
+
+                {/* Floating chip that follows the pointer while dragging. */}
+                {dragTeam && (
+                    <Box
+                        ref={ghostRef}
+                        position="fixed"
+                        top="0"
+                        left="0"
+                        zIndex={1500}
+                        pointerEvents="none"
+                        px="3"
+                        py="1.5"
+                        rounded="lg"
+                        bg="pitch.500"
+                        color="white"
+                        fontSize="sm"
+                        fontWeight={700}
+                        boxShadow="lg"
+                        style={{
+                            transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
+                            willChange: "transform",
+                        }}
+                    >
+                        {dragTeam.name?.trim() || "Bez imena"}
+                    </Box>
+                )}
             </VStack>
         </Panel>
     )
 
-    // ─── Manual seeds (nositelji) - KNOCKOUT_ONLY deterministic ordering ───
-    const isKnockoutOnly = format === "KNOCKOUT_ONLY"
-
-    function openSeeds() {
-        setSeedOrder([...qualifiers])
-        setSeedsOpen(true)
-    }
-
-    function moveSeed(idx: number, dir: -1 | 1) {
-        setSeedOrder((s) => {
-            const j = idx + dir
-            if (j < 0 || j >= s.length) return s
-            const c = [...s]
-            ;[c[idx], c[j]] = [c[j], c[idx]]
-            return c
-        })
-    }
-
-    async function saveSeeds() {
-        try {
-            setSavingSeeds(true)
-            const q = await setBracketSeeds(uuid, seedOrder.map((t) => t.id))
-            setQualifiers(q.teams)
-            setGroupStageComplete(q.groupStageComplete)
-            setSeedsOpen(false)
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setSavingSeeds(false)
-        }
-    }
-
-    const seedsPanel = (
-        <Panel p={{ base: "4", md: "5" }}>
-            <VStack align="stretch" gap="3">
-                <HStack justify="space-between" align="center">
-                    <Text fontWeight="bold" fontSize="sm">
-                        Nosioci - posloži redoslijed
+    // ─── "Skiciraj završnicu" - preview the full bracket before generating ──
+    const sketchRounds = buildBracketSketch(
+        slots,
+        matchCount,
+        bracketN,
+        (id) => qualifiers.find((q) => q.id === id)?.name?.trim() || "Bez imena",
+    )
+    const sketchPanel = (
+        <Panel p={{ base: "4", md: "6" }}>
+            <VStack align="stretch" gap="5">
+                <Box>
+                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>Skica završnice</Text>
+                    <Text fontSize="sm" color="fg.muted" fontWeight={500}>
+                        Ovako će izgledati eliminacija — provjeri parove pa potvrdi. Kasnija kola pune se pobjednicima.
                     </Text>
-                    <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => setSeedsOpen(false)}
-                        disabled={savingSeeds}
-                    >
-                        Odustani
+                </Box>
+                <Box overflowX="auto" pb="2">
+                    <Flex gap="5" align="stretch" minW="min-content">
+                        {sketchRounds.map((round, ri) => (
+                            <VStack key={ri} minW="200px" flexShrink={0} gap="3">
+                                <Text fontSize="2xs" fontWeight={800} letterSpacing="0.08em" textTransform="uppercase" color="fg.muted">
+                                    {round.stage}
+                                </Text>
+                                <VStack gap="4" justify="space-around" flex="1" w="full">
+                                    {round.matches.map((m, mi) => (
+                                        <Box key={mi} w="full" borderWidth="1px" borderColor="border" rounded="xl" overflow="hidden" css={{ background: bGroupTintBg }}>
+                                            <SketchLine disp={m.a} />
+                                            <Box borderTopWidth="1px" borderColor="border" />
+                                            <SketchLine disp={m.b} />
+                                        </Box>
+                                    ))}
+                                </VStack>
+                            </VStack>
+                        ))}
+                    </Flex>
+                </Box>
+                <Flex gap="3" justify="space-between" wrap="wrap">
+                    <Button variant="ghost" colorPalette="gray" onClick={() => setSketchOpen(false)} disabled={generatingManual}>
+                        <FiChevronLeft /> Natrag na uređivanje
                     </Button>
-                </HStack>
-                <Text fontSize="xs" color="fg.muted">
-                    Redoslijed određuje parove (1. protiv zadnjeg, itd.). Isti redoslijed
-                    uvijek daje istu ljestvicu - kao na Challongeu.
-                </Text>
-                <VStack align="stretch" gap="1.5">
-                    {seedOrder.map((tm, idx) => (
-                        <HStack
-                            key={tm.id}
-                            gap="2"
-                            align="center"
-                            borderWidth="1px"
-                            borderColor="border"
-                            rounded="lg"
-                            px="3"
-                            py="2"
-                        >
-                            <Text
-                                fontFamily="mono"
-                                fontSize="13px"
-                                fontWeight={800}
-                                color="fg.muted"
-                                minW="5"
-                                textAlign="center"
-                            >
-                                {idx + 1}
-                            </Text>
-                            <Text fontSize="sm" fontWeight={600} flex="1" minW="0" truncate>
-                                {tm.name?.trim() || "Bez imena"}
-                            </Text>
-                            <HStack gap="0.5" flexShrink={0}>
-                                <IconButton
-                                    aria-label="Pomakni gore"
-                                    size="xs"
-                                    variant="ghost"
-                                    disabled={idx === 0 || savingSeeds}
-                                    onClick={() => moveSeed(idx, -1)}
-                                >
-                                    <FiArrowUp />
-                                </IconButton>
-                                <IconButton
-                                    aria-label="Pomakni dolje"
-                                    size="xs"
-                                    variant="ghost"
-                                    disabled={idx === seedOrder.length - 1 || savingSeeds}
-                                    onClick={() => moveSeed(idx, 1)}
-                                >
-                                    <FiArrowDown />
-                                </IconButton>
-                            </HStack>
-                        </HStack>
-                    ))}
-                </VStack>
-                <Button colorPalette="brand" onClick={saveSeeds} loading={savingSeeds}>
-                    Spremi nosioce
-                </Button>
+                    <Button colorPalette="brand" onClick={submitManualBracket} loading={generatingManual}>
+                        <FiCheck /> Potvrdi završnicu
+                    </Button>
+                </Flex>
             </VStack>
         </Panel>
     )
@@ -1041,7 +1361,7 @@ export default function BracketTab({
 
     if (!hasBracket) {
         if (canEdit && byeOpen) return byePanel
-        if (canEdit && seedsOpen) return seedsPanel
+        if (canEdit && manualOpen && sketchOpen) return sketchPanel
         if (canEdit && manualOpen) return manualBracketPanel
         return (
             <Panel p="0">
@@ -1052,15 +1372,14 @@ export default function BracketTab({
                             ? "Organizator još nije generirao eliminacijsku ljestvicu."
                             : !groupStageComplete
                                 ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
-                                : isKnockoutOnly
-                                    ? "Ručno složi parove sam, ili posloži nosioce pa generiraj (ista ljestvica svaki put)."
-                                    : "Ručno složi parove sam ili generiraj automatski iz kvalifikanata."
+                                : "Ručno složi parove povlačenjem ekipa, ili generiraj automatski (nasumično)."
                     }
                     action={
                         canEdit ? (
                             <HStack gap="2" wrap="wrap" justify="center">
-                                {/* Ručni ždrijeb is the default (primary); the
-                                    automatic draw is the opt-in beside it. */}
+                                {/* Two modes only: manual (drag the pairs
+                                    yourself) is the default; automatic is the
+                                    opt-in beside it. */}
                                 <Button
                                     colorPalette="brand"
                                     size="sm"
@@ -1069,16 +1388,6 @@ export default function BracketTab({
                                 >
                                     Ručni ždrijeb
                                 </Button>
-                                {isKnockoutOnly && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={openSeeds}
-                                        disabled={pool.length < 2}
-                                    >
-                                        Nosioci
-                                    </Button>
-                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"

@@ -168,26 +168,12 @@ public class TournamentController {
 
     /* ===================== Create ===================== */
 
-    /**
-     * Reject a request with a startAt in the past. Mirrors the frontend's
-     * {@code min} attribute and submit-time check - both layers exist
-     * because either can be bypassed (custom client, slow form-fill).
-     * Allows a 5-minute slack so clock skew between client and server
-     * doesn't reject borderline-valid creates.
-     */
-    private static void assertStartInFuture(OffsetDateTime startAt) {
-        if (startAt == null) return; // null is handled by other validation
-        OffsetDateTime cutoff = OffsetDateTime.now().minusMinutes(5);
-        if (startAt.isBefore(cutoff)) {
-            throw new BadRequestException("Datum i vrijeme turnira ne mogu biti u prošlosti.");
-        }
-    }
-
     @POST
     @Authenticated
     @Transactional
     public Response create(@Valid CreateTournamentRequest req) {
-        assertStartInFuture(req.startAt());
+        // Past start dates are allowed (backfilling a tournament that already
+        // happened) - no future-only guard.
         Tournaments t = tournamentMapper.toEntity(req);
         stampCreator(t);
         applyGeocoding(t);
@@ -227,7 +213,6 @@ public class TournamentController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("name is required").build();
         }
-        assertStartInFuture(req.startAt());
 
         Tournaments t = tournamentMapper.toEntity(req);
         stampCreator(t);
@@ -300,9 +285,7 @@ public class TournamentController {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         assertCanEdit(t);
-        // Block moving the date into the past on edit too. Editing a
-        // currently-running or finished tournament's date isn't sensible.
-        assertStartInFuture(req.startAt());
+        // Past start dates are allowed on edit too (backfilling past events).
 
         // Mapper applies all updatable fields in place. Status, winner and poster
         // are intentionally NOT touched here - they're owned by dedicated

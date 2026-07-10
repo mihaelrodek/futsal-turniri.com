@@ -64,7 +64,6 @@ import { usePolling } from "../hooks/usePolling"
 import {
     buildEditForm,
     editFormToPayload,
-    toLocalOffsetIso,
 } from "../tournament/parts"
 import type { EditForm, SectionKey } from "../tournament/parts"
 import OverviewSection from "../tournament/OverviewSection"
@@ -584,13 +583,6 @@ export default function TournamentDetailsPage() {
         editForm?.rewardThird,
     ])
 
-    const editStartInPast = useMemo(() => {
-        if (!editForm?.startDate || !editForm?.startTime) return false
-        const iso = toLocalOffsetIso(editForm.startDate, editForm.startTime)
-        if (!iso) return false
-        return new Date(iso).getTime() < Date.now()
-    }, [editForm?.startDate, editForm?.startTime])
-
     function enterDetailsEdit() {
         if (!t) return
         setEditForm(buildEditForm(t))
@@ -621,13 +613,7 @@ export default function TournamentDetailsPage() {
             )
             return
         }
-        if (editStartInPast) {
-            showError(
-                "Neispravan datum",
-                "Datum i vrijeme turnira ne mogu biti u prošlosti.",
-            )
-            return
-        }
+        // Past start dates are allowed on edit too (backfilling past events).
         try {
             setSavingDetails(true)
             let updated = await updateTournament(uuid, editFormToPayload(editForm))
@@ -1017,7 +1003,6 @@ export default function TournamentDetailsPage() {
                         savingDetails={savingDetails}
                         patchEdit={patchEdit}
                         editMissingRequired={editMissingRequired}
-                        editStartInPast={editStartInPast}
                         onDeleteTournament={() => setDeleteTournamentOpen(true)}
                         onToggleFeature={async () => {
                             // Admin-only feature toggle. Backend roundtrip

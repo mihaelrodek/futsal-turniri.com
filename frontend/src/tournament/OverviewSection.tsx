@@ -99,7 +99,6 @@ type OverviewSectionProps = {
     savingDetails: boolean
     patchEdit: <K extends keyof EditForm>(key: K, value: EditForm[K]) => void
     editMissingRequired: string[]
-    editStartInPast: boolean
     onDeleteTournament: () => void
     /** Admin-only: flip the tournament's "featured for the day" highlight.
      *  Visible in the read view as the "Istakni za dan" / "Ukloni
@@ -137,7 +136,6 @@ export default function OverviewSection(props: OverviewSectionProps) {
         savingDetails,
         patchEdit,
         editMissingRequired,
-        editStartInPast,
         onDeleteTournament,
         onToggleFeature,
         onToggleHidden,
@@ -198,7 +196,6 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                         timeCaption="Vrijeme"
                                         dateFormat="dd/MM/yyyy HH:mm"
                                         locale="hr"
-                                        minDate={new Date()}
                                         placeholderText="DD/MM/GGGG HH:MM"
                                         wrapperClassName="futsal-datepicker-input-wrap"
                                         className="futsal-datepicker-input"
@@ -660,11 +657,9 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     >
                         {/* Only the blocking states get a line; the "ready"
                             message was removed on request. */}
-                        {(editStartInPast || editMissingRequired.length > 0) && (
+                        {editMissingRequired.length > 0 && (
                             <Text fontSize="xs" color="red.fg" textAlign="right">
-                                {editStartInPast
-                                    ? "Datum/vrijeme ne mogu biti u prošlosti."
-                                    : `Nedostaje: ${editMissingRequired.join(", ")}`}
+                                {`Nedostaje: ${editMissingRequired.join(", ")}`}
                             </Text>
                         )}
                         <HStack gap="2" justify="flex-end">
@@ -677,7 +672,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 onClick={saveEdit}
                                 loading={savingDetails}
                                 disabled={
-                                    editMissingRequired.length > 0 || editStartInPast || savingDetails
+                                    editMissingRequired.length > 0 || savingDetails
                                 }
                             >
                                 Spremi izmjene

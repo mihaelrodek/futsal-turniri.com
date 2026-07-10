@@ -806,11 +806,15 @@ function ScorerColumn({
         <VStack flex="1" minW="0" maxW="46%" gap="1" align={align === "right" ? "flex-end" : "flex-start"}>
             {goals.map((g) => {
                 const own = g.type === "OWN_GOAL"
+                // Anonymous scorer (no named player) - shown as "Nepoznati
+                // strijelac" (or "Autogol" for an unattributed own goal), in
+                // italics so it reads distinctly from a named scorer.
+                const noName = g.playerName == null
                 // Own goal: name of the player who put it in his own net + "(ag)"
                 // (or just "Autogol" when anonymous); a red ball marks it.
                 const name = own
                     ? g.playerName != null ? `${g.playerName} (ag)` : "Autogol"
-                    : g.playerName
+                    : g.playerName ?? "Nepoznati strijelac"
                 const ball = own ? (
                     <chakra.span display="inline-flex" flexShrink={0} css={{ color: "#ff5c4e" }}>
                         <GiSoccerBall size="1em" />
@@ -836,13 +840,13 @@ function ScorerColumn({
                         {align === "right" ? (
                             <>
                                 {ball}
-                                <chakra.span truncate minW="0">{name}</chakra.span>
+                                <chakra.span truncate minW="0" fontStyle={noName ? "italic" : undefined}>{name}</chakra.span>
                                 {minuteEl}
                             </>
                         ) : (
                             <>
                                 {minuteEl}
-                                <chakra.span truncate minW="0">{name}</chakra.span>
+                                <chakra.span truncate minW="0" fontStyle={noName ? "italic" : undefined}>{name}</chakra.span>
                                 {ball}
                             </>
                         )}

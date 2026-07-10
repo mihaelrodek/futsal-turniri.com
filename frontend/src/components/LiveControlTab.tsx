@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { NativeSelect, Text, VStack } from "@chakra-ui/react"
+import { Box, Flex, Menu, Portal, Text } from "@chakra-ui/react"
+import { FiChevronDown } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
 import { fetchGroups } from "../api/groups"
@@ -10,7 +11,7 @@ import { EmptyState, Loader, Panel } from "../ui/primitives"
 import LiveMatchPanel, { type PanelMatch } from "./LiveMatchPanel"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   "Vođenje" - organizer-only control centre, fully inline (no modal).
+   "Zapisnik" - organizer-only match-recording control centre, fully inline.
 
    Pulls every group + knockout fixture that already has a kickoff (i.e. the
    schedule is generated), surfaces the current LIVE (or next on-deck) match
@@ -35,15 +36,16 @@ function fmtKickoff(k?: string | null): string {
     })
 }
 
-/** Dropdown label: a status tag (uživo / na redu), the teams, then stage + time. */
+/** Trigger / menu label: a status tag (● UŽIVO / ▶ NA REDU), the teams, then
+ *  stage + time - e.g. "● UŽIVO · Roma – Đurđ · Grupa · 10. 07. 20:00". */
 function optionLabel(e: Entry, onDeck: boolean): string {
     const m = e.match
-    const teams = `${m.team1Name ?? "-"} - ${m.team2Name ?? "-"}`
+    const teams = `${m.team1Name ?? "-"} – ${m.team2Name ?? "-"}`
     const stage = e.kind === "group" ? "Grupa" : "Eliminacija"
     const when = m.kickoffAt ? fmtKickoff(m.kickoffAt) : ""
     const meta = [stage, when].filter(Boolean).join(" · ")
     const tag = m.status === "LIVE" ? "● UŽIVO · " : onDeck ? "▶ NA REDU · " : ""
-    return `${tag}${teams}${meta ? `  ·  ${meta}` : ""}`
+    return `${tag}${teams}${meta ? ` · ${meta}` : ""}`
 }
 
 export default function LiveControlTab({ uuid }: { uuid: string }) {
@@ -98,10 +100,8 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
     }, [groups, knockout])
 
     // Default selection = the match the schedule says is up now: the current
-    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED - same one the
-    // Raspored tab flags "Na redu"). manageable is sorted LIVE-first then by
-    // kickoff, so manageable[0] is exactly that. A manual pick (selectedId)
-    // overrides until that match leaves the list (finished).
+    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED). A manual
+    // pick (selectedId) overrides until that match leaves the list (finished).
     const fallback = manageable.find((e) => e.match.status === "LIVE") ?? manageable[0] ?? null
     const selected = manageable.find((e) => e.match.matchId === selectedId) ?? fallback
 
@@ -119,59 +119,83 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
         )
     }
 
-    return (
-        <VStack align="stretch" gap="4">
-            <Panel p={{ base: "5", md: "6" }}>
-                <VStack align="stretch" gap="4">
-                    {/* Match picker - centered dropdown, no section header (the
-                        tab label already says "Zapisnik"; the panel goes
-                        straight to the point). Defaults to the on-deck match;
-                        the organizer can switch to any other live/scheduled one. */}
-                    {manageable.length > 1 && (
-                        <VStack align="center" gap="1.5" w="full">
-                            <Text
-                                fontSize="2xs"
-                                fontWeight="semibold"
-                                letterSpacing="wider"
-                                textTransform="uppercase"
-                                color="fg.muted"
-                            >
-                                Utakmica za vođenje
-                            </Text>
-                            <NativeSelect.Root size="md" w="full" maxW="xl">
-                                <NativeSelect.Field
-                                    value={selected ? String(selected.match.matchId) : ""}
-                                    onChange={(ev) =>
-                                        setSelectedId(ev.target.value === "" ? null : Number(ev.target.value))
-                                    }
-                                    fontWeight={600}
-                                    textAlign="center"
+    // The styled match-selector (design: an outlined full-width button with the
+    // current match label + a chevron; a Menu lists the other manageable ones).
+    const selectorLabel = selected ? optionLabel(selected, selected.match.matchId === fallback?.match.matchId) : "-"
+    const selector =
+        manageable.length > 1 ? (
+            <Menu.Root>
+                <Menu.Trigger asChild>
+                    <Flex
+                        as="button"
+                        align="center"
+                        gap="2"
+                        w="auto"
+                        maxW={{ base: "100%", md: "xl" }}
+                        minW="0"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="full"
+                        px="4"
+                        py="2"
+                        bg="bg.panel"
+                        cursor="pointer"
+                        _hover={{ borderColor: "border.emphasized" }}
+                        textAlign="left"
+                    >
+                        <Text fontSize="sm" fontWeight={700} color="fg.ink" truncate minW="0">
+                            {selectorLabel}
+                        </Text>
+                        <Box color="fg.muted" flexShrink={0}><FiChevronDown size={15} /></Box>
+                    </Flex>
+                </Menu.Trigger>
+                <Portal>
+                    <Menu.Positioner>
+                        <Menu.Content maxW="min(92vw, 640px)">
+                            {manageable.map((e) => (
+                                <Menu.Item
+                                    key={`${e.kind}-${e.match.matchId}`}
+                                    value={String(e.match.matchId)}
+                                    onClick={() => setSelectedId(e.match.matchId)}
+                                    fontWeight={e.match.matchId === selected?.match.matchId ? 800 : 500}
                                 >
-                                    {manageable.map((e) => (
-                                        <option key={`${e.kind}-${e.match.matchId}`} value={e.match.matchId}>
-                                            {optionLabel(e, e.match.matchId === fallback?.match.matchId)}
-                                        </option>
-                                    ))}
-                                </NativeSelect.Field>
-                                <NativeSelect.Indicator />
-                            </NativeSelect.Root>
-                        </VStack>
-                    )}
+                                    {optionLabel(e, e.match.matchId === fallback?.match.matchId)}
+                                </Menu.Item>
+                            ))}
+                        </Menu.Content>
+                    </Menu.Positioner>
+                </Portal>
+            </Menu.Root>
+        ) : (
+            <Flex
+                align="center"
+                gap="2"
+                w="auto"
+                maxW={{ base: "100%", md: "xl" }}
+                minW="0"
+                borderWidth="1px"
+                borderColor="border"
+                rounded="full"
+                px="4"
+                py="2"
+                bg="bg.panel"
+            >
+                <Text fontSize="sm" fontWeight={700} color="fg.ink" truncate minW="0">
+                    {selectorLabel}
+                </Text>
+            </Flex>
+        )
 
-                    {/* Inline live-control panel for the selected match. Keyed by
-                        id+status so a status change (SCHEDULED→LIVE→…) remounts
-                        it with fresh state. */}
-                    {selected && (
-                        <LiveMatchPanel
-                            key={`${selected.match.matchId}-${selected.match.status}`}
-                            uuid={uuid}
-                            kind={selected.kind}
-                            match={selected.match}
-                            onChanged={reload}
-                        />
-                    )}
-                </VStack>
-            </Panel>
-        </VStack>
-    )
+    // Keyed by id+status so a status change (SCHEDULED→LIVE→…) remounts it with
+    // fresh state.
+    return selected ? (
+        <LiveMatchPanel
+            key={`${selected.match.matchId}-${selected.match.status}`}
+            uuid={uuid}
+            kind={selected.kind}
+            match={selected.match}
+            onChanged={reload}
+            selector={selector}
+        />
+    ) : null
 }

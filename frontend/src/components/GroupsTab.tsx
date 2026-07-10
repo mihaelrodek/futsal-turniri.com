@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, type ReactNode} from "react"
+import {useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode} from "react"
 import {
     Badge,
     Box,
@@ -15,7 +15,7 @@ import {
 import {useNavigate} from "react-router-dom"
 import {useQueryClient} from "@tanstack/react-query"
 import {qk} from "../queryClient"
-import {LuShuffle, LuTrophy} from "react-icons/lu"
+import {LuRotateCcw, LuShuffle, LuTrophy} from "react-icons/lu"
 import {FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock, FiMinus, FiPlus} from "react-icons/fi"
 import {
     fetchGroups,
@@ -84,6 +84,87 @@ import {
  * Firebase auth is temporarily disabled project-wide.
  */
 type EditForm = { s1: string; s2: string }
+
+/** One config −N+ stepper on the draw board (broj grupa / prolazi / najbolje). */
+function ConfigStepper({
+    label,
+    value,
+    onDec,
+    onInc,
+    decDisabled,
+    incDisabled,
+}: {
+    label: string
+    value: number
+    onDec: () => void
+    onInc: () => void
+    decDisabled?: boolean
+    incDisabled?: boolean
+}) {
+    return (
+        <Box>
+            <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1.5">
+                {label}
+            </Text>
+            <Flex align="center" borderWidth="1px" borderColor="border" rounded="xl" overflow="hidden" w="fit-content">
+                <IconButton aria-label={`Smanji: ${label}`} variant="ghost" rounded="none" h="44px" minW="38px"
+                            color="pitch.500" disabled={decDisabled} onClick={onDec}>
+                    <FiMinus size={16}/>
+                </IconButton>
+                <Text minW="44px" textAlign="center" fontSize="md" fontWeight={800} fontVariantNumeric="tabular-nums">
+                    {value}
+                </Text>
+                <IconButton aria-label={`Povećaj: ${label}`} variant="ghost" rounded="none" h="44px" minW="38px"
+                            color="pitch.500" disabled={incDisabled} onClick={onInc}>
+                    <FiPlus size={16}/>
+                </IconButton>
+            </Flex>
+        </Box>
+    )
+}
+
+/** One draggable team pill ("kuglica") on the draw board - a ⠿ handle + the
+ *  team name. Pointer-drag (same handlers as before); works on touch/iPad. */
+function DrawChip({
+    name,
+    dragging,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+}: {
+    name: string | null
+    dragging: boolean
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void
+    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void
+}) {
+    return (
+        <Flex
+            align="center"
+            gap="2.5"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            style={{touchAction: "none", userSelect: "none"}}
+            borderWidth="1px"
+            borderColor="border"
+            bg="bg.panel"
+            rounded="xl"
+            px="3.5"
+            py="3"
+            cursor="grab"
+            opacity={dragging ? 0.35 : 1}
+            _hover={{borderColor: "pitch.400"}}
+            transition="border-color 120ms"
+        >
+            <Text as="span" color="fg.subtle" fontSize="md" flexShrink={0} lineHeight="1" css={{letterSpacing: "-2px"}}>⠿</Text>
+            <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+        </Flex>
+    )
+}
 
 /** Mono header cell for the SofaScore-style standings grid. */
 function StHead({
@@ -958,56 +1039,49 @@ export default function GroupsTab({
         }
     }
 
-    const drawPanel = (
-        <Panel p={{base: "4", md: "5"}}>
-            <VStack align="stretch" gap="4">
-                <HStack justify="space-between" align="center" wrap="wrap" gap="2">
-                    <Box>
-                        <Text fontWeight="bold" fontSize="sm">Ždrijeb grupa</Text>
-                        <Text fontSize="2xs" color="fg.muted">
-                            Skica se sprema automatski - primjenjuje se tek klikom na „Potvrdi ždrijeb".
-                        </Text>
-                    </Box>
-                </HStack>
+    // Subtle green-tinted surface that adapts to light/dark (mirrors the
+    // handoff's sage group cards without breaking dark mode).
+    const groupTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 6%, var(--chakra-colors-bg-panel))"
+    const groupTintBgHover = "color-mix(in srgb, var(--chakra-colors-pitch-500) 12%, var(--chakra-colors-bg-panel))"
+    const poolTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 3%, var(--chakra-colors-bg-panel))"
+    const ekipaWord = (n: number) => (n === 1 ? "ekipa" : "ekipe")
 
-                {/* Config: group count + advance, then auto/manual toggle. */}
-                <Flex gap="4" align="flex-end" wrap="wrap">
-                    <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
-                              color="fg.muted" mb="1">
-                            Broj grupa
-                        </Text>
-                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgGroups}
-                               onChange={(e) => changeGroupCount(e.target.value)}/>
-                    </Box>
-                    <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
-                              color="fg.muted" mb="1">
-                            Prolazi po grupi
-                        </Text>
-                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance}
-                               onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))}/>
-                    </Box>
-                    {/* Best next-placed ("third") teams that also advance. Max
-                        one per group; the label position tracks advNum. */}
-                    <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
-                              color="fg.muted" mb="1">
-                            Najbolje {advNum + 1}. plasirane
-                        </Text>
-                        <Input
-                            size="sm"
-                            w="84px"
-                            inputMode="numeric"
-                            textAlign="center"
-                            value={cfgBestThird}
-                            onChange={(e) => {
-                                const s = e.target.value.replace(/[^\d]/g, "")
-                                const n = parseInt(s || "0", 10) || 0
-                                setCfgBestThird(String(Math.min(gcNum, Math.max(0, n))))
-                            }}
-                        />
-                    </Box>
+    const drawPanel = (
+        <Panel p={{base: "4", md: "6"}}>
+            <VStack align="stretch" gap="5">
+                <Box>
+                    <Text fontWeight={800} fontSize={{base: "lg", md: "xl"}}>Ždrijeb grupa</Text>
+                    <Text fontSize="sm" color="fg.muted" fontWeight={500}>
+                        Skica se sprema automatski — primjenjuje se tek klikom na „Potvrdi ždrijeb".
+                    </Text>
+                </Box>
+
+                {/* Config steppers: group count / advance / best next-placed. */}
+                <Flex gap={{base: "5", md: "7"}} wrap="wrap">
+                    <ConfigStepper
+                        label="Broj grupa"
+                        value={gcNum}
+                        onDec={() => changeGroupCount(String(gcNum - 1))}
+                        onInc={() => changeGroupCount(String(gcNum + 1))}
+                        decDisabled={gcNum <= 2 || drawing}
+                        incDisabled={gcNum >= maxGroups || drawing}
+                    />
+                    <ConfigStepper
+                        label="Prolazi po grupi"
+                        value={advNum}
+                        onDec={() => setCfgAdvance(String(Math.max(1, advNum - 1)))}
+                        onInc={() => setCfgAdvance(String(advNum + 1))}
+                        decDisabled={advNum <= 1}
+                    />
+                    {/* Best next-placed ("third") teams; label position tracks advNum. */}
+                    <ConfigStepper
+                        label={`Najbolje ${advNum + 1}. plasirane`}
+                        value={bestThirdNum}
+                        onDec={() => setCfgBestThird(String(Math.max(0, bestThirdNum - 1)))}
+                        onInc={() => setCfgBestThird(String(Math.min(gcNum, bestThirdNum + 1)))}
+                        decDisabled={bestThirdNum <= 0}
+                        incDisabled={bestThirdNum >= gcNum}
+                    />
                 </Flex>
 
                 {bestThirdNum > 0 && (
@@ -1025,251 +1099,259 @@ export default function GroupsTab({
                     </Text>
                 )}
 
-                {/* ── Drag & drop board ─────────────────────────────────
-                     Pool of "kuglice" on the left, group boxes with
-                     numbered slots on the right. Drag a chip into a slot
-                     to assign it; drag it back onto the pool to undo.
-                     "Nasumično rasporedi" fills the rest randomly. */}
-                <VStack align="stretch" gap="3">
-                    <HStack justify="space-between" align="center" wrap="wrap" gap="2">
-                        <Text fontSize="xs" color="fg.muted">
-                            Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
-                            ? `Neraspoređeno: ${poolTeams.length}.`
-                            : "Sve ekipe su raspoređene."}
-                        </Text>
-                        <HStack gap="2">
-                            <Button size="xs" variant="outline" onClick={fillRemaining}
-                                    disabled={poolTeams.length === 0}>
-                                <HStack gap="1"><LuShuffle size={13}/> Nasumično rasporedi</HStack>
-                            </Button>
-                            <Button size="xs" variant="ghost" onClick={() => setAssign({})}
-                                    disabled={registeredTeams.length === poolTeams.length}>
-                                Isprazni
-                            </Button>
-                            <HStack gap="1">
-                                <Button size="xs" variant="ghost" color="fg.muted" onClick={discardDraft}
-                                        disabled={drawing}>
-                                    <HStack gap="1"><FiTrash2 size={12}/> Odbaci skicu</HStack>
-                                </Button>
-                                <Button size="xs" variant="ghost" onClick={closeDraw} disabled={drawing}>
-                                    Odustani
-                                </Button>
-                            </HStack>
-                        </HStack>
-                    </HStack>
+                {/* ── Toolbar: status + tools (hairline top+bottom). ────── */}
+                <Flex
+                    align="center"
+                    gap="3"
+                    wrap="wrap"
+                    py="3.5"
+                    borderTopWidth="1px"
+                    borderBottomWidth="1px"
+                    borderColor="border"
+                >
+                    <Text fontSize="sm" fontWeight={700} color="fg.muted" flex="1" minW="180px">
+                        Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
+                        ? `Raspoređeno ${registeredTeams.length - poolTeams.length}/${registeredTeams.length}.`
+                        : "Sve ekipe su raspoređene."}
+                    </Text>
+                    <Button
+                        size="sm"
+                        colorPalette="brand"
+                        onClick={fillRemaining}
+                        disabled={poolTeams.length === 0}
+                    >
+                        <LuShuffle size={15}/> Nasumično rasporedi
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette="brand"
+                        onClick={() => setAssign({})}
+                        disabled={registeredTeams.length === poolTeams.length}
+                    >
+                        <LuRotateCcw size={14}/> Isprazni
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette="red"
+                        onClick={discardDraft}
+                        disabled={drawing}
+                    >
+                        <FiTrash2 size={14}/> Odbaci skicu
+                    </Button>
+                    <Button
+                        size="sm"
+                        colorPalette="brand"
+                        onClick={submitDraw}
+                        loading={drawing}
+                        disabled={!enoughTeams || !allAssigned}
+                        title={!allAssigned ? "Rasporedi sve kuglice u skupine prije potvrde" : undefined}
+                    >
+                        Potvrdi ždrijeb
+                    </Button>
+                    <Button size="sm" variant="ghost" colorPalette="gray" onClick={closeDraw} disabled={drawing}>
+                        Odustani
+                    </Button>
+                </Flex>
 
-                    <Box display="grid" gridTemplateColumns={{base: "1fr", md: "minmax(200px, 1fr) 1.25fr"}} gap="4"
-                         alignItems="start">
-                        {/* Pool ("kuglice") - also a drop zone for unassigning. */}
+                {/* ── Drag & drop board: pool (left) + group cards (right). */}
+                <Box display="grid" gridTemplateColumns={{base: "1fr", md: "300px 1fr"}} gap="5" alignItems="start">
+                    {/* Pool ("kuglice") - dashed drop zone, also unassigns. */}
+                    <Box position="relative">
                         <Box
                             data-drop="pool"
-                            borderWidth="1px"
+                            borderWidth="2px"
                             borderStyle="dashed"
-                            borderColor={dragOver === "pool" ? "pitch.400" : "border"}
-                            bg={dragOver === "pool" ? "bg.surfaceTint" : undefined}
-                            rounded="lg"
-                            p="3"
-                            transition="background 120ms, border-color 120ms"
+                            borderColor="border"
+                            rounded="2xl"
+                            p="3.5"
+                            minH="280px"
+                            css={{background: poolTintBg}}
+                            transition="border-color 120ms"
                         >
-                            <Text fontWeight="bold" fontSize="sm" mb="2">
-                                Kuglice / ekipe ({poolTeams.length})
-                            </Text>
-                            <VStack align="stretch" gap="1.5">
+                            <Flex align="center" justify="space-between" mb="3">
+                                <Text fontWeight={800} fontSize="md">Kuglice / ekipe</Text>
+                                <Box
+                                    as="span"
+                                    bg="pitch.500"
+                                    color="white"
+                                    fontSize="xs"
+                                    fontWeight={800}
+                                    px="2.5"
+                                    py="1"
+                                    rounded="full"
+                                    fontVariantNumeric="tabular-nums"
+                                >
+                                    {poolTeams.length}
+                                </Box>
+                            </Flex>
+                            {poolTeams.length === 0 && (
+                                <Text fontSize="sm" color="fg.muted" fontWeight={500} py="8" textAlign="center">
+                                    Sve raspoređeno — povuci ekipu ovamo da je vratiš.
+                                </Text>
+                            )}
+                            <VStack align="stretch" gap="2">
                                 {poolTeams.map((tm) => (
-                                    <Box
+                                    <DrawChip
                                         key={tm.id}
+                                        name={tm.name}
+                                        dragging={dragTeam?.id === tm.id}
                                         onPointerDown={(e) => startDrag(e, tm)}
                                         onPointerMove={dragMove}
                                         onPointerUp={endDrag}
                                         onPointerCancel={cancelDrag}
-                                        style={{touchAction: "none", userSelect: "none"}}
-                                        borderWidth="1px"
-                                        borderColor="border"
-                                        bg="bg.panel"
-                                        rounded="lg"
-                                        px="3"
-                                        py="2"
-                                        fontSize="sm"
-                                        fontWeight={600}
-                                        cursor="grab"
-                                        opacity={dragTeam?.id === tm.id ? 0.35 : 1}
-                                        _hover={{borderColor: "pitch.400"}}
-                                    >
-                                        <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
-                                    </Box>
+                                    />
                                 ))}
-                                {poolTeams.length === 0 && (
-                                    <Text fontSize="xs" color="fg.muted" py="2" textAlign="center">
-                                        Sve raspoređeno - povuci ekipu ovamo da je vratiš.
-                                    </Text>
-                                )}
                             </VStack>
                         </Box>
+                        {dragOver === "pool" && (
+                            <Box position="absolute" inset="0" rounded="2xl" borderWidth="2px" borderColor="pitch.500"
+                                 css={{background: "color-mix(in srgb, var(--chakra-colors-pitch-500) 8%, transparent)"}}
+                                 pointerEvents="none"/>
+                        )}
+                    </Box>
 
-                        {/* Group boxes with numbered slots. Boxes are stable
-                                ids carrying their teams + capacity; the LETTER
-                                follows the display position (slot 0 = "A"), so
-                                the arrow buttons move e.g. the 4-team group to
-                                the end. Full boxes can be collapsed. */}
-                        <VStack align="stretch" gap="3">
-                            {Array.from({length: gcNum}, (_, pos) => {
-                                const i = boxOrderEff[pos]
-                                const inGroup = teamsInGroup(i)
-                                const cap = capOf(i)
-                                const full = inGroup.length >= cap
-                                const hovered = dragOver === String(i)
-                                const isCollapsed = collapsedBoxes.has(i)
-                                return (
+                    {/* Group cards. Boxes are stable ids carrying teams + capacity;
+                        the LETTER follows the display position (slot 0 = "A"), so
+                        the arrow buttons move e.g. the 4-team group to the end.
+                        Full boxes can be collapsed. */}
+                    <Box display="grid" gridTemplateColumns={{base: "1fr", sm: "repeat(auto-fill, minmax(240px, 1fr))"}}
+                         gap="3.5">
+                        {Array.from({length: gcNum}, (_, pos) => {
+                            const i = boxOrderEff[pos]
+                            const inGroup = teamsInGroup(i)
+                            const cap = capOf(i)
+                            const full = inGroup.length >= cap
+                            const hovered = dragOver === String(i)
+                            const isCollapsed = collapsedBoxes.has(i)
+                            return (
+                                <Box key={i} position="relative">
                                     <Box
-                                        key={i}
                                         data-drop={String(i)}
                                         borderWidth="1px"
-                                        borderColor={hovered ? (full ? "red.400" : "pitch.400") : "border"}
-                                        bg={hovered && !full ? "bg.surfaceTint" : undefined}
-                                        rounded="lg"
+                                        borderColor="border"
+                                        rounded="2xl"
                                         overflow="hidden"
-                                        transition="background 120ms, border-color 120ms"
+                                        minH={isCollapsed ? undefined : "200px"}
+                                        css={{background: hovered && !full ? groupTintBgHover : groupTintBg}}
+                                        transition="background 120ms"
                                     >
-                                        <HStack justify="space-between" px="3" py="1.5" bg="bg.surfaceTint"
-                                                borderBottomWidth={isCollapsed ? "0" : "1px"} borderColor="border"
-                                                gap="1">
-                                            <Text fontFamily="mono" fontSize="2xs" fontWeight={800}
-                                                  letterSpacing="0.12em">
+                                        <HStack justify="space-between" px="3.5" py="2.5" gap="1">
+                                            <Text fontSize="xs" fontWeight={800} letterSpacing="0.06em" color="fg.ink">
                                                 SKUPINA {grpLabel(pos)}
                                             </Text>
                                             <HStack gap="0.5">
-                                                <Text fontFamily="mono" fontSize="2xs"
-                                                      color={full ? "pitch.500" : "fg.muted"} fontWeight={700} mr="1">
-                                                    {inGroup.length}/{cap}
-                                                </Text>
+                                                <Box
+                                                    as="span"
+                                                    bg="bg.panel"
+                                                    borderWidth="1px"
+                                                    borderColor="pitch.muted"
+                                                    color="pitch.500"
+                                                    fontSize="xs"
+                                                    fontWeight={800}
+                                                    px="2.5"
+                                                    py="0.5"
+                                                    rounded="full"
+                                                    mr="1"
+                                                    fontVariantNumeric="tabular-nums"
+                                                    whiteSpace="nowrap"
+                                                >
+                                                    {inGroup.length} {ekipaWord(inGroup.length)}
+                                                </Box>
                                                 <IconButton
-                                                    aria-label="Pomakni skupinu gore"
-                                                    size="xs"
-                                                    h="22px"
-                                                    minW="22px"
-                                                    variant="ghost"
-                                                    disabled={pos === 0 || drawing}
+                                                    aria-label="Pomakni skupinu gore" size="xs" h="22px" minW="22px"
+                                                    variant="ghost" disabled={pos === 0 || drawing}
                                                     onClick={() => moveGroupBox(pos, -1)}
                                                 >
                                                     <FiArrowUp size={12}/>
                                                 </IconButton>
                                                 <IconButton
-                                                    aria-label="Pomakni skupinu dolje"
-                                                    size="xs"
-                                                    h="22px"
-                                                    minW="22px"
-                                                    variant="ghost"
-                                                    disabled={pos === gcNum - 1 || drawing}
+                                                    aria-label="Pomakni skupinu dolje" size="xs" h="22px" minW="22px"
+                                                    variant="ghost" disabled={pos === gcNum - 1 || drawing}
                                                     onClick={() => moveGroupBox(pos, 1)}
                                                 >
                                                     <FiArrowDown size={12}/>
                                                 </IconButton>
                                                 <IconButton
                                                     aria-label={isCollapsed ? "Proširi skupinu" : "Minimiziraj skupinu"}
-                                                    size="xs"
-                                                    h="22px"
-                                                    minW="22px"
-                                                    variant="ghost"
+                                                    size="xs" h="22px" minW="22px" variant="ghost"
                                                     onClick={() => toggleBoxCollapsed(i)}
                                                 >
-                                                    {isCollapsed ? <FiChevronDown size={13}/> :
-                                                        <FiChevronUp size={13}/>}
+                                                    {isCollapsed ? <FiChevronDown size={13}/> : <FiChevronUp size={13}/>}
                                                 </IconButton>
                                             </HStack>
                                         </HStack>
                                         {/* Collapsed: a one-line roster summary (still a drop target). */}
                                         {isCollapsed && (
-                                            <Text px="3" py="1.5" fontSize="xs" color="fg.muted" truncate>
+                                            <Text px="3.5" pb="2.5" fontSize="xs" color="fg.muted" truncate>
                                                 {inGroup.length > 0
                                                     ? inGroup.map((tm) => tm.name?.trim() || "Bez imena").join(" · ")
                                                     : "Prazno"}
                                             </Text>
                                         )}
                                         {!isCollapsed && (
-                                            <VStack align="stretch" gap="1.5" p="2.5">
+                                            <VStack align="stretch" gap="2" px="3.5" pb="3.5">
+                                                {inGroup.length === 0 && (
+                                                    <Flex align="center" justify="center" py="8" px="3"
+                                                          borderWidth="1px" borderStyle="dashed" borderColor="border"
+                                                          rounded="xl" color="fg.muted" fontSize="sm" fontWeight={500}>
+                                                        Povuci ekipu ovamo
+                                                    </Flex>
+                                                )}
                                                 {inGroup.map((tm) => (
-                                                    <Box
+                                                    <DrawChip
                                                         key={tm.id}
+                                                        name={tm.name}
+                                                        dragging={dragTeam?.id === tm.id}
                                                         onPointerDown={(e) => startDrag(e, tm)}
                                                         onPointerMove={dragMove}
                                                         onPointerUp={endDrag}
                                                         onPointerCancel={cancelDrag}
-                                                        style={{touchAction: "none", userSelect: "none"}}
-                                                        borderWidth="1px"
-                                                        borderColor="pitch.muted"
-                                                        bg="bg.surfaceTint"
-                                                        rounded="lg"
-                                                        px="3"
-                                                        py="2"
-                                                        fontSize="sm"
-                                                        fontWeight={600}
-                                                        cursor="grab"
-                                                        opacity={dragTeam?.id === tm.id ? 0.35 : 1}
-                                                        _hover={{borderColor: "pitch.400"}}
-                                                    >
-                                                        <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
-                                                    </Box>
-                                                ))}
-                                                {Array.from({length: Math.max(0, cap - inGroup.length)}, (_, s) => (
-                                                    <Flex
-                                                        key={`slot-${s}`}
-                                                        align="center"
-                                                        px="3"
-                                                        py="2"
-                                                        borderWidth="1px"
-                                                        borderStyle="dashed"
-                                                        borderColor="border"
-                                                        rounded="lg"
-                                                        color="fg.muted"
-                                                        fontSize="sm"
-                                                    >
-                                                        {inGroup.length + s + 1}. mjesto
-                                                    </Flex>
+                                                    />
                                                 ))}
                                             </VStack>
                                         )}
                                     </Box>
-                                )
-                            })}
-                        </VStack>
+                                    {hovered && (
+                                        <Box position="absolute" inset="0" rounded="2xl" borderWidth="2px"
+                                             borderColor={full ? "red.500" : "pitch.500"}
+                                             css={{background: full
+                                                 ? "color-mix(in srgb, var(--chakra-colors-red-500) 8%, transparent)"
+                                                 : "color-mix(in srgb, var(--chakra-colors-pitch-500) 9%, transparent)"}}
+                                             pointerEvents="none"/>
+                                    )}
+                                </Box>
+                            )
+                        })}
                     </Box>
+                </Box>
 
-                    {/* Floating chip that follows the pointer while dragging. */}
-                    {dragTeam && (
-                        <Box
-                            ref={ghostRef}
-                            position="fixed"
-                            top="0"
-                            left="0"
-                            zIndex={1500}
-                            pointerEvents="none"
-                            px="3"
-                            py="1.5"
-                            rounded="lg"
-                            bg="pitch.500"
-                            color="white"
-                            fontSize="sm"
-                            fontWeight={700}
-                            boxShadow="lg"
-                            style={{
-                                transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
-                                willChange: "transform",
-                            }}
-                        >
-                            {dragTeam.name?.trim() || "Bez imena"}
-                        </Box>
-                    )}
-                </VStack>
-
-                <Button
-                    colorPalette="brand"
-                    onClick={submitDraw}
-                    loading={drawing}
-                    disabled={!enoughTeams || !allAssigned}
-                    title={!allAssigned ? "Rasporedi sve kuglice u skupine prije potvrde" : undefined}
-                >
-                    Potvrdi ždrijeb
-                </Button>
+                {/* Floating chip that follows the pointer while dragging. */}
+                {dragTeam && (
+                    <Box
+                        ref={ghostRef}
+                        position="fixed"
+                        top="0"
+                        left="0"
+                        zIndex={1500}
+                        pointerEvents="none"
+                        px="3"
+                        py="1.5"
+                        rounded="lg"
+                        bg="pitch.500"
+                        color="white"
+                        fontSize="sm"
+                        fontWeight={700}
+                        boxShadow="lg"
+                        style={{
+                            transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
+                            willChange: "transform",
+                        }}
+                    >
+                        {dragTeam.name?.trim() || "Bez imena"}
+                    </Box>
+                )}
             </VStack>
         </Panel>
     )

@@ -1224,7 +1224,7 @@ export function TimelineEventLine({
  * Current cumulative football minute of a TIMER match - matches the count-up
  * clock, capped at each half boundary (1st half ≤ half length, 2nd half ≤ 2×).
  */
-function liveMatchMinute(args: {
+export function liveMatchMinute(args: {
     liveStartedAt: string | null | undefined
     firstHalfEndedAt?: string | null
     secondHalfStartedAt: string | null | undefined
