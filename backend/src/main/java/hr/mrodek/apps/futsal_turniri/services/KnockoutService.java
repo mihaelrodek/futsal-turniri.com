@@ -166,14 +166,21 @@ public class KnockoutService {
         // persistence context after the bulk-delete below wipes their rows and
         // their round is removed, so the next autoflush would fail with
         // "TransientObjectException: ... unsaved transient instance of Rounds".
+        //
+        // Skip bye rows: they are never played, so a slot of theirs (only
+        // possible on data created before byes were excluded from the
+        // schedule) would shift every real match's reserved time by one.
         List<java.time.OffsetDateTime> reservedKickoffs = matchesRepo.getEntityManager()
                 .createQuery(
                         "select m.kickoffAt from Matches m "
                                 + "where m.tournament = ?1 and m.stage <> ?2 "
-                                + "and m.kickoffAt is not null order by m.kickoffAt",
+                                + "and m.kickoffAt is not null "
+                                + "and not (m.status = ?3 and (m.team1 is null or m.team2 is null)) "
+                                + "order by m.kickoffAt",
                         java.time.OffsetDateTime.class)
                 .setParameter(1, t)
                 .setParameter(2, MatchStage.GROUP)
+                .setParameter(3, MatchStatus.FINISHED)
                 .getResultList();
 
         // Wipe any prior knockout matches and their now-empty rounds.
@@ -236,13 +243,16 @@ public class KnockoutService {
             round1.get(i).setTeam2(roundOnePairs.get(i)[1]);
         }
 
-        // Third-place playoff - fed by the semi-final losers.
-        Matches third = new Matches();
-        third.setTournament(t);
-        third.setRound(koRound);
-        third.setStage(MatchStage.THIRD_PLACE);
-        third.setStatus(MatchStatus.SCHEDULED);
-        matchesRepo.persist(third);
+        // Third-place playoff - fed by the semi-final losers. Skipped when the
+        // bracket can't produce two of them (see hasThirdPlace).
+        if (hasThirdPlace(q)) {
+            Matches third = new Matches();
+            third.setTournament(t);
+            third.setRound(koRound);
+            third.setStage(MatchStage.THIRD_PLACE);
+            third.setStatus(MatchStatus.SCHEDULED);
+            matchesRepo.persist(third);
+        }
 
         // Resolve byes: a round-one match with a single team auto-advances it.
         for (Matches m : round1) {
@@ -320,9 +330,8 @@ public class KnockoutService {
         return gc * adv + bt;
     }
 
-    /** Predicted knockout match count = bracket size (elimination matches +
-     *  third-place playoff = bracket-slot count) for the predicted qualifiers,
-     *  or the actual count once a bracket/skeleton already exists. */
+    /** Predicted count of REAL (playable) knockout matches for the predicted
+     *  qualifiers, or the actual non-bye count once a bracket/skeleton exists. */
     public int plannedKnockoutMatchCount(Tournaments t) {
         List<Matches> existing = matchesRepo.list(
                 "tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
@@ -332,9 +341,11 @@ public class KnockoutService {
         }
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return 0;
         int q = predictedQualifiers(t);
-        // Real matches in a bracket of size n = nextPowerOfTwo(q) with
-        // (n - q) byes: (n - 1) tree matches + third place - byes = q.
-        return q >= 2 ? q : 0;
+        if (q < 2) return 0;
+        // A bracket of size n = nextPowerOfTwo(q) has (n - 1) tree matches, of
+        // which (n - q) are first-round byes that are never played - leaving
+        // (q - 1) real ones - plus the third-place playoff when it's playable.
+        return (q - 1) + (hasThirdPlace(q) ? 1 : 0);
     }
 
     /** Predicted knockout stages in single-court play order (e.g. QF×4, SF×2,
@@ -358,7 +369,7 @@ public class KnockoutService {
             firstRound = false;
             inRound /= 2;
         }
-        stages.add(MatchStage.THIRD_PLACE);
+        if (hasThirdPlace(q)) stages.add(MatchStage.THIRD_PLACE);
         stages.sort(Comparator.comparingInt(KnockoutService::knockoutStageRank));
         return stages;
     }
@@ -370,6 +381,10 @@ public class KnockoutService {
      * plays. No-op when a bracket already exists, when not GROUPS_KNOCKOUT, or
      * when fewer than two teams will qualify. Teams are filled in later by
      * {@link #generateBracket} - which preserves these reserved kickoffs.
+     *
+     * <p>Only the REAL matches get a placeholder: first-round byes and an
+     * unplayable third-place playoff are skipped, so the reserved slot count
+     * equals the number of matches the real bracket will actually schedule.
      */
     @Transactional
     public void createSkeleton(Tournaments t) {
@@ -417,12 +432,14 @@ public class KnockoutService {
                 cur.get(i).setNextSlot((i % 2) + 1);
             }
         }
-        Matches third = new Matches();
-        third.setTournament(t);
-        third.setRound(koRound);
-        third.setStage(MatchStage.THIRD_PLACE);
-        third.setStatus(MatchStatus.SCHEDULED);
-        matchesRepo.persist(third);
+        if (hasThirdPlace(q)) {
+            Matches third = new Matches();
+            third.setTournament(t);
+            third.setRound(koRound);
+            third.setStage(MatchStage.THIRD_PLACE);
+            third.setStatus(MatchStatus.SCHEDULED);
+            matchesRepo.persist(third);
+        }
     }
 
     /**
@@ -533,13 +550,16 @@ public class KnockoutService {
             round1.get(i).setTeam2(roundOnePairs.get(i)[1]);
         }
 
-        // Third-place playoff - fed by the semi-final losers.
-        Matches third = new Matches();
-        third.setTournament(t);
-        third.setRound(koRound);
-        third.setStage(MatchStage.THIRD_PLACE);
-        third.setStatus(MatchStatus.SCHEDULED);
-        matchesRepo.persist(third);
+        // Third-place playoff - fed by the semi-final losers. Skipped when the
+        // bracket can't produce two of them (see hasThirdPlace).
+        if (hasThirdPlace(teamCount)) {
+            Matches third = new Matches();
+            third.setTournament(t);
+            third.setRound(koRound);
+            third.setStage(MatchStage.THIRD_PLACE);
+            third.setStatus(MatchStatus.SCHEDULED);
+            matchesRepo.persist(third);
+        }
 
         // Resolve byes: a single-team round-one match auto-advances.
         for (Matches m : round1) {
@@ -874,6 +894,21 @@ public class KnockoutService {
     }
 
     /* ──────────────────────────── helpers ────────────────────────────── */
+
+    /**
+     * Whether a third-place playoff is playable for the given qualifier count.
+     * It is fed by the TWO semi-final losers, so it needs two REAL semi-finals.
+     * With {@code q} qualifiers in a bracket of size {@code nextPowerOfTwo(q)}
+     * the byes all sit in round one, so: {@code q=2} has no semi-final at all
+     * and {@code q=3} leaves one semi-final a bye (no loser - the other
+     * semi-final's loser IS third). From 4 qualifiers up both semi-finals are
+     * always real. Below that the match could never be played, so it must not
+     * be created - it would sit in the schedule forever as an unplayable
+     * "TBD" fixture.
+     */
+    private static boolean hasThirdPlace(int qualifiers) {
+        return qualifiers >= 4;
+    }
 
     /** Smallest power of two that is >= n (and >= 2). */
     private static int nextPowerOfTwo(int n) {
