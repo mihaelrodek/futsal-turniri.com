@@ -446,18 +446,22 @@ export default function LiveMatchPanel({
                 {/* ===== PRE-MATCH / FINISHED scoreboard ===== */}
                 {!isLive && (
                     <VStack align="stretch" gap="0" mt="5">
-                        {/* Scoreboard */}
-                        <Flex align="center" justify="center" gap={{ base: "3", md: "4" }} wrap="wrap" mb="2">
-                            <Text fontSize={{ base: "2xl", md: "3xl" }} fontWeight={800} color={HOME} truncate maxW="40%">
+                        {/* Scoreboard - a 1fr/auto/1fr grid so the score stays
+                            truly centred no matter how uneven the two team names
+                            are; long names wrap instead of pushing the score off. */}
+                        <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2.5", md: "4" }} mb="2" w="full">
+                            <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={HOME} textAlign="right" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                 {match.team1Name ?? "-"}
                             </Text>
-                            <ScoreBadge value={score.s1} color={HOME} />
-                            <Text fontSize="2xl" fontWeight={800} color="fg.subtle">:</Text>
-                            <ScoreBadge value={score.s2} color={AWAY} />
-                            <Text fontSize={{ base: "2xl", md: "3xl" }} fontWeight={800} color={AWAY} truncate maxW="40%">
+                            <HStack gap={{ base: "2.5", md: "3.5" }} flexShrink={0}>
+                                <ScoreBadge value={score.s1} color={HOME} />
+                                <Text fontSize="2xl" fontWeight={800} color="fg.subtle">:</Text>
+                                <ScoreBadge value={score.s2} color={AWAY} />
+                            </HStack>
+                            <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={AWAY} textAlign="left" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                 {match.team2Name ?? "-"}
                             </Text>
-                        </Flex>
+                        </Box>
                         <Text textAlign="center" color="fg.muted" fontSize="sm" fontWeight={500} mb="4">
                             {isScheduled ? "Utakmica još nije pokrenuta." : "Utakmica je završena."}
                         </Text>

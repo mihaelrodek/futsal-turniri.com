@@ -121,11 +121,9 @@ function classifyStatus(
     // same red pulsing "U TIJEKU" badge - we no longer surface a separate
     // "UŽIVO" label, so the status stays stable between individual matches.
     if (t.liveMatch || t.status === "STARTED") return { status: "live", label: "U TIJEKU" }
-    const isFull =
-        typeof t.registeredTeams === "number" &&
-        typeof t.maxTeams === "number" &&
-        t.registeredTeams >= t.maxTeams
-    if (isFull) return { status: "full", label: "Mjesta puna" }
+    // A full roster no longer overrides the date badge - the card shows
+    // "Danas" / "Sutra" / "Za N dana" / "Nadolazeći" like every other upcoming
+    // tournament (the popunjenost bar still shows the registered/max count).
     const rel = relativeDays(t.startAt)
     if (rel && rel.days > 1 && rel.days <= 7) return { status: "soon", label: rel.label }
     return { status: "upcoming", label: rel?.label ?? "Nadolazeći" }
