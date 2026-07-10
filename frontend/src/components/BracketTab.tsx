@@ -387,10 +387,21 @@ export default function BracketTab({
         }
     }
 
+    // Generating/resetting the bracket creates/removes knockout fixtures that
+    // the Raspored tab schedules (its "Potvrdi raspored" banner waits on the
+    // new unscheduled knockout matches) and marks group standings as final.
+    // Those tabs read their own cached queries, so drop them to force a fresh
+    // fetch instead of showing stale state until staleTime elapses.
+    const refreshLinkedTabs = () => {
+        queryClient.removeQueries({ queryKey: qk.schedule(uuid) })
+        queryClient.removeQueries({ queryKey: qk.groups(uuid) })
+    }
+
     async function runGenerate(byeIds?: number[], shuffleRest?: boolean) {
         setGenerating(true)
         try {
             setBracket(await generateBracket(uuid, byeIds, shuffleRest))
+            refreshLinkedTabs()
             setByeOpen(false)
             setEditingId(null)
         } catch {
@@ -465,6 +476,7 @@ export default function BracketTab({
         setResetting(true)
         try {
             setBracket(await resetBracket(uuid))
+            refreshLinkedTabs()
             setEditingId(null)
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -725,6 +737,7 @@ export default function BracketTab({
         try {
             setGeneratingManual(true)
             setBracket(await generateBracketManual(uuid, pairs))
+            refreshLinkedTabs()
             setManualOpen(false)
             setEditingId(null)
         } catch {

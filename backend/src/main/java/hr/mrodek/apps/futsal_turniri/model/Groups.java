@@ -42,6 +42,15 @@ public class Groups {
     @Column(name = "ordinal", nullable = false)
     private int ordinal;
 
+    /**
+     * Per-group override for how many teams advance from THIS group to the
+     * knockout bracket. {@code null} = use the tournament's uniform
+     * {@code advancePerGroup}. Lets an uneven draw advance a second team from
+     * the bigger group (e.g. one group of 4 among groups of 3).
+     */
+    @Column(name = "advance_count")
+    private Integer advanceCount;
+
     public Groups(Tournaments tournament, String name, int ordinal) {
         this.tournament = tournament;
         this.name = name;

@@ -703,6 +703,17 @@ export default function ScheduleTab({
         numVal(cfg.breakBetweenMatchesMin) +
         numVal(cfg.bufferMin)
 
+    // A schedule change creates/retimes the group + knockout fixtures that the
+    // Grupe and Eliminacija tabs render from their OWN cached queries. Those
+    // tabs load once via fetchQuery(staleTime), so drop their caches here to
+    // force a fresh fetch when the organizer switches over - otherwise Grupe
+    // keeps showing "Idi na raspored" (and Eliminacija its old state) until the
+    // staleTime elapses.
+    const refreshLinkedTabs = () => {
+        queryClient.removeQueries({ queryKey: qk.groups(uuid) })
+        queryClient.removeQueries({ queryKey: qk.bracket(uuid) })
+    }
+
     async function runGenerate() {
         setGenerating(true)
         try {
@@ -714,6 +725,7 @@ export default function ScheduleTab({
                 bufferMin: numVal(cfg.bufferMin),
             })
             setSchedule(s)
+            refreshLinkedTabs()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -725,6 +737,7 @@ export default function ScheduleTab({
         setConfirming(true)
         try {
             setSchedule(await confirmSchedule(uuid))
+            refreshLinkedTabs()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -736,6 +749,7 @@ export default function ScheduleTab({
         setClearing(true)
         try {
             setSchedule(await clearSchedule(uuid))
+            refreshLinkedTabs()
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -748,6 +762,7 @@ export default function ScheduleTab({
     async function commitReorder(orderedIds: number[]) {
         try {
             setSchedule(await reorderSchedule(uuid, orderedIds))
+            refreshLinkedTabs()
         } catch {
             /* error toast surfaced by the http interceptor */
         }
@@ -758,6 +773,7 @@ export default function ScheduleTab({
         try {
             const iso = new Date(localValue).toISOString()
             setSchedule(await updateKickoff(uuid, m.matchId, iso))
+            refreshLinkedTabs()
         } catch {
             /* error toast surfaced by the http interceptor */
         }
@@ -1463,7 +1479,7 @@ export default function ScheduleTab({
                         bufferMin: numVal(cfg.bufferMin),
                     }}
                     onClose={() => setPlannerOpen(false)}
-                    onGenerated={(s) => setSchedule(s)}
+                    onGenerated={(s) => { setSchedule(s); refreshLinkedTabs() }}
                 />
             )}
         </VStack>

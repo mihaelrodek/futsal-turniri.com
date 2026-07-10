@@ -207,10 +207,14 @@ export function liveThirdTable(
     const candidates: { groupName: string; standing: LiveStandingRow }[] = []
     for (const g of groups) {
         const rows = overlays.get(g.id)?.rows
-        if (!rows || rows.length <= baseTable.advancePerGroup) continue
+        // Each group's best-next candidate sits at its OWN advance index (the
+        // backend-resolved effective advance), so a group that advances 2
+        // offers its 3rd-placed team, a group that advances 1 its 2nd-placed.
+        const idx = g.effectiveAdvance ?? baseTable.advancePerGroup
+        if (!rows || rows.length <= idx) continue
         candidates.push({
             groupName: labelByGroup.get(g.id) ?? g.name,
-            standing: rows[baseTable.advancePerGroup],
+            standing: rows[idx],
         })
     }
     candidates.sort(

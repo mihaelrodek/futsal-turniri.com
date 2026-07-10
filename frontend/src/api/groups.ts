@@ -57,6 +57,24 @@ export async function reorderGroup(
     return data
 }
 
+/**
+ * Set how many teams advance from a group to the knockout (per-group override).
+ * `advanceCount = null` clears it (group falls back to the tournament default).
+ * Returns the updated groups.
+ */
+export async function setGroupAdvance(
+    tournamentUuid: string,
+    groupId: number,
+    advanceCount: number | null,
+): Promise<Group[]> {
+    const { data } = await http.post<Group[]>(
+        `/tournaments/${tournamentUuid}/groups/${groupId}/advance`,
+        { advanceCount },
+        { successMessage: "Broj prolaznika je spremljen." } as any,
+    )
+    return data
+}
+
 /** Record a group-match result (a draw is allowed). Returns the updated groups. */
 export async function recordGroupResult(
     tournamentUuid: string,

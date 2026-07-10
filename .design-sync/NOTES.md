@@ -307,13 +307,22 @@ empty declaration. `tsc -b` and `eslint` both pass. Dark mode is unchanged.
 **Live-app effect:** borders `#e4e4e7` → `#dde5d8`, secondary text `#52525b` →
 `#728176`, `bg.subtle`/`bg.muted` pick up their green-tinted fills.
 
-> ⚠ **The uploaded design system predates this fix.** Its `_ds_bundle.js` was
-> built from the old `system.ts`, so its 35 cards still render Chakra's zinc,
-> and `.design-sync/conventions.md` still carries a "Known theme quirk"
-> paragraph describing that. Both are self-consistent today. **On the next
-> re-sync the fix ships, and that paragraph becomes false — delete it from
-> `conventions.md` then**, and expect every card's borders/muted text to shift
-> green-tinted (the render hashes will change; grades will re-verify).
+**Shipped to the design system (re-sync, 2026-07-10).** The uploaded
+`_ds_bundle.js` now carries the fix, and the "Known theme quirk" paragraph has
+been removed from `conventions.md` — `fg.muted`, `fg.subtle`, `border.*`,
+`bg.subtle` and `bg.muted` are now listed as trustworthy, green-tinted
+vocabulary the design agent should use.
+
+Non-obvious detail from that re-sync: **the 35 `renderHashes` did not change.**
+They hash the emitted `<Name>.html`, which only *references* `_ds_bundle.js`, so
+a bundle-only change leaves them identical while the rendered appearance shifts.
+The driver therefore reported `0 changed` and carried every grade forward — by
+design ("styling and bundle churn never invalidate grades"). Because the look
+genuinely changed, a deliberate audit was run over the border/muted-heavy
+components (`SectionCard`, `Panel`, `StatTile`, `FormSectionCard`, `PageTitle`,
+`Meta`) via `package-capture.mjs --components … --spot-check-components …`, and
+all six confirmed. **Any future bundle-only change (a theme edit, a Chakra
+upgrade) will look identical to the driver — audit a sample by hand.**
 
 ## Re-sync risks
 

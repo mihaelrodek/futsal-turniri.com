@@ -16,8 +16,8 @@ import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { LuShuffle, LuTrophy } from "react-icons/lu"
-import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock } from "react-icons/fi"
-import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups } from "../api/groups"
+import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock, FiMinus, FiPlus } from "react-icons/fi"
+import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups, setGroupAdvance } from "../api/groups"
 import type { Group, GroupMatch, ThirdPlacedTable } from "../types/groups"
 import type { TeamShort } from "../types/teams"
 import {
@@ -118,6 +118,87 @@ function StNum({
     )
 }
 
+/* ── Draw draft persistence ─────────────────────────────────────────────
+   The draw board's in-progress work (config, kuglice assignments, group
+   order) is mirrored to localStorage per tournament so a tab switch or an
+   accidental close never loses it. Nothing is applied server-side until the
+   organizer hits "Potvrdi ždrijeb" - the draft is purely local and cleared
+   on a successful draw. */
+
+type DrawDraft = {
+    cfgGroups: string
+    cfgAdvance: string
+    cfgBestThird: string
+    /** teamId → box id (see boxOrder in GroupsTab). */
+    assign: Record<number, number>
+    /** teamId → drop sequence (drag order = play order). */
+    assignSeq: Record<number, number>
+    /** Display order of the group boxes (position → box id). */
+    boxOrder: number[]
+    /** True while the board is open. An unmount mid-work (tab switch) leaves
+     *  it true → the board auto-reopens on return; an explicit "Odustani"
+     *  flips it false → the work is kept but the board stays closed. */
+    open: boolean
+}
+
+const drawDraftKey = (uuid: string) => `futsal:draw-draft:${uuid}`
+
+/** Load + sanitize the stored draft: drop assignments of teams that no
+ *  longer exist / point past the group count, and reject a boxOrder that
+ *  isn't a clean permutation (falls back to the identity order). */
+function readDrawDraft(uuid: string, teams: TeamShort[]): DrawDraft | null {
+    try {
+        const raw = window.localStorage.getItem(drawDraftKey(uuid))
+        if (!raw) return null
+        const d = JSON.parse(raw) as Partial<DrawDraft>
+        const parsed = parseInt(d.cfgGroups ?? "", 10)
+        if (!Number.isFinite(parsed) || parsed < 2) return null
+        // Teams may have (un)registered since the draft was written - clamp
+        // the group count the same way the board does, so no assignment can
+        // point at a box that no longer renders (it'd silently vanish from
+        // both the pool and the groups).
+        const count = Math.min(parsed, Math.max(2, teams.length))
+        const ids = new Set(teams.map((t) => t.id))
+        const assign: Record<number, number> = {}
+        for (const [k, v] of Object.entries(d.assign ?? {})) {
+            const id = Number(k)
+            // Integer check matters: a fractional box id would strict-equality
+            // match no box, leaving the team invisible yet "assigned".
+            if (ids.has(id) && typeof v === "number" && Number.isInteger(v) && v >= 0 && v < count)
+                assign[id] = v
+        }
+        const assignSeq: Record<number, number> = {}
+        for (const [k, v] of Object.entries(d.assignSeq ?? {})) {
+            const id = Number(k)
+            if (ids.has(id) && typeof v === "number") assignSeq[id] = v
+        }
+        const rawOrder = Array.isArray(d.boxOrder) ? (d.boxOrder as number[]) : []
+        const isPermutation =
+            rawOrder.length === count &&
+            [...rawOrder].sort((a, b) => a - b).every((v, i) => v === i)
+        return {
+            cfgGroups: String(count),
+            cfgAdvance: typeof d.cfgAdvance === "string" ? d.cfgAdvance : "2",
+            cfgBestThird: typeof d.cfgBestThird === "string" ? d.cfgBestThird : "0",
+            assign,
+            assignSeq,
+            boxOrder: isPermutation ? rawOrder : [],
+            // Legacy drafts (written before the flag existed) count as open.
+            open: d.open !== false,
+        }
+    } catch {
+        return null
+    }
+}
+
+function clearDrawDraft(uuid: string) {
+    try {
+        window.localStorage.removeItem(drawDraftKey(uuid))
+    } catch {
+        /* private mode - nothing to clear */
+    }
+}
+
 export default function GroupsTab({
     uuid,
     advancePerGroup,
@@ -172,11 +253,14 @@ export default function GroupsTab({
     // each half boundary, just like the dialog clock - not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
     const [halfCount, setHalfCount] = useState<number | null>(null)
+    // True once the knockout bracket is generated (the schedule carries
+    // non-GROUP matches). Locks the per-group advance stepper - changing it
+    // then wouldn't retroactively rebuild the already-seeded bracket.
+    const [bracketGenerated, setBracketGenerated] = useState(false)
     // Group draw - group count + advance-per-group are chosen here, then the
     // organizer previews an auto-shuffle (or assigns by hand) and confirms it
     // before it's persisted.
     const [drawOpen, setDrawOpen] = useState(false)
-    const [drawMode, setDrawMode] = useState<"auto" | "manual">("manual")
     const [cfgGroups, setCfgGroups] = useState("4")
     const [cfgAdvance, setCfgAdvance] = useState("2")
     /** How many best "third-placed" teams also advance (draw config). */
@@ -186,6 +270,13 @@ export default function GroupsTab({
         (a newly dropped team goes to the bottom). Sent to the backend as the
         draw position, which orders the generated round-robin fixtures. */
     const [assignSeq, setAssignSeq] = useState<Record<number, number>>({})
+    /** Draw-board display order: position → box id. Teams are assigned to a
+        BOX (stable id, carries its capacity); the letter follows the POSITION
+        (slot 0 is always "A"), so moving the bigger box last makes the last
+        group the 4-team one. Empty = identity order. */
+    const [boxOrder, setBoxOrder] = useState<number[]>([])
+    /** Box ids the organizer minimized on the draw board (e.g. full groups). */
+    const [collapsedBoxes, setCollapsedBoxes] = useState<Set<number>>(new Set())
     /** advance-per-group just drawn (the page's prop is stale until refetch). */
     const [advanceOverride, setAdvanceOverride] = useState<number | null>(null)
     /** best-third count just drawn (the page's prop is stale until refetch). */
@@ -215,6 +306,9 @@ export default function GroupsTab({
     const dragOverRef = useRef<string | null>(null)
     const dragPosRef = useRef({ x: 0, y: 0 })
     const ghostRef = useRef<HTMLDivElement | null>(null)
+    /** rAF id of the drag auto-scroll loop (page scrolls itself when the
+        pointer nears the viewport edge - touch drags block native scroll). */
+    const scrollRafRef = useRef<number | null>(null)
 
     useEffect(() => {
         let cancelled = false
@@ -233,6 +327,7 @@ export default function GroupsTab({
                 if (cancelled) return
                 setHalfLengthMin(s.halfLengthMin ?? null)
                 setHalfCount(s.halfCount ?? null)
+                setBracketGenerated((s.matches ?? []).some((m) => m.stage && m.stage !== "GROUP"))
             })
             .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
         return () => { cancelled = true }
@@ -307,6 +402,70 @@ export default function GroupsTab({
     }, (groups?.length ?? 0) > 0)
     usePolling(() => { void reloadGroups() }, 10_000, anyGroupLive)
 
+    // Registered teams (pending self-registrations excluded - same rule the
+    // backend draw uses). Declared above the draft effects so they can gate on
+    // "teams loaded" and re-run when the team list finally arrives (on a page
+    // refresh the parent supplies `teams` a beat after this mounts).
+    const registeredTeams = (teams ?? []).filter((tm) => !tm.pendingApproval)
+
+    // Mirror the open draw board into its localStorage draft on every change,
+    // so the work survives tab switches / closes. Applied only on confirm.
+    useEffect(() => {
+        if (!drawOpen) return
+        // Never persist until the team list has loaded: on a refresh the board
+        // can auto-reopen before `teams` arrives, restore an EMPTY board (no
+        // ids to match), and this effect would then clobber the real draft.
+        if (registeredTeams.length === 0) return
+        try {
+            window.localStorage.setItem(
+                drawDraftKey(uuid),
+                JSON.stringify({
+                    cfgGroups,
+                    cfgAdvance,
+                    cfgBestThird,
+                    assign,
+                    assignSeq,
+                    boxOrder,
+                    open: true,
+                } satisfies DrawDraft),
+            )
+        } catch {
+            /* storage full / private mode - the draft just won't survive */
+        }
+    }, [drawOpen, cfgGroups, cfgAdvance, cfgBestThird, assign, assignSeq, boxOrder, uuid, registeredTeams.length])
+
+    // Reopen the draw board automatically when a draft exists and no groups
+    // are drawn yet - a tab switch unmounts this component, and without this
+    // the organizer would come back to the empty state thinking the work is
+    // gone. One-shot per mount; openDraw() itself restores the draft.
+    const autoReopenRef = useRef(false)
+    useEffect(() => {
+        if (autoReopenRef.current || loading || drawOpen || !canEdit) return
+        if (groups && groups.length > 0) return
+        // Wait for the team list: restoring with an empty `teams` would drop
+        // every assignment. This effect re-runs when registeredTeams.length
+        // changes, so it fires the moment the teams arrive.
+        if (registeredTeams.length === 0) return
+        try {
+            const raw = window.localStorage.getItem(drawDraftKey(uuid))
+            if (!raw) return
+            // Only reopen work that was interrupted (tab switch / reload) -
+            // an explicitly cancelled board stays closed until the organizer
+            // reopens it themselves (the draft is still restored then).
+            if ((JSON.parse(raw) as Partial<DrawDraft>).open === false) return
+        } catch {
+            return
+        }
+        autoReopenRef.current = true
+        openDraw()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading, groups, canEdit, drawOpen, registeredTeams.length])
+
+    // Kill a still-running drag auto-scroll loop on unmount.
+    useEffect(() => () => {
+        if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
+    }, [])
+
     /** Re-fetch the groups (after a live action changed the score / status).
      *  Sequenced: with the socket push + 10s poll both firing this, a slow
      *  earlier response could otherwise resolve after a newer one and revert
@@ -328,6 +487,9 @@ export default function GroupsTab({
         try {
             setGroups(await resetGroups(uuid))
             setEditingId(null)
+            // Wiping the group stage invalidates any generated schedule/bracket.
+            queryClient.removeQueries({ queryKey: qk.schedule(uuid) })
+            queryClient.removeQueries({ queryKey: qk.bracket(uuid) })
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -384,9 +546,6 @@ export default function GroupsTab({
         }
     }
 
-    // Registered teams (pending self-registrations excluded - same rule the
-    // backend draw uses) and the configured group count.
-    const registeredTeams = (teams ?? []).filter((tm) => !tm.pendingApproval)
     const grpLabel = (i: number) => String.fromCharCode(65 + i)
 
     // Draw config (clamped) + derived preview.
@@ -397,71 +556,141 @@ export default function GroupsTab({
     const bestThirdNum = Math.max(0, Math.min(gcNum, parseInt(cfgBestThird || "0", 10) || 0))
     const enoughTeams = registeredTeams.length >= gcNum
     const effectiveAdvance = advanceOverride ?? advancePerGroup
-    const grpOf = (id: number) => Math.min(gcNum - 1, assign[id] ?? 0)
-
-    function shuffledTeams(): TeamShort[] {
-        const arr = [...registeredTeams]
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1))
-            ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    /** How many advance from THIS group. Uses the backend-resolved value so it
+     *  is reliable after a refresh (the tournament-level default on the client
+     *  can be stale). Falls back to the client default only for a group not yet
+     *  in the payload. */
+    const advForGroup = (g: Group): number | null =>
+        g.effectiveAdvance ?? (g.advanceCount != null ? g.advanceCount : effectiveAdvance ?? null)
+    /** matchId-free: the group whose advance-count save is in flight. */
+    const [advSavingGroup, setAdvSavingGroup] = useState<number | null>(null)
+    /** Change a group's per-group advance count (organizer). Clamped to the
+     *  group size; the backend clamps too. */
+    async function changeGroupAdvance(g: Group, next: number) {
+        const size = g.standings.length
+        const clamped = Math.max(1, Math.min(size, next))
+        if (clamped === advForGroup(g)) return
+        setAdvSavingGroup(g.id)
+        try {
+            const updated = await setGroupAdvance(uuid, g.id, clamped)
+            // Invalidate any in-flight poll/socket reload so a stale snapshot
+            // (fetched before this change committed) can't revert the pill.
+            reloadSeqRef.current++
+            setGroups(updated)
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setAdvSavingGroup(null)
         }
-        return arr
     }
-    /** Spread teams round-robin (optionally shuffled) across `count` groups. */
-    function buildAssign(count: number, shuffle: boolean): Record<number, number> {
-        const order = shuffle ? shuffledTeams() : registeredTeams
+    /** Effective board order (position → box id); identity until reordered
+        or when the stored permutation no longer matches the group count. */
+    const boxOrderEff =
+        boxOrder.length === gcNum ? boxOrder : Array.from({ length: gcNum }, (_, i) => i)
+    /** Swap the group box at `pos` with its neighbour (arrow buttons). */
+    function moveGroupBox(pos: number, dir: -1 | 1) {
+        const to = pos + dir
+        if (to < 0 || to >= gcNum) return
+        const next = [...boxOrderEff]
+        ;[next[pos], next[to]] = [next[to], next[pos]]
+        setBoxOrder(next)
+    }
+    const toggleBoxCollapsed = (b: number) =>
+        setCollapsedBoxes((prev) => {
+            const next = new Set(prev)
+            next.has(b) ? next.delete(b) : next.add(b)
+            return next
+        })
+
+    /** Enforce per-box capacities for `count` groups: keep assignments that
+     *  fit (registration order), overflow drops back to the pool. Shared by
+     *  the group-count input and the draft restore - a draft written before
+     *  teams (un)registered could otherwise overfill boxes (or submit an
+     *  empty group) in ways the drag&drop guard would never allow. */
+    function rebalanceAssign(a: Record<number, number>, count: number): Record<number, number> {
+        const base = Math.floor(registeredTeams.length / count)
+        const rem = registeredTeams.length % count
+        const cap = (i: number) => base + (i < rem ? 1 : 0)
+        const counts = new Array(count).fill(0)
         const next: Record<number, number> = {}
-        order.forEach((tm, i) => { next[tm.id] = i % Math.max(1, count) })
+        for (const tm of registeredTeams) {
+            const gi = a[tm.id]
+            if (gi != null && gi < count && counts[gi] < cap(gi)) {
+                next[tm.id] = gi
+                counts[gi]++
+            }
+        }
         return next
     }
 
-    function openDraw() {
+    /** Reset the board to its defaults (fresh pool, config from the props). */
+    function resetDrawBoard() {
         const cur = groups?.length || (groupCount && groupCount >= 2 ? groupCount : 0)
         const def = Math.min(maxGroups, cur >= 2 ? cur : 4)
         setCfgGroups(String(def))
         setCfgAdvance(String(effectiveAdvance && effectiveAdvance >= 1 ? effectiveAdvance : 2))
         setCfgBestThird(String((bestThirdOverride ?? bestThirdCount) || 0))
-        // Default to MANUAL: the organizer starts with every team in the pool
-        // and drags them into groups (or clicks "Automatski" for a shuffle).
-        setDrawMode("manual")
+        // Every team starts in the pool; the organizer drags them into groups
+        // (or clicks "Nasumično rasporedi" for a shuffle).
         setAssign({})
         setAssignSeq({})
+        setBoxOrder([])
+        setCollapsedBoxes(new Set())
+    }
+    function openDraw() {
+        // A stored draft (in-progress work from a previous open / tab switch)
+        // wins over the defaults; confirming or discarding clears it.
+        const draft = readDrawDraft(uuid, registeredTeams)
+        if (draft) {
+            const c = Math.min(maxGroups, Math.max(2, parseInt(draft.cfgGroups, 10) || 0))
+            setCfgGroups(draft.cfgGroups)
+            setCfgAdvance(draft.cfgAdvance)
+            setCfgBestThird(draft.cfgBestThird)
+            // Re-apply capacities: the roster may have changed since the
+            // draft was written; trimmed teams drop back into the pool.
+            setAssign(rebalanceAssign(draft.assign, c))
+            setAssignSeq(draft.assignSeq)
+            setBoxOrder(draft.boxOrder)
+            setCollapsedBoxes(new Set())
+        } else {
+            resetDrawBoard()
+        }
         setDrawOpen(true)
+    }
+    /** Throw away the stored draft and start over with a clean board. */
+    function discardDraft() {
+        clearDrawDraft(uuid)
+        resetDrawBoard()
+    }
+    /** Close the board keeping the draft, but marked closed - "Odustani"
+     *  shouldn't force-reopen the board on the next mount the way an
+     *  interrupted (tab-switch) session does. */
+    function closeDraw() {
+        try {
+            const raw = window.localStorage.getItem(drawDraftKey(uuid))
+            if (raw) {
+                const d = JSON.parse(raw) as Partial<DrawDraft>
+                d.open = false
+                window.localStorage.setItem(drawDraftKey(uuid), JSON.stringify(d))
+            }
+        } catch {
+            /* private mode - the draft doesn't exist anyway */
+        }
+        setDrawOpen(false)
     }
     function changeGroupCount(v: string) {
         const s = v.replace(/[^\d]/g, "")
         setCfgGroups(s)
         const c = Math.min(maxGroups, Math.max(2, parseInt(s || "0", 10) || 0))
-        if (drawMode === "auto") {
-            setAssign(buildAssign(c, true))
-        } else {
-            // Manual board: keep what fits the new group count/capacities,
-            // overflow goes back to the pool.
-            setAssign((a) => {
-                const base = Math.floor(registeredTeams.length / c)
-                const rem = registeredTeams.length % c
-                const cap = (i: number) => base + (i < rem ? 1 : 0)
-                const counts = new Array(c).fill(0)
-                const next: Record<number, number> = {}
-                for (const tm of registeredTeams) {
-                    const gi = a[tm.id]
-                    if (gi != null && gi < c && counts[gi] < cap(gi)) {
-                        next[tm.id] = gi
-                        counts[gi]++
-                    }
-                }
-                return next
-            })
-        }
-    }
-    function chooseMode(m: "auto" | "manual") {
-        setDrawMode(m)
-        // Auto: full random preview. Manual: everyone starts in the pool.
-        setAssign(m === "auto" ? buildAssign(gcNum, true) : {})
-        setAssignSeq({})
+        // A different group count invalidates the custom box order/collapse.
+        setBoxOrder([])
+        setCollapsedBoxes(new Set())
+        // Keep what fits the new group count/capacities, overflow goes back
+        // to the pool.
+        setAssign((a) => rebalanceAssign(a, c))
     }
 
-    /* ── Manual-draw board helpers ────────────────────────────────────── */
+    /* ── Draw board helpers ───────────────────────────────────────────── */
 
     // Per-group capacity: teams split as evenly as possible, the first
     // `remainder` groups take one extra (12 teams / 4 groups → 3,3,3,3;
@@ -482,7 +711,7 @@ export default function GroupsTab({
         for (const v of Object.values(o)) if (v > m) m = v
         return m + 1
     }
-    const allAssigned = drawMode === "auto" || poolTeams.length === 0
+    const allAssigned = poolTeams.length === 0
 
     /** Randomly place every still-pooled team into the emptiest groups. */
     function fillRemaining() {
@@ -534,6 +763,39 @@ export default function GroupsTab({
         const el = document.elementFromPoint(x, y) as HTMLElement | null
         return el?.closest<HTMLElement>("[data-drop]")?.dataset.drop ?? null
     }
+    /* Drag auto-scroll: chips set touch-action:none, so on touch devices the
+       page can't scroll natively mid-drag - on an iPad the organizer couldn't
+       reach group boxes below the fold. While a drag is active, a rAF loop
+       nudges the window whenever the pointer sits near the viewport's
+       top/bottom edge (speed scales with proximity) and re-hit-tests the
+       drop zone as the content slides under the finger. */
+    function autoScrollTick() {
+        if (!dragRef.current) {
+            scrollRafRef.current = null
+            return
+        }
+        const { x, y } = dragPosRef.current
+        const EDGE = 90
+        const h = window.innerHeight
+        let dy = 0
+        if (y < EDGE) dy = -Math.ceil((EDGE - y) / 5)
+        else if (y > h - EDGE) dy = Math.ceil((y - (h - EDGE)) / 5)
+        if (dy !== 0) {
+            window.scrollBy(0, dy)
+            const z = zoneAt(x, y)
+            if (z !== dragOverRef.current) {
+                dragOverRef.current = z
+                setDragOver(z)
+            }
+        }
+        scrollRafRef.current = requestAnimationFrame(autoScrollTick)
+    }
+    function stopAutoScroll() {
+        if (scrollRafRef.current != null) {
+            cancelAnimationFrame(scrollRafRef.current)
+            scrollRafRef.current = null
+        }
+    }
     function startDrag(e: React.PointerEvent<HTMLElement>, tm: TeamShort) {
         if (drawing) return
         e.preventDefault()
@@ -541,6 +803,9 @@ export default function GroupsTab({
         dragRef.current = tm
         moveGhost(e.clientX, e.clientY)
         setDragTeam(tm)
+        if (scrollRafRef.current == null) {
+            scrollRafRef.current = requestAnimationFrame(autoScrollTick)
+        }
     }
     function dragMove(e: React.PointerEvent<HTMLElement>) {
         if (!dragRef.current) return
@@ -554,6 +819,7 @@ export default function GroupsTab({
     function endDrag(e: React.PointerEvent<HTMLElement>) {
         const tm = dragRef.current
         if (!tm) return
+        stopAutoScroll()
         const z = zoneAt(e.clientX, e.clientY)
         dragRef.current = null
         dragOverRef.current = null
@@ -583,6 +849,7 @@ export default function GroupsTab({
         setAssignSeq((o) => ({ ...o, [tm.id]: nextSeq(o) }))
     }
     function cancelDrag() {
+        stopAutoScroll()
         dragRef.current = null
         dragOverRef.current = null
         setDragTeam(null)
@@ -591,21 +858,18 @@ export default function GroupsTab({
 
     async function submitDraw() {
         if (!enoughTeams) return
-        // Manual board: every kuglica must be dragged into a group first.
-        if (drawMode === "manual" && !allAssigned) return
+        // Every kuglica must be dragged into a group first.
+        if (!allAssigned) return
         // Send the assignments grouped and in draw-board order so the backend
-        // records each team's draw position (which orders the fixtures).
+        // records each team's draw position (which orders the fixtures). The
+        // ordinal is the box's display POSITION - the backend derives group
+        // letters from ordinals, so a reordered board maps 1:1 (position 0 is
+        // always group A).
         const assignments: { teamId: number; groupOrdinal: number }[] = []
-        if (drawMode === "manual") {
-            for (let i = 0; i < gcNum; i++) {
-                for (const tm of teamsInGroup(i)) {
-                    assignments.push({ teamId: tm.id, groupOrdinal: i })
-                }
+        for (let pos = 0; pos < gcNum; pos++) {
+            for (const tm of teamsInGroup(boxOrderEff[pos])) {
+                assignments.push({ teamId: tm.id, groupOrdinal: pos })
             }
-        } else {
-            registeredTeams.forEach((tm) => {
-                assignments.push({ teamId: tm.id, groupOrdinal: grpOf(tm.id) })
-            })
         }
         try {
             setDrawing(true)
@@ -620,6 +884,15 @@ export default function GroupsTab({
             setBestThirdOverride(bestThirdNum)
             setDrawOpen(false)
             setEditingId(null)
+            // A (re)draw rebuilds the group structure and invalidates any
+            // existing schedule / bracket - drop those tab caches so they
+            // refetch fresh instead of showing stale fixtures.
+            queryClient.removeQueries({ queryKey: qk.schedule(uuid) })
+            queryClient.removeQueries({ queryKey: qk.bracket(uuid) })
+            // The draft is applied - drop it (and the board customizations).
+            clearDrawDraft(uuid)
+            setBoxOrder([])
+            setCollapsedBoxes(new Set())
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -630,11 +903,21 @@ export default function GroupsTab({
     const drawPanel = (
         <Panel p={{ base: "4", md: "5" }}>
             <VStack align="stretch" gap="4">
-                <HStack justify="space-between" align="center">
-                    <Text fontWeight="bold" fontSize="sm">Ždrijeb grupa</Text>
-                    <Button size="xs" variant="ghost" onClick={() => setDrawOpen(false)} disabled={drawing}>
-                        Odustani
-                    </Button>
+                <HStack justify="space-between" align="center" wrap="wrap" gap="2">
+                    <Box>
+                        <Text fontWeight="bold" fontSize="sm">Ždrijeb grupa</Text>
+                        <Text fontSize="2xs" color="fg.muted">
+                            Skica se sprema automatski - primjenjuje se tek klikom na „Potvrdi ždrijeb".
+                        </Text>
+                    </Box>
+                    <HStack gap="1">
+                        <Button size="xs" variant="ghost" color="fg.muted" onClick={discardDraft} disabled={drawing}>
+                            <HStack gap="1"><FiTrash2 size={12} /> Odbaci skicu</HStack>
+                        </Button>
+                        <Button size="xs" variant="ghost" onClick={closeDraw} disabled={drawing}>
+                            Odustani
+                        </Button>
+                    </HStack>
                 </HStack>
 
                 {/* Config: group count + advance, then auto/manual toggle. */}
@@ -670,15 +953,6 @@ export default function GroupsTab({
                             }}
                         />
                     </Box>
-                    {/* Ručno first - it's the default; Automatski is the opt-in. */}
-                    <HStack gap="2">
-                        <Button size="sm" variant={drawMode === "manual" ? "solid" : "outline"} colorPalette={drawMode === "manual" ? "brand" : "gray"} onClick={() => chooseMode("manual")}>
-                            Ručno
-                        </Button>
-                        <Button size="sm" variant={drawMode === "auto" ? "solid" : "outline"} colorPalette={drawMode === "auto" ? "brand" : "gray"} onClick={() => chooseMode("auto")}>
-                            Automatski
-                        </Button>
-                    </HStack>
                 </Flex>
 
                 {bestThirdNum > 0 && (
@@ -696,40 +970,12 @@ export default function GroupsTab({
                     </Text>
                 )}
 
-                {drawMode === "auto" ? (
-                    <VStack align="stretch" gap="2">
-                        <HStack justify="space-between" align="center">
-                            <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em" color="fg.muted">
-                                PREGLED ŽDRIJEBA
-                            </Text>
-                            <Button size="xs" variant="outline" onClick={() => setAssign(buildAssign(gcNum, true))}>
-                                <HStack gap="1"><LuShuffle size={13} /> Promiješaj</HStack>
-                            </Button>
-                        </HStack>
-                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap="3">
-                            {Array.from({ length: gcNum }, (_, i) => (
-                                <Box key={i} borderWidth="1px" borderColor="border" rounded="lg" p="3">
-                                    <HStack justify="space-between" mb="2">
-                                        <Text fontWeight="bold" fontSize="sm">Grupa {grpLabel(i)}</Text>
-                                        <Badge variant="subtle" colorPalette="brand" size="sm">{advNum} prolaze</Badge>
-                                    </HStack>
-                                    <VStack align="stretch" gap="1">
-                                        {registeredTeams.filter((tm) => grpOf(tm.id) === i).map((tm) => (
-                                            <Text key={tm.id} fontSize="sm" truncate>
-                                                {tm.name?.trim() || "Bez imena"}
-                                            </Text>
-                                        ))}
-                                    </VStack>
-                                </Box>
-                            ))}
-                        </Box>
-                    </VStack>
-                ) : (
-                    /* ── Manual draw - drag & drop board ─────────────────
-                       Pool of "kuglice" on the left, group boxes with
-                       numbered slots on the right. Drag a chip into a slot
-                       to assign it; drag it back onto the pool to undo. */
-                    <VStack align="stretch" gap="3">
+                {/* ── Drag & drop board ─────────────────────────────────
+                     Pool of "kuglice" on the left, group boxes with
+                     numbered slots on the right. Drag a chip into a slot
+                     to assign it; drag it back onto the pool to undo.
+                     "Nasumično rasporedi" fills the rest randomly. */}
+                <VStack align="stretch" gap="3">
                         <HStack justify="space-between" align="center" wrap="wrap" gap="2">
                             <Text fontSize="xs" color="fg.muted">
                                 Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
@@ -793,13 +1039,19 @@ export default function GroupsTab({
                                 </VStack>
                             </Box>
 
-                            {/* Group boxes with numbered slots. */}
+                            {/* Group boxes with numbered slots. Boxes are stable
+                                ids carrying their teams + capacity; the LETTER
+                                follows the display position (slot 0 = "A"), so
+                                the arrow buttons move e.g. the 4-team group to
+                                the end. Full boxes can be collapsed. */}
                             <VStack align="stretch" gap="3">
-                                {Array.from({ length: gcNum }, (_, i) => {
+                                {Array.from({ length: gcNum }, (_, pos) => {
+                                    const i = boxOrderEff[pos]
                                     const inGroup = teamsInGroup(i)
                                     const cap = capOf(i)
                                     const full = inGroup.length >= cap
                                     const hovered = dragOver === String(i)
+                                    const isCollapsed = collapsedBoxes.has(i)
                                     return (
                                         <Box
                                             key={i}
@@ -811,14 +1063,57 @@ export default function GroupsTab({
                                             overflow="hidden"
                                             transition="background 120ms, border-color 120ms"
                                         >
-                                            <HStack justify="space-between" px="3" py="2" bg="bg.surfaceTint" borderBottomWidth="1px" borderColor="border">
+                                            <HStack justify="space-between" px="3" py="1.5" bg="bg.surfaceTint" borderBottomWidth={isCollapsed ? "0" : "1px"} borderColor="border" gap="1">
                                                 <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em">
-                                                    SKUPINA {grpLabel(i)}
+                                                    SKUPINA {grpLabel(pos)}
                                                 </Text>
-                                                <Text fontFamily="mono" fontSize="2xs" color="fg.muted" fontWeight={700}>
-                                                    {inGroup.length}/{cap}
-                                                </Text>
+                                                <HStack gap="0.5">
+                                                    <Text fontFamily="mono" fontSize="2xs" color={full ? "pitch.500" : "fg.muted"} fontWeight={700} mr="1">
+                                                        {inGroup.length}/{cap}
+                                                    </Text>
+                                                    <IconButton
+                                                        aria-label="Pomakni skupinu gore"
+                                                        size="xs"
+                                                        h="22px"
+                                                        minW="22px"
+                                                        variant="ghost"
+                                                        disabled={pos === 0 || drawing}
+                                                        onClick={() => moveGroupBox(pos, -1)}
+                                                    >
+                                                        <FiArrowUp size={12} />
+                                                    </IconButton>
+                                                    <IconButton
+                                                        aria-label="Pomakni skupinu dolje"
+                                                        size="xs"
+                                                        h="22px"
+                                                        minW="22px"
+                                                        variant="ghost"
+                                                        disabled={pos === gcNum - 1 || drawing}
+                                                        onClick={() => moveGroupBox(pos, 1)}
+                                                    >
+                                                        <FiArrowDown size={12} />
+                                                    </IconButton>
+                                                    <IconButton
+                                                        aria-label={isCollapsed ? "Proširi skupinu" : "Minimiziraj skupinu"}
+                                                        size="xs"
+                                                        h="22px"
+                                                        minW="22px"
+                                                        variant="ghost"
+                                                        onClick={() => toggleBoxCollapsed(i)}
+                                                    >
+                                                        {isCollapsed ? <FiChevronDown size={13} /> : <FiChevronUp size={13} />}
+                                                    </IconButton>
+                                                </HStack>
                                             </HStack>
+                                            {/* Collapsed: a one-line roster summary (still a drop target). */}
+                                            {isCollapsed && (
+                                                <Text px="3" py="1.5" fontSize="xs" color="fg.muted" truncate>
+                                                    {inGroup.length > 0
+                                                        ? inGroup.map((tm) => tm.name?.trim() || "Bez imena").join(" · ")
+                                                        : "Prazno"}
+                                                </Text>
+                                            )}
+                                            {!isCollapsed && (
                                             <VStack align="stretch" gap="1.5" p="2.5">
                                                 {inGroup.map((tm) => (
                                                     <Box
@@ -860,6 +1155,7 @@ export default function GroupsTab({
                                                     </Flex>
                                                 ))}
                                             </VStack>
+                                            )}
                                         </Box>
                                     )
                                 })}
@@ -892,7 +1188,6 @@ export default function GroupsTab({
                             </Box>
                         )}
                     </VStack>
-                )}
 
                 <Button
                     colorPalette="brand"
@@ -1300,21 +1595,77 @@ export default function GroupsTab({
                             </Text>
                         </HStack>
                         <HStack gap="2" align="center">
-                            {effectiveAdvance != null && effectiveAdvance > 0 && (
-                                <Box
-                                    fontFamily="mono"
-                                    fontSize="9px"
-                                    fontWeight={700}
-                                    letterSpacing="0.06em"
-                                    color="pitch.500"
-                                    bg="rgba(58,165,107,0.12)"
-                                    px="2.5"
-                                    py="1"
-                                    rounded="full"
-                                >
-                                    {effectiveAdvance} PROLAZE
-                                </Box>
-                            )}
+                            {/* "N PROLAZE" - a read-only pill for viewers; the
+                                organizer gets −/+ steppers to set how many
+                                advance from THIS group (e.g. 2 from the 4-team
+                                group, 1 from the rest). A per-group override is
+                                marked so it's clear it differs from the default. */}
+                            {(() => {
+                                const adv = advForGroup(g)
+                                if (adv == null || adv <= 0) return null
+                                const overridden = g.advanceCount != null
+                                // Read-only for viewers, and once the bracket is
+                                // generated (changing it wouldn't rebuild it).
+                                if (!canEdit || bracketGenerated) {
+                                    return (
+                                        <Box
+                                            fontFamily="mono"
+                                            fontSize="9px"
+                                            fontWeight={700}
+                                            letterSpacing="0.06em"
+                                            color="pitch.500"
+                                            bg="rgba(58,165,107,0.12)"
+                                            px="2.5"
+                                            py="1"
+                                            rounded="full"
+                                        >
+                                            {adv} PROLAZE
+                                        </Box>
+                                    )
+                                }
+                                const busy = advSavingGroup === g.id
+                                return (
+                                    <HStack
+                                        gap="0.5"
+                                        bg={overridden ? "rgba(58,165,107,0.18)" : "rgba(58,165,107,0.12)"}
+                                        borderWidth={overridden ? "1px" : "0"}
+                                        borderColor="pitch.500"
+                                        rounded="full"
+                                        pl="1"
+                                        pr="1.5"
+                                        py="0.5"
+                                        title={overridden ? "Prilagođeno za ovu skupinu (klik za promjenu)" : "Koliko ekipa prolazi iz ove skupine"}
+                                    >
+                                        <IconButton
+                                            aria-label="Manje prolaznika"
+                                            size="2xs"
+                                            h="18px"
+                                            minW="18px"
+                                            variant="ghost"
+                                            color="pitch.600"
+                                            disabled={busy || adv <= 1}
+                                            onClick={() => changeGroupAdvance(g, adv - 1)}
+                                        >
+                                            <FiMinus size={11} />
+                                        </IconButton>
+                                        <Box fontFamily="mono" fontSize="9px" fontWeight={800} letterSpacing="0.04em" color="pitch.600" px="0.5" whiteSpace="nowrap">
+                                            {adv} PROLAZE
+                                        </Box>
+                                        <IconButton
+                                            aria-label="Više prolaznika"
+                                            size="2xs"
+                                            h="18px"
+                                            minW="18px"
+                                            variant="ghost"
+                                            color="pitch.600"
+                                            disabled={busy || adv >= g.standings.length}
+                                            onClick={() => changeGroupAdvance(g, adv + 1)}
+                                        >
+                                            <FiPlus size={11} />
+                                        </IconButton>
+                                    </HStack>
+                                )
+                            })()}
                             {/* Manual reorder - only the organizer, and only
                                 once every match in this group is finished (the
                                 override settles tiebreakers on a complete group). */}
@@ -1380,8 +1731,8 @@ export default function GroupsTab({
                         {/* Standings rows - live-overlaid: cells a LIVE match
                             modified render red until the result is persisted. */}
                         {(liveOverlays.get(g.id)?.rows ?? []).map((row, idx) => {
-                            const advances =
-                                effectiveAdvance != null && idx < effectiveAdvance
+                            const advForG = advForGroup(g)
+                            const advances = advForG != null && idx < advForG
                             const lc = (f: LiveField) => row.liveChanged.has(f)
                             return (
                                 <Box

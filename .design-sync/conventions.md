@@ -50,8 +50,9 @@ runtime, e.g. `var(--chakra-colors-pitch-500)`, `var(--chakra-fonts-mono)`.
 | Brand ramp | `pitch.50 … pitch.950` (`pitch.500` = `#0b6b3a` primary) |
 | Brand palette | `colorPalette="pitch"` (alias `"brand"`) → `pitch.solid` `.contrast` `.fg` `.muted` `.subtle` `.emphasized` `.focusRing` |
 | Status accents | `accent.red` (LIVE/destructive), `accent.amber` (warnings), `accent.goal` (goals/trophies) |
-| Surfaces | `bg.canvas` (page), `bg.panel` (cards), `bg.surfaceTint`, `bg.surfaceTint2` |
-| Text | `fg.ink` (primary), `fg.soft` (secondary) |
+| Surfaces | `bg.canvas` (page), `bg.panel` (cards), `bg.surfaceTint`, `bg.surfaceTint2`, `bg.subtle`, `bg.muted` |
+| Text | `fg.ink` (primary), `fg.soft` (secondary), `fg.muted` (tertiary), `fg.subtle` |
+| Borders | `border` (default), `border.emphasized`, `border.subtle`, `border.strong` |
 | Teams | `team.blue`, `team.purple` |
 | Radii | `sm` 8 · `md` 10 · `lg` 12 · `xl` 16 · `2xl` 20 · `full` |
 | Shadows | `xs` `sm` `md` `lg` `xl` `sticky` |
@@ -61,12 +62,9 @@ runtime, e.g. `var(--chakra-colors-pitch-500)`, `var(--chakra-fonts-mono)`.
 Use `mono.score` for scoreboards, `mono.label` for the all-caps kickers
 ("DATUM", "ORGANIZATOR"). A global `pitchPulse` keyframe drives every live dot.
 
-> **Known theme quirk.** `fg.muted`, `fg.subtle`, `border`, `border.emphasized`,
-> `border.subtle`, `bg.subtle` and `bg.muted` are overridden in `system.ts` but
-> Chakra's own defaults win, so they render as **neutral zinc grays**, not the
-> intended green-tinted values. They are still the correct tokens to use — just
-> don't expect a green tint from them. Prefer `fg.ink` / `fg.soft` for text you
-> want on-brand.
+Every colour token above is **green-tinted, not neutral gray** — `border` is
+`#dde5d8`, `fg.muted` is `#728176`. Reach for them rather than hand-picking a
+hex; a plain gray will read as foreign next to the Pitch surfaces.
 
 ## 3. Where the truth lives
 

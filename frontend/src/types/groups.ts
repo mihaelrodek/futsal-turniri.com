@@ -49,6 +49,13 @@ export type Group = {
     id: number
     name: string
     ordinal: number
+    /** Raw per-group override; null = the tournament default. Only used to
+     *  mark that a group differs from the default. */
+    advanceCount?: number | null
+    /** Resolved effective advance for this group (override, else tournament
+     *  default, else 2) - always set by the backend. Display this directly so
+     *  it never depends on a stale client-side tournament value. */
+    effectiveAdvance: number
     /** Ordered best team first (points → UEFA head-to-head → GD → GF). */
     standings: GroupStandingRow[]
     /** The group's fixtures, for result entry. */

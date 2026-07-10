@@ -306,8 +306,13 @@ public class KnockoutService {
      *  bracket exists: groupCount * advancePerGroup + bestThirdCount. */
     public int predictedQualifiers(Tournaments t) {
         int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
-        int gc = t.getGroupCount() == null ? 0 : t.getGroupCount();
         int bt = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+        // Once drawn, sum each group's own advance count (per-group overrides
+        // make the total uneven, e.g. 6×1 + 1×2) - lightweight, one query, no
+        // standings computation. Before the draw (-1) fall back to groupCount×adv.
+        long sum = groupStageService.advanceSum(t.getId(), adv);
+        if (sum >= 0) return (int) sum + bt;
+        int gc = t.getGroupCount() == null ? 0 : t.getGroupCount();
         return gc * adv + bt;
     }
 
@@ -586,7 +591,7 @@ public class KnockoutService {
             return all;
         }
 
-        int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
+        int defaultAdv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
         List<GroupDto> groups = groupStageService.standings(t.getId());
         if (groups.isEmpty()) {
             throw new BadRequestException("Group stage has not been drawn yet");
@@ -594,13 +599,23 @@ public class KnockoutService {
         Map<Long, Teams> teamById = teamsRepo.list("tournament.id", t.getId())
                 .stream().collect(Collectors.toMap(Teams::getId, x -> x));
 
+        // How many advance from each group - a group's own advanceCount
+        // overrides the tournament default (e.g. a 4-team group advances 2
+        // while 3-team groups advance 1). The first non-advancing spot per
+        // group (index = that group's advance count) feeds the best-third /
+        // wildcard tiers.
+        java.util.function.ToIntFunction<GroupDto> advOf = GroupDto::effectiveAdvance;
+        int maxAdv = groups.stream().mapToInt(advOf).max().orElse(defaultAdv);
+
         // Tier by tier: every group winner first (ranked among themselves),
-        // then every runner-up, etc. - group winners become the top seeds.
+        // then every runner-up, etc. - group winners become the top seeds. A
+        // group only contributes to a tier while that placement is below its
+        // own advance count.
         List<Teams> qualified = new ArrayList<>();
-        for (int placement = 0; placement < adv; placement++) {
+        for (int placement = 0; placement < maxAdv; placement++) {
             List<GroupStandingRowDto> tier = new ArrayList<>();
             for (GroupDto g : groups) {
-                if (g.standings().size() > placement) {
+                if (placement < advOf.applyAsInt(g) && g.standings().size() > placement) {
                     tier.add(g.standings().get(placement));
                 }
             }
@@ -612,20 +627,21 @@ public class KnockoutService {
         }
 
         // Best "third-placed" qualifiers: the organizer picked N best teams
-        // from the first non-advancing tier (index `adv` in each group -
-        // the 3rd-placed when 2 advance) to also enter the bracket. They are
-        // the lowest seeds (appended last), ranked across groups by points →
-        // goal difference → goals scored.
+        // from each group's first non-advancing tier (index = that group's
+        // advance count) to also enter the bracket. They are the lowest seeds
+        // (appended last), ranked across groups by points → goal difference →
+        // goals scored.
         int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
         if (bestThird > 0) {
             List<GroupStandingRowDto> tier = new ArrayList<>();
             for (GroupDto g : groups) {
-                if (g.standings().size() > adv) tier.add(g.standings().get(adv));
+                int a = advOf.applyAsInt(g);
+                if (g.standings().size() > a) tier.add(g.standings().get(a));
             }
             tier.sort(STANDING_RANK);
             for (int i = 0; i < bestThird && i < tier.size(); i++) {
                 Teams tm = teamById.get(tier.get(i).teamId());
-                if (tm != null) qualified.add(tm);
+                if (tm != null && !qualified.contains(tm)) qualified.add(tm);
             }
         }
 
@@ -636,7 +652,8 @@ public class KnockoutService {
             if (qualified.size() < target) {
                 List<GroupStandingRowDto> wc = new ArrayList<>();
                 for (GroupDto g : groups) {
-                    if (g.standings().size() > adv) wc.add(g.standings().get(adv));
+                    int a = advOf.applyAsInt(g);
+                    if (g.standings().size() > a) wc.add(g.standings().get(a));
                 }
                 wc.sort(STANDING_RANK);
                 for (int i = 0; i < wc.size() && qualified.size() < target; i++) {

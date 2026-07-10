@@ -344,6 +344,12 @@ public class GroupStageService {
     @Transactional
     public List<GroupDto> standings(Long tournamentId) {
         List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(tournamentId);
+        // Tournament-level default advance, resolved once (2 when unset - the
+        // same fallback the qualifier selection uses). Each group's effective
+        // advance is baked into its DTO so the UI never depends on a stale
+        // client-side tournament value.
+        Integer tourAdv = groups.isEmpty() ? null : groups.get(0).getTournament().getAdvancePerGroup();
+        int defAdv = tourAdv != null ? tourAdv : 2;
         List<GroupDto> out = new ArrayList<>();
         for (Groups g : groups) {
             // Draw-board order: before any match is played the table shows the
@@ -393,9 +399,50 @@ public class GroupStageService {
                         m.getFouls2First(),
                         m.getFouls2Second()));
             }
-            out.add(new GroupDto(g.getId(), g.getName(), g.getOrdinal(), dto, matchDtos));
+            int eff = g.getAdvanceCount() != null ? g.getAdvanceCount() : defAdv;
+            out.add(new GroupDto(g.getId(), g.getName(), g.getOrdinal(),
+                    g.getAdvanceCount(), eff, dto, matchDtos));
         }
         return out;
+    }
+
+    /**
+     * Set (or clear) a group's per-group advance override. {@code count} null
+     * restores the tournament default; otherwise clamped to [1, group size].
+     * Owner/admin only (enforced by the controller). Returns nothing; the
+     * caller re-reads standings.
+     */
+    @Transactional
+    public void setGroupAdvance(Long tournamentId, Long groupId, Integer count) {
+        Groups g = groupsRepo.findByIdOptional(groupId).orElse(null);
+        if (g == null || g.getTournament() == null
+                || !g.getTournament().getId().equals(tournamentId)) {
+            throw new NotFoundException("Group not found");
+        }
+        long size = teamsRepo.count("group.id = ?1", groupId);
+        if (count == null || size < 1) {
+            // No override on an empty group - it would over-count the qualifier
+            // estimate while contributing zero real qualifiers.
+            g.setAdvanceCount(null);
+        } else {
+            int clamped = Math.max(1, Math.min((int) size, count));
+            g.setAdvanceCount(clamped);
+        }
+        groupsRepo.persist(g);
+    }
+
+    /**
+     * Sum of each group's effective advance count (its own override, else the
+     * given default). Returns -1 when the tournament has no groups yet (before
+     * the draw) so the caller can fall back to a groupCount-based estimate.
+     * Lightweight - one query, no standings computation.
+     */
+    public long advanceSum(Long tournamentId, int defaultAdv) {
+        List<Groups> groups = groupsRepo.findByTournamentIdOrderByOrdinal(tournamentId);
+        if (groups.isEmpty()) return -1;
+        long sum = 0;
+        for (Groups g : groups) sum += g.getAdvanceCount() != null ? g.getAdvanceCount() : defaultAdv;
+        return sum;
     }
 
     /**
@@ -412,12 +459,15 @@ public class GroupStageService {
         int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
 
         List<GroupDto> groups = standings(t.getId());
-        // Pair each tier team with its group label, then rank across groups.
+        // Pair each group's FIRST NON-ADVANCING team (index = that group's own
+        // advance count, which may override the tournament default) with its
+        // group label, then rank those across groups.
         record Tier(GroupStandingRowDto row, String group) {}
         List<Tier> tier = new ArrayList<>();
         for (GroupDto g : groups) {
-            if (g.standings().size() > adv) {
-                tier.add(new Tier(g.standings().get(adv), g.name()));
+            int a = g.effectiveAdvance();
+            if (g.standings().size() > a) {
+                tier.add(new Tier(g.standings().get(a), g.name()));
             }
         }
         tier.sort(Comparator

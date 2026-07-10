@@ -11,6 +11,14 @@ public record GroupDto(
         Long id,
         String name,
         int ordinal,
+        /** Raw per-group advance override; null = tournament's advancePerGroup.
+         *  Only used to show that a group differs from the default. */
+        Integer advanceCount,
+        /** Resolved effective advance for THIS group (advanceCount, else the
+         *  tournament's advancePerGroup, else 2). Always set - the UI displays
+         *  this directly so it never depends on a possibly-stale client-side
+         *  tournament default. */
+        int effectiveAdvance,
         List<GroupStandingRowDto> standings,
         List<GroupMatchDto> matches
 ) {}

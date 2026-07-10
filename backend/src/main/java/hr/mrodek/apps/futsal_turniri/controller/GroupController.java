@@ -139,4 +139,21 @@ public class GroupController {
         groupStageService.reorderGroup(t.getId(), groupId, body.teamIds());
         return groupStageService.standings(t.getId());
     }
+
+    /** Set how many teams advance from this group to the knockout bracket
+     *  (null = tournament default). Lets an uneven draw advance a second team
+     *  from a bigger group. Owner/admin. */
+    @POST
+    @Path("/{groupId}/advance")
+    @Authenticated
+    @Transactional
+    public List<GroupDto> setAdvance(
+            @PathParam("uuid") String uuid,
+            @PathParam("groupId") Long groupId,
+            @Valid hr.mrodek.apps.futsal_turniri.dtos.GroupAdvanceRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        groupStageService.setGroupAdvance(t.getId(), groupId,
+                body == null ? null : body.advanceCount());
+        return groupStageService.standings(t.getId());
+    }
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Per-group override for how many teams advance from a group to the
+        knockout bracket. NULL = use the tournament's uniform advance_per_group.
+        Lets an uneven draw (e.g. one group of 4 among groups of 3) advance a
+        second team from the bigger group. Set per-group after the draw; read
+        by the qualifier selection, the "advancing" highlight and the
+        best-third table. Orthogonal to best_third_count (kept for other
+        formats).
+    -->
+    <changeSet id="2026-07-12-tournament-groups-advance-count" author="mrodek">
+        <addColumn tableName="tournament_groups">
+            <column name="advance_count" type="int"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>
