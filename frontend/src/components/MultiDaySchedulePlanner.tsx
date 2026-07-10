@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
     Box,
     Button,
@@ -14,9 +14,9 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { FiCalendar, FiCheck, FiChevronLeft, FiClock } from "react-icons/fi"
-import { LuCalendarClock } from "react-icons/lu"
+import { LuCalendarClock, LuGripVertical } from "react-icons/lu"
 import { fetchPlanInfo, generateMultiDaySchedule, previewSchedule } from "../api/schedule"
-import type { Schedule, ScheduleConfig, SchedulePlanInfo, SchedulePreview } from "../types/schedule"
+import type { Schedule, ScheduleConfig, SchedulePlanInfo, SchedulePlanRequest, SchedulePreview } from "../types/schedule"
 import { MonoLabel } from "../ui/pitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -34,6 +34,29 @@ import { MonoLabel } from "../ui/pitch"
    ────────────────────────────────────────────────────────────────────────── */
 
 type DayRow = { date: string; matches: string; firstStart: string }
+
+/** One sketch row the organizer can drag into a new play order. The time
+ *  slots stay fixed per position - dragging moves the MATCH between slots.
+ *  `planIndex` is the backend's 0-based single-court plan index (the sketch
+ *  lists rows in exactly that order), sent back as the custom order. */
+type PreviewRow = {
+    planIndex: number
+    stage: string
+    groupName?: string | null
+    team1Name?: string | null
+    team2Name?: string | null
+    teamsKnown: boolean
+}
+
+/** Nearest scrollable ancestor - the dialog body (scrollBehavior="inside"),
+ *  wherever Chakra puts the overflow. Fallback: the page itself. */
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+    for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
+        const st = getComputedStyle(n)
+        if (/(auto|scroll)/.test(st.overflowY) && n.scrollHeight > n.clientHeight + 2) return n
+    }
+    return document.scrollingElement as HTMLElement | null
+}
 
 /** "YYYY-MM-DD" + "HH:mm" → ISO with the browser's local offset. Keeps the
  *  kickoff on the intended local day regardless of the backend's zone. */
@@ -80,6 +103,31 @@ const STAGE_LABEL: Record<string, string> = {
     SEMIFINAL: "Polufinale",
     THIRD_PLACE: "Za 3. mjesto",
     FINAL: "Finale",
+}
+
+/** Play-order rank of a stage. A drag may NOT cross a stage boundary - a
+ *  quarterfinal can't play after a semifinal or before the group matches -
+ *  so rows are only movable within their own stage's block. */
+const STAGE_RANK: Record<string, number> = {
+    GROUP: 0,
+    ROUND_OF_32: 1,
+    ROUND_OF_16: 2,
+    QUARTERFINAL: 3,
+    SEMIFINAL: 4,
+    THIRD_PLACE: 5,
+    FINAL: 6,
+}
+const stageRank = (s: string) => STAGE_RANK[s] ?? 0
+
+/** The contiguous run of same-stage rows around `idx` - the allowed drop
+ *  range for that row (rows are always stage-monotonic). */
+function stageBlock(rows: PreviewRow[], idx: number): [number, number] {
+    const r = stageRank(rows[idx].stage)
+    let lo = idx
+    let hi = idx
+    while (lo > 0 && stageRank(rows[lo - 1].stage) === r) lo--
+    while (hi < rows.length - 1 && stageRank(rows[hi + 1].stage) === r) hi++
+    return [lo, hi]
 }
 
 /** One clickable value in the time picker's hour / minute columns. */
@@ -227,6 +275,24 @@ export default function MultiDaySchedulePlanner({
     const [preview, setPreview] = useState<SchedulePreview | null>(null)
     const [sketching, setSketching] = useState(false)
     const [generating, setGenerating] = useState(false)
+    /** Sketch rows in the organizer's (possibly re-dragged) play order. The
+     *  time slots stay put - position i always shows the preview's i-th slot
+     *  time; dragging changes WHICH match occupies the slot. */
+    const [sketchRows, setSketchRows] = useState<PreviewRow[] | null>(null)
+    /** Drag state: index (into `rows`) being dragged + the row hovered. */
+    const [dragIdx, setDragIdx] = useState<number | null>(null)
+    const [overIdx, setOverIdx] = useState<number | null>(null)
+    /** Latest values read by the global pointer listeners / rAF loop. */
+    const overIdxRef = useRef<number | null>(null)
+    const pointerXRef = useRef(0)
+    const pointerYRef = useRef(0)
+    /** The dialog's scroll container, resolved at drag start - edge-scrolled
+     *  while dragging (touch-action:none blocks native scroll on iPad). */
+    const scrollElRef = useRef<HTMLElement | null>(null)
+    /** Allowed drop range for the dragged row - its stage's block. Hovering
+     *  outside clamps to the nearest block edge. */
+    const blockLoRef = useRef(0)
+    const blockHiRef = useRef(0)
 
     // Predicted total (group + knockout).
     useEffect(() => {
@@ -262,6 +328,51 @@ export default function MultiDaySchedulePlanner({
     )
     const remaining = total - allocated
 
+    /** Global (flattened) index of each preview day's first row, so a day's
+     *  i-th slot knows which `rows` entry currently occupies it. */
+    const dayOffsets = useMemo(() => {
+        let acc = 0
+        return (preview?.days ?? []).map((d) => {
+            const o = acc
+            acc += d.matches.length
+            return o
+        })
+    }, [preview])
+
+    /** Backend plan index of the fixed time SLOT at each display position
+     *  (the slot identity never moves - only the match occupying it does). */
+    const slotPlanIdx = useMemo(
+        () => (preview?.days ?? []).flatMap((d) => d.matches.map((m) => m.planIndex)),
+        [preview],
+    )
+
+    /** Row count per stage - a row is draggable only when its stage block has
+     *  at least one other row to swap with. */
+    const stageCounts = useMemo(() => {
+        const m = new Map<number, number>()
+        for (const r of sketchRows ?? []) {
+            const k = stageRank(r.stage)
+            m.set(k, (m.get(k) ?? 0) + 1)
+        }
+        return m
+    }, [sketchRows])
+    const anyRowDraggable = useMemo(
+        () => [...stageCounts.values()].some((c) => c > 1),
+        [stageCounts],
+    )
+
+    /** The first (earliest) knockout stage in the sketch - its teams come
+     *  straight from the group phase; later rounds depend on earlier knockout
+     *  results, so their unknown teams read "TBD" instead. */
+    const firstKoRank = useMemo(() => {
+        let min = Infinity
+        for (const r of sketchRows ?? []) {
+            const k = stageRank(r.stage)
+            if (k > 0 && k < min) min = k
+        }
+        return min
+    }, [sketchRows])
+
     function setRow(i: number, patch: Partial<DayRow>) {
         setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
     }
@@ -276,7 +387,7 @@ export default function MultiDaySchedulePlanner({
         })
     }
 
-    function buildRequest() {
+    function buildRequest(): SchedulePlanRequest {
         return {
             ...cfg,
             days: rows
@@ -288,10 +399,104 @@ export default function MultiDaySchedulePlanner({
         }
     }
 
+    // Pointer-based drag reorder of the sketch rows - mouse AND touch (same
+    // pattern as the Raspored tab). While a row is dragged we track the row
+    // under the pointer (elementFromPoint) and commit the move on release.
+    useEffect(() => {
+        if (dragIdx == null) return
+        const hitTest = () => {
+            const el = document.elementFromPoint(pointerXRef.current, pointerYRef.current) as HTMLElement | null
+            const row = el?.closest("[data-plan-row]") as HTMLElement | null
+            const attr = row?.getAttribute("data-plan-idx")
+            let idx = attr != null ? Number(attr) : null
+            // Clamp to the dragged row's stage block - a quarterfinal can't be
+            // dropped after a semifinal or in front of the group matches.
+            if (idx != null) {
+                idx = Math.min(Math.max(idx, blockLoRef.current), blockHiRef.current)
+            }
+            overIdxRef.current = idx
+            setOverIdx(idx)
+        }
+        const onMove = (e: PointerEvent) => {
+            pointerXRef.current = e.clientX
+            pointerYRef.current = e.clientY
+            hitTest()
+        }
+        const finish = () => {
+            const from = dragIdx
+            const to = overIdxRef.current
+            overIdxRef.current = null
+            setOverIdx(null)
+            setDragIdx(null)
+            if (from == null || to == null || from === to) return
+            setSketchRows((prev) => {
+                if (!prev || from >= prev.length || to >= prev.length) return prev
+                const next = [...prev]
+                const [moved] = next.splice(from, 1)
+                next.splice(to, 0, moved)
+                return next
+            })
+        }
+        // Edge auto-scroll: touch-action:none on the handle kills native
+        // scrolling, so an iPad drag couldn't otherwise reach off-screen rows.
+        const EDGE = 56
+        let raf = requestAnimationFrame(function tick() {
+            const sc = scrollElRef.current
+            if (sc) {
+                const r = sc.getBoundingClientRect()
+                const top = Math.max(r.top, 0)
+                const bottom = Math.min(r.bottom, window.innerHeight)
+                const y = pointerYRef.current
+                let dy = 0
+                if (y < top + EDGE) dy = -Math.max(2, Math.round((top + EDGE - y) / 4))
+                else if (y > bottom - EDGE) dy = Math.max(2, Math.round((y - (bottom - EDGE)) / 4))
+                if (dy !== 0) {
+                    const before = sc.scrollTop
+                    sc.scrollTop = before + dy
+                    if (sc.scrollTop !== before) hitTest()
+                }
+            }
+            raf = requestAnimationFrame(tick)
+        })
+        window.addEventListener("pointermove", onMove)
+        window.addEventListener("pointerup", finish)
+        window.addEventListener("pointercancel", finish)
+        return () => {
+            cancelAnimationFrame(raf)
+            window.removeEventListener("pointermove", onMove)
+            window.removeEventListener("pointerup", finish)
+            window.removeEventListener("pointercancel", finish)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dragIdx])
+
+    /** Store a fresh sketch + its rows in plan order (the flattened day list
+     *  IS the backend's single-court plan order - unscheduled rows are the
+     *  tail and never appear in the days). */
+    function applyPreview(p: SchedulePreview) {
+        setPreview(p)
+        const flat: PreviewRow[] = []
+        for (const day of p.days) {
+            for (const m of day.matches) {
+                flat.push({
+                    // Backend-assigned plan identity (NOT the flat position -
+                    // date bucketing may deviate from plan order in edge cases).
+                    planIndex: m.planIndex,
+                    stage: m.stage,
+                    groupName: m.groupName,
+                    team1Name: m.team1Name,
+                    team2Name: m.team2Name,
+                    teamsKnown: m.teamsKnown,
+                })
+            }
+        }
+        setSketchRows(flat)
+    }
+
     async function doSketch() {
         setSketching(true)
         try {
-            setPreview(await previewSchedule(uuid, buildRequest()))
+            applyPreview(await previewSchedule(uuid, buildRequest()))
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -302,7 +507,20 @@ export default function MultiDaySchedulePlanner({
     async function doGenerate() {
         setGenerating(true)
         try {
-            const s = await generateMultiDaySchedule(uuid, buildRequest())
+            let req = buildRequest()
+            // Send a custom order ONLY when the organizer actually dragged
+            // something - slot j (a fixed time) gets the match order[j].
+            if (sketchRows && sketchRows.length > 0) {
+                const dirty = sketchRows.some((r, p) => r.planIndex !== slotPlanIdx[p])
+                if (dirty) {
+                    const order: number[] = new Array(sketchRows.length)
+                    sketchRows.forEach((r, p) => {
+                        order[slotPlanIdx[p]] = r.planIndex
+                    })
+                    req = { ...req, order, planHash: preview?.planHash ?? null }
+                }
+            }
+            const s = await generateMultiDaySchedule(uuid, req)
             onGenerated(s)
             onClose()
         } catch {
@@ -335,13 +553,24 @@ export default function MultiDaySchedulePlanner({
                                         {preview.knockoutMatches > 0 &&
                                             " Eliminacijske utakmice su rezervirane (ekipe se određuju nakon grupne faze)."}
                                     </Text>
+                                    {anyRowDraggable && (
+                                        <Text fontSize="xs" color="fg.muted">
+                                            Povuci utakmicu klikom na{" "}
+                                            <Box as="span" display="inline-flex" verticalAlign="middle" mx="0.5">
+                                                <LuGripVertical size={13} />
+                                            </Box>{" "}
+                                            za promjenu redoslijeda - satnica ostaje ista, mijenja se
+                                            koja se utakmica kada igra. Redoslijed faza se ne može
+                                            mijenjati (npr. četvrtfinale uvijek ostaje prije polufinala).
+                                        </Text>
+                                    )}
                                     {preview.unscheduled > 0 && (
                                         <Box bg="accent.red" color="white" rounded="md" px="3" py="2" fontSize="sm">
                                             {preview.unscheduled} utakmica ne stane u zadane dane - dodaj još
                                             termina ili produži raspon.
                                         </Box>
                                     )}
-                                    {preview.days.map((day) => (
+                                    {preview.days.map((day, di) => (
                                         <Box key={day.date} borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
                                             <HStack justify="space-between" px="3" py="2" bg="bg.surfaceTint" borderBottomWidth="1px" borderColor="border">
                                                 <HStack gap="2">
@@ -351,28 +580,96 @@ export default function MultiDaySchedulePlanner({
                                                 <MonoLabel>{day.matches.length} UTAKMICA</MonoLabel>
                                             </HStack>
                                             <VStack align="stretch" gap="0">
-                                                {day.matches.map((m, i) => (
+                                                {day.matches.map((m, i) => {
+                                                    // Position = fixed time slot; content = whichever
+                                                    // match the organizer dragged into it.
+                                                    const gi = (dayOffsets[di] ?? 0) + i
+                                                    const r = sketchRows?.[gi] ?? m
+                                                    // Movable only within its own stage block - and only
+                                                    // when that block has another row to swap with.
+                                                    const canDragRow =
+                                                        sketchRows != null &&
+                                                        (stageCounts.get(stageRank(r.stage)) ?? 0) > 1
+                                                    return (
                                                     <HStack
-                                                        key={i}
-                                                        gap="3"
-                                                        px="3"
+                                                        key={gi}
+                                                        gap="2"
+                                                        px={anyRowDraggable ? "1.5" : "3"}
                                                         py="2"
                                                         borderTopWidth={i === 0 ? "0" : "1px"}
                                                         borderColor="border"
+                                                        data-plan-row=""
+                                                        data-plan-idx={gi}
+                                                        opacity={dragIdx === gi ? 0.35 : 1}
+                                                        transition="opacity 0.12s"
+                                                        css={
+                                                            overIdx === gi && dragIdx != null && dragIdx !== gi
+                                                                ? { boxShadow: "inset 0 3px 0 0 var(--chakra-colors-brand-solid)" }
+                                                                : undefined
+                                                        }
                                                     >
+                                                        {canDragRow ? (
+                                                            <Box
+                                                                onPointerDown={(e) => {
+                                                                    e.preventDefault()
+                                                                    // Keep tracking even when the finger leaves the
+                                                                    // small handle - makes touch drag work on iPad.
+                                                                    try {
+                                                                        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                                                                    } catch { /* not supported - window listeners still work */ }
+                                                                    pointerXRef.current = e.clientX
+                                                                    pointerYRef.current = e.clientY
+                                                                    scrollElRef.current = findScrollParent(e.currentTarget as HTMLElement)
+                                                                    const [lo, hi] = stageBlock(sketchRows, gi)
+                                                                    blockLoRef.current = lo
+                                                                    blockHiRef.current = hi
+                                                                    overIdxRef.current = gi
+                                                                    setOverIdx(gi)
+                                                                    setDragIdx(gi)
+                                                                }}
+                                                                cursor="grab"
+                                                                color={dragIdx === gi ? "brand.solid" : "fg.subtle"}
+                                                                _hover={{ color: "fg.muted" }}
+                                                                display="flex"
+                                                                alignItems="center"
+                                                                justifyContent="center"
+                                                                w="24px"
+                                                                py="1.5"
+                                                                flexShrink={0}
+                                                                style={{ touchAction: "none", userSelect: "none" }}
+                                                                title="Povuci za promjenu redoslijeda"
+                                                                aria-label="Povuci za promjenu redoslijeda"
+                                                            >
+                                                                {/* pointer-events none so the touch lands on the
+                                                                    handle Box (touch-action:none), not the SVG. */}
+                                                                <LuGripVertical size={16} style={{ pointerEvents: "none" }} />
+                                                            </Box>
+                                                        ) : anyRowDraggable ? (
+                                                            // Spacer keeps the time column aligned with
+                                                            // draggable rows in the same card.
+                                                            <Box w="24px" flexShrink={0} />
+                                                        ) : null}
                                                         <Text fontFamily="mono" fontSize="13px" color="pitch.500" fontWeight={700} flexShrink={0}>
                                                             {new Date(m.kickoff).toLocaleTimeString("hr-HR", { hour: "2-digit", minute: "2-digit" })}
                                                         </Text>
                                                         <Text fontFamily="mono" fontSize="10px" color="fg.muted" flexShrink={0} minW="86px" textTransform="uppercase">
-                                                            {STAGE_LABEL[m.stage] ?? m.stage}{m.groupName ? ` ${m.groupName}` : ""}
+                                                            {STAGE_LABEL[r.stage] ?? r.stage}{r.groupName ? ` ${r.groupName}` : ""}
                                                         </Text>
-                                                        <Text fontSize="13.5px" fontWeight={600} truncate>
-                                                            {m.teamsKnown
-                                                                ? `${m.team1Name ?? "?"} - ${m.team2Name ?? "?"}`
-                                                                : "Odlučuje se nakon grupne faze"}
+                                                        <Text
+                                                            fontSize="13.5px"
+                                                            fontWeight={600}
+                                                            truncate
+                                                            color={r.teamsKnown ? undefined : "fg.muted"}
+                                                        >
+                                                            {r.teamsKnown
+                                                                ? `${r.team1Name ?? "?"} - ${r.team2Name ?? "?"}`
+                                                                : preview.groupMatches > 0 && stageRank(r.stage) === firstKoRank
+                                                                    ? "Odlučuje se nakon grupne faze"
+                                                                    : "TBD"}
                                                         </Text>
                                                     </HStack>
-                                                ))}
+                                                    )
+                                                })}
                                             </VStack>
                                         </Box>
                                     ))}
@@ -485,7 +782,7 @@ export default function MultiDaySchedulePlanner({
                         <Dialog.Footer>
                             {preview ? (
                                 <HStack gap="2" justify="space-between" w="full" wrap="wrap">
-                                    <Button variant="ghost" onClick={() => setPreview(null)}>
+                                    <Button variant="ghost" onClick={() => { setPreview(null); setSketchRows(null) }}>
                                         <FiChevronLeft /> Natrag
                                     </Button>
                                     <Button colorPalette="pitch" loading={generating} onClick={doGenerate} disabled={preview.scheduled === 0}>

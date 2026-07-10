@@ -46,4 +46,5 @@
     <include file="db/changelog/match_event_client_id.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/user_profiles_name.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_groups_advance_count.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_organizer_name.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

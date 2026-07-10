@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {useEffect, useMemo, useRef, useState, type ReactNode} from "react"
 import {
     Badge,
     Box,
@@ -12,14 +12,22 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { useNavigate } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
-import { qk } from "../queryClient"
-import { LuShuffle, LuTrophy } from "react-icons/lu"
-import { FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock, FiMinus, FiPlus } from "react-icons/fi"
-import { fetchGroups, fetchThirdPlaced, drawGroups, recordGroupResult, reorderGroup, resetGroups, setGroupAdvance } from "../api/groups"
-import type { Group, GroupMatch, ThirdPlacedTable } from "../types/groups"
-import type { TeamShort } from "../types/teams"
+import {useNavigate} from "react-router-dom"
+import {useQueryClient} from "@tanstack/react-query"
+import {qk} from "../queryClient"
+import {LuShuffle, LuTrophy} from "react-icons/lu"
+import {FiEdit2, FiArrowUp, FiArrowDown, FiChevronDown, FiChevronUp, FiClock, FiMinus, FiPlus} from "react-icons/fi"
+import {
+    fetchGroups,
+    fetchThirdPlaced,
+    drawGroups,
+    recordGroupResult,
+    reorderGroup,
+    resetGroups,
+    setGroupAdvance
+} from "../api/groups"
+import type {Group, GroupMatch, ThirdPlacedTable} from "../types/groups"
+import type {TeamShort} from "../types/teams"
 import {
     endFirstHalf,
     finishMatch,
@@ -33,10 +41,10 @@ import type {
     MatchEventDto,
     MatchLiveMode,
 } from "../types/matchEvents"
-import { fetchSchedule } from "../api/schedule"
-import { useLiveSocket } from "../hooks/useLiveSocket"
-import { usePolling } from "../hooks/usePolling"
-import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
+import {fetchSchedule} from "../api/schedule"
+import {useLiveSocket} from "../hooks/useLiveSocket"
+import {usePolling} from "../hooks/usePolling"
+import {useOfflineMatchEvents} from "../hooks/useOfflineMatchEvents"
 import {
     liveGroupStandings,
     liveThirdTable,
@@ -44,11 +52,21 @@ import {
     type LiveGroupStandings,
     type LiveThirdRow,
 } from "./liveStandings"
-import { LiveSyncIndicator } from "./LiveSyncIndicator"
-import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
-import { GhostButton } from "../ui/pitch"
-import { FiRefreshCw, FiTrash2 } from "react-icons/fi"
-import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, StartLivePopover, matchPhase } from "./liveMatch"
+import {LiveSyncIndicator} from "./LiveSyncIndicator"
+import {ConfirmDialog, EmptyState, Loader, Panel} from "../ui/primitives"
+import {GhostButton} from "../ui/pitch"
+import {FiRefreshCw, FiTrash2} from "react-icons/fi"
+import {
+    DirectScoreEditor,
+    FoulControls,
+    LiveClock,
+    LiveConsoleHeader,
+    LiveEventRow,
+    LiveGoalEntry,
+    MatchTimelineModal,
+    StartLivePopover,
+    matchPhase
+} from "./liveMatch"
 
 /**
  * "Grupe" tab on the tournament detail page (Phase E2 + E5).
@@ -69,17 +87,17 @@ type EditForm = { s1: string; s2: string }
 
 /** Mono header cell for the SofaScore-style standings grid. */
 function StHead({
-    label,
-    mdOnly = false,
-    align = "center",
-}: {
+                    label,
+                    mdOnly = false,
+                    align = "center",
+                }: {
     label: string
     mdOnly?: boolean
     align?: "left" | "center"
 }) {
     return (
         <Text
-            display={mdOnly ? { base: "none", md: "block" } : undefined}
+            display={mdOnly ? {base: "none", md: "block"} : undefined}
             fontFamily="mono"
             fontSize="9px"
             color="fg.muted"
@@ -94,11 +112,11 @@ function StHead({
 
 /** Mono number cell for the standings grid. */
 function StNum({
-    value,
-    mdOnly = false,
-    color = "fg.soft",
-    weight = 400,
-}: {
+                   value,
+                   mdOnly = false,
+                   color = "fg.soft",
+                   weight = 400,
+               }: {
     value: ReactNode
     mdOnly?: boolean
     color?: string
@@ -106,7 +124,7 @@ function StNum({
 }) {
     return (
         <Text
-            display={mdOnly ? { base: "none", md: "block" } : undefined}
+            display={mdOnly ? {base: "none", md: "block"} : undefined}
             fontFamily="mono"
             fontSize="13px"
             fontWeight={weight}
@@ -200,15 +218,15 @@ function clearDrawDraft(uuid: string) {
 }
 
 export default function GroupsTab({
-    uuid,
-    advancePerGroup,
-    groupCount,
-    bestThirdCount,
-    teams,
-    canEdit = false,
-    tournamentStarted = false,
-    onGoToSchedule,
-}: {
+                                      uuid,
+                                      advancePerGroup,
+                                      groupCount,
+                                      bestThirdCount,
+                                      teams,
+                                      canEdit = false,
+                                      tournamentStarted = false,
+                                      onGoToSchedule,
+                                  }: {
     uuid: string
     advancePerGroup?: number | null
     /** Configured number of groups (from the tournament) - sizes the manual
@@ -239,7 +257,7 @@ export default function GroupsTab({
     const [loading, setLoading] = useState(!cachedGroups)
     const [drawing, setDrawing] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
-    const [form, setForm] = useState<EditForm>({ s1: "", s2: "" })
+    const [form, setForm] = useState<EditForm>({s1: "", s2: ""})
     const [saving, setSaving] = useState(false)
     /** matchId of the row whose "start live" call is in flight. */
     const [startingId, setStartingId] = useState<number | null>(null)
@@ -267,13 +285,13 @@ export default function GroupsTab({
     const [cfgBestThird, setCfgBestThird] = useState("0")
     const [assign, setAssign] = useState<Record<number, number>>({})
     /** teamId → drop sequence, so teams keep their drag order within a group
-        (a newly dropped team goes to the bottom). Sent to the backend as the
-        draw position, which orders the generated round-robin fixtures. */
+     (a newly dropped team goes to the bottom). Sent to the backend as the
+     draw position, which orders the generated round-robin fixtures. */
     const [assignSeq, setAssignSeq] = useState<Record<number, number>>({})
     /** Draw-board display order: position → box id. Teams are assigned to a
-        BOX (stable id, carries its capacity); the letter follows the POSITION
-        (slot 0 is always "A"), so moving the bigger box last makes the last
-        group the 4-team one. Empty = identity order. */
+     BOX (stable id, carries its capacity); the letter follows the POSITION
+     (slot 0 is always "A"), so moving the bigger box last makes the last
+     group the 4-team one. Empty = identity order. */
     const [boxOrder, setBoxOrder] = useState<number[]>([])
     /** Box ids the organizer minimized on the draw board (e.g. full groups). */
     const [collapsedBoxes, setCollapsedBoxes] = useState<Set<number>>(new Set())
@@ -304,10 +322,10 @@ export default function GroupsTab({
     const [dragOver, setDragOver] = useState<string | null>(null) // "pool" | group ordinal as string
     const dragRef = useRef<TeamShort | null>(null)
     const dragOverRef = useRef<string | null>(null)
-    const dragPosRef = useRef({ x: 0, y: 0 })
+    const dragPosRef = useRef({x: 0, y: 0})
     const ghostRef = useRef<HTMLDivElement | null>(null)
     /** rAF id of the drag auto-scroll loop (page scrolls itself when the
-        pointer nears the viewport edge - touch drags block native scroll). */
+     pointer nears the viewport edge - touch drags block native scroll). */
     const scrollRafRef = useRef<number | null>(null)
 
     useEffect(() => {
@@ -315,22 +333,31 @@ export default function GroupsTab({
         // Only show the spinner on a cold load; a cache hit is already painted.
         if (!queryClient.getQueryData(qk.groups(uuid))) setLoading(true)
         queryClient
-            .fetchQuery({ queryKey: qk.groups(uuid), queryFn: () => fetchGroups(uuid), staleTime: 15_000 })
-            .then((g) => { if (!cancelled) setGroups(g) })
-            .catch(() => { if (!cancelled) setGroups([]) })
-            .finally(() => { if (!cancelled) setLoading(false) })
+            .fetchQuery({queryKey: qk.groups(uuid), queryFn: () => fetchGroups(uuid), staleTime: 15_000})
+            .then((g) => {
+                if (!cancelled) setGroups(g)
+            })
+            .catch(() => {
+                if (!cancelled) setGroups([])
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false)
+            })
         // Schedule is shared with the Raspored + Eliminacija tabs - one cache
         // entry dedupes the clock-config fetch across all three.
         queryClient
-            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
+            .fetchQuery({queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000})
             .then((s) => {
                 if (cancelled) return
                 setHalfLengthMin(s.halfLengthMin ?? null)
                 setHalfCount(s.halfCount ?? null)
                 setBracketGenerated((s.matches ?? []).some((m) => m.stage && m.stage !== "GROUP"))
             })
-            .catch(() => { /* schedule may not be generated yet - clock free-runs */ })
-        return () => { cancelled = true }
+            .catch(() => { /* schedule may not be generated yet - clock free-runs */
+            })
+        return () => {
+            cancelled = true
+        }
     }, [uuid])
 
     // Mirror groups into the cache so a tab-switch / reopen reflects the latest
@@ -344,12 +371,21 @@ export default function GroupsTab({
     // so it stays in sync with exactly what's displayed. The endpoint returns
     // bestThirdCount = 0 when the feature is off; the table then hides itself.
     useEffect(() => {
-        if (!groups || groups.length === 0) { setThirdTable(null); return }
+        if (!groups || groups.length === 0) {
+            setThirdTable(null);
+            return
+        }
         let cancelled = false
         fetchThirdPlaced(uuid)
-            .then((t) => { if (!cancelled) setThirdTable(t) })
-            .catch(() => { if (!cancelled) setThirdTable(null) })
-        return () => { cancelled = true }
+            .then((t) => {
+                if (!cancelled) setThirdTable(t)
+            })
+            .catch(() => {
+                if (!cancelled) setThirdTable(null)
+            })
+        return () => {
+            cancelled = true
+        }
     }, [uuid, groups])
 
     // The next match to start: the earliest-kickoff SCHEDULED match across all
@@ -388,7 +424,7 @@ export default function GroupsTab({
         if (anyGroupLive) return liveThirdTable(thirdTable, groups, liveOverlays)
         return thirdTable.rows.map((tr) => ({
             ...tr,
-            standing: { ...tr.standing, liveChanged: new Set<LiveField>(), liveForm: null },
+            standing: {...tr.standing, liveChanged: new Set<LiveField>(), liveForm: null},
         }))
     }, [thirdTable, groups, anyGroupLive, liveOverlays])
 
@@ -400,7 +436,9 @@ export default function GroupsTab({
         if (msg.tournamentUuid && msg.tournamentUuid !== uuid) return
         void reloadGroups()
     }, (groups?.length ?? 0) > 0)
-    usePolling(() => { void reloadGroups() }, 10_000, anyGroupLive)
+    usePolling(() => {
+        void reloadGroups()
+    }, 10_000, anyGroupLive)
 
     // Registered teams (pending self-registrations excluded - same rule the
     // backend draw uses). Declared above the draft effects so they can gate on
@@ -472,6 +510,7 @@ export default function GroupsTab({
      *  the table to a stale snapshot (goal briefly "disappearing"). Only the
      *  latest in-flight request is allowed to apply. */
     const reloadSeqRef = useRef(0)
+
     async function reloadGroups() {
         const seq = ++reloadSeqRef.current
         try {
@@ -488,8 +527,8 @@ export default function GroupsTab({
             setGroups(await resetGroups(uuid))
             setEditingId(null)
             // Wiping the group stage invalidates any generated schedule/bracket.
-            queryClient.removeQueries({ queryKey: qk.schedule(uuid) })
-            queryClient.removeQueries({ queryKey: qk.bracket(uuid) })
+            queryClient.removeQueries({queryKey: qk.schedule(uuid)})
+            queryClient.removeQueries({queryKey: qk.bracket(uuid)})
         } catch {
             /* error toast surfaced by the http interceptor */
         } finally {
@@ -499,6 +538,7 @@ export default function GroupsTab({
 
     /** "Resetiraj" wipes every group match + the draw - confirm in a popup modal. */
     const [confirmResetGroupsOpen, setConfirmResetGroupsOpen] = useState(false)
+
     function confirmResetGroups() {
         setConfirmResetGroupsOpen(true)
     }
@@ -564,6 +604,7 @@ export default function GroupsTab({
         g.effectiveAdvance ?? (g.advanceCount != null ? g.advanceCount : effectiveAdvance ?? null)
     /** matchId-free: the group whose advance-count save is in flight. */
     const [advSavingGroup, setAdvSavingGroup] = useState<number | null>(null)
+
     /** Change a group's per-group advance count (organizer). Clamped to the
      *  group size; the backend clamps too. */
     async function changeGroupAdvance(g: Group, next: number) {
@@ -583,10 +624,12 @@ export default function GroupsTab({
             setAdvSavingGroup(null)
         }
     }
+
     /** Effective board order (position → box id); identity until reordered
-        or when the stored permutation no longer matches the group count. */
+     or when the stored permutation no longer matches the group count. */
     const boxOrderEff =
-        boxOrder.length === gcNum ? boxOrder : Array.from({ length: gcNum }, (_, i) => i)
+        boxOrder.length === gcNum ? boxOrder : Array.from({length: gcNum}, (_, i) => i)
+
     /** Swap the group box at `pos` with its neighbour (arrow buttons). */
     function moveGroupBox(pos: number, dir: -1 | 1) {
         const to = pos + dir
@@ -595,6 +638,7 @@ export default function GroupsTab({
         ;[next[pos], next[to]] = [next[to], next[pos]]
         setBoxOrder(next)
     }
+
     const toggleBoxCollapsed = (b: number) =>
         setCollapsedBoxes((prev) => {
             const next = new Set(prev)
@@ -637,6 +681,7 @@ export default function GroupsTab({
         setBoxOrder([])
         setCollapsedBoxes(new Set())
     }
+
     function openDraw() {
         // A stored draft (in-progress work from a previous open / tab switch)
         // wins over the defaults; confirming or discarding clears it.
@@ -657,11 +702,13 @@ export default function GroupsTab({
         }
         setDrawOpen(true)
     }
+
     /** Throw away the stored draft and start over with a clean board. */
     function discardDraft() {
         clearDrawDraft(uuid)
         resetDrawBoard()
     }
+
     /** Close the board keeping the draft, but marked closed - "Odustani"
      *  shouldn't force-reopen the board on the next mount the way an
      *  interrupted (tab-switch) session does. */
@@ -678,6 +725,7 @@ export default function GroupsTab({
         }
         setDrawOpen(false)
     }
+
     function changeGroupCount(v: string) {
         const s = v.replace(/[^\d]/g, "")
         setCfgGroups(s)
@@ -727,13 +775,16 @@ export default function GroupsTab({
                 const j = Math.floor(Math.random() * (i + 1))
                 ;[pool[i], pool[j]] = [pool[j], pool[i]]
             }
-            const next = { ...a }
+            const next = {...a}
             for (const tm of pool) {
                 let best = -1
                 let bestFree = 0
                 for (let i = 0; i < gcNum; i++) {
                     const free = capOf(i) - counts[i]
-                    if (free > bestFree) { bestFree = free; best = i }
+                    if (free > bestFree) {
+                        bestFree = free;
+                        best = i
+                    }
                 }
                 if (best < 0) break
                 next[tm.id] = best
@@ -744,7 +795,7 @@ export default function GroupsTab({
         })
         // Give the newly placed teams sequences so they order after existing ones.
         setAssignSeq((o) => {
-            const next = { ...o }
+            const next = {...o}
             let seq = nextSeq(o)
             for (const id of placed) next[id] = seq++
             return next
@@ -755,14 +806,16 @@ export default function GroupsTab({
        ghost follows it, and drop targets are found by hit-testing
        [data-drop] wrappers under the pointer. */
     function moveGhost(x: number, y: number) {
-        dragPosRef.current = { x, y }
+        dragPosRef.current = {x, y}
         const el = ghostRef.current
         if (el) el.style.transform = `translate(${x + 14}px, ${y - 14}px)`
     }
+
     function zoneAt(x: number, y: number): string | null {
         const el = document.elementFromPoint(x, y) as HTMLElement | null
         return el?.closest<HTMLElement>("[data-drop]")?.dataset.drop ?? null
     }
+
     /* Drag auto-scroll: chips set touch-action:none, so on touch devices the
        page can't scroll natively mid-drag - on an iPad the organizer couldn't
        reach group boxes below the fold. While a drag is active, a rAF loop
@@ -774,7 +827,7 @@ export default function GroupsTab({
             scrollRafRef.current = null
             return
         }
-        const { x, y } = dragPosRef.current
+        const {x, y} = dragPosRef.current
         const EDGE = 90
         const h = window.innerHeight
         let dy = 0
@@ -790,12 +843,14 @@ export default function GroupsTab({
         }
         scrollRafRef.current = requestAnimationFrame(autoScrollTick)
     }
+
     function stopAutoScroll() {
         if (scrollRafRef.current != null) {
             cancelAnimationFrame(scrollRafRef.current)
             scrollRafRef.current = null
         }
     }
+
     function startDrag(e: React.PointerEvent<HTMLElement>, tm: TeamShort) {
         if (drawing) return
         e.preventDefault()
@@ -807,6 +862,7 @@ export default function GroupsTab({
             scrollRafRef.current = requestAnimationFrame(autoScrollTick)
         }
     }
+
     function dragMove(e: React.PointerEvent<HTMLElement>) {
         if (!dragRef.current) return
         moveGhost(e.clientX, e.clientY)
@@ -816,6 +872,7 @@ export default function GroupsTab({
             setDragOver(z)
         }
     }
+
     function endDrag(e: React.PointerEvent<HTMLElement>) {
         const tm = dragRef.current
         if (!tm) return
@@ -828,12 +885,12 @@ export default function GroupsTab({
         if (z == null) return
         if (z === "pool") {
             setAssign((a) => {
-                const next = { ...a }
+                const next = {...a}
                 delete next[tm.id]
                 return next
             })
             setAssignSeq((o) => {
-                const next = { ...o }
+                const next = {...o}
                 delete next[tm.id]
                 return next
             })
@@ -843,11 +900,12 @@ export default function GroupsTab({
         if (!Number.isFinite(gi) || gi < 0 || gi >= gcNum) return
         // A full group only accepts the drop if the team is already in it.
         if (assign[tm.id] !== gi && teamsInGroup(gi).length >= capOf(gi)) return
-        setAssign((a) => ({ ...a, [tm.id]: gi }))
+        setAssign((a) => ({...a, [tm.id]: gi}))
         // Append to the bottom of the group (a fresh sequence past the max),
         // so re-dropping a team also moves it to the end of its group.
-        setAssignSeq((o) => ({ ...o, [tm.id]: nextSeq(o) }))
+        setAssignSeq((o) => ({...o, [tm.id]: nextSeq(o)}))
     }
+
     function cancelDrag() {
         stopAutoScroll()
         dragRef.current = null
@@ -868,7 +926,7 @@ export default function GroupsTab({
         const assignments: { teamId: number; groupOrdinal: number }[] = []
         for (let pos = 0; pos < gcNum; pos++) {
             for (const tm of teamsInGroup(boxOrderEff[pos])) {
-                assignments.push({ teamId: tm.id, groupOrdinal: pos })
+                assignments.push({teamId: tm.id, groupOrdinal: pos})
             }
         }
         try {
@@ -887,8 +945,8 @@ export default function GroupsTab({
             // A (re)draw rebuilds the group structure and invalidates any
             // existing schedule / bracket - drop those tab caches so they
             // refetch fresh instead of showing stale fixtures.
-            queryClient.removeQueries({ queryKey: qk.schedule(uuid) })
-            queryClient.removeQueries({ queryKey: qk.bracket(uuid) })
+            queryClient.removeQueries({queryKey: qk.schedule(uuid)})
+            queryClient.removeQueries({queryKey: qk.bracket(uuid)})
             // The draft is applied - drop it (and the board customizations).
             clearDrawDraft(uuid)
             setBoxOrder([])
@@ -901,7 +959,7 @@ export default function GroupsTab({
     }
 
     const drawPanel = (
-        <Panel p={{ base: "4", md: "5" }}>
+        <Panel p={{base: "4", md: "5"}}>
             <VStack align="stretch" gap="4">
                 <HStack justify="space-between" align="center" wrap="wrap" gap="2">
                     <Box>
@@ -910,34 +968,31 @@ export default function GroupsTab({
                             Skica se sprema automatski - primjenjuje se tek klikom na „Potvrdi ždrijeb".
                         </Text>
                     </Box>
-                    <HStack gap="1">
-                        <Button size="xs" variant="ghost" color="fg.muted" onClick={discardDraft} disabled={drawing}>
-                            <HStack gap="1"><FiTrash2 size={12} /> Odbaci skicu</HStack>
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={closeDraw} disabled={drawing}>
-                            Odustani
-                        </Button>
-                    </HStack>
                 </HStack>
 
                 {/* Config: group count + advance, then auto/manual toggle. */}
                 <Flex gap="4" align="flex-end" wrap="wrap">
                     <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
+                              color="fg.muted" mb="1">
                             Broj grupa
                         </Text>
-                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgGroups} onChange={(e) => changeGroupCount(e.target.value)} />
+                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgGroups}
+                               onChange={(e) => changeGroupCount(e.target.value)}/>
                     </Box>
                     <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
+                              color="fg.muted" mb="1">
                             Prolazi po grupi
                         </Text>
-                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance} onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))} />
+                        <Input size="sm" w="84px" inputMode="numeric" textAlign="center" value={cfgAdvance}
+                               onChange={(e) => setCfgAdvance(e.target.value.replace(/[^\d]/g, ""))}/>
                     </Box>
                     {/* Best next-placed ("third") teams that also advance. Max
                         one per group; the label position tracks advNum. */}
                     <Box>
-                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1">
+                        <Text fontSize="2xs" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase"
+                              color="fg.muted" mb="1">
                             Najbolje {advNum + 1}. plasirane
                         </Text>
                         <Input
@@ -976,144 +1031,161 @@ export default function GroupsTab({
                      to assign it; drag it back onto the pool to undo.
                      "Nasumično rasporedi" fills the rest randomly. */}
                 <VStack align="stretch" gap="3">
-                        <HStack justify="space-between" align="center" wrap="wrap" gap="2">
-                            <Text fontSize="xs" color="fg.muted">
-                                Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
-                                    ? `Neraspoređeno: ${poolTeams.length}.`
-                                    : "Sve ekipe su raspoređene."}
-                            </Text>
-                            <HStack gap="2">
-                                <Button size="xs" variant="outline" onClick={fillRemaining} disabled={poolTeams.length === 0}>
-                                    <HStack gap="1"><LuShuffle size={13} /> Nasumično rasporedi</HStack>
+                    <HStack justify="space-between" align="center" wrap="wrap" gap="2">
+                        <Text fontSize="xs" color="fg.muted">
+                            Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
+                            ? `Neraspoređeno: ${poolTeams.length}.`
+                            : "Sve ekipe su raspoređene."}
+                        </Text>
+                        <HStack gap="2">
+                            <Button size="xs" variant="outline" onClick={fillRemaining}
+                                    disabled={poolTeams.length === 0}>
+                                <HStack gap="1"><LuShuffle size={13}/> Nasumično rasporedi</HStack>
+                            </Button>
+                            <Button size="xs" variant="ghost" onClick={() => setAssign({})}
+                                    disabled={registeredTeams.length === poolTeams.length}>
+                                Isprazni
+                            </Button>
+                            <HStack gap="1">
+                                <Button size="xs" variant="ghost" color="fg.muted" onClick={discardDraft}
+                                        disabled={drawing}>
+                                    <HStack gap="1"><FiTrash2 size={12}/> Odbaci skicu</HStack>
                                 </Button>
-                                <Button size="xs" variant="ghost" onClick={() => setAssign({})} disabled={registeredTeams.length === poolTeams.length}>
-                                    Isprazni
+                                <Button size="xs" variant="ghost" onClick={closeDraw} disabled={drawing}>
+                                    Odustani
                                 </Button>
                             </HStack>
                         </HStack>
+                    </HStack>
 
-                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "minmax(200px, 1fr) 1.25fr" }} gap="4" alignItems="start">
-                            {/* Pool ("kuglice") - also a drop zone for unassigning. */}
-                            <Box
-                                data-drop="pool"
-                                borderWidth="1px"
-                                borderStyle="dashed"
-                                borderColor={dragOver === "pool" ? "pitch.400" : "border"}
-                                bg={dragOver === "pool" ? "bg.surfaceTint" : undefined}
-                                rounded="lg"
-                                p="3"
-                                transition="background 120ms, border-color 120ms"
-                            >
-                                <Text fontWeight="bold" fontSize="sm" mb="2">
-                                    Kuglice / ekipe ({poolTeams.length})
-                                </Text>
-                                <VStack align="stretch" gap="1.5">
-                                    {poolTeams.map((tm) => (
-                                        <Box
-                                            key={tm.id}
-                                            onPointerDown={(e) => startDrag(e, tm)}
-                                            onPointerMove={dragMove}
-                                            onPointerUp={endDrag}
-                                            onPointerCancel={cancelDrag}
-                                            style={{ touchAction: "none", userSelect: "none" }}
-                                            borderWidth="1px"
-                                            borderColor="border"
-                                            bg="bg.panel"
-                                            rounded="lg"
-                                            px="3"
-                                            py="2"
-                                            fontSize="sm"
-                                            fontWeight={600}
-                                            cursor="grab"
-                                            opacity={dragTeam?.id === tm.id ? 0.35 : 1}
-                                            _hover={{ borderColor: "pitch.400" }}
-                                        >
-                                            <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
-                                        </Box>
-                                    ))}
-                                    {poolTeams.length === 0 && (
-                                        <Text fontSize="xs" color="fg.muted" py="2" textAlign="center">
-                                            Sve raspoređeno - povuci ekipu ovamo da je vratiš.
-                                        </Text>
-                                    )}
-                                </VStack>
-                            </Box>
+                    <Box display="grid" gridTemplateColumns={{base: "1fr", md: "minmax(200px, 1fr) 1.25fr"}} gap="4"
+                         alignItems="start">
+                        {/* Pool ("kuglice") - also a drop zone for unassigning. */}
+                        <Box
+                            data-drop="pool"
+                            borderWidth="1px"
+                            borderStyle="dashed"
+                            borderColor={dragOver === "pool" ? "pitch.400" : "border"}
+                            bg={dragOver === "pool" ? "bg.surfaceTint" : undefined}
+                            rounded="lg"
+                            p="3"
+                            transition="background 120ms, border-color 120ms"
+                        >
+                            <Text fontWeight="bold" fontSize="sm" mb="2">
+                                Kuglice / ekipe ({poolTeams.length})
+                            </Text>
+                            <VStack align="stretch" gap="1.5">
+                                {poolTeams.map((tm) => (
+                                    <Box
+                                        key={tm.id}
+                                        onPointerDown={(e) => startDrag(e, tm)}
+                                        onPointerMove={dragMove}
+                                        onPointerUp={endDrag}
+                                        onPointerCancel={cancelDrag}
+                                        style={{touchAction: "none", userSelect: "none"}}
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        bg="bg.panel"
+                                        rounded="lg"
+                                        px="3"
+                                        py="2"
+                                        fontSize="sm"
+                                        fontWeight={600}
+                                        cursor="grab"
+                                        opacity={dragTeam?.id === tm.id ? 0.35 : 1}
+                                        _hover={{borderColor: "pitch.400"}}
+                                    >
+                                        <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
+                                    </Box>
+                                ))}
+                                {poolTeams.length === 0 && (
+                                    <Text fontSize="xs" color="fg.muted" py="2" textAlign="center">
+                                        Sve raspoređeno - povuci ekipu ovamo da je vratiš.
+                                    </Text>
+                                )}
+                            </VStack>
+                        </Box>
 
-                            {/* Group boxes with numbered slots. Boxes are stable
+                        {/* Group boxes with numbered slots. Boxes are stable
                                 ids carrying their teams + capacity; the LETTER
                                 follows the display position (slot 0 = "A"), so
                                 the arrow buttons move e.g. the 4-team group to
                                 the end. Full boxes can be collapsed. */}
-                            <VStack align="stretch" gap="3">
-                                {Array.from({ length: gcNum }, (_, pos) => {
-                                    const i = boxOrderEff[pos]
-                                    const inGroup = teamsInGroup(i)
-                                    const cap = capOf(i)
-                                    const full = inGroup.length >= cap
-                                    const hovered = dragOver === String(i)
-                                    const isCollapsed = collapsedBoxes.has(i)
-                                    return (
-                                        <Box
-                                            key={i}
-                                            data-drop={String(i)}
-                                            borderWidth="1px"
-                                            borderColor={hovered ? (full ? "red.400" : "pitch.400") : "border"}
-                                            bg={hovered && !full ? "bg.surfaceTint" : undefined}
-                                            rounded="lg"
-                                            overflow="hidden"
-                                            transition="background 120ms, border-color 120ms"
-                                        >
-                                            <HStack justify="space-between" px="3" py="1.5" bg="bg.surfaceTint" borderBottomWidth={isCollapsed ? "0" : "1px"} borderColor="border" gap="1">
-                                                <Text fontFamily="mono" fontSize="2xs" fontWeight={800} letterSpacing="0.12em">
-                                                    SKUPINA {grpLabel(pos)}
+                        <VStack align="stretch" gap="3">
+                            {Array.from({length: gcNum}, (_, pos) => {
+                                const i = boxOrderEff[pos]
+                                const inGroup = teamsInGroup(i)
+                                const cap = capOf(i)
+                                const full = inGroup.length >= cap
+                                const hovered = dragOver === String(i)
+                                const isCollapsed = collapsedBoxes.has(i)
+                                return (
+                                    <Box
+                                        key={i}
+                                        data-drop={String(i)}
+                                        borderWidth="1px"
+                                        borderColor={hovered ? (full ? "red.400" : "pitch.400") : "border"}
+                                        bg={hovered && !full ? "bg.surfaceTint" : undefined}
+                                        rounded="lg"
+                                        overflow="hidden"
+                                        transition="background 120ms, border-color 120ms"
+                                    >
+                                        <HStack justify="space-between" px="3" py="1.5" bg="bg.surfaceTint"
+                                                borderBottomWidth={isCollapsed ? "0" : "1px"} borderColor="border"
+                                                gap="1">
+                                            <Text fontFamily="mono" fontSize="2xs" fontWeight={800}
+                                                  letterSpacing="0.12em">
+                                                SKUPINA {grpLabel(pos)}
+                                            </Text>
+                                            <HStack gap="0.5">
+                                                <Text fontFamily="mono" fontSize="2xs"
+                                                      color={full ? "pitch.500" : "fg.muted"} fontWeight={700} mr="1">
+                                                    {inGroup.length}/{cap}
                                                 </Text>
-                                                <HStack gap="0.5">
-                                                    <Text fontFamily="mono" fontSize="2xs" color={full ? "pitch.500" : "fg.muted"} fontWeight={700} mr="1">
-                                                        {inGroup.length}/{cap}
-                                                    </Text>
-                                                    <IconButton
-                                                        aria-label="Pomakni skupinu gore"
-                                                        size="xs"
-                                                        h="22px"
-                                                        minW="22px"
-                                                        variant="ghost"
-                                                        disabled={pos === 0 || drawing}
-                                                        onClick={() => moveGroupBox(pos, -1)}
-                                                    >
-                                                        <FiArrowUp size={12} />
-                                                    </IconButton>
-                                                    <IconButton
-                                                        aria-label="Pomakni skupinu dolje"
-                                                        size="xs"
-                                                        h="22px"
-                                                        minW="22px"
-                                                        variant="ghost"
-                                                        disabled={pos === gcNum - 1 || drawing}
-                                                        onClick={() => moveGroupBox(pos, 1)}
-                                                    >
-                                                        <FiArrowDown size={12} />
-                                                    </IconButton>
-                                                    <IconButton
-                                                        aria-label={isCollapsed ? "Proširi skupinu" : "Minimiziraj skupinu"}
-                                                        size="xs"
-                                                        h="22px"
-                                                        minW="22px"
-                                                        variant="ghost"
-                                                        onClick={() => toggleBoxCollapsed(i)}
-                                                    >
-                                                        {isCollapsed ? <FiChevronDown size={13} /> : <FiChevronUp size={13} />}
-                                                    </IconButton>
-                                                </HStack>
+                                                <IconButton
+                                                    aria-label="Pomakni skupinu gore"
+                                                    size="xs"
+                                                    h="22px"
+                                                    minW="22px"
+                                                    variant="ghost"
+                                                    disabled={pos === 0 || drawing}
+                                                    onClick={() => moveGroupBox(pos, -1)}
+                                                >
+                                                    <FiArrowUp size={12}/>
+                                                </IconButton>
+                                                <IconButton
+                                                    aria-label="Pomakni skupinu dolje"
+                                                    size="xs"
+                                                    h="22px"
+                                                    minW="22px"
+                                                    variant="ghost"
+                                                    disabled={pos === gcNum - 1 || drawing}
+                                                    onClick={() => moveGroupBox(pos, 1)}
+                                                >
+                                                    <FiArrowDown size={12}/>
+                                                </IconButton>
+                                                <IconButton
+                                                    aria-label={isCollapsed ? "Proširi skupinu" : "Minimiziraj skupinu"}
+                                                    size="xs"
+                                                    h="22px"
+                                                    minW="22px"
+                                                    variant="ghost"
+                                                    onClick={() => toggleBoxCollapsed(i)}
+                                                >
+                                                    {isCollapsed ? <FiChevronDown size={13}/> :
+                                                        <FiChevronUp size={13}/>}
+                                                </IconButton>
                                             </HStack>
-                                            {/* Collapsed: a one-line roster summary (still a drop target). */}
-                                            {isCollapsed && (
-                                                <Text px="3" py="1.5" fontSize="xs" color="fg.muted" truncate>
-                                                    {inGroup.length > 0
-                                                        ? inGroup.map((tm) => tm.name?.trim() || "Bez imena").join(" · ")
-                                                        : "Prazno"}
-                                                </Text>
-                                            )}
-                                            {!isCollapsed && (
+                                        </HStack>
+                                        {/* Collapsed: a one-line roster summary (still a drop target). */}
+                                        {isCollapsed && (
+                                            <Text px="3" py="1.5" fontSize="xs" color="fg.muted" truncate>
+                                                {inGroup.length > 0
+                                                    ? inGroup.map((tm) => tm.name?.trim() || "Bez imena").join(" · ")
+                                                    : "Prazno"}
+                                            </Text>
+                                        )}
+                                        {!isCollapsed && (
                                             <VStack align="stretch" gap="1.5" p="2.5">
                                                 {inGroup.map((tm) => (
                                                     <Box
@@ -1122,7 +1194,7 @@ export default function GroupsTab({
                                                         onPointerMove={dragMove}
                                                         onPointerUp={endDrag}
                                                         onPointerCancel={cancelDrag}
-                                                        style={{ touchAction: "none", userSelect: "none" }}
+                                                        style={{touchAction: "none", userSelect: "none"}}
                                                         borderWidth="1px"
                                                         borderColor="pitch.muted"
                                                         bg="bg.surfaceTint"
@@ -1133,12 +1205,12 @@ export default function GroupsTab({
                                                         fontWeight={600}
                                                         cursor="grab"
                                                         opacity={dragTeam?.id === tm.id ? 0.35 : 1}
-                                                        _hover={{ borderColor: "pitch.400" }}
+                                                        _hover={{borderColor: "pitch.400"}}
                                                     >
                                                         <Text truncate>{tm.name?.trim() || "Bez imena"}</Text>
                                                     </Box>
                                                 ))}
-                                                {Array.from({ length: Math.max(0, cap - inGroup.length) }, (_, s) => (
+                                                {Array.from({length: Math.max(0, cap - inGroup.length)}, (_, s) => (
                                                     <Flex
                                                         key={`slot-${s}`}
                                                         align="center"
@@ -1155,39 +1227,39 @@ export default function GroupsTab({
                                                     </Flex>
                                                 ))}
                                             </VStack>
-                                            )}
-                                        </Box>
-                                    )
-                                })}
-                            </VStack>
-                        </Box>
+                                        )}
+                                    </Box>
+                                )
+                            })}
+                        </VStack>
+                    </Box>
 
-                        {/* Floating chip that follows the pointer while dragging. */}
-                        {dragTeam && (
-                            <Box
-                                ref={ghostRef}
-                                position="fixed"
-                                top="0"
-                                left="0"
-                                zIndex={1500}
-                                pointerEvents="none"
-                                px="3"
-                                py="1.5"
-                                rounded="lg"
-                                bg="pitch.500"
-                                color="white"
-                                fontSize="sm"
-                                fontWeight={700}
-                                boxShadow="lg"
-                                style={{
-                                    transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
-                                    willChange: "transform",
-                                }}
-                            >
-                                {dragTeam.name?.trim() || "Bez imena"}
-                            </Box>
-                        )}
-                    </VStack>
+                    {/* Floating chip that follows the pointer while dragging. */}
+                    {dragTeam && (
+                        <Box
+                            ref={ghostRef}
+                            position="fixed"
+                            top="0"
+                            left="0"
+                            zIndex={1500}
+                            pointerEvents="none"
+                            px="3"
+                            py="1.5"
+                            rounded="lg"
+                            bg="pitch.500"
+                            color="white"
+                            fontSize="sm"
+                            fontWeight={700}
+                            boxShadow="lg"
+                            style={{
+                                transform: `translate(${dragPosRef.current.x + 14}px, ${dragPosRef.current.y - 14}px)`,
+                                willChange: "transform",
+                            }}
+                        >
+                            {dragTeam.name?.trim() || "Bez imena"}
+                        </Box>
+                    )}
+                </VStack>
 
                 <Button
                     colorPalette="brand"
@@ -1203,7 +1275,7 @@ export default function GroupsTab({
     )
 
     if (loading) {
-        return <Loader />
+        return <Loader/>
     }
 
     const hasGroups = groups != null && groups.length > 0
@@ -1267,14 +1339,14 @@ export default function GroupsTab({
         // Long club names shrink a touch and wrap (up to three lines) so they
         // stay readable instead of truncating.
         const maxLen = Math.max((m.team1Name ?? "").length, (m.team2Name ?? "").length)
-        const nameFont = maxLen > 26 ? { base: "12px", md: "13px" } : "sm"
+        const nameFont = maxLen > 26 ? {base: "12px", md: "13px"} : "sm"
         return (
             <Box
                 key={m.matchId}
                 borderWidth={isLive || isNext ? "2px" : "1px"}
                 borderColor={isLive || isNext ? "red.emphasized" : "border"}
                 rounded="lg"
-                px={{ base: "2.5", md: "3" }}
+                px={{base: "2.5", md: "3"}}
                 py="1.5"
                 bg="bg.panel"
                 cursor="pointer"
@@ -1303,7 +1375,7 @@ export default function GroupsTab({
                         display="grid"
                         gridTemplateColumns={editing ? "1fr 120px 1fr" : "1fr 84px 1fr"}
                         alignItems="center"
-                        gap={{ base: "2", sm: "4" }}
+                        gap={{base: "2", sm: "4"}}
                     >
                         <Text
                             fontSize={nameFont}
@@ -1326,7 +1398,7 @@ export default function GroupsTab({
                                         textAlign="center"
                                         rounded="lg"
                                         value={form.s1}
-                                        onChange={(e) => setForm((f) => ({ ...f, s1: e.target.value }))}
+                                        onChange={(e) => setForm((f) => ({...f, s1: e.target.value}))}
                                     />
                                     <Text fontWeight={800} color="fg.muted">:</Text>
                                     <Input
@@ -1337,7 +1409,7 @@ export default function GroupsTab({
                                         textAlign="center"
                                         rounded="lg"
                                         value={form.s2}
-                                        onChange={(e) => setForm((f) => ({ ...f, s2: e.target.value }))}
+                                        onChange={(e) => setForm((f) => ({...f, s2: e.target.value}))}
                                     />
                                 </HStack>
                             ) : (
@@ -1378,7 +1450,7 @@ export default function GroupsTab({
                     <Flex align="center" gap="2" wrap="wrap" minH="8">
                         {/* Left: live badge */}
                         <HStack flex="1" minW="0" gap="2" justify="flex-start" wrap="wrap">
-                            {isLive && <LivePill />}
+                            {isLive && <LivePill/>}
                         </HStack>
 
                         {/* Center: kickoff time */}
@@ -1391,7 +1463,7 @@ export default function GroupsTab({
                                     color="fg.muted"
                                     fontFamily="mono"
                                 >
-                                    <FiClock size={11} />
+                                    <FiClock size={11}/>
                                     <Box>
                                         {(() => {
                                             const d = new Date(m.kickoffAt)
@@ -1483,7 +1555,7 @@ export default function GroupsTab({
                 <Flex justify="flex-end" gap="2" wrap="wrap">
                     <GhostButton
                         danger
-                        icon={<FiRefreshCw size={14} />}
+                        icon={<FiRefreshCw size={14}/>}
                         onClick={openDraw}
                         disabled={drawing}
                     >
@@ -1491,7 +1563,7 @@ export default function GroupsTab({
                     </GhostButton>
                     <GhostButton
                         danger
-                        icon={<FiTrash2 size={14} />}
+                        icon={<FiTrash2 size={14}/>}
                         onClick={confirmResetGroups}
                         disabled={drawing || resetting}
                     >
@@ -1511,7 +1583,10 @@ export default function GroupsTab({
                 description="Sve utakmice grupne faze i podjela u grupe bit će obrisane."
                 confirmLabel="Da, resetiraj"
                 onClose={() => setConfirmResetGroupsOpen(false)}
-                onConfirm={async () => { await runResetGroups(); setConfirmResetGroupsOpen(false) }}
+                onConfirm={async () => {
+                    await runResetGroups();
+                    setConfirmResetGroupsOpen(false)
+                }}
             />
 
             {/* Groups are drawn but fixtures aren't generated until the
@@ -1534,7 +1609,7 @@ export default function GroupsTab({
                         </Text>
                         {onGoToSchedule && (
                             <GhostButton
-                                icon={<FiClock size={14} />}
+                                icon={<FiClock size={14}/>}
                                 onClick={onGoToSchedule}
                                 flexShrink={0}
                             >
@@ -1547,283 +1622,542 @@ export default function GroupsTab({
 
             <Box
                 display="grid"
-                gridTemplateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }}
+                gridTemplateColumns={{base: "1fr", lg: "repeat(2, 1fr)"}}
                 gap="4"
             >
-            {groups!.map((g) => (
-                <Box
-                    key={g.id}
-                    bg="bg.panel"
-                    borderWidth="1px"
-                    borderColor="border"
-                    rounded="xl"
-                    overflow="hidden"
-                >
-                    {/* v3 group header - green letter tile + GRUPA X + N PROLAZE pill */}
-                    <Flex
-                        justify="space-between"
-                        align="center"
-                        px="4"
-                        py="3"
-                        bg="bg.surfaceTint"
-                        borderBottomWidth="1px"
+                {groups!.map((g) => (
+                    <Box
+                        key={g.id}
+                        bg="bg.panel"
+                        borderWidth="1px"
                         borderColor="border"
+                        rounded="xl"
+                        overflow="hidden"
                     >
-                        <HStack gap="2.5" align="center">
-                            <Flex
-                                w="26px"
-                                h="26px"
-                                rounded="md"
-                                bg="pitch.500"
-                                color="white"
-                                align="center"
-                                justify="center"
-                                fontFamily="heading"
-                                fontSize="14px"
-                                fontWeight={800}
-                            >
-                                {g.name}
-                            </Flex>
-                            <Text
-                                fontFamily="mono"
-                                fontSize="11px"
-                                fontWeight={700}
-                                letterSpacing="0.12em"
-                                color="fg.ink"
-                            >
-                                GRUPA {g.name}
-                            </Text>
-                        </HStack>
-                        <HStack gap="2" align="center">
-                            {/* "N PROLAZE" - a read-only pill for viewers; the
+                        {/* v3 group header - green letter tile + GRUPA X + N PROLAZE pill */}
+                        <Flex
+                            justify="space-between"
+                            align="center"
+                            px="4"
+                            py="3"
+                            bg="bg.surfaceTint"
+                            borderBottomWidth="1px"
+                            borderColor="border"
+                        >
+                            <HStack gap="2.5" align="center">
+                                <Flex
+                                    w="26px"
+                                    h="26px"
+                                    rounded="md"
+                                    bg="pitch.500"
+                                    color="white"
+                                    align="center"
+                                    justify="center"
+                                    fontFamily="heading"
+                                    fontSize="14px"
+                                    fontWeight={800}
+                                >
+                                    {g.name}
+                                </Flex>
+                                <Text
+                                    fontFamily="mono"
+                                    fontSize="11px"
+                                    fontWeight={700}
+                                    letterSpacing="0.12em"
+                                    color="fg.ink"
+                                >
+                                    GRUPA {g.name}
+                                </Text>
+                            </HStack>
+                            <HStack gap="2" align="center">
+                                {/* "N PROLAZE" - a read-only pill for viewers; the
                                 organizer gets −/+ steppers to set how many
                                 advance from THIS group (e.g. 2 from the 4-team
                                 group, 1 from the rest). A per-group override is
                                 marked so it's clear it differs from the default. */}
-                            {(() => {
-                                const adv = advForGroup(g)
-                                if (adv == null || adv <= 0) return null
-                                const overridden = g.advanceCount != null
-                                // Read-only for viewers, and once the bracket is
-                                // generated (changing it wouldn't rebuild it).
-                                if (!canEdit || bracketGenerated) {
+                                {(() => {
+                                    const adv = advForGroup(g)
+                                    if (adv == null || adv <= 0) return null
+                                    const overridden = g.advanceCount != null
+                                    // Read-only for viewers, and once the bracket is
+                                    // generated (changing it wouldn't rebuild it).
+                                    if (!canEdit || bracketGenerated) {
+                                        return (
+                                            <Box
+                                                fontFamily="mono"
+                                                fontSize="9px"
+                                                fontWeight={700}
+                                                letterSpacing="0.06em"
+                                                color="pitch.500"
+                                                bg="rgba(58,165,107,0.12)"
+                                                px="2.5"
+                                                py="1"
+                                                rounded="full"
+                                            >
+                                                {adv} PROLAZE
+                                            </Box>
+                                        )
+                                    }
+                                    const busy = advSavingGroup === g.id
                                     return (
-                                        <Box
-                                            fontFamily="mono"
-                                            fontSize="9px"
-                                            fontWeight={700}
-                                            letterSpacing="0.06em"
-                                            color="pitch.500"
-                                            bg="rgba(58,165,107,0.12)"
-                                            px="2.5"
-                                            py="1"
+                                        <HStack
+                                            gap="0.5"
+                                            bg={overridden ? "rgba(58,165,107,0.18)" : "rgba(58,165,107,0.12)"}
+                                            borderWidth={overridden ? "1px" : "0"}
+                                            borderColor="pitch.500"
                                             rounded="full"
+                                            pl="1"
+                                            pr="1.5"
+                                            py="0.5"
+                                            title={overridden ? "Prilagođeno za ovu skupinu (klik za promjenu)" : "Koliko ekipa prolazi iz ove skupine"}
                                         >
-                                            {adv} PROLAZE
-                                        </Box>
+                                            <IconButton
+                                                aria-label="Manje prolaznika"
+                                                size="2xs"
+                                                h="18px"
+                                                minW="18px"
+                                                variant="ghost"
+                                                color="pitch.600"
+                                                disabled={busy || adv <= 1}
+                                                onClick={() => changeGroupAdvance(g, adv - 1)}
+                                            >
+                                                <FiMinus size={11}/>
+                                            </IconButton>
+                                            <Box fontFamily="mono" fontSize="9px" fontWeight={800}
+                                                 letterSpacing="0.04em" color="pitch.600" px="0.5" whiteSpace="nowrap">
+                                                {adv} PROLAZE
+                                            </Box>
+                                            <IconButton
+                                                aria-label="Više prolaznika"
+                                                size="2xs"
+                                                h="18px"
+                                                minW="18px"
+                                                variant="ghost"
+                                                color="pitch.600"
+                                                disabled={busy || adv >= g.standings.length}
+                                                onClick={() => changeGroupAdvance(g, adv + 1)}
+                                            >
+                                                <FiPlus size={11}/>
+                                            </IconButton>
+                                        </HStack>
                                     )
-                                }
-                                const busy = advSavingGroup === g.id
-                                return (
-                                    <HStack
-                                        gap="0.5"
-                                        bg={overridden ? "rgba(58,165,107,0.18)" : "rgba(58,165,107,0.12)"}
-                                        borderWidth={overridden ? "1px" : "0"}
-                                        borderColor="pitch.500"
-                                        rounded="full"
-                                        pl="1"
-                                        pr="1.5"
-                                        py="0.5"
-                                        title={overridden ? "Prilagođeno za ovu skupinu (klik za promjenu)" : "Koliko ekipa prolazi iz ove skupine"}
-                                    >
-                                        <IconButton
-                                            aria-label="Manje prolaznika"
-                                            size="2xs"
-                                            h="18px"
-                                            minW="18px"
-                                            variant="ghost"
-                                            color="pitch.600"
-                                            disabled={busy || adv <= 1}
-                                            onClick={() => changeGroupAdvance(g, adv - 1)}
-                                        >
-                                            <FiMinus size={11} />
-                                        </IconButton>
-                                        <Box fontFamily="mono" fontSize="9px" fontWeight={800} letterSpacing="0.04em" color="pitch.600" px="0.5" whiteSpace="nowrap">
-                                            {adv} PROLAZE
-                                        </Box>
-                                        <IconButton
-                                            aria-label="Više prolaznika"
-                                            size="2xs"
-                                            h="18px"
-                                            minW="18px"
-                                            variant="ghost"
-                                            color="pitch.600"
-                                            disabled={busy || adv >= g.standings.length}
-                                            onClick={() => changeGroupAdvance(g, adv + 1)}
-                                        >
-                                            <FiPlus size={11} />
-                                        </IconButton>
-                                    </HStack>
-                                )
-                            })()}
-                            {/* Manual reorder - only the organizer, and only
+                                })()}
+                                {/* Manual reorder - only the organizer, and only
                                 once every match in this group is finished (the
                                 override settles tiebreakers on a complete group). */}
-                            {canEdit &&
-                                g.matches.length > 0 &&
-                                g.matches.every((m) => m.status === "FINISHED") && (
-                                    <IconButton
-                                        aria-label="Uredi poredak skupine"
-                                        size="xs"
-                                        variant="ghost"
-                                        onClick={() => setReorderGroupTarget(g)}
-                                    >
-                                        <FiEdit2 />
-                                    </IconButton>
-                                )}
-                        </HStack>
-                    </Flex>
+                                {canEdit &&
+                                    g.matches.length > 0 &&
+                                    g.matches.every((m) => m.status === "FINISHED") && (
+                                        <IconButton
+                                            aria-label="Uredi poredak skupine"
+                                            size="xs"
+                                            variant="ghost"
+                                            onClick={() => setReorderGroupTarget(g)}
+                                        >
+                                            <FiEdit2/>
+                                        </IconButton>
+                                    )}
+                            </HStack>
+                        </Flex>
 
-                    {/* v3 compact standings - CSS grid, not <table>.
+                        {/* v3 compact standings - CSS grid, not <table>.
                          Columns: # | EKIPA | UT | P | N | I | GR | (GOL |
                          ZADNJIH 5 md-only) | BOD. LIVE matches count in
                          provisionally - cells they modified render red until
                          the match finishes. Advancing rows get green-tint bg
                          + 3px green left border. */}
-                    <Box>
-                        {/* Column header - SofaScore-style: each stat its own
+                        <Box>
+                            {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
                             Mobile keeps UT + P·N·I + GR + BOD; md adds GOL/
                             Zadnjih 5. */}
+                            <Box
+                                display="grid"
+                                gridTemplateColumns={{
+                                    base: "22px 1fr 20px 20px 20px 20px 28px 30px",
+                                    md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                }}
+                                gap="1.5"
+                                px={{base: "3", md: "4"}}
+                                py="2"
+                                bg="bg.surfaceTint2"
+                                borderBottomWidth="1px"
+                                borderColor="border"
+                            >
+                                <StHead label="#"/>
+                                <Text
+                                    fontFamily="mono"
+                                    fontSize="9px"
+                                    color="fg.muted"
+                                    letterSpacing="0.08em"
+                                    fontWeight={700}
+                                >
+                                    EKIPA
+                                </Text>
+                                <StHead label="UT"/>
+                                <StHead label="P"/>
+                                <StHead label="N"/>
+                                <StHead label="I"/>
+                                <StHead label="GR"/>
+                                <StHead label="GOL" mdOnly/>
+                                <StHead label="ZADNJIH 5" mdOnly align="left"/>
+                                <StHead label="BOD"/>
+                            </Box>
+
+                            {/* Standings rows - live-overlaid: cells a LIVE match
+                            modified render red until the result is persisted. */}
+                            {(liveOverlays.get(g.id)?.rows ?? []).map((row, idx) => {
+                                const advForG = advForGroup(g)
+                                const advances = advForG != null && idx < advForG
+                                const lc = (f: LiveField) => row.liveChanged.has(f)
+                                return (
+                                    <Box
+                                        key={row.teamId}
+                                        display="grid"
+                                        gridTemplateColumns={{
+                                            base: "22px 1fr 20px 20px 20px 20px 28px 30px",
+                                            md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                        }}
+                                        gap="1.5"
+                                        alignItems="center"
+                                        px={{base: "3", md: "4"}}
+                                        py="2.5"
+                                        bg={advances ? "rgba(58,165,107,0.08)" : undefined}
+                                        borderLeftWidth="3px"
+                                        borderLeftColor={advances ? "pitch.500" : "transparent"}
+                                        borderTopWidth={idx === 0 ? "0" : "1px"}
+                                        borderTopColor="border"
+                                    >
+                                        {/* # */}
+                                        <Text
+                                            fontFamily="mono"
+                                            fontSize="13px"
+                                            fontWeight={800}
+                                            color={advances ? "pitch.500" : "fg.muted"}
+                                            textAlign="center"
+                                        >
+                                            {idx + 1}
+                                        </Text>
+                                        {/* Team name only - stats live in their own columns now */}
+                                        <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
+                                            {row.teamName}
+                                        </Text>
+                                        {/* UT (odigrano) */}
+                                        <StNum
+                                            value={row.played}
+                                            color={lc("played") ? "accent.red" : undefined}
+                                            weight={lc("played") ? 700 : undefined}
+                                        />
+                                        {/* P · N · I */}
+                                        <StNum
+                                            value={row.won}
+                                            color={lc("won") ? "accent.red" : undefined}
+                                            weight={lc("won") ? 700 : undefined}
+                                        />
+                                        <StNum
+                                            value={row.drawn}
+                                            color={lc("drawn") ? "accent.red" : undefined}
+                                            weight={lc("drawn") ? 700 : undefined}
+                                        />
+                                        <StNum
+                                            value={row.lost}
+                                            color={lc("lost") ? "accent.red" : undefined}
+                                            weight={lc("lost") ? 700 : undefined}
+                                        />
+                                        {/* GR (gol-razlika) - shown on mobile too */}
+                                        <StNum
+                                            weight={lc("goalDiff") ? 700 : 600}
+                                            value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                                            color={
+                                                lc("goalDiff")
+                                                    ? "accent.red"
+                                                    : row.goalDiff > 0
+                                                        ? "pitch.500"
+                                                        : row.goalDiff < 0
+                                                            ? "accent.red"
+                                                            : "fg.muted"
+                                            }
+                                        />
+                                        {/* GOL (dani:primljeni) - md only */}
+                                        <StNum
+                                            value={`${row.goalsFor}:${row.goalsAgainst}`}
+                                            mdOnly
+                                            color={lc("goals") ? "accent.red" : undefined}
+                                            weight={lc("goals") ? 700 : undefined}
+                                        />
+                                        {/* Zadnjih 5 - md only. Left-aligned so the
+                                        badges line up across rows even when
+                                        teams have played a different number of
+                                        matches. A team playing right now gets a
+                                        red OUTLINED provisional badge appended. */}
+                                        <HStack
+                                            display={{base: "none", md: "flex"}}
+                                            gap="1"
+                                            justify="flex-start"
+                                        >
+                                            {/* Cap at 5 badges total: drop the oldest
+                                            finished result while the provisional
+                                            live badge is appended, so the strip
+                                            never overflows its 92px track. */}
+                                            {(row.liveForm ? (row.form ?? []).slice(-4) : row.form ?? []).map((res, i) => {
+                                                const isW = res === "W"
+                                                const isL = res === "L"
+                                                return (
+                                                    <Flex
+                                                        key={i}
+                                                        w="16px"
+                                                        h="16px"
+                                                        rounded="sm"
+                                                        align="center"
+                                                        justify="center"
+                                                        fontFamily="mono"
+                                                        fontSize="9px"
+                                                        fontWeight={800}
+                                                        color="white"
+                                                        bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
+                                                        title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
+                                                    >
+                                                        {isW ? "P" : isL ? "I" : "N"}
+                                                    </Flex>
+                                                )
+                                            })}
+                                            {row.liveForm && (
+                                                <Flex
+                                                    w="16px"
+                                                    h="16px"
+                                                    rounded="sm"
+                                                    align="center"
+                                                    justify="center"
+                                                    fontFamily="mono"
+                                                    fontSize="9px"
+                                                    fontWeight={800}
+                                                    color="accent.red"
+                                                    borderWidth="2px"
+                                                    borderColor="accent.red"
+                                                    title="Utakmica u tijeku"
+                                                >
+                                                    {row.liveForm === "W" ? "P" : row.liveForm === "L" ? "I" : "N"}
+                                                </Flex>
+                                            )}
+                                        </HStack>
+                                        {/* BOD (bodovi) */}
+                                        <Text
+                                            fontFamily="heading"
+                                            fontSize="18px"
+                                            fontWeight={800}
+                                            color={lc("points") ? "accent.red" : "fg.ink"}
+                                            letterSpacing="-0.02em"
+                                            textAlign="center"
+                                        >
+                                            {row.points}
+                                        </Text>
+                                    </Box>
+                                )
+                            })}
+                        </Box>
+
+                        {/* Fixtures section - collapsed by default; "Prikaži
+                        utakmice" expands this group's matches. */}
+                        {g.matches.length > 0 && (
+                            <Box
+                                px={{base: "2.5", md: "3"}}
+                                py="2.5"
+                                borderTopWidth="1px"
+                                borderColor="border"
+                                bg="bg.subtle"
+                            >
+                                {expandedGroups.has(g.id) ? (
+                                    <VStack align="stretch" gap="1.5">
+                                        <Flex justify="center" pb="1">
+                                            <Button
+                                                size="xs"
+                                                variant="ghost"
+                                                colorPalette="brand"
+                                                onClick={() => toggleGroup(g.id)}
+                                            >
+                                                <FiChevronUp/> Sakrij utakmice
+                                            </Button>
+                                        </Flex>
+                                        {matchesByKickoff(g.matches).map(renderFixture)}
+                                    </VStack>
+                                ) : (
+                                    <Flex justify="center">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            colorPalette="brand"
+                                            onClick={() => toggleGroup(g.id)}
+                                        >
+                                            <FiChevronDown/> Prikaži utakmice ({g.matches.length})
+                                        </Button>
+                                    </Flex>
+                                )}
+                            </Box>
+                        )}
+                    </Box>
+                ))}
+
+                {/* ── Best "third-placed" ranking ─────────────────────────────
+                 In the group grid so it sits alongside the last group when
+                 there's an odd number of groups (2 per row); spans the full
+                 width when the group count is even. Not collapsible - it's
+                 shown expanded like the group tables. Only when the organizer
+                 enabled it at draw time and the tier exists. */}
+                {thirdTable && thirdTable.bestThirdCount > 0 && thirdRows.length > 0 && (
+                    <Box
+                        gridColumn={{lg: (groups!.length % 2 === 0) ? "1 / -1" : undefined}}
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="xl"
+                        overflow="hidden"
+                        bg="bg.panel"
+                        h="fit-content"
+                    >
+                        <Flex
+                            align="center"
+                            justify="space-between"
+                            gap="2"
+                            px={{base: "3", md: "4"}}
+                            py="3"
+                            borderBottomWidth="1px"
+                            borderColor="border"
+                            wrap="wrap"
+                        >
+                            <HStack gap="2.5" align="center">
+                                <Flex w="26px" h="26px" rounded="md" bg="pitch.500" color="white" align="center"
+                                      justify="center">
+                                    <LuTrophy size={12}/>
+                                </Flex>
+                                <Text fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.1em"
+                                      color="fg.ink">
+                                    NAJBOLJE {thirdTable.advancePerGroup + 1}. PLASIRANE
+                                </Text>
+                            </HStack>
+                            <Box fontFamily="mono" fontSize="9px" fontWeight={700} letterSpacing="0.06em"
+                                 color="pitch.500" bg="rgba(58,165,107,0.12)" px="2.5" py="1" rounded="full">
+                                {thirdTable.bestThirdCount} PROLAZE
+                            </Box>
+                        </Flex>
+
+                        {/* Same column set as the group tables (plus GRP): mobile
+                        shows GRP + UT + P·N·I + GR + BOD, md adds GOL and
+                        Zadnjih 5. Live-modified cells render red, identically
+                        to the group standings. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "22px 1fr 20px 20px 20px 20px 28px 30px",
-                                md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
+                                md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
                             }}
                             gap="1.5"
-                            px={{ base: "3", md: "4" }}
+                            px={{base: "3", md: "4"}}
                             py="2"
                             bg="bg.surfaceTint2"
                             borderBottomWidth="1px"
                             borderColor="border"
                         >
-                            <StHead label="#" />
-                            <Text
-                                fontFamily="mono"
-                                fontSize="9px"
-                                color="fg.muted"
-                                letterSpacing="0.08em"
-                                fontWeight={700}
-                            >
+                            <StHead label="#"/>
+                            <Text fontFamily="mono" fontSize="9px" color="fg.muted" letterSpacing="0.08em"
+                                  fontWeight={700}>
                                 EKIPA
                             </Text>
-                            <StHead label="UT" />
-                            <StHead label="P" />
-                            <StHead label="N" />
-                            <StHead label="I" />
-                            <StHead label="GR" />
-                            <StHead label="GOL" mdOnly />
-                            <StHead label="ZADNJIH 5" mdOnly align="left" />
-                            <StHead label="BOD" />
+                            <StHead label="GRP"/>
+                            <StHead label="UT"/>
+                            <StHead label="P"/>
+                            <StHead label="N"/>
+                            <StHead label="I"/>
+                            <StHead label="GR"/>
+                            <StHead label="GOL" mdOnly/>
+                            <StHead label="ZADNJIH 5" mdOnly align="left"/>
+                            <StHead label="BOD"/>
                         </Box>
 
-                        {/* Standings rows - live-overlaid: cells a LIVE match
-                            modified render red until the result is persisted. */}
-                        {(liveOverlays.get(g.id)?.rows ?? []).map((row, idx) => {
-                            const advForG = advForGroup(g)
-                            const advances = advForG != null && idx < advForG
-                            const lc = (f: LiveField) => row.liveChanged.has(f)
+                        {thirdRows.map((tr, idx) => {
+                            const q = tr.qualifies
+                            const lc = (f: LiveField) => tr.standing.liveChanged.has(f)
                             return (
                                 <Box
-                                    key={row.teamId}
+                                    key={tr.standing.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "22px 1fr 20px 20px 20px 20px 28px 30px",
-                                        md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                        base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
+                                        md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
                                     }}
                                     gap="1.5"
                                     alignItems="center"
-                                    px={{ base: "3", md: "4" }}
+                                    px={{base: "3", md: "4"}}
                                     py="2.5"
-                                    bg={advances ? "rgba(58,165,107,0.08)" : undefined}
+                                    bg={q ? "rgba(58,165,107,0.08)" : undefined}
                                     borderLeftWidth="3px"
-                                    borderLeftColor={advances ? "pitch.500" : "transparent"}
+                                    borderLeftColor={q ? "pitch.500" : "transparent"}
                                     borderTopWidth={idx === 0 ? "0" : "1px"}
                                     borderTopColor="border"
                                 >
-                                    {/* # */}
-                                    <Text
-                                        fontFamily="mono"
-                                        fontSize="13px"
-                                        fontWeight={800}
-                                        color={advances ? "pitch.500" : "fg.muted"}
-                                        textAlign="center"
-                                    >
-                                        {idx + 1}
+                                    <Text fontFamily="mono" fontSize="13px" fontWeight={800}
+                                          color={q ? "pitch.500" : "fg.muted"} textAlign="center">
+                                        {tr.rank}
                                     </Text>
-                                    {/* Team name only - stats live in their own columns now */}
                                     <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
-                                        {row.teamName}
+                                        {tr.standing.teamName}
+                                    </Text>
+                                    <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted"
+                                          textAlign="center">
+                                        {tr.groupName}
                                     </Text>
                                     {/* UT (odigrano) */}
                                     <StNum
-                                        value={row.played}
+                                        value={tr.standing.played}
                                         color={lc("played") ? "accent.red" : undefined}
                                         weight={lc("played") ? 700 : undefined}
                                     />
                                     {/* P · N · I */}
                                     <StNum
-                                        value={row.won}
+                                        value={tr.standing.won}
                                         color={lc("won") ? "accent.red" : undefined}
                                         weight={lc("won") ? 700 : undefined}
                                     />
                                     <StNum
-                                        value={row.drawn}
+                                        value={tr.standing.drawn}
                                         color={lc("drawn") ? "accent.red" : undefined}
                                         weight={lc("drawn") ? 700 : undefined}
                                     />
                                     <StNum
-                                        value={row.lost}
+                                        value={tr.standing.lost}
                                         color={lc("lost") ? "accent.red" : undefined}
                                         weight={lc("lost") ? 700 : undefined}
                                     />
                                     {/* GR (gol-razlika) - shown on mobile too */}
                                     <StNum
                                         weight={lc("goalDiff") ? 700 : 600}
-                                        value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                                        value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
                                         color={
                                             lc("goalDiff")
                                                 ? "accent.red"
-                                                : row.goalDiff > 0
-                                                ? "pitch.500"
-                                                : row.goalDiff < 0
-                                                ? "accent.red"
-                                                : "fg.muted"
+                                                : tr.standing.goalDiff > 0
+                                                    ? "pitch.500"
+                                                    : tr.standing.goalDiff < 0
+                                                        ? "accent.red"
+                                                        : "fg.muted"
                                         }
                                     />
                                     {/* GOL (dani:primljeni) - md only */}
                                     <StNum
-                                        value={`${row.goalsFor}:${row.goalsAgainst}`}
+                                        value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`}
                                         mdOnly
                                         color={lc("goals") ? "accent.red" : undefined}
                                         weight={lc("goals") ? 700 : undefined}
                                     />
-                                    {/* Zadnjih 5 - md only. Left-aligned so the
-                                        badges line up across rows even when
-                                        teams have played a different number of
-                                        matches. A team playing right now gets a
-                                        red OUTLINED provisional badge appended. */}
+                                    {/* Zadnjih 5 - md only, with the red outlined
+                                    provisional badge while the team plays. */}
                                     <HStack
-                                        display={{ base: "none", md: "flex" }}
+                                        display={{base: "none", md: "flex"}}
                                         gap="1"
                                         justify="flex-start"
                                     >
-                                        {/* Cap at 5 badges total: drop the oldest
-                                            finished result while the provisional
-                                            live badge is appended, so the strip
-                                            never overflows its 92px track. */}
-                                        {(row.liveForm ? (row.form ?? []).slice(-4) : row.form ?? []).map((res, i) => {
+                                        {(tr.standing.liveForm
+                                                ? (tr.standing.form ?? []).slice(-4)
+                                                : tr.standing.form ?? []
+                                        ).map((res, i) => {
                                             const isW = res === "W"
                                             const isL = res === "L"
                                             return (
@@ -1845,7 +2179,7 @@ export default function GroupsTab({
                                                 </Flex>
                                             )
                                         })}
-                                        {row.liveForm && (
+                                        {tr.standing.liveForm && (
                                             <Flex
                                                 w="16px"
                                                 h="16px"
@@ -1860,277 +2194,25 @@ export default function GroupsTab({
                                                 borderColor="accent.red"
                                                 title="Utakmica u tijeku"
                                             >
-                                                {row.liveForm === "W" ? "P" : row.liveForm === "L" ? "I" : "N"}
+                                                {tr.standing.liveForm === "W" ? "P" : tr.standing.liveForm === "L" ? "I" : "N"}
                                             </Flex>
                                         )}
                                     </HStack>
                                     {/* BOD (bodovi) */}
                                     <Text
-                                        fontFamily="heading"
-                                        fontSize="18px"
+                                        fontFamily="mono"
+                                        fontSize="14px"
                                         fontWeight={800}
-                                        color={lc("points") ? "accent.red" : "fg.ink"}
-                                        letterSpacing="-0.02em"
+                                        color={lc("points") ? "accent.red" : q ? "pitch.500" : "fg.ink"}
                                         textAlign="center"
                                     >
-                                        {row.points}
+                                        {tr.standing.points}
                                     </Text>
                                 </Box>
                             )
                         })}
                     </Box>
-
-                    {/* Fixtures section - collapsed by default; "Prikaži
-                        utakmice" expands this group's matches. */}
-                    {g.matches.length > 0 && (
-                        <Box
-                            px={{ base: "2.5", md: "3" }}
-                            py="2.5"
-                            borderTopWidth="1px"
-                            borderColor="border"
-                            bg="bg.subtle"
-                        >
-                            {expandedGroups.has(g.id) ? (
-                                <VStack align="stretch" gap="1.5">
-                                    <Flex justify="center" pb="1">
-                                        <Button
-                                            size="xs"
-                                            variant="ghost"
-                                            colorPalette="brand"
-                                            onClick={() => toggleGroup(g.id)}
-                                        >
-                                            <FiChevronUp /> Sakrij utakmice
-                                        </Button>
-                                    </Flex>
-                                    {matchesByKickoff(g.matches).map(renderFixture)}
-                                </VStack>
-                            ) : (
-                                <Flex justify="center">
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        colorPalette="brand"
-                                        onClick={() => toggleGroup(g.id)}
-                                    >
-                                        <FiChevronDown /> Prikaži utakmice ({g.matches.length})
-                                    </Button>
-                                </Flex>
-                            )}
-                        </Box>
-                    )}
-                </Box>
-            ))}
-
-            {/* ── Best "third-placed" ranking ─────────────────────────────
-                 In the group grid so it sits alongside the last group when
-                 there's an odd number of groups (2 per row); spans the full
-                 width when the group count is even. Not collapsible - it's
-                 shown expanded like the group tables. Only when the organizer
-                 enabled it at draw time and the tier exists. */}
-            {thirdTable && thirdTable.bestThirdCount > 0 && thirdRows.length > 0 && (
-                <Box
-                    gridColumn={{ lg: (groups!.length % 2 === 0) ? "1 / -1" : undefined }}
-                    borderWidth="1px"
-                    borderColor="border"
-                    rounded="xl"
-                    overflow="hidden"
-                    bg="bg.panel"
-                    h="fit-content"
-                >
-                    <Flex
-                        align="center"
-                        justify="space-between"
-                        gap="2"
-                        px={{ base: "3", md: "4" }}
-                        py="3"
-                        borderBottomWidth="1px"
-                        borderColor="border"
-                        wrap="wrap"
-                    >
-                        <HStack gap="2.5" align="center">
-                            <Flex w="26px" h="26px" rounded="md" bg="pitch.500" color="white" align="center" justify="center">
-                                <LuTrophy size={12} />
-                            </Flex>
-                            <Text fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.1em" color="fg.ink">
-                                NAJBOLJE {thirdTable.advancePerGroup + 1}. PLASIRANE
-                            </Text>
-                        </HStack>
-                        <Box fontFamily="mono" fontSize="9px" fontWeight={700} letterSpacing="0.06em" color="pitch.500" bg="rgba(58,165,107,0.12)" px="2.5" py="1" rounded="full">
-                            {thirdTable.bestThirdCount} PROLAZE
-                        </Box>
-                    </Flex>
-
-                    {/* Same column set as the group tables (plus GRP): mobile
-                        shows GRP + UT + P·N·I + GR + BOD, md adds GOL and
-                        Zadnjih 5. Live-modified cells render red, identically
-                        to the group standings. */}
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{
-                            base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
-                            md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
-                        }}
-                        gap="1.5"
-                        px={{ base: "3", md: "4" }}
-                        py="2"
-                        bg="bg.surfaceTint2"
-                        borderBottomWidth="1px"
-                        borderColor="border"
-                    >
-                        <StHead label="#" />
-                        <Text fontFamily="mono" fontSize="9px" color="fg.muted" letterSpacing="0.08em" fontWeight={700}>
-                            EKIPA
-                        </Text>
-                        <StHead label="GRP" />
-                        <StHead label="UT" />
-                        <StHead label="P" />
-                        <StHead label="N" />
-                        <StHead label="I" />
-                        <StHead label="GR" />
-                        <StHead label="GOL" mdOnly />
-                        <StHead label="ZADNJIH 5" mdOnly align="left" />
-                        <StHead label="BOD" />
-                    </Box>
-
-                    {thirdRows.map((tr, idx) => {
-                        const q = tr.qualifies
-                        const lc = (f: LiveField) => tr.standing.liveChanged.has(f)
-                        return (
-                            <Box
-                                key={tr.standing.teamId}
-                                display="grid"
-                                gridTemplateColumns={{
-                                    base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
-                                    md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
-                                }}
-                                gap="1.5"
-                                alignItems="center"
-                                px={{ base: "3", md: "4" }}
-                                py="2.5"
-                                bg={q ? "rgba(58,165,107,0.08)" : undefined}
-                                borderLeftWidth="3px"
-                                borderLeftColor={q ? "pitch.500" : "transparent"}
-                                borderTopWidth={idx === 0 ? "0" : "1px"}
-                                borderTopColor="border"
-                            >
-                                <Text fontFamily="mono" fontSize="13px" fontWeight={800} color={q ? "pitch.500" : "fg.muted"} textAlign="center">
-                                    {tr.rank}
-                                </Text>
-                                <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
-                                    {tr.standing.teamName}
-                                </Text>
-                                <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted" textAlign="center">
-                                    {tr.groupName}
-                                </Text>
-                                {/* UT (odigrano) */}
-                                <StNum
-                                    value={tr.standing.played}
-                                    color={lc("played") ? "accent.red" : undefined}
-                                    weight={lc("played") ? 700 : undefined}
-                                />
-                                {/* P · N · I */}
-                                <StNum
-                                    value={tr.standing.won}
-                                    color={lc("won") ? "accent.red" : undefined}
-                                    weight={lc("won") ? 700 : undefined}
-                                />
-                                <StNum
-                                    value={tr.standing.drawn}
-                                    color={lc("drawn") ? "accent.red" : undefined}
-                                    weight={lc("drawn") ? 700 : undefined}
-                                />
-                                <StNum
-                                    value={tr.standing.lost}
-                                    color={lc("lost") ? "accent.red" : undefined}
-                                    weight={lc("lost") ? 700 : undefined}
-                                />
-                                {/* GR (gol-razlika) - shown on mobile too */}
-                                <StNum
-                                    weight={lc("goalDiff") ? 700 : 600}
-                                    value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
-                                    color={
-                                        lc("goalDiff")
-                                            ? "accent.red"
-                                            : tr.standing.goalDiff > 0
-                                            ? "pitch.500"
-                                            : tr.standing.goalDiff < 0
-                                            ? "accent.red"
-                                            : "fg.muted"
-                                    }
-                                />
-                                {/* GOL (dani:primljeni) - md only */}
-                                <StNum
-                                    value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`}
-                                    mdOnly
-                                    color={lc("goals") ? "accent.red" : undefined}
-                                    weight={lc("goals") ? 700 : undefined}
-                                />
-                                {/* Zadnjih 5 - md only, with the red outlined
-                                    provisional badge while the team plays. */}
-                                <HStack
-                                    display={{ base: "none", md: "flex" }}
-                                    gap="1"
-                                    justify="flex-start"
-                                >
-                                    {(tr.standing.liveForm
-                                        ? (tr.standing.form ?? []).slice(-4)
-                                        : tr.standing.form ?? []
-                                    ).map((res, i) => {
-                                        const isW = res === "W"
-                                        const isL = res === "L"
-                                        return (
-                                            <Flex
-                                                key={i}
-                                                w="16px"
-                                                h="16px"
-                                                rounded="sm"
-                                                align="center"
-                                                justify="center"
-                                                fontFamily="mono"
-                                                fontSize="9px"
-                                                fontWeight={800}
-                                                color="white"
-                                                bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
-                                                title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
-                                            >
-                                                {isW ? "P" : isL ? "I" : "N"}
-                                            </Flex>
-                                        )
-                                    })}
-                                    {tr.standing.liveForm && (
-                                        <Flex
-                                            w="16px"
-                                            h="16px"
-                                            rounded="sm"
-                                            align="center"
-                                            justify="center"
-                                            fontFamily="mono"
-                                            fontSize="9px"
-                                            fontWeight={800}
-                                            color="accent.red"
-                                            borderWidth="2px"
-                                            borderColor="accent.red"
-                                            title="Utakmica u tijeku"
-                                        >
-                                            {tr.standing.liveForm === "W" ? "P" : tr.standing.liveForm === "L" ? "I" : "N"}
-                                        </Flex>
-                                    )}
-                                </HStack>
-                                {/* BOD (bodovi) */}
-                                <Text
-                                    fontFamily="mono"
-                                    fontSize="14px"
-                                    fontWeight={800}
-                                    color={lc("points") ? "accent.red" : q ? "pitch.500" : "fg.ink"}
-                                    textAlign="center"
-                                >
-                                    {tr.standing.points}
-                                </Text>
-                            </Box>
-                        )
-                    })}
-                </Box>
-            )}
+                )}
             </Box>
 
             {/* Live-match dialog - goals, cards, finish (organizer only). */}
@@ -2174,11 +2256,11 @@ export default function GroupsTab({
    The organizer moves teams up/down; saving assigns each team a manual_rank
    by its position so the standings lock to this order. ────────────────────── */
 function GroupReorderDialog({
-    uuid,
-    group,
-    onClose,
-    onSaved,
-}: {
+                                uuid,
+                                group,
+                                onClose,
+                                onSaved,
+                            }: {
     uuid: string
     group: Group
     onClose: () => void
@@ -2193,7 +2275,8 @@ function GroupReorderDialog({
             const next = [...prev]
             const j = idx + dir
             if (j < 0 || j >= next.length) return prev
-            ;[next[idx], next[j]] = [next[j], next[idx]]
+                ;
+            [next[idx], next[j]] = [next[j], next[idx]]
             return next
         })
     }
@@ -2217,15 +2300,17 @@ function GroupReorderDialog({
     return (
         <Dialog.Root
             open
-            onOpenChange={(e) => { if (!e.open) onClose() }}
+            onOpenChange={(e) => {
+                if (!e.open) onClose()
+            }}
             placement="center"
             motionPreset="slide-in-bottom"
             scrollBehavior="inside"
         >
             <Portal>
-                <Dialog.Backdrop />
+                <Dialog.Backdrop/>
                 <Dialog.Positioner>
-                    <Dialog.Content maxW={{ base: "92%", md: "440px" }}>
+                    <Dialog.Content maxW={{base: "92%", md: "440px"}}>
                         <Dialog.Header>
                             <Dialog.Title flex="1" textAlign="center">
                                 Ručni poredak - Grupa {group.name}
@@ -2278,7 +2363,7 @@ function GroupReorderDialog({
                                                 disabled={idx === 0}
                                                 onClick={() => move(idx, -1)}
                                             >
-                                                <FiArrowUp />
+                                                <FiArrowUp/>
                                             </IconButton>
                                             <IconButton
                                                 aria-label="Pomakni dolje"
@@ -2287,7 +2372,7 @@ function GroupReorderDialog({
                                                 disabled={idx === order.length - 1}
                                                 onClick={() => move(idx, 1)}
                                             >
-                                                <FiArrowDown />
+                                                <FiArrowDown/>
                                             </IconButton>
                                         </HStack>
                                     </HStack>
@@ -2327,7 +2412,7 @@ function LivePill() {
             textTransform="uppercase"
             px="2"
         >
-            <Box as="span" display="inline-block" boxSize="1.5" rounded="full" bg="white" mr="1" />
+            <Box as="span" display="inline-block" boxSize="1.5" rounded="full" bg="white" mr="1"/>
             Uživo
         </Badge>
     )
@@ -2339,11 +2424,11 @@ function LivePill() {
    "Završi" button. For a FINISHED match it shows the same log read-only.
    ────────────────────────────────────────────────────────────────────────── */
 export function GroupLiveMatchDialog({
-    uuid,
-    match,
-    onClose,
-    onChanged,
-}: {
+                                         uuid,
+                                         match,
+                                         onClose,
+                                         onChanged,
+                                     }: {
     uuid: string
     match: GroupMatch
     onClose: () => void
@@ -2425,8 +2510,11 @@ export function GroupLiveMatchDialog({
                 setHalfLengthMin(s.halfLengthMin ?? null)
                 setHalfCount(s.halfCount ?? null)
             })
-            .catch(() => { /* error toast surfaced by the http interceptor */ })
-        return () => { cancelled = true }
+            .catch(() => { /* error toast surfaced by the http interceptor */
+            })
+        return () => {
+            cancelled = true
+        }
     }, [uuid, isTimer])
 
     /** Re-fetch this match's row to pick up freshly-set live instants. */
@@ -2520,13 +2608,13 @@ export function GroupLiveMatchDialog({
     const phase =
         isTimer && !isFinished
             ? matchPhase({
-                  liveStartedAt: match.liveStartedAt,
-                  firstHalfEndedAt,
-                  secondHalfStartedAt,
-                  livePausedAt,
-                  halfLengthMin,
-                  halfCount,
-              })
+                liveStartedAt: match.liveStartedAt,
+                firstHalfEndedAt,
+                secondHalfStartedAt,
+                livePausedAt,
+                halfLengthMin,
+                halfCount,
+            })
             : null
     // The app's own countdown is running (TIMER + a configured half length). With
     // no app clock (SIMPLE, or no half length) the organizer keeps their own time.
@@ -2553,7 +2641,7 @@ export function GroupLiveMatchDialog({
             if (e.teamId === match.team1Id) s1 += 1
             else if (e.teamId === match.team2Id) s2 += 1
         }
-        return { s1, s2 }
+        return {s1, s2}
     }
 
     // Live score derives from the (optimistic) event log; before any event
@@ -2561,7 +2649,7 @@ export function GroupLiveMatchDialog({
     // flash 0:0. Adding a goal offline updates this instantly.
     const score = events.length > 0
         ? scoreFromEvents(events)
-        : { s1: match.score1 ?? 0, s2: match.score2 ?? 0 }
+        : {s1: match.score1 ?? 0, s2: match.score2 ?? 0}
 
     async function refreshAfterMutation() {
         await refetchEvents()
@@ -2598,6 +2686,7 @@ export function GroupLiveMatchDialog({
     }
 
     const [resetting, setResetting] = useState(false)
+
     async function doReset() {
         setResetting(true)
         try {
@@ -2610,11 +2699,15 @@ export function GroupLiveMatchDialog({
             setResetting(false)
         }
     }
+
     const [confirmResetOpen, setConfirmResetOpen] = useState(false)
+
     function confirmReset() {
         setConfirmResetOpen(true)
     }
+
     const [confirmFinishOpen, setConfirmFinishOpen] = useState(false)
+
     function requestFinish() {
         if (finishIsPremature) {
             setConfirmFinishOpen(true)
@@ -2631,242 +2724,251 @@ export function GroupLiveMatchDialog({
 
     return (
         <>
-        <Dialog.Root
-            open
-            onOpenChange={(e) => { if (!e.open) onClose() }}
-            placement="center"
-            motionPreset="slide-in-bottom"
-            scrollBehavior="inside"
-        >
-            <Portal>
-                <Dialog.Backdrop />
-                <Dialog.Positioner>
-                    <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
-                        <Dialog.Header pb="2">
-                            <Dialog.Title flex="1">
-                                {/* Result-only edit: the score editor below already
+            <Dialog.Root
+                open
+                onOpenChange={(e) => {
+                    if (!e.open) onClose()
+                }}
+                placement="center"
+                motionPreset="slide-in-bottom"
+                scrollBehavior="inside"
+            >
+                <Portal>
+                    <Dialog.Backdrop/>
+                    <Dialog.Positioner>
+                        <Dialog.Content maxW={{base: "94%", md: "560px"}}>
+                            <Dialog.Header pb="2">
+                                <Dialog.Title flex="1">
+                                    {/* Result-only edit: the score editor below already
                                     shows the names + score, so the big scoreboard
                                     would just duplicate them - use a plain title. */}
-                                {resultOnly ? (
-                                    <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
-                                        Uredi rezultat
-                                    </Text>
-                                ) : (
-                                    /* Big scoreboard header: BIG timer with
-                                       pause/play, phase label, teams + score. */
-                                    <LiveConsoleHeader
-                                        team1Name={match.team1Name ?? null}
-                                        team2Name={match.team2Name ?? null}
-                                        score1={score.s1}
-                                        score2={score.s2}
-                                        isLive={!isFinished}
-                                        isFinished={isFinished}
-                                        isTimer={isTimer}
-                                        liveStartedAt={match.liveStartedAt}
-                                        firstHalfEndedAt={firstHalfEndedAt}
-                                        secondHalfStartedAt={secondHalfStartedAt}
-                                        livePausedAt={livePausedAt}
-                                        halfLengthMin={halfLengthMin}
-                                        halfCount={halfCount}
-                                        onPause={handlePause}
-                                        onResume={handleResume}
-                                        pauseBusy={pauseBusy}
-                                        belowTeams={
-                                            <FoulControls
-                                                uuid={uuid}
-                                                matchId={matchId}
-                                                half={secondHalfStartedAt ? 2 : 1}
-                                                fouls1First={match.fouls1First}
-                                                fouls1Second={match.fouls1Second}
-                                                fouls2First={match.fouls2First}
-                                                fouls2Second={match.fouls2Second}
-                                            />
-                                        }
-                                    />
-                                )}
-                            </Dialog.Title>
-                        </Dialog.Header>
-                        <Dialog.Body>
-                            <VStack align="stretch" gap="2.5">
+                                    {resultOnly ? (
+                                        <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
+                                            Uredi rezultat
+                                        </Text>
+                                    ) : (
+                                        /* Big scoreboard header: BIG timer with
+                                           pause/play, phase label, teams + score. */
+                                        <LiveConsoleHeader
+                                            team1Name={match.team1Name ?? null}
+                                            team2Name={match.team2Name ?? null}
+                                            score1={score.s1}
+                                            score2={score.s2}
+                                            isLive={!isFinished}
+                                            isFinished={isFinished}
+                                            isTimer={isTimer}
+                                            liveStartedAt={match.liveStartedAt}
+                                            firstHalfEndedAt={firstHalfEndedAt}
+                                            secondHalfStartedAt={secondHalfStartedAt}
+                                            livePausedAt={livePausedAt}
+                                            halfLengthMin={halfLengthMin}
+                                            halfCount={halfCount}
+                                            onPause={handlePause}
+                                            onResume={handleResume}
+                                            pauseBusy={pauseBusy}
+                                            belowTeams={
+                                                <FoulControls
+                                                    uuid={uuid}
+                                                    matchId={matchId}
+                                                    half={secondHalfStartedAt ? 2 : 1}
+                                                    fouls1First={match.fouls1First}
+                                                    fouls1Second={match.fouls1Second}
+                                                    fouls2First={match.fouls2First}
+                                                    fouls2Second={match.fouls2Second}
+                                                />
+                                            }
+                                        />
+                                    )}
+                                </Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                <VStack align="stretch" gap="2.5">
 
-                                {/* Direct score entry - only for a result-only
+                                    {/* Direct score entry - only for a result-only
                                     finished match (no scorers to attribute), so
                                     "Uredi" just fixes the number. A live match
                                     tracks goals below instead. */}
-                                {resultOnly && (
-                                    <DirectScoreEditor
-                                        team1Name={match.team1Name ?? null}
-                                        team2Name={match.team2Name ?? null}
-                                        initialS1={match.score1 ?? 0}
-                                        initialS2={match.score2 ?? 0}
-                                        saving={savingScore}
-                                        onSave={handleSaveDirectScore}
-                                        onChange={(a, b) => setDirectScore({ s1: a, s2: b })}
-                                        hideSaveButton
-                                    />
-                                )}
+                                    {resultOnly && (
+                                        <DirectScoreEditor
+                                            team1Name={match.team1Name ?? null}
+                                            team2Name={match.team2Name ?? null}
+                                            initialS1={match.score1 ?? 0}
+                                            initialS2={match.score2 ?? 0}
+                                            saving={savingScore}
+                                            onSave={handleSaveDirectScore}
+                                            onChange={(a, b) => setDirectScore({s1: a, s2: b})}
+                                            hideSaveButton
+                                        />
+                                    )}
 
-                                {/* Add-event - fast one-tap entry. Shown for a
+                                    {/* Add-event - fast one-tap entry. Shown for a
                                     finished match too so "Uredi" can fix a wrong
                                     scorer etc. Hidden for a result-only match -
                                     there are no scorers to attribute. */}
-                                {!resultOnly && (
-                                    <LiveGoalEntry
-                                        uuid={uuid}
-                                        matchId={matchId}
-                                        team1Id={match.team1Id ?? null}
-                                        team1Name={match.team1Name ?? null}
-                                        team2Id={match.team2Id ?? null}
-                                        team2Name={match.team2Name ?? null}
-                                        liveMode={match.liveMode}
-                                        liveStartedAt={match.liveStartedAt}
-                                        firstHalfEndedAt={firstHalfEndedAt}
-                                        secondHalfStartedAt={secondHalfStartedAt}
-                                        livePausedAt={livePausedAt}
-                                        halfLengthMin={halfLengthMin}
-                                        halfCount={halfCount}
-                                        onAdded={refreshAfterMutation}
-                                        onAddEvent={addEvent}
-                                        sentOffPlayerIds={sentOffIds}
-                                        yellowCardedPlayerIds={yellowIds}
-                                    />
-                                )}
+                                    {!resultOnly && (
+                                        <LiveGoalEntry
+                                            uuid={uuid}
+                                            matchId={matchId}
+                                            team1Id={match.team1Id ?? null}
+                                            team1Name={match.team1Name ?? null}
+                                            team2Id={match.team2Id ?? null}
+                                            team2Name={match.team2Name ?? null}
+                                            liveMode={match.liveMode}
+                                            liveStartedAt={match.liveStartedAt}
+                                            firstHalfEndedAt={firstHalfEndedAt}
+                                            secondHalfStartedAt={secondHalfStartedAt}
+                                            livePausedAt={livePausedAt}
+                                            halfLengthMin={halfLengthMin}
+                                            halfCount={halfCount}
+                                            onAdded={refreshAfterMutation}
+                                            onAddEvent={addEvent}
+                                            sentOffPlayerIds={sentOffIds}
+                                            yellowCardedPlayerIds={yellowIds}
+                                        />
+                                    )}
 
-                                {/* Tijek utakmice - compact event log, centred,
+                                    {/* Tijek utakmice - compact event log, centred,
                                     at the bottom (score + entry sit above it). */}
-                                <Box textAlign="center">
-                                    <Text
-                                        fontSize="2xs"
-                                        fontWeight="semibold"
-                                        letterSpacing="wider"
-                                        textTransform="uppercase"
-                                        color="fg.muted"
-                                        mb="1.5"
-                                    >
-                                        Tijek utakmice
-                                    </Text>
-                                    {!eventsLoaded && events.length === 0 ? (
-                                        <Text fontSize="sm" color="fg.muted">
-                                            Učitavanje…
+                                    <Box textAlign="center">
+                                        <Text
+                                            fontSize="2xs"
+                                            fontWeight="semibold"
+                                            letterSpacing="wider"
+                                            textTransform="uppercase"
+                                            color="fg.muted"
+                                            mb="1.5"
+                                        >
+                                            Tijek utakmice
                                         </Text>
-                                    ) : events.length === 0 ? (
-                                        // A finished match with no events means the
-                                        // organizer entered just the final score
-                                        // without attributing scorers.
-                                        isFinished ? (
+                                        {!eventsLoaded && events.length === 0 ? (
                                             <Text fontSize="sm" color="fg.muted">
-                                                Prikazan samo krajnji rezultat bez strijelca.
+                                                Učitavanje…
                                             </Text>
+                                        ) : events.length === 0 ? (
+                                            // A finished match with no events means the
+                                            // organizer entered just the final score
+                                            // without attributing scorers.
+                                            isFinished ? (
+                                                <Text fontSize="sm" color="fg.muted">
+                                                    Prikazan samo krajnji rezultat bez strijelca.
+                                                </Text>
+                                            ) : (
+                                                <Text fontSize="sm" color="fg.muted">
+                                                    Još nema zabilježenih događaja.
+                                                </Text>
+                                            )
                                         ) : (
-                                            <Text fontSize="sm" color="fg.muted">
-                                                Još nema zabilježenih događaja.
-                                            </Text>
-                                        )
-                                    ) : (
-                                        <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
-                                            {events.map((ev) => (
-                                                <LiveEventRow
-                                                    key={ev.clientEventId ?? ev.id}
-                                                    ev={ev}
-                                                    team1Id={match.team1Id}
-                                                    canDelete
-                                                    deleting={false}
-                                                    onDelete={() => deleteEvent(ev)}
-                                                />
-                                            ))}
-                                        </VStack>
-                                    )}
-                                    {(!online || pendingCount > 0 || syncing) && (
-                                        <Flex justify="center" mt="2">
-                                            <LiveSyncIndicator online={online} pending={pendingCount} syncing={syncing} />
-                                        </Flex>
-                                    )}
-                                </Box>
-                            </VStack>
-                        </Dialog.Body>
-                        <Dialog.Footer justifyContent="center">
-                            {/* Zatvori · the one primary phase button (Završi 1.
+                                            <VStack align="stretch" gap="1" mx="auto" w="full" maxW="md">
+                                                {events.map((ev) => (
+                                                    <LiveEventRow
+                                                        key={ev.clientEventId ?? ev.id}
+                                                        ev={ev}
+                                                        team1Id={match.team1Id}
+                                                        canDelete
+                                                        deleting={false}
+                                                        onDelete={() => deleteEvent(ev)}
+                                                    />
+                                                ))}
+                                            </VStack>
+                                        )}
+                                        {(!online || pendingCount > 0 || syncing) && (
+                                            <Flex justify="center" mt="2">
+                                                <LiveSyncIndicator online={online} pending={pendingCount}
+                                                                   syncing={syncing}/>
+                                            </Flex>
+                                        )}
+                                    </Box>
+                                </VStack>
+                            </Dialog.Body>
+                            <Dialog.Footer justifyContent="center">
+                                {/* Zatvori · the one primary phase button (Završi 1.
                                 poluvrijeme → Započni 2. poluvrijeme → Završi; plain
                                 "Završi" without the app timer) · Poništi utakmicu. */}
-                            <HStack gap="2" justify="center" w="full" maxW="md" wrap="wrap">
-                                <Button variant="ghost" onClick={onClose} flexShrink={0}>
-                                    Zatvori
-                                </Button>
-                                {/* Result-only: save the direct score from the footer. */}
-                                {resultOnly && (
-                                    <Button
-                                        colorPalette="pitch"
-                                        flex="1"
-                                        loading={savingScore}
-                                        onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
-                                    >
-                                        <FiEdit2 /> Spremi rezultat
+                                <HStack gap="2" justify="center" w="full" maxW="md" wrap="wrap">
+                                    <Button variant="ghost" onClick={onClose} flexShrink={0}>
+                                        Zatvori
                                     </Button>
-                                )}
-                                {!isFinished && (
-                                    canEndFirstHalf ? (
+                                    {/* Result-only: save the direct score from the footer. */}
+                                    {resultOnly && (
                                         <Button
-                                            colorPalette="red"
+                                            colorPalette="pitch"
                                             flex="1"
-                                            loading={endingHalf}
-                                            onClick={handleEndFirstHalf}
+                                            loading={savingScore}
+                                            onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
                                         >
-                                            Završi 1. poluvrijeme
+                                            <FiEdit2/> Spremi rezultat
                                         </Button>
-                                    ) : canStartSecondHalf ? (
-                                        <Button
-                                            colorPalette="red"
-                                            flex="1"
-                                            loading={startingHalf}
-                                            onClick={handleStartSecondHalf}
-                                        >
-                                            Započni 2. poluvrijeme
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            colorPalette="red"
-                                            flex="1"
-                                            loading={finishing}
-                                            onClick={requestFinish}
-                                        >
-                                            Završi
-                                        </Button>
-                                    )
-                                )}
-                                <Button
-                                    colorPalette="red"
-                                    variant="outline"
-                                    flex="1"
-                                    loading={resetting}
-                                    onClick={confirmReset}
-                                >
-                                    Poništi utakmicu
-                                </Button>
-                            </HStack>
-                        </Dialog.Footer>
-                    </Dialog.Content>
-                </Dialog.Positioner>
-            </Portal>
-        </Dialog.Root>
-        <ConfirmDialog
-            open={confirmResetOpen}
-            busy={resetting}
-            danger
-            title="Poništiti utakmicu?"
-            description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
-            confirmLabel="Da, poništi"
-            onClose={() => setConfirmResetOpen(false)}
-            onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
-        />
-        <ConfirmDialog
-            open={confirmFinishOpen}
-            busy={finishing}
-            title="Završiti utakmicu prije kraja?"
-            description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
-            confirmLabel="Da, završi"
-            onClose={() => setConfirmFinishOpen(false)}
-            onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
-        />
+                                    )}
+                                    {!isFinished && (
+                                        canEndFirstHalf ? (
+                                            <Button
+                                                colorPalette="red"
+                                                flex="1"
+                                                loading={endingHalf}
+                                                onClick={handleEndFirstHalf}
+                                            >
+                                                Završi 1. poluvrijeme
+                                            </Button>
+                                        ) : canStartSecondHalf ? (
+                                            <Button
+                                                colorPalette="red"
+                                                flex="1"
+                                                loading={startingHalf}
+                                                onClick={handleStartSecondHalf}
+                                            >
+                                                Započni 2. poluvrijeme
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                colorPalette="red"
+                                                flex="1"
+                                                loading={finishing}
+                                                onClick={requestFinish}
+                                            >
+                                                Završi
+                                            </Button>
+                                        )
+                                    )}
+                                    <Button
+                                        colorPalette="red"
+                                        variant="outline"
+                                        flex="1"
+                                        loading={resetting}
+                                        onClick={confirmReset}
+                                    >
+                                        Poništi utakmicu
+                                    </Button>
+                                </HStack>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
+            <ConfirmDialog
+                open={confirmResetOpen}
+                busy={resetting}
+                danger
+                title="Poništiti utakmicu?"
+                description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
+                confirmLabel="Da, poništi"
+                onClose={() => setConfirmResetOpen(false)}
+                onConfirm={async () => {
+                    await doReset();
+                    setConfirmResetOpen(false)
+                }}
+            />
+            <ConfirmDialog
+                open={confirmFinishOpen}
+                busy={finishing}
+                title="Završiti utakmicu prije kraja?"
+                description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
+                confirmLabel="Da, završi"
+                onClose={() => setConfirmFinishOpen(false)}
+                onConfirm={async () => {
+                    await handleFinish();
+                    setConfirmFinishOpen(false)
+                }}
+            />
         </>
     )
 }

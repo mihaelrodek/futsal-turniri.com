@@ -159,7 +159,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                 {/* Osnovne informacije - identical card to the create form. */}
                 <FormSectionCard icon={<FiInfo />} title="Osnovne informacije">
                     <VStack align="stretch" gap="4">
-                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "2fr 2fr 1fr 1fr" }} gap="4">
+                        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "1.8fr 1.5fr 1.5fr 0.9fr 0.9fr" }} gap="4">
                             <Field.Root required>
                                 <Field.Label>Ime turnira <Field.RequiredIndicator /></Field.Label>
                                 <Input
@@ -206,13 +206,25 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     />
                                 </Box>
                             </Field.Root>
+                            {/* Organizator - optional public display name (udruga,
+                                klub…). When set, the read view shows THIS as the
+                                organizer instead of the creator's account name. */}
+                            <Field.Root>
+                                <Field.Label>Organizator</Field.Label>
+                                <Input
+                                    placeholder="npr. udruga, klub..."
+                                    value={editForm.organizerName}
+                                    onChange={(e) => patchEdit("organizerName", e.target.value)}
+                                    maxLength={120}
+                                />
+                            </Field.Root>
                             <Field.Root>
                                 <Field.Label>Maks. ekipa</Field.Label>
                                 <Input
                                     type="number"
                                     inputMode="numeric"
                                     min={2}
-                                    placeholder="npr. 32 (može ostati prazno)"
+                                    placeholder="npr. 32"
                                     value={editForm.maxTeams}
                                     onChange={(e) => patchEdit("maxTeams", sanitizeInt(e.target.value))}
                                 />
@@ -544,11 +556,13 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     </VStack>
                 </FormSectionCard>
 
-                {/* Nagradni fond - amount + free-text note per place (4 places). */}
+                {/* Nagradni fond - amount + free-text note per place (4 places).
+                    Prizes for 1st-3rd place are mandatory (see
+                    editMissingRequired in the page shell). */}
                 <FormSectionCard
                     icon={<FiGift />}
                     title="Nagradni fond"
-                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Sve je neobavezno."
+                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Nagrade za 1., 2. i 3. mjesto su obavezne; 4. mjesto i napomena su neobavezni."
                 >
                     <VStack align="stretch" gap="3">
                         <Box
@@ -567,10 +581,10 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             <Box>OSTALO</Box>
                         </Box>
                         {([
-                            { amountKey: "rewardFirst", noteKey: "rewardFirstNote", label: "1." },
-                            { amountKey: "rewardSecond", noteKey: "rewardSecondNote", label: "2." },
-                            { amountKey: "rewardThird", noteKey: "rewardThirdNote", label: "3." },
-                            { amountKey: "rewardFourth", noteKey: "rewardFourthNote", label: "4." },
+                            { amountKey: "rewardFirst", noteKey: "rewardFirstNote", label: "1.", required: true },
+                            { amountKey: "rewardSecond", noteKey: "rewardSecondNote", label: "2.", required: true },
+                            { amountKey: "rewardThird", noteKey: "rewardThirdNote", label: "3.", required: true },
+                            { amountKey: "rewardFourth", noteKey: "rewardFourthNote", label: "4.", required: false },
                         ] as const).map((r) => (
                             <Box
                                 key={r.amountKey}
@@ -579,20 +593,29 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 gap="3"
                                 alignItems="center"
                             >
-                                <Flex
-                                    w="28px"
-                                    h="28px"
-                                    rounded="full"
-                                    align="center"
-                                    justify="center"
-                                    bg="brand.subtle"
-                                    color="brand.fg"
-                                    fontWeight={800}
-                                    fontSize="13px"
-                                    flexShrink={0}
-                                >
-                                    {r.label}
-                                </Flex>
+                                <HStack gap="1" flexShrink={0}>
+                                    <Flex
+                                        w="28px"
+                                        h="28px"
+                                        rounded="full"
+                                        align="center"
+                                        justify="center"
+                                        bg="brand.subtle"
+                                        color="brand.fg"
+                                        fontWeight={800}
+                                        fontSize="13px"
+                                        flexShrink={0}
+                                    >
+                                        {r.label}
+                                    </Flex>
+                                    {/* Red asterisk mirrors Field.RequiredIndicator -
+                                        prizes for 1st-3rd place are mandatory. */}
+                                    {r.required && (
+                                        <chakra.span color="red.500" fontWeight={700}>
+                                            *
+                                        </chakra.span>
+                                    )}
+                                </HStack>
                                 <SuffixInput
                                     value={editForm[r.amountKey]}
                                     onChange={(v) => patchEdit(r.amountKey, sanitizeMoney(v))}
@@ -707,6 +730,11 @@ function DetailsReadView({
         { place: 3, amount: t.rewardThird, note: t.rewardThirdNote },
         { place: 4, amount: t.rewardFourth, note: t.rewardFourthNote },
     ].filter((r) => r.amount != null || (r.note && r.note.trim()))
+
+    // Public organizer: the organizer-set free-text name (udruga, klub…)
+    // when present, otherwise the creator's account name. Permissions
+    // (canEdit etc.) still key off createdByUid - this is display-only.
+    const organizerDisplay = t.organizerName?.trim() || t.createdByName
     const totalReward =
         (t.rewardFirst ?? 0) + (t.rewardSecond ?? 0) +
         (t.rewardThird ?? 0) + (t.rewardFourth ?? 0)
@@ -715,8 +743,9 @@ function DetailsReadView({
         <VStack align="stretch" gap="6">
             {/* ── Top row: Organizator · Kontakt · Datum · Vrijeme (equal boxes) ── */}
             <Grid templateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }} gap="3">
-                {/* Organizator */}
-                {t.createdByName ? (
+                {/* Organizator - the organizer-set name when present,
+                    otherwise the creator's account name. */}
+                {organizerDisplay ? (
                     <Box position="relative" bg="bg.panel" borderWidth="1px" borderColor="border" rounded="lg" px="4" py="3" overflow="hidden">
                         <Box position="absolute" top="0" left="0" w="3px" h="100%" bg="var(--chakra-colors-pitch-600)" />
                         <HStack color="fg.muted" gap="1.5">
@@ -736,10 +765,10 @@ function DetailsReadView({
                                 fontWeight={700}
                                 flexShrink={0}
                             >
-                                {t.createdByName.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                                {organizerDisplay.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
                             </Flex>
                             <Text fontSize="15px" fontWeight={700} color="fg.ink" lineHeight="1.2" truncate>
-                                {t.createdByName}
+                                {organizerDisplay}
                             </Text>
                         </HStack>
                     </Box>

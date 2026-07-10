@@ -141,6 +141,15 @@ public class Tournaments {
     @Column(name = "website_url", length = 500)
     private String websiteUrl;
 
+    /**
+     * Public organizer display name ("npr. udruga, klub…"). Optional. When
+     * set, the detail page (and the SSR preview) shows THIS as the organizer
+     * instead of the creator's account name ({@link #createdByName}).
+     * Permissions still key off {@link #createdByUid}.
+     */
+    @Column(name = "organizer_name", length = 120)
+    private String organizerName;
+
     // rewards
     // rewardType is legacy (FIXED | PERCENTAGE). The percent/fixed toggle was
     // dropped - every prize is now a plain amount + an optional free-text

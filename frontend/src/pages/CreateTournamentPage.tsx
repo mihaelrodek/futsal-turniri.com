@@ -55,6 +55,8 @@ type FormState = {
     posterUrl?: string
     startDate: string
     startTime: string
+    /** Public organizer display name (udruga, klub…) - optional. */
+    organizerName: string
     entryPrice: string
     maxTeams: string
     format: TournamentFormat
@@ -196,6 +198,7 @@ export default function CreateTournamentPage() {
         posterUrl: "",
         startDate: defaultDate(),
         startTime: defaultTime(),
+        organizerName: "",
         entryPrice: "30",
         maxTeams: "",
         format: "GROUPS_KNOCKOUT",
@@ -262,20 +265,32 @@ export default function CreateTournamentPage() {
         return () => { cancelled = true }
     }, [user?.uid])
 
-    // required-field summary for the sticky bar. Rewards are optional now -
-    // a tournament can have no prize fund (or only trophies).
+    // required-field summary for the sticky bar. Prizes for 1st-3rd place
+    // are mandatory (amount, note stays optional); 4th place and the
+    // "Ostalo" notes are optional. Mirrors the edit-form validation on the
+    // tournament details page.
     const missingRequired = useMemo(() => {
         const missing: string[] = []
         if (!form.name.trim()) missing.push("Ime")
         if (!form.location.trim()) missing.push("Lokacija")
         if (!form.startDate) missing.push("Datum")
         if (!form.startTime) missing.push("Vrijeme")
+        if (
+            !form.rewards.first.amount.trim() ||
+            !form.rewards.second.amount.trim() ||
+            !form.rewards.third.amount.trim()
+        ) {
+            missing.push("Nagrade (1.-3. mjesto)")
+        }
         return missing
     }, [
         form.name,
         form.location,
         form.startDate,
         form.startTime,
+        form.rewards.first.amount,
+        form.rewards.second.amount,
+        form.rewards.third.amount,
     ])
 
     /**
@@ -408,6 +423,8 @@ export default function CreateTournamentPage() {
 
             gameSystem: form.gameSystem.trim() || null,
             websiteUrl: form.websiteUrl.trim() || null,
+
+            organizerName: form.organizerName.trim() || null,
 
             // Percent/fixed toggle removed - always FIXED amounts, each with
             // an optional free-text note ("Ostalo": Pehar, Utješna nagrada…).
@@ -552,14 +569,16 @@ export default function CreateTournamentPage() {
                     title="Osnovne informacije"
                 >
                     <VStack align="stretch" gap="4">
-                        {/* Row 1 - three short fields side-by-side on desktop,
-                            stacked on mobile. Order is product-driven: organisers
-                            think "what's the tournament called", "when is it",
-                            "how many teams" - putting all three in one row keeps
-                            that mental flow in a single visual scan. */}
+                        {/* Row 1 - short fields side-by-side on desktop, stacked
+                            on mobile. Order is product-driven: organisers think
+                            "what's the tournament called", "when is it", "who
+                            runs it", "how many teams" - one row keeps that
+                            mental flow in a single visual scan. Datum and Maks.
+                            ekipa are deliberately narrower than before so the
+                            Organizator field fits without wrapping. */}
                         <Box
                             display="grid"
-                            gridTemplateColumns={{ base: "1fr", md: "2fr 2fr 1fr 1fr" }}
+                            gridTemplateColumns={{ base: "1fr", md: "1.8fr 1.5fr 1.5fr 0.9fr 0.9fr" }}
                             gap="4"
                         >
                             <Field.Root required>
@@ -624,13 +643,25 @@ export default function CreateTournamentPage() {
                                     />
                                 </Box>
                             </Field.Root>
+                            {/* Organizator - optional public display name (udruga,
+                                klub…). When set, the detail page shows THIS as the
+                                organizer instead of the creator's account name. */}
+                            <Field.Root>
+                                <Field.Label>Organizator</Field.Label>
+                                <Input
+                                    placeholder="npr. udruga, klub..."
+                                    value={form.organizerName}
+                                    onChange={(e) => onChange("organizerName", e.target.value)}
+                                    maxLength={120}
+                                />
+                            </Field.Root>
                             <Field.Root>
                                 <Field.Label>Maks. ekipa</Field.Label>
                                 <Input
                                     type="number"
                                     inputMode="numeric"
                                     min={2}
-                                    placeholder="npr. 32 (može ostati prazno)"
+                                    placeholder="npr. 32"
                                     value={form.maxTeams}
                                     onChange={(e) => handleMaxTeamsChange(e.target.value)}
                                 />
@@ -971,7 +1002,7 @@ export default function CreateTournamentPage() {
                 <FormSectionCard
                     icon={<FiGift />}
                     title="Nagradni fond"
-                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Sve je neobavezno."
+                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Nagrade za 1., 2. i 3. mjesto su obavezne; 4. mjesto i napomena su neobavezni."
                 >
                     <VStack align="stretch" gap="3">
                         {/* Column header - mirrors the Mjesto / Iznos / Ostalo
@@ -993,11 +1024,11 @@ export default function CreateTournamentPage() {
                         </Box>
 
                         {([
-                            { place: "first" as const, label: "1." },
-                            { place: "second" as const, label: "2." },
-                            { place: "third" as const, label: "3." },
-                            { place: "fourth" as const, label: "4." },
-                        ]).map(({ place, label }) => (
+                            { place: "first" as const, label: "1.", required: true },
+                            { place: "second" as const, label: "2.", required: true },
+                            { place: "third" as const, label: "3.", required: true },
+                            { place: "fourth" as const, label: "4.", required: false },
+                        ]).map(({ place, label, required }) => (
                             <Box
                                 key={place}
                                 display="grid"
@@ -1021,6 +1052,13 @@ export default function CreateTournamentPage() {
                                     >
                                         {label}
                                     </Flex>
+                                    {/* Red asterisk mirrors Field.RequiredIndicator -
+                                        prizes for 1st-3rd place are mandatory. */}
+                                    {required && (
+                                        <chakra.span color="red.500" fontWeight={700}>
+                                            *
+                                        </chakra.span>
+                                    )}
                                     <Box display={{ base: "block", md: "none" }} fontSize="sm" color="fg.muted">
                                         mjesto
                                     </Box>
@@ -1089,6 +1127,10 @@ export default function CreateTournamentPage() {
                         : null
 
                     const attrs: Array<{ label: string; value: React.ReactNode }> = [
+                        {
+                            label: "Organizator",
+                            value: form.organizerName.trim() || <Muted>- nije uneseno</Muted>,
+                        },
                         { label: "Lokacija", value: form.location || <Muted>- nije uneseno</Muted> },
                         { label: "Maks. ekipa", value: form.maxTeams || <Muted>Bez ograničenja</Muted> },
                         { label: "Format", value: formatStr },

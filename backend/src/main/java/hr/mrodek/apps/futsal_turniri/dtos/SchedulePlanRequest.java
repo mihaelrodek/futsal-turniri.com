@@ -13,5 +13,19 @@ public record SchedulePlanRequest(
         Integer halftimeBreakMin,
         Integer breakBetweenMatchesMin,
         Integer bufferMin,
-        List<DaySchedule> days
+        List<DaySchedule> days,
+        /**
+         * Optional custom play order from the preview's drag-and-drop: the
+         * 0-based single-court plan indices in the order the organizer wants
+         * them played. The j-th listed match gets the j-th time slot. Null or
+         * empty = keep the automatic order. Only used by generate, ignored by
+         * the preview.
+         */
+        List<Integer> order,
+        /**
+         * The {@code planHash} of the sketch the order was dragged on. When
+         * set together with {@code order}, generate verifies the fixtures
+         * still fingerprint the same and rejects a stale order otherwise.
+         */
+        String planHash
 ) {}

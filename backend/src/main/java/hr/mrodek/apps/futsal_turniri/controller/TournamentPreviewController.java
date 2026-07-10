@@ -268,9 +268,10 @@ public class TournamentPreviewController {
             sb.append("<dt>Maksimalan broj ekipa</dt><dd>")
                     .append(t.getMaxTeams()).append("</dd>\n");
         }
-        if (t.getCreatedByName() != null && !t.getCreatedByName().isBlank()) {
+        String organizer = organizerDisplayName(t);
+        if (organizer != null) {
             sb.append("<dt>Organizator</dt><dd>")
-                    .append(escapeHtml(t.getCreatedByName().trim())).append("</dd>\n");
+                    .append(escapeHtml(organizer)).append("</dd>\n");
         }
         sb.append("</dl>\n</section>\n");
 
@@ -450,10 +451,14 @@ public class TournamentPreviewController {
             j.append("\"image\":[\"").append(jsonEscape(image)).append("\"],");
         }
 
-        if (t.getCreatedByName() != null && !t.getCreatedByName().isBlank()) {
+        String organizer = organizerDisplayName(t);
+        if (organizer != null) {
+            // A custom organizer name is typically a club/association, the
+            // fallback (account display name) is a person.
+            boolean custom = t.getOrganizerName() != null && !t.getOrganizerName().isBlank();
             j.append("\"organizer\":{")
-                    .append("\"@type\":\"Person\",")
-                    .append("\"name\":\"").append(jsonEscape(t.getCreatedByName().trim())).append("\"")
+                    .append("\"@type\":\"").append(custom ? "Organization" : "Person").append("\",")
+                    .append("\"name\":\"").append(jsonEscape(organizer)).append("\"")
                     .append("},");
         }
 
@@ -489,6 +494,22 @@ public class TournamentPreviewController {
      * tournament name containing the literal "&lt;/script&gt;" would prematurely
      * close the script element.
      */
+    /**
+     * Public organizer name: the organizer-set free-text field when present
+     * (udruga, klub, …), otherwise the creator's account display name.
+     * Mirrors the SPA's Organizator box on the detail page. Null when
+     * neither is set.
+     */
+    private static String organizerDisplayName(Tournaments t) {
+        if (t.getOrganizerName() != null && !t.getOrganizerName().isBlank()) {
+            return t.getOrganizerName().trim();
+        }
+        if (t.getCreatedByName() != null && !t.getCreatedByName().isBlank()) {
+            return t.getCreatedByName().trim();
+        }
+        return null;
+    }
+
     private static String jsonEscape(String s) {
         if (s == null) return "";
         StringBuilder out = new StringBuilder(s.length() + 8);

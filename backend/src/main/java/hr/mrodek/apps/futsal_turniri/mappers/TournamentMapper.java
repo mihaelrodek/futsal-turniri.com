@@ -64,6 +64,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "organizerName", source = "organizerName"),
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "enumToName"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
             @Mapping(target = "rewardFirstNote", source = "rewardFirstNote"),
@@ -122,6 +123,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "organizerName", source = "organizerName", qualifiedByName = "trimToNull"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
@@ -180,6 +182,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "organizerName", source = "organizerName", qualifiedByName = "trimToNull"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
@@ -213,6 +216,14 @@ public interface TournamentMapper {
     @Named("nameToRewardType")
     default RewardType nameToRewardType(String s) {
         return (s == null || s.isBlank()) ? null : RewardType.valueOf(s);
+    }
+
+    /** Trim + blank-to-null so free-text fields store a clean NULL. */
+    @Named("trimToNull")
+    default String trimToNull(String s) {
+        if (s == null) return null;
+        String trimmed = s.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @AfterMapping

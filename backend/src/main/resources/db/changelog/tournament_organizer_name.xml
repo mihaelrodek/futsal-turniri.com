@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Optional public organizer display name ("npr. udruga, klub…") set by
+        the creator on the create/edit form. When present, the tournament
+        detail page (and the SSR preview) shows THIS as the organizer instead
+        of the creator's account name (created_by_name). NULL = fall back to
+        the creator. Permissions still key off created_by_uid.
+    -->
+    <changeSet id="2026-07-10-tournament-organizer-name" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="organizer_name" type="varchar(120)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

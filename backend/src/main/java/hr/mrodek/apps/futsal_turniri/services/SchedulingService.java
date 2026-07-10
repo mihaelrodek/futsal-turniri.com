@@ -134,22 +134,45 @@ public class SchedulingService {
             throw new BadRequestException("The match format must total more than 0 minutes");
         }
 
-        record Plan(String stage, String group, String t1, String t2, boolean known) {}
+        record Plan(String stage, String group, String t1, String t2, boolean known,
+                    Long id1, Long id2) {}
         List<Plan> plan = new ArrayList<>();
 
         int groupMatches = 0;
         if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
-            for (Teams[] pair : groupStageService.plannedGroupFixtures(t)) {
-                String gn = pair[0].getGroup() != null ? pair[0].getGroup().getName() : null;
-                plan.add(new Plan("GROUP", gn, pair[0].getName(), pair[1].getName(), true));
-                groupMatches++;
+            // Once fixtures exist (e.g. re-planning after a partial clear kept
+            // played matches), generateMultiDay reuses them (generateFixtures
+            // no-ops) - so the preview must line up with the PERSISTED list,
+            // not a recompute, or the drag order would address wrong matches.
+            List<Matches> persisted = persistedGroupFixturesInPlayOrder(t);
+            if (!persisted.isEmpty()) {
+                for (Matches m : persisted) {
+                    plan.add(new Plan("GROUP",
+                            m.getGroup() != null ? m.getGroup().getName() : null,
+                            m.getTeam1() != null ? m.getTeam1().getName() : null,
+                            m.getTeam2() != null ? m.getTeam2().getName() : null,
+                            m.getTeam1() != null && m.getTeam2() != null,
+                            m.getTeam1() != null ? m.getTeam1().getId() : null,
+                            m.getTeam2() != null ? m.getTeam2().getId() : null));
+                    groupMatches++;
+                }
+            } else {
+                for (Teams[] pair : groupStageService.plannedGroupFixtures(t)) {
+                    String gn = pair[0].getGroup() != null ? pair[0].getGroup().getName() : null;
+                    plan.add(new Plan("GROUP", gn, pair[0].getName(), pair[1].getName(), true,
+                            pair[0].getId(), pair[1].getId()));
+                    groupMatches++;
+                }
             }
         }
 
         int knockoutMatches;
         List<Matches> existingKo = matchesRepo.list(
                 "tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
-        if (!existingKo.isEmpty()) {
+        boolean bracketExists = !existingKo.isEmpty();
+        // BYEs are never played - they don't belong in the schedule at all.
+        existingKo.removeIf(Matches::isKnockoutBye);
+        if (bracketExists) {
             existingKo.sort(Comparator
                     .comparingInt((Matches m) -> stageRank(m.getStage()))
                     .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
@@ -158,14 +181,20 @@ public class SchedulingService {
                 plan.add(new Plan(
                         m.getStage() != null ? m.getStage().name() : null, null,
                         m.getTeam1() != null ? m.getTeam1().getName() : null,
-                        m.getTeam2() != null ? m.getTeam2().getName() : null, known));
+                        m.getTeam2() != null ? m.getTeam2().getName() : null, known,
+                        m.getTeam1() != null ? m.getTeam1().getId() : null,
+                        m.getTeam2() != null ? m.getTeam2().getId() : null));
             }
             knockoutMatches = existingKo.size();
         } else {
             List<MatchStage> stages = knockoutService.plannedKnockoutStages(t);
-            for (MatchStage st : stages) plan.add(new Plan(st.name(), null, null, null, false));
+            for (MatchStage st : stages) plan.add(new Plan(st.name(), null, null, null, false, null, null));
             knockoutMatches = stages.size();
         }
+
+        List<String> fingerprintParts = new ArrayList<>();
+        for (Plan p : plan) fingerprintParts.add(p.stage() + "|" + p.id1() + "|" + p.id2());
+        String planHash = planFingerprint(fingerprintParts);
 
         int total = plan.size();
         List<OffsetDateTime> times = layoutTimes(total, req.days(), slot);
@@ -178,14 +207,15 @@ public class SchedulingService {
             scheduled++;
             Plan p = plan.get(i);
             byDay.computeIfAbsent(k.toLocalDate().toString(), d -> new ArrayList<>())
-                    .add(new SchedulePreviewDto.Match(k, p.stage(), p.group(), p.t1(), p.t2(), p.known()));
+                    .add(new SchedulePreviewDto.Match(k, p.stage(), p.group(), p.t1(), p.t2(), p.known(), i));
         }
         List<SchedulePreviewDto.Day> days = new ArrayList<>();
         for (Map.Entry<String, List<SchedulePreviewDto.Match>> e : byDay.entrySet()) {
             days.add(new SchedulePreviewDto.Day(e.getKey(), e.getValue()));
         }
         return new SchedulePreviewDto(
-                total, groupMatches, knockoutMatches, scheduled, total - scheduled, slot, days);
+                total, groupMatches, knockoutMatches, scheduled, total - scheduled, slot,
+                planHash, days);
     }
 
     /**
@@ -219,6 +249,67 @@ public class SchedulingService {
 
         List<Matches> ordered = orderForSingleCourt(t);
         List<OffsetDateTime> times = layoutTimes(ordered.size(), req.days(), slot);
+
+        // The preview's drag-and-drop sends the plan indices in the desired
+        // play order: the j-th listed match takes the j-th time slot. The
+        // preview rows and orderForSingleCourt line up positionally (the
+        // preview builds its plan from the same sources), so the indices
+        // address `ordered` directly.
+        List<Integer> order = req.order();
+        if (order != null && !order.isEmpty()) {
+            int scheduledCount = 0;
+            for (OffsetDateTime k : times) if (k != null) scheduledCount++;
+            if (order.size() != scheduledCount) {
+                // The fixture list changed since the sketch (roster / bracket
+                // edit) - the previewed order no longer maps onto it.
+                throw new BadRequestException(
+                        "Schedule changed since the preview - sketch it again");
+            }
+            // Must be a permutation of the scheduled prefix 0..scheduledCount-1.
+            java.util.Set<Integer> seen = new java.util.HashSet<>();
+            for (Integer idx : order) {
+                if (idx == null || idx < 0 || idx >= order.size() || !seen.add(idx)) {
+                    throw new BadRequestException("Invalid match order");
+                }
+            }
+            // Staleness guard: the fixtures the sketch showed must fingerprint
+            // the same now - a concurrent redraw / roster edit / advance-count
+            // change would silently re-target the dragged indices otherwise.
+            if (req.planHash() != null) {
+                List<String> parts = new ArrayList<>();
+                for (Matches m : ordered) {
+                    parts.add((m.getStage() != null ? m.getStage().name() : null) + "|"
+                            + (m.getTeam1() != null ? m.getTeam1().getId() : null) + "|"
+                            + (m.getTeam2() != null ? m.getTeam2().getId() : null));
+                }
+                if (!req.planHash().equals(planFingerprint(parts))) {
+                    throw new BadRequestException(
+                            "Schedule changed since the preview - sketch it again");
+                }
+            }
+            // Stage order must survive the permutation (groups before the
+            // knockout, quarterfinals before semis, third place before the
+            // final). The UI enforces this; reject direct API calls that
+            // don't - the bracket generator later re-applies reserved slots
+            // in stage order and would silently revert a cross-stage swap.
+            int prevRank = -1;
+            for (Integer idx : order) {
+                int rank = stageRank(ordered.get(idx).getStage());
+                if (rank < prevRank) {
+                    throw new BadRequestException("Invalid match order - stage order must be kept");
+                }
+                prevRank = rank;
+            }
+            OffsetDateTime[] assigned = new OffsetDateTime[ordered.size()];
+            for (int j = 0; j < order.size(); j++) {
+                assigned[order.get(j)] = times.get(j);
+            }
+            for (int i = 0; i < ordered.size(); i++) {
+                ordered.get(i).setKickoffAt(assigned[i]); // null → beyond the plan
+            }
+            return;
+        }
+
         for (int i = 0; i < ordered.size(); i++) {
             ordered.get(i).setKickoffAt(times.get(i)); // null → beyond the plan (left unscheduled)
         }
@@ -274,7 +365,7 @@ public class SchedulingService {
                 if (lastKickoff == null || m.getKickoffAt().isAfter(lastKickoff)) {
                     lastKickoff = m.getKickoffAt();
                 }
-            } else {
+            } else if (!m.isKnockoutBye()) { // a BYE never needs a slot
                 missing.add(m);
             }
         }
@@ -311,6 +402,7 @@ public class SchedulingService {
         Map<Long, List<Matches>> byGroup = new LinkedHashMap<>();
         List<Matches> knockout = new ArrayList<>();
         for (Matches m : all) {
+            if (m.isKnockoutBye()) continue; // never played, never scheduled
             if (m.getStage() == MatchStage.GROUP && m.getGroup() != null) {
                 byGroup.computeIfAbsent(m.getGroup().getId(), k -> new ArrayList<>()).add(m);
             } else {
@@ -318,20 +410,34 @@ public class SchedulingService {
             }
         }
 
-        // Within a group: matchday (round number) then id.
+        List<Matches> result = interleaveGroupBuckets(byGroup);
+
+        // Knockout after all group matches, ordered by stage (third-place
+        // before the final) then id.
+        knockout.sort(Comparator
+                .comparingInt((Matches m) -> stageRank(m.getStage()))
+                .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
+        result.addAll(knockout);
+        return result;
+    }
+
+    /**
+     * Merge per-group match buckets into the single-court play order: within a
+     * group matchday (round number) then id, then interleaved one match per
+     * group per cycle (A1, B1, C1, A2, …), groups in ordinal (A, B, C…) order.
+     */
+    private static List<Matches> interleaveGroupBuckets(Map<Long, List<Matches>> byGroup) {
         Comparator<Matches> within = Comparator
                 .comparingInt((Matches m) -> m.getRound() != null ? m.getRound().getNumber() : 0)
                 .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L);
         for (List<Matches> bucket : byGroup.values()) bucket.sort(within);
 
-        // Iterate groups in A, B, C… order (by group ordinal).
         List<Long> groupIds = new ArrayList<>(byGroup.keySet());
         groupIds.sort(Comparator.comparingInt(id -> {
             var g = byGroup.get(id).get(0).getGroup();
             return g != null ? g.getOrdinal() : 0;
         }));
 
-        // Round-robin merge: one match from each group per cycle.
         List<Matches> result = new ArrayList<>();
         boolean any = true;
         for (int idx = 0; any; idx++) {
@@ -344,14 +450,41 @@ public class SchedulingService {
                 }
             }
         }
-
-        // Knockout after all group matches, ordered by stage (third-place
-        // before the final) then id.
-        knockout.sort(Comparator
-                .comparingInt((Matches m) -> stageRank(m.getStage()))
-                .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
-        result.addAll(knockout);
         return result;
+    }
+
+    /**
+     * The PERSISTED group fixtures in single-court play order - exactly the
+     * group prefix of {@link #orderForSingleCourt}. The multi-day preview uses
+     * this when fixtures already exist, because generate will reuse them
+     * (generateFixtures no-ops) rather than recompute the planned pairings.
+     */
+    private List<Matches> persistedGroupFixturesInPlayOrder(Tournaments t) {
+        Map<Long, List<Matches>> byGroup = new LinkedHashMap<>();
+        for (Matches m : matchesRepo.list("tournament = ?1 and stage = ?2", t, MatchStage.GROUP)) {
+            if (m.getGroup() != null) {
+                byGroup.computeIfAbsent(m.getGroup().getId(), k -> new ArrayList<>()).add(m);
+            }
+        }
+        return interleaveGroupBuckets(byGroup);
+    }
+
+    /**
+     * Order-sensitive 64-bit FNV-1a fingerprint of the plan rows, hex-encoded
+     * (a raw long would lose precision as a JS number). Detects that the
+     * fixture list changed between "Skiciraj" and "Potvrdi i generiraj".
+     */
+    private static String planFingerprint(List<String> parts) {
+        long h = 0xcbf29ce484222325L;
+        for (String s : parts) {
+            for (int i = 0; i < s.length(); i++) {
+                h ^= s.charAt(i);
+                h *= 0x100000001b3L;
+            }
+            h ^= '\n';
+            h *= 0x100000001b3L;
+        }
+        return Long.toHexString(h);
     }
 
     /**
@@ -420,6 +553,8 @@ public class SchedulingService {
     @Transactional
     public ScheduleDto schedule(Tournaments t) {
         List<Matches> all = matchesRepo.findByTournament_Id(t.getId());
+        // BYEs are never played - they don't belong in the raspored at all.
+        all.removeIf(Matches::isKnockoutBye);
         all.sort(MATCH_ORDER);
         List<ScheduledMatchDto> dtos = new ArrayList<>();
         for (Matches m : all) dtos.add(toDto(m));

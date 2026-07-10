@@ -15,6 +15,10 @@ public record SchedulePreviewDto(
         int scheduled,
         int unscheduled,
         int slotLengthMin,
+        /** Fingerprint of the full plan (stages + team ids in play order).
+         *  Echoed back with a custom drag order so generate can detect that
+         *  the fixtures changed since this sketch. */
+        String planHash,
         List<Day> days
 ) {
     public record Day(String date, List<Match> matches) {}
@@ -27,6 +31,9 @@ public record SchedulePreviewDto(
             String groupName,
             String team1Name,
             String team2Name,
-            boolean teamsKnown
+            boolean teamsKnown,
+            /** 0-based index in the single-court plan order - the identity a
+             *  drag-and-drop reorder sends back (SchedulePlanRequest.order). */
+            int planIndex
     ) {}
 }

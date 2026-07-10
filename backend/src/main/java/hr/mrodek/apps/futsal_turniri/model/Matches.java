@@ -128,4 +128,16 @@ public class Matches {
     @Column(name = "live_paused_at")
     private java.time.OffsetDateTime livePausedAt;
 
+    /**
+     * A knockout BYE - auto-FINISHED at bracket generation with a single team
+     * that advances without playing. Never a real fixture: excluded from the
+     * schedule, the multi-day preview and the kickoff layout so it doesn't
+     * appear in the raspored or eat a time slot.
+     */
+    public boolean isKnockoutBye() {
+        return stage != MatchStage.GROUP
+                && status == MatchStatus.FINISHED
+                && (team1 == null || team2 == null);
+    }
+
 }

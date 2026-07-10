@@ -48,6 +48,10 @@ public record TournamentDetailsResponse(
         String gameSystem,
         String websiteUrl,
 
+        // Public organizer display name (udruga, klub, …). Optional; when
+        // set, the SPA shows it as the organizer instead of createdByName.
+        String organizerName,
+
         String rewardType,           // legacy "FIXED" | "PERCENTAGE"
         // Each place: amount + optional free-text note ("Ostalo").
         BigDecimal rewardFirst,

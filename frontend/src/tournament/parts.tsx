@@ -449,6 +449,8 @@ export type EditForm = {
     contactPhone: string
     gameSystem: string
     websiteUrl: string
+    /** Public organizer display name (udruga, klub…) - optional. */
+    organizerName: string
     // Format (editable while no fixtures exist yet). Group count / advancement
     // are chosen at draw time, not here.
     format: TournamentFormat
@@ -479,6 +481,7 @@ export function buildEditForm(t: TournamentDetails): EditForm {
         contactPhone: phone.rest,
         gameSystem: t.gameSystem ?? "",
         websiteUrl: t.websiteUrl ?? "",
+        organizerName: t.organizerName ?? "",
         format: t.format ?? "GROUPS_KNOCKOUT",
         rewardType: "FIXED",
         rewardFirst: numberToMoneyStr(t.rewardFirst),
@@ -519,6 +522,7 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
             : null,
         gameSystem: f.gameSystem.trim() || null,
         websiteUrl: f.websiteUrl.trim() || null,
+        organizerName: f.organizerName.trim() || null,
         rewardType: "FIXED",
         rewardFirst: moneyToNumber(f.rewardFirst),
         rewardFirstNote: f.rewardFirstNote.trim() || null,

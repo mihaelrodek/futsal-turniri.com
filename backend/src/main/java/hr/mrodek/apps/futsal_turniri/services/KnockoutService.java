@@ -269,6 +269,10 @@ public class KnockoutService {
     private void applyReservedKickoffs(Tournaments t, List<java.time.OffsetDateTime> reserved) {
         if (reserved == null || reserved.isEmpty()) return;
         List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        // BYEs are never played and never appear in the schedule - handing them
+        // a reserved slot would leave a real match without one (the skeleton
+        // reserves exactly the number of REAL knockout matches).
+        ko.removeIf(Matches::isKnockoutBye);
         ko.sort(Comparator
                 .comparingInt((Matches m) -> knockoutStageRank(m.getStage()))
                 .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
@@ -320,11 +324,17 @@ public class KnockoutService {
      *  third-place playoff = bracket-slot count) for the predicted qualifiers,
      *  or the actual count once a bracket/skeleton already exists. */
     public int plannedKnockoutMatchCount(Tournaments t) {
-        long existing = matchesRepo.count("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
-        if (existing > 0) return (int) existing;
+        List<Matches> existing = matchesRepo.list(
+                "tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        if (!existing.isEmpty()) {
+            // BYEs are never played - don't count them as schedulable matches.
+            return (int) existing.stream().filter(m -> !m.isKnockoutBye()).count();
+        }
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return 0;
         int q = predictedQualifiers(t);
-        return q >= 2 ? nextPowerOfTwo(q) : 0;
+        // Real matches in a bracket of size n = nextPowerOfTwo(q) with
+        // (n - q) byes: (n - 1) tree matches + third place - byes = q.
+        return q >= 2 ? q : 0;
     }
 
     /** Predicted knockout stages in single-court play order (e.g. QF×4, SF×2,
@@ -335,11 +345,17 @@ public class KnockoutService {
         int q = predictedQualifiers(t);
         if (q < 2) return List.of();
         int n = nextPowerOfTwo(q);
+        // (n - q) first-round pairs are BYEs (one team, auto-advance) - they
+        // are never played, so don't plan a slot for them.
+        int byes = n - q;
         List<MatchStage> stages = new ArrayList<>();
         int inRound = n / 2;
+        boolean firstRound = true;
         while (inRound >= 1) {
             MatchStage st = stageFor(inRound);
-            for (int i = 0; i < inRound; i++) stages.add(st);
+            int cnt = firstRound ? inRound - byes : inRound;
+            for (int i = 0; i < cnt; i++) stages.add(st);
+            firstRound = false;
             inRound /= 2;
         }
         stages.add(MatchStage.THIRD_PLACE);
@@ -362,6 +378,10 @@ public class KnockoutService {
         int q = predictedQualifiers(t);
         if (q < 2) return;
         int n = nextPowerOfTwo(q);
+        // Mirror plannedKnockoutStages: (n - q) first-round pairs are BYEs
+        // that never play - don't create (or reserve a slot for) them. The
+        // real bracket recreates the full tree; only slot COUNTS must match.
+        int byes = n - q;
 
         int baseNum = roundsRepo.findTopByTournamentOrderByNumberDesc(t)
                 .map(Rounds::getNumber).orElse(0);
@@ -375,8 +395,9 @@ public class KnockoutService {
         int inRound = n / 2;
         for (int r = 0; r < totalRounds; r++) {
             MatchStage stage = stageFor(inRound);
+            int cnt = r == 0 ? inRound - byes : inRound;
             List<Matches> rm = new ArrayList<>();
-            for (int i = 0; i < inRound; i++) {
+            for (int i = 0; i < cnt; i++) {
                 Matches m = new Matches();
                 m.setTournament(t);
                 m.setRound(koRound);

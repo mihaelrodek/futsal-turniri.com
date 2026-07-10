@@ -423,8 +423,14 @@ export default function TournamentDetailsPage() {
             }
         }
         if (t.bannerUrl) event.image = [t.bannerUrl]
-        if (t.createdByName) {
-            event.organizer = { "@type": "Person", name: t.createdByName }
+        // Prefer the organizer-set public name (udruga, klub… - an
+        // Organization) over the creator's account name (a Person).
+        const organizerDisplay = t.organizerName?.trim() || t.createdByName
+        if (organizerDisplay) {
+            event.organizer = {
+                "@type": t.organizerName?.trim() ? "Organization" : "Person",
+                name: organizerDisplay,
+            }
         }
         const entryPrice = t.entryPrice ?? 0
         const startInFuture = !t.startAt || new Date(t.startAt).getTime() > Date.now()
@@ -565,7 +571,7 @@ export default function TournamentDetailsPage() {
             !editForm.rewardSecond.trim() ||
             !editForm.rewardThird.trim()
         ) {
-            missing.push("Nagrade")
+            missing.push("Nagrade (1.-3. mjesto)")
         }
         return missing
     }, [

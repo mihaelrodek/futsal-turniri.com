@@ -70,6 +70,9 @@ export type TournamentDetails = {
     gameSystem?: string | null;
     /** External organizer link (Facebook event, club page, …). */
     websiteUrl?: string | null;
+    /** Public organizer display name (udruga, klub…). When set, shown as
+     *  the organizer on the detail page instead of createdByName. */
+    organizerName?: string | null;
 
     rewardType?: RewardType | null;
     rewardFirst?: number | null;
@@ -139,6 +142,10 @@ export type CreateTournamentPayload = {
     // Futsal play system + external organizer link (both optional).
     gameSystem?: string | null;
     websiteUrl?: string | null;
+
+    // Public organizer display name (udruga, klub…) - optional; replaces
+    // the creator's account name on the public detail page when set.
+    organizerName?: string | null;
 
     // rewards - each place has an amount + optional free-text note ("Ostalo").
     // rewardType is legacy; always "FIXED" now (percent/fixed toggle removed).

@@ -7,6 +7,7 @@ import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -59,20 +60,31 @@ public record CreateTournamentRequest(
         @Size(max = 500, message = "websiteUrl must be at most 500 characters")
         String websiteUrl,
 
+        // Public organizer display name (udruga, klub, …). Optional; when
+        // set it replaces the creator's account name on the public detail
+        // page. Trimmed + blank-to-null in the mapper.
+        @Size(max = 120, message = "organizerName must be at most 120 characters")
+        String organizerName,
+
         // Legacy - the percent/fixed toggle was removed; always FIXED now.
         RewardType rewardType,                 // FIXED | PERCENTAGE
 
-        // Each place: amount + optional free-text note ("Ostalo").
+        // Each place: amount + optional free-text note ("Ostalo"). Prizes
+        // for 1st-3rd place are mandatory (mirrors the SPA form validation);
+        // 4th place and the notes stay optional.
+        @NotNull(message = "rewardFirst is required")
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardFirst cannot be negative")
         BigDecimal rewardFirst,
         @Size(max = 200, message = "rewardFirstNote must be at most 200 characters")
         String rewardFirstNote,
 
+        @NotNull(message = "rewardSecond is required")
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardSecond cannot be negative")
         BigDecimal rewardSecond,
         @Size(max = 200, message = "rewardSecondNote must be at most 200 characters")
         String rewardSecondNote,
 
+        @NotNull(message = "rewardThird is required")
         @DecimalMin(value = "0.0", inclusive = true, message = "rewardThird cannot be negative")
         BigDecimal rewardThird,
         @Size(max = 200, message = "rewardThirdNote must be at most 200 characters")

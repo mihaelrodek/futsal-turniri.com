@@ -54,6 +54,13 @@ export type DaySchedule = {
 /** Request for the multi-day preview / generate - format config + day plan. */
 export type SchedulePlanRequest = ScheduleConfig & {
     days: DaySchedule[]
+    /** Custom play order from the preview's drag-and-drop: 0-based plan
+     *  indices in play order (the j-th listed match gets the j-th time slot).
+     *  Omit/null = keep the automatic order. Generate only. */
+    order?: number[] | null
+    /** The preview's planHash the order was dragged on - generate rejects the
+     *  order if the fixtures changed since the sketch. Sent with `order`. */
+    planHash?: string | null
 }
 
 /** One planned match in the (non-persisted) preview. */
@@ -65,6 +72,9 @@ export type SchedulePreviewMatch = {
     team2Name?: string | null
     /** False for knockout placeholders (teams decided after the group stage). */
     teamsKnown: boolean
+    /** 0-based index in the single-court plan order - the identity a
+     *  drag-and-drop reorder sends back (SchedulePlanRequest.order). */
+    planIndex: number
 }
 
 /** The computed multi-day schedule shown before confirming. */
@@ -75,5 +85,7 @@ export type SchedulePreview = {
     scheduled: number
     unscheduled: number
     slotLengthMin: number
+    /** Fingerprint of the plan - echoed back with a custom order. */
+    planHash?: string | null
     days: { date: string; matches: SchedulePreviewMatch[] }[]
 }
