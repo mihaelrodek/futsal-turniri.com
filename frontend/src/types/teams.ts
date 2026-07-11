@@ -18,6 +18,9 @@ export type TeamShort = {
     /** Jersey colour ("#rrggbb", lowercase) chosen by the organizer on the
      *  Ekipe tab; null = not set. Shown as a colour chip next to the team. */
     jerseyColor?: string | null;
+    /** Shorts (hlače) colour ("#rrggbb"), chosen separately from the jersey;
+     *  null = not set. Together they render a two-tone kit chip. */
+    shortsColor?: string | null;
 };
 
 // Local-only helper for brand-new rows before the server assigns an id.

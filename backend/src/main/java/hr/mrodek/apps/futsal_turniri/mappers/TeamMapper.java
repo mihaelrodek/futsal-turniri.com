@@ -55,6 +55,7 @@ public interface TeamMapper {
             // editor doesn't send it, so auto-mapping would null it out
             // on every replaceTeams save.
             @Mapping(target = "jerseyColor",         ignore = true),
+            @Mapping(target = "shortsColor",         ignore = true),
             @Mapping(target = "createdAt",           ignore = true),
             @Mapping(target = "updatedAt",           ignore = true)
     })
@@ -93,7 +94,8 @@ public interface TeamMapper {
                 co == null ? null : co.getSlug(),
                 co == null ? null : co.getDisplayName(),
                 includeClaimToken ? e.getClaimToken() : null,
-                e.getJerseyColor()
+                e.getJerseyColor(),
+                e.getShortsColor()
         );
     }
 

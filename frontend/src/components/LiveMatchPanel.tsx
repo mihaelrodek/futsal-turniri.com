@@ -22,7 +22,7 @@ import { useOfflineMatchEvents, type OptimisticDisplay } from "../hooks/useOffli
 import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
 import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog } from "../ui/primitives"
-import { useTeamColors, teamColor, JerseyDot } from "./jersey"
+import { useTeamColors, teamColor, teamShorts, KitSwatch } from "./jersey"
 import {
     DirectScoreEditor,
     PenaltyShootout,
@@ -116,10 +116,12 @@ export default function LiveMatchPanel({
     const isScheduled = !isLive && !isFinished
     const isTimer = match.liveMode === "TIMER"
 
-    // Jersey colours → a kit-colour chip next to each team name.
+    // Kit (dres + hlače) colours → a two-tone chip next to each team name.
     const teamColors = useTeamColors(uuid)
     const jerseyC1 = teamColor(teamColors, match.team1Id)
     const jerseyC2 = teamColor(teamColors, match.team2Id)
+    const shortsC1 = teamShorts(teamColors, match.team1Id)
+    const shortsC2 = teamShorts(teamColors, match.team2Id)
 
     // Offline-first live events: optimistic add/delete, queued while offline,
     // replayed on reconnect (idempotent via a client key). Score derives from
@@ -457,7 +459,7 @@ export default function LiveMatchPanel({
                             are; long names wrap instead of pushing the score off. */}
                         <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2.5", md: "4" }} mb="2" w="full">
                             <HStack gap="2" justify="flex-end" minW="0">
-                                <JerseyDot color={jerseyC1} size={13} />
+                                <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={13} />
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={HOME} textAlign="right" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team1Name ?? "-"}
                                 </Text>
@@ -471,7 +473,7 @@ export default function LiveMatchPanel({
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={AWAY} textAlign="left" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team2Name ?? "-"}
                                 </Text>
-                                <JerseyDot color={jerseyC2} size={13} />
+                                <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={13} />
                             </HStack>
                         </Box>
                         <Text textAlign="center" color="fg.muted" fontSize="sm" fontWeight={500} mb="4">
@@ -938,6 +940,7 @@ function PairingEntry({
                     teamId={team1Id}
                     color={HOME}
                     jerseyColor={teamColor(rosterColors, team1Id)}
+                    shortsColor={teamShorts(rosterColors, team1Id)}
                     players={team1Id != null ? rosters[team1Id] ?? [] : []}
                     foulsCount={foulsHome}
                     onFoul={(d) => bump(1, half, d)}
@@ -951,6 +954,7 @@ function PairingEntry({
                     teamId={team2Id}
                     color={AWAY}
                     jerseyColor={teamColor(rosterColors, team2Id)}
+                    shortsColor={teamShorts(rosterColors, team2Id)}
                     players={team2Id != null ? rosters[team2Id] ?? [] : []}
                     foulsCount={foulsAway}
                     onFoul={(d) => bump(2, half, d)}
@@ -1023,6 +1027,7 @@ function RosterColumn({
     teamId,
     color,
     jerseyColor,
+    shortsColor,
     players,
     foulsCount,
     onFoul,
@@ -1034,8 +1039,9 @@ function RosterColumn({
     teamName: string | null
     teamId: number | null
     color: string
-    /** The team's own kit colour (if set) - shown after the name. */
+    /** The team's own kit colours (if set) - shown before the name. */
     jerseyColor?: string | null
+    shortsColor?: string | null
     players: PlayerDto[]
     foulsCount: number
     onFoul: (delta: number) => void
@@ -1051,11 +1057,10 @@ function RosterColumn({
     return (
         <VStack align="stretch" gap="2.5" minW="0">
             <HStack gap="2.5" minW="0">
-                {/* One marker only: the real kit colour when the team has one,
-                    else the fixed home/away identity square. (Showing both read
-                    as "two jersey colours".) */}
-                {jerseyColor
-                    ? <JerseyDot color={jerseyColor} size={15} />
+                {/* The team's two-tone kit chip when it has a colour, else the
+                    fixed home/away identity square. */}
+                {jerseyColor || shortsColor
+                    ? <KitSwatch jersey={jerseyColor} shorts={shortsColor} size={15} />
                     : <Box w="15px" h="15px" rounded="sm" bg={color} flexShrink={0} />}
                 <Text fontSize="xl" fontWeight={800} color="fg.ink" truncate minW="0">{teamName ?? "-"}</Text>
             </HStack>

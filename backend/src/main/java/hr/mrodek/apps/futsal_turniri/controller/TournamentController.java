@@ -1221,9 +1221,13 @@ public class TournamentController {
     public Response teamJerseyColors(@PathParam("uuid") String uuid) {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
-        var out = new java.util.HashMap<Long, String>();
+        var out = new java.util.HashMap<Long, hr.mrodek.apps.futsal_turniri.dtos.TeamColorsDto>();
         for (var team : teamRepo.findByTournament_Id(t.getId())) {
-            if (team.getJerseyColor() != null) out.put(team.getId(), team.getJerseyColor());
+            if (team.getJerseyColor() != null || team.getShortsColor() != null) {
+                out.put(team.getId(),
+                        new hr.mrodek.apps.futsal_turniri.dtos.TeamColorsDto(
+                                team.getJerseyColor(), team.getShortsColor()));
+            }
         }
         return Response.ok(out).build();
     }
@@ -1252,6 +1256,32 @@ public class TournamentController {
                     .entity("JERSEY_COLOR_INVALID").build();
         }
         team.setJerseyColor(color == null ? null : color.toLowerCase(Locale.ROOT));
+        return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
+    }
+
+    /**
+     * Set (or clear) a team's shorts (hlače) colour - the second half of the
+     * two-tone kit chip. Organizer/admin only. Body: {@code {"color": "#rrggbb"}};
+     * null/blank clears it. Own endpoint (like jersey-color) so flipping a colour
+     * never races with roster edits.
+     */
+    @PUT
+    @Path("/{uuid}/teams/{teamId}/shorts-color")
+    @Authenticated
+    @Transactional
+    public Response setTeamShortsColor(@PathParam("uuid") String uuid,
+                                       @PathParam("teamId") Long teamId,
+                                       JerseyColorRequest req) {
+        Teams team = resolveTeamInTournament(uuid, teamId);
+        assertCanEdit(team.getTournament());
+
+        String color = req == null || req.color() == null ? null : req.color().trim();
+        if (color != null && color.isEmpty()) color = null;
+        if (color != null && !color.matches("#[0-9a-fA-F]{6}")) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("SHORTS_COLOR_INVALID").build();
+        }
+        team.setShortsColor(color == null ? null : color.toLowerCase(Locale.ROOT));
         return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
     }
 

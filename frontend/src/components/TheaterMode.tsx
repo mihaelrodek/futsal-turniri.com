@@ -3,7 +3,7 @@ import { Box, Flex, chakra } from "@chakra-ui/react"
 import { FiX } from "react-icons/fi"
 
 import StreamPlayer from "./StreamPlayer"
-import { MatchTickerPanel, GroupTablePanel, UpcomingMatchPanel, buildScoreBug } from "./StreamHero"
+import { MatchTickerPanel, GroupTablePanel, UpcomingMatchPanel, buildScoreBug, useNextMatch } from "./StreamHero"
 import { useTeamColors } from "./jersey"
 import type { LiveMatch } from "../api/live"
 
@@ -21,10 +21,17 @@ import type { LiveMatch } from "../api/live"
 export default function TheaterMode({
     url,
     match,
+    tournamentUuid,
+    viewers,
     onClose,
 }: {
     url: string
     match: LiveMatch | null
+    /** The streamed tournament's uuid - lets the panels (groups, next match)
+     *  work even when that tournament isn't playing anything live. */
+    tournamentUuid?: string | null
+    /** Live-viewer count for the stream's "👁 N" badge. */
+    viewers?: number | null
     onClose: () => void
 }) {
     // Drives the enter/exit transition. Mounts hidden, flips shown on the next
@@ -53,8 +60,11 @@ export default function TheaterMode({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    const colors = useTeamColors(match?.tournamentUuid ?? null)
-    const scoreBug = buildScoreBug(match, colors)
+    const uuid = match?.tournamentUuid ?? tournamentUuid ?? null
+    const colors = useTeamColors(uuid)
+    // Nothing live → feature the tournament's next fixture.
+    const nextMatch = useNextMatch(uuid, null, !match)
+    const scoreBug = buildScoreBug(match, colors, nextMatch)
 
     return (
         <Box
@@ -115,7 +125,7 @@ export default function TheaterMode({
                     minH={{ base: "34vh", lg: "0" }}
                 >
                     <Box w="full" h={{ base: "auto", lg: "full" }}>
-                        <StreamPlayer url={url} overlay={scoreBug} />
+                        <StreamPlayer url={url} overlay={scoreBug} viewers={viewers} />
                     </Box>
                 </Flex>
 
@@ -125,13 +135,13 @@ export default function TheaterMode({
                     "Izađi" button so it doesn't overlap the panel header. */}
                 <Flex flex="1" minW="0" minH="0" direction="column" gap={{ base: "2", md: "3" }} pt={{ base: 0, lg: "12" }}>
                     <Box flex="1.5" minH="0">
-                        <MatchTickerPanel match={match} />
+                        <MatchTickerPanel match={match} uuid={uuid} nextMatch={nextMatch} />
                     </Box>
                     <Box flex="1.1" minH="0">
-                        <GroupTablePanel match={match} />
+                        <GroupTablePanel match={match} uuid={uuid} />
                     </Box>
                     <Box flexShrink={0}>
-                        <UpcomingMatchPanel match={match} />
+                        <UpcomingMatchPanel match={match} uuid={uuid} />
                     </Box>
                 </Flex>
             </Flex>

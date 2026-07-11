@@ -5,7 +5,7 @@ import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
 import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
 import { ConfirmDialog } from "../ui/primitives"
-import { useTeamColors, teamColor, JerseyDot } from "./jersey"
+import { useTeamColors, TeamKitChip } from "./jersey"
 import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
 import type { OptimisticDisplay } from "../hooks/useOfflineMatchEvents"
 import { fetchPlayers } from "../api/players"
@@ -2171,7 +2171,7 @@ export function MatchTimelineModal({
                                         </Box>
                                     )}
                                     <HStack gap="1.5" justify="center">
-                                        <JerseyDot color={teamColor(colors, match.team1Id)} size={11} />
+                                        <TeamKitChip colors={colors} teamId={match.team1Id} size={11} />
                                         <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
                                             {match.team1Name ?? "-"}
                                         </Text>
@@ -2203,7 +2203,7 @@ export function MatchTimelineModal({
                                         </Text>
                                     )}
                                     <HStack gap="1.5" justify="center">
-                                        <JerseyDot color={teamColor(colors, match.team2Id)} size={11} />
+                                        <TeamKitChip colors={colors} teamId={match.team2Id} size={11} />
                                         <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
                                             {match.team2Name ?? "-"}
                                         </Text>

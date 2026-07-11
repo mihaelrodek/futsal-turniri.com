@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, Flex, Grid, HStack, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
-import { FiX, FiMaximize } from "react-icons/fi"
+import { FiX, FiMaximize, FiClock } from "react-icons/fi"
 
 import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
@@ -13,12 +13,13 @@ import { fetchGroups } from "../api/groups"
 import { fetchBracket } from "../api/bracket"
 import { fetchSchedule } from "../api/schedule"
 import { liveGroupStandings } from "./liveStandings"
-import { useTeamColors, teamColor, JerseyDot } from "./jersey"
+import { useTeamColors, teamColor, teamShorts, TeamKitChip, KitSwatch } from "./jersey"
 import type { MatchEventDto } from "../types/matchEvents"
 import type { LiveMatch } from "../api/live"
 import type { Group } from "../types/groups"
 import type { Bracket, BracketMatch } from "../types/bracket"
 import type { ScheduledMatch } from "../types/schedule"
+import type { TeamKit } from "../api/tournaments"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StreamHero - the home-page hero while the admin's live-stream banner is on.
@@ -42,27 +43,72 @@ import type { ScheduledMatch } from "../types/schedule"
 /** Height of the desktop hero row - all three columns align to it. */
 const ROW_H = "330px"
 
-/** Live scorebug for the current match (jersey colours; no live dot - the
- *  "UŽIVO PRIJENOS" pill already pulses). Null when nothing is live. */
-export function buildScoreBug(match: LiveMatch | null, colors: Record<string, string>) {
-    if (!match) return undefined
-    return (
-        <LiveScoreBug
-            team1Name={match.team1Name}
-            team2Name={match.team2Name}
-            score1={match.score1 ?? 0}
-            score2={match.score2 ?? 0}
-            color1={teamColor(colors, match.team1Id)}
-            color2={teamColor(colors, match.team2Id)}
-            live={false}
-        />
-    )
+/** Overlay pinned to the top of the stream: the live scorebug when a match is
+ *  in progress, else a "SLJEDEĆA UTAKMICA" card for the tournament's next
+ *  fixture (kickoff time instead of a score). Undefined when there's neither.
+ *  No live dot on the live bug - the "UŽIVO PRIJENOS" pill already pulses. */
+export function buildScoreBug(
+    match: LiveMatch | null,
+    colors: Record<string, TeamKit>,
+    nextMatch?: ScheduledMatch | null,
+) {
+    if (match) {
+        return (
+            <LiveScoreBug
+                team1Name={match.team1Name}
+                team2Name={match.team2Name}
+                score1={match.score1 ?? 0}
+                score2={match.score2 ?? 0}
+                color1={teamColor(colors, match.team1Id)}
+                color2={teamColor(colors, match.team2Id)}
+                shorts1={teamShorts(colors, match.team1Id)}
+                shorts2={teamShorts(colors, match.team2Id)}
+                live={false}
+            />
+        )
+    }
+    if (nextMatch) {
+        return (
+            <VStack gap="1.5" align="center">
+                <HStack
+                    gap="1"
+                    px="2"
+                    py="0.5"
+                    rounded="full"
+                    bg="rgba(15,15,17,0.86)"
+                    borderWidth="1px"
+                    borderColor="whiteAlpha.200"
+                    css={{ backdropFilter: "blur(6px)" }}
+                >
+                    <Box color="accent.amber" display="inline-flex"><FiClock size={11} /></Box>
+                    <Text fontFamily="mono" fontSize="9px" fontWeight={800} letterSpacing="0.1em" color="white">
+                        SLJEDEĆA UTAKMICA
+                    </Text>
+                </HStack>
+                <LiveScoreBug
+                    team1Name={nextMatch.team1Name ?? "TBD"}
+                    team2Name={nextMatch.team2Name ?? "TBD"}
+                    score1={0}
+                    score2={0}
+                    color1={teamColor(colors, nextMatch.team1Id)}
+                    color2={teamColor(colors, nextMatch.team2Id)}
+                    shorts1={teamShorts(colors, nextMatch.team1Id)}
+                    shorts2={teamShorts(colors, nextMatch.team2Id)}
+                    live={false}
+                    centerText={nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
+                />
+            </VStack>
+        )
+    }
+    return undefined
 }
 
 export default function StreamHero({
     url,
     match,
     tournamentName,
+    tournamentUuid,
+    viewers,
     onEnterTheater,
 }: {
     url: string
@@ -73,11 +119,19 @@ export default function StreamHero({
      *  explicitly so it shows even when the linked tournament isn't playing a
      *  live match right now (match would be null then). */
     tournamentName?: string | null
+    /** The streamed tournament's uuid - lets the side panels (groups, next
+     *  match) work even when that tournament isn't playing anything live. */
+    tournamentUuid?: string | null
+    /** Live-viewer count for the stream's "👁 N" badge. */
+    viewers?: number | null
     /** When set, shows a "Turnir mode" button that opens the theater view. */
     onEnterTheater?: () => void
 }) {
-    const colors = useTeamColors(match?.tournamentUuid ?? null)
-    const scoreBug = buildScoreBug(match, colors)
+    const uuid = match?.tournamentUuid ?? tournamentUuid ?? null
+    const colors = useTeamColors(uuid)
+    // Nothing live → feature the tournament's next fixture instead.
+    const nextMatch = useNextMatch(uuid, null, !match)
+    const scoreBug = buildScoreBug(match, colors, nextMatch)
 
     return (
         <Box mb={{ base: 0, md: 5 }}>
@@ -108,13 +162,13 @@ export default function StreamHero({
                 alignItems="stretch"
             >
                 <Box h={{ lg: ROW_H }} minW="0">
-                    <StreamPlayer url={url} overlay={scoreBug} />
+                    <StreamPlayer url={url} overlay={scoreBug} viewers={viewers} />
                 </Box>
                 <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
-                    <MatchTickerPanel match={match} />
+                    <MatchTickerPanel match={match} uuid={uuid} nextMatch={nextMatch} />
                 </Box>
                 <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
-                    <GroupTablePanel match={match} />
+                    <GroupTablePanel match={match} uuid={uuid} />
                 </Box>
             </Grid>
         </Box>
@@ -125,11 +179,24 @@ export default function StreamHero({
 
 const REGULATION: ReadonlySet<string> = new Set(["GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD"])
 
-export function MatchTickerPanel({ match }: { match: LiveMatch | null }) {
+export function MatchTickerPanel({
+    match,
+    uuid: uuidProp,
+    nextMatch,
+}: {
+    match: LiveMatch | null
+    /** Streamed tournament's uuid, so jersey colours resolve even with no live
+     *  match (when the "next match" is shown). Events still load only when live. */
+    uuid?: string | null
+    /** Shown when nothing is live: the tournament's next fixture. */
+    nextMatch?: ScheduledMatch | null
+}) {
     const uuid = match?.tournamentUuid ?? null
     const matchId = match?.matchId ?? null
-    const colors = useTeamColors(uuid)
+    const colors = useTeamColors(match?.tournamentUuid ?? uuidProp ?? null)
     const [events, setEvents] = useState<MatchEventDto[]>([])
+    // With nothing live, the panel features the next fixture instead.
+    const showUpcoming = !match && !!nextMatch
 
     // Load on match switch (also clears when the match ends)…
     useEffect(() => {
@@ -186,9 +253,11 @@ export function MatchTickerPanel({ match }: { match: LiveMatch | null }) {
             {/* Fixed header: kicker + link to the match page. */}
             <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
                 <HStack gap="1.5" minW="0">
-                    <PulseDot color="var(--chakra-colors-accent-red)" size={6} />
+                    {showUpcoming
+                        ? <Box color="accent.amber" display="inline-flex" flexShrink={0}><FiClock size={12} /></Box>
+                        : <PulseDot color="var(--chakra-colors-accent-red)" size={6} />}
                     <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted">
-                        TIJEK UTAKMICE
+                        {showUpcoming ? "SLJEDEĆA UTAKMICA" : "TIJEK UTAKMICE"}
                     </Text>
                 </HStack>
                 {match && (
@@ -221,7 +290,7 @@ export function MatchTickerPanel({ match }: { match: LiveMatch | null }) {
                         flexShrink={0}
                     >
                         <HStack gap="1.5" justify="flex-end" minW="0">
-                            <JerseyDot color={teamColor(colors, match.team1Id)} size={9} />
+                            <TeamKitChip colors={colors} teamId={match.team1Id} size={9} />
                             <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="right" lineClamp={2} minW="0">
                                 {match.team1Name ?? "-"}
                             </Text>
@@ -240,7 +309,7 @@ export function MatchTickerPanel({ match }: { match: LiveMatch | null }) {
                             <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
                                 {match.team2Name ?? "-"}
                             </Text>
-                            <JerseyDot color={teamColor(colors, match.team2Id)} size={9} />
+                            <TeamKitChip colors={colors} teamId={match.team2Id} size={9} />
                         </HStack>
                     </Grid>
 
@@ -280,6 +349,43 @@ export function MatchTickerPanel({ match }: { match: LiveMatch | null }) {
                             ))
                         )}
                     </Box>
+                </>
+            ) : nextMatch ? (
+                <>
+                    {/* Fixed scoreboard for the NEXT match - kickoff time in the
+                        middle instead of a score. */}
+                    <Grid templateColumns="1fr auto 1fr" alignItems="center" gap="2" px="3" py="2" borderBottomWidth="1px" borderColor="border" flexShrink={0}>
+                        <HStack gap="1.5" justify="flex-end" minW="0">
+                            <TeamKitChip colors={colors} teamId={nextMatch.team1Id} size={9} />
+                            <Text fontSize="xs" fontWeight={700} color={nextMatch.team1Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team1Name ? undefined : "italic"} textAlign="right" lineClamp={2} minW="0">
+                                {nextMatch.team1Name ?? "TBD"}
+                            </Text>
+                        </HStack>
+                        <Text fontFamily="mono" fontSize="sm" fontWeight={800} color="accent.amber" fontVariantNumeric="tabular-nums" lineHeight="1" whiteSpace="nowrap">
+                            {nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
+                        </Text>
+                        <HStack gap="1.5" justify="flex-start" minW="0">
+                            <Text fontSize="xs" fontWeight={700} color={nextMatch.team2Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team2Name ? undefined : "italic"} textAlign="left" lineClamp={2} minW="0">
+                                {nextMatch.team2Name ?? "TBD"}
+                            </Text>
+                            <TeamKitChip colors={colors} teamId={nextMatch.team2Id} size={9} />
+                        </HStack>
+                    </Grid>
+                    <Flex flex="1" minH="0" align="center" justify="center" px="4" py="3">
+                        <Box textAlign="center">
+                            <Text fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="wider" textTransform="uppercase">
+                                {roundLabel(nextMatch)}
+                            </Text>
+                            <Text fontSize="sm" fontWeight={700} color="fg.ink" mt="1">
+                                Utakmica još nije počela
+                            </Text>
+                            {nextMatch.kickoffAt && (
+                                <Text fontSize="xs" color="fg.muted" mt="0.5">
+                                    Početak u {formatKickoff(nextMatch.kickoffAt)}
+                                </Text>
+                            )}
+                        </Box>
+                    </Flex>
                 </>
             ) : (
                 <Flex flex="1" align="center" justify="center" px="4">
@@ -366,8 +472,16 @@ function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
 
 type PanelMode = "groups" | "bracket"
 
-export function GroupTablePanel({ match }: { match: LiveMatch | null }) {
-    const uuid = match?.tournamentUuid ?? null
+export function GroupTablePanel({
+    match,
+    uuid: uuidProp,
+}: {
+    match: LiveMatch | null
+    /** Streamed tournament's uuid - shows the groups even when that tournament
+     *  isn't playing a live match right now (match would be null). */
+    uuid?: string | null
+}) {
+    const uuid = match?.tournamentUuid ?? uuidProp ?? null
     const [groups, setGroups] = useState<Group[]>([])
     const [bracket, setBracket] = useState<Bracket | null>(null)
     // The viewer's explicit group pick; null = follow the group being played.
@@ -600,32 +714,47 @@ export function GroupTablePanel({ match }: { match: LiveMatch | null }) {
 
 /* ═══════════════════ Nadolazeća utakmica ═══════════════════ */
 
-/** A compact "next up" card for the streamed tournament: the earliest-kickoff
- *  fixture still to be played (excludes the current live game and finished
- *  ones). Knockout fixtures still waiting on the draw show "TBD". */
-export function UpcomingMatchPanel({ match }: { match: LiveMatch | null }) {
-    const uuid = match?.tournamentUuid ?? null
-    const liveId = match?.matchId ?? null
-    const colors = useTeamColors(uuid)
+/** The next match to be played for a tournament: the earliest-kickoff fixture
+ *  still to be played (excludes the current live game and finished ones).
+ *  Polled so it stays fresh as matches finish. Null until loaded / when nothing
+ *  is upcoming. `enabled=false` skips fetching entirely (e.g. while live). */
+export function useNextMatch(
+    uuid: string | null,
+    liveId: number | null,
+    enabled = true,
+): ScheduledMatch | null {
     const [next, setNext] = useState<ScheduledMatch | null>(null)
-
     useEffect(() => {
         setNext(null)
-        if (!uuid) return
+        if (!uuid || !enabled) return
         let cancelled = false
         fetchSchedule(uuid)
             .then((s) => { if (!cancelled) setNext(pickNextMatch(s.matches, liveId)) })
             .catch(() => { /* silent - next poll retries */ })
         return () => { cancelled = true }
-    }, [uuid, liveId])
-
-    // The schedule shifts as matches finish - keep "next up" fresh.
+    }, [uuid, liveId, enabled])
     usePolling(() => {
-        if (!uuid) return
+        if (!uuid || !enabled) return
         fetchSchedule(uuid)
             .then((s) => setNext(pickNextMatch(s.matches, liveId)))
             .catch(() => { /* silent */ })
-    }, 30_000, !!uuid)
+    }, 30_000, !!uuid && enabled)
+    return next
+}
+
+/** A compact "next up" card for the streamed tournament: the earliest-kickoff
+ *  fixture still to be played (excludes the current live game and finished
+ *  ones). Knockout fixtures still waiting on the draw show "TBD". */
+export function UpcomingMatchPanel({
+    match,
+    uuid: uuidProp,
+}: {
+    match: LiveMatch | null
+    uuid?: string | null
+}) {
+    const uuid = match?.tournamentUuid ?? uuidProp ?? null
+    const colors = useTeamColors(uuid)
+    const next = useNextMatch(uuid, match?.matchId ?? null)
 
     return (
         <PanelShell>
@@ -655,8 +784,8 @@ export function UpcomingMatchPanel({ match }: { match: LiveMatch | null }) {
             </Flex>
             {next ? (
                 <VStack align="stretch" gap="1.5" px="3" py="2.5">
-                    <UpcomingRow name={next.team1Name} color={teamColor(colors, next.team1Id)} />
-                    <UpcomingRow name={next.team2Name} color={teamColor(colors, next.team2Id)} />
+                    <UpcomingRow name={next.team1Name} jersey={teamColor(colors, next.team1Id)} shorts={teamShorts(colors, next.team1Id)} />
+                    <UpcomingRow name={next.team2Name} jersey={teamColor(colors, next.team2Id)} shorts={teamShorts(colors, next.team2Id)} />
                 </VStack>
             ) : (
                 <Flex px="3" py="3" align="center" justify="center">
@@ -669,13 +798,13 @@ export function UpcomingMatchPanel({ match }: { match: LiveMatch | null }) {
     )
 }
 
-function UpcomingRow({ name, color }: { name: string | null; color: string | null }) {
+function UpcomingRow({ name, jersey, shorts }: { name: string | null; jersey: string | null; shorts: string | null }) {
     return (
         <HStack gap="2" minW="0">
             {/* Fixed slot so both team names line up whether or not a kit colour
-                is set (JerseyDot renders nothing when there's no colour). */}
-            <Box w="10px" flexShrink={0} display="inline-flex" justifyContent="center">
-                <JerseyDot color={color} size={10} />
+                is set (KitSwatch renders nothing when there's no colour). */}
+            <Box w="12px" flexShrink={0} display="inline-flex" justifyContent="center">
+                <KitSwatch jersey={jersey} shorts={shorts} size={10} />
             </Box>
             <Text
                 fontSize="13px"

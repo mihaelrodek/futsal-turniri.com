@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Box, Flex, HStack, Text, chakra } from "@chakra-ui/react"
-import { FiMaximize, FiMinimize } from "react-icons/fi"
+import { Box, Flex, HStack, Text, VStack, chakra } from "@chakra-ui/react"
+import { FiMaximize, FiMinimize, FiEye } from "react-icons/fi"
 
 import { PulseDot } from "../ui/pitch"
 
@@ -54,12 +54,15 @@ export function classifyStreamUrl(url: string): { kind: StreamKind; src: string 
 export default function StreamPlayer({
     url,
     overlay,
+    viewers,
 }: {
     url: string
     /** Optional display-only overlay (e.g. a live scorebug) pinned to the top
      *  of the player. Rendered INSIDE the fullscreen element so it stays
      *  visible when the video goes fullscreen. */
     overlay?: React.ReactNode
+    /** Live-viewer count for the "👁 N" badge; null/0 hides it. */
+    viewers?: number | null
 }) {
     const { kind, src } = useMemo(() => classifyStreamUrl(url), [url])
 
@@ -271,26 +274,42 @@ export default function StreamPlayer({
                 </Flex>
             )}
 
-            {/* "UŽIVO PRIJENOS" pill - same look as the live-match pill. */}
-            <HStack
-                position="absolute"
-                top="2"
-                left="2"
-                gap="1"
-                px="2"
-                py="0.5"
-                rounded="full"
-                bg="accent.red"
-                color="white"
-                fontFamily="mono"
-                fontSize="9px"
-                fontWeight={800}
-                letterSpacing="0.1em"
-                pointerEvents="none"
-            >
-                <PulseDot color="white" size={5} />
-                UŽIVO PRIJENOS
-            </HStack>
+            {/* Top-left stack: "UŽIVO PRIJENOS" pill + live-viewer count. */}
+            <VStack position="absolute" top="2" left="2" align="flex-start" gap="1" pointerEvents="none">
+                <HStack
+                    gap="1"
+                    px="2"
+                    py="0.5"
+                    rounded="full"
+                    bg="accent.red"
+                    color="white"
+                    fontFamily="mono"
+                    fontSize="9px"
+                    fontWeight={800}
+                    letterSpacing="0.1em"
+                >
+                    <PulseDot color="white" size={5} />
+                    UŽIVO
+                </HStack>
+                {viewers != null && viewers > 0 && (
+                    <HStack
+                        gap="1"
+                        px="2"
+                        py="0.5"
+                        rounded="full"
+                        bg="rgba(0,0,0,0.62)"
+                        color="white"
+                        fontFamily="mono"
+                        fontSize="9px"
+                        fontWeight={800}
+                        css={{ backdropFilter: "blur(6px)" }}
+                        title="Gledatelja uživo na stranici"
+                    >
+                        <Box display="inline-flex"><FiEye size={11} /></Box>
+                        {viewers}
+                    </HStack>
+                )}
+            </VStack>
 
             {/* Fullscreen toggle - kept custom so iframe embeds get one too. */}
             <chakra.button

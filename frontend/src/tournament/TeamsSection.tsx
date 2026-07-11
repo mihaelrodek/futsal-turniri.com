@@ -33,7 +33,9 @@ import { FaMedal, FaTrophy } from "react-icons/fa"
 
 import type { TournamentDetails } from "../types/tournaments"
 import type { TeamShort } from "../types/teams"
-import { setTeamJerseyColor } from "../api/tournaments"
+import { setTeamJerseyColor, setTeamShortsColor, type TeamKit } from "../api/tournaments"
+import { KitSwatch } from "../components/jersey"
+import { queryClient } from "../queryClient"
 import type { TeamRequest } from "../api/teamRequests"
 import type { PlayerDto } from "../types/players"
 import {
@@ -82,22 +84,6 @@ const JERSEY_COLORS: { hex: string; label: string }[] = [
     { hex: "#6b7280", label: "Siva" },
 ]
 
-/** Small kit-colour chip. Bordered so white/light kits stay visible. */
-function JerseySwatch({ color, size = 12 }: { color: string; size?: number }) {
-    return (
-        <Box
-            w={`${size}px`}
-            h={`${size}px`}
-            rounded="sm"
-            bg={color}
-            borderWidth="1px"
-            borderColor="blackAlpha.300"
-            flexShrink={0}
-            title="Boja dresova"
-        />
-    )
-}
-
 /** "Dres" picker - a menu of preset kit swatches. Persists immediately via
  *  its own endpoint (the teams-list save deliberately ignores the colour). */
 function JerseyColorPicker({
@@ -111,12 +97,34 @@ function JerseyColorPicker({
 }) {
     const [busy, setBusy] = useState(false)
 
-    async function pick(hex: string | null) {
+    async function applyColor(kind: "jersey" | "shorts", hex: string | null) {
         if (busy) return
         setBusy(true)
         try {
-            const updated = await setTeamJerseyColor(uuid, team.id, hex)
+            const updated = kind === "jersey"
+                ? await setTeamJerseyColor(uuid, team.id, hex)
+                : await setTeamShortsColor(uuid, team.id, hex)
             onTeamUpdated(updated)
+            // Kit chips are cached per tournament (qk.teamColors) and read all
+            // over the live UI (tijek utakmice, scorebug, rosters). Patch every
+            // cached variant (a consumer may have keyed by uuid OR slug) for an
+            // instant update, then invalidate so each refetches the authoritative
+            // map. Prefix ["teamColors"] matches all qk.teamColors(...) queries.
+            queryClient.setQueriesData<Record<string, TeamKit>>(
+                { queryKey: ["teamColors"] },
+                (old) => {
+                    if (!old) return old
+                    const id = String(team.id)
+                    const prev = old[id] ?? { jersey: null, shorts: null }
+                    const kit: TeamKit = { ...prev, [kind]: hex }
+                    const next = { ...old }
+                    // Backend omits teams with no colour at all - mirror that.
+                    if (!kit.jersey && !kit.shorts) delete next[id]
+                    else next[id] = kit
+                    return next
+                },
+            )
+            queryClient.invalidateQueries({ queryKey: ["teamColors"] })
         } catch {
             // Error toasted by the http interceptor.
         } finally {
@@ -125,7 +133,7 @@ function JerseyColorPicker({
     }
 
     return (
-        <Menu.Root positioning={{ placement: "bottom-start" }}>
+        <Menu.Root positioning={{ placement: "bottom-start" }} closeOnSelect={false}>
             <Menu.Trigger asChild>
                 <chakra.button
                     type="button"
@@ -140,16 +148,16 @@ function JerseyColorPicker({
                     bg="bg.panel"
                     cursor="pointer"
                     _hover={{ borderColor: "border.emphasized" }}
-                    title="Boja dresova"
-                    aria-label="Boja dresova"
+                    title="Boje dresa i hlača"
+                    aria-label="Boje dresa i hlača"
                     opacity={busy ? 0.6 : 1}
                 >
-                    {team.jerseyColor ? (
-                        <JerseySwatch color={team.jerseyColor} size={14} />
+                    {team.jerseyColor || team.shortsColor ? (
+                        <KitSwatch jersey={team.jerseyColor} shorts={team.shortsColor} size={13} />
                     ) : (
                         <Box
-                            w="14px"
-                            h="14px"
+                            w="13px"
+                            h="17px"
                             rounded="sm"
                             borderWidth="1px"
                             borderStyle="dashed"
@@ -158,7 +166,7 @@ function JerseyColorPicker({
                         />
                     )}
                     <Text fontSize="xs" fontWeight={600} color="fg.muted">
-                        Dres
+                        Boje
                     </Text>
                     <Box color="fg.muted" display="inline-flex"><FiChevronDown size={12} /></Box>
                 </chakra.button>
@@ -166,41 +174,70 @@ function JerseyColorPicker({
             <Portal>
                 <Menu.Positioner>
                     <Menu.Content p="2">
-                        <Text fontSize="xs" color="fg.muted" fontWeight={600} px="1" pb="1.5">
-                            Boja dresova
-                        </Text>
-                        <Grid templateColumns="repeat(5, 1fr)" gap="1.5" px="1" pb="1.5">
-                            {JERSEY_COLORS.map((c) => (
-                                <Menu.Item
-                                    key={c.hex}
-                                    value={c.hex}
-                                    onClick={() => pick(c.hex)}
-                                    p="1"
-                                    minW="0"
-                                    justifyContent="center"
-                                    title={c.label}
-                                    aria-label={c.label}
-                                >
-                                    <Box
-                                        w="22px"
-                                        h="22px"
-                                        rounded="md"
-                                        bg={c.hex}
-                                        borderWidth={team.jerseyColor === c.hex ? "2px" : "1px"}
-                                        borderColor={team.jerseyColor === c.hex ? "brand.solid" : "blackAlpha.300"}
-                                    />
-                                </Menu.Item>
-                            ))}
-                        </Grid>
-                        {team.jerseyColor && (
-                            <Menu.Item value="none" onClick={() => pick(null)} fontSize="xs">
-                                Ukloni boju
-                            </Menu.Item>
-                        )}
+                        <ColorRow
+                            label="Boja dresa"
+                            selected={team.jerseyColor}
+                            onPick={(hex) => applyColor("jersey", hex)}
+                        />
+                        <Box h="2" />
+                        <ColorRow
+                            label="Boja hlača"
+                            selected={team.shortsColor}
+                            onPick={(hex) => applyColor("shorts", hex)}
+                        />
                     </Menu.Content>
                 </Menu.Positioner>
             </Portal>
         </Menu.Root>
+    )
+}
+
+/** One labelled row of preset kit swatches (+ "Ukloni") inside the colour menu.
+ *  Used twice - for the jersey (dres) and the shorts (hlače). */
+function ColorRow({
+    label,
+    selected,
+    onPick,
+}: {
+    label: string
+    selected?: string | null
+    onPick: (hex: string | null) => void
+}) {
+    return (
+        <>
+            <Text fontSize="xs" color="fg.muted" fontWeight={600} px="1" pb="1.5">
+                {label}
+            </Text>
+            <Grid templateColumns="repeat(5, 1fr)" gap="1.5" px="1" pb="1.5">
+                {JERSEY_COLORS.map((c) => (
+                    <Menu.Item
+                        key={c.hex}
+                        // Values must be unique across the whole menu, so scope by row.
+                        value={`${label}-${c.hex}`}
+                        onClick={() => onPick(c.hex)}
+                        p="1"
+                        minW="0"
+                        justifyContent="center"
+                        title={c.label}
+                        aria-label={c.label}
+                    >
+                        <Box
+                            w="22px"
+                            h="22px"
+                            rounded="md"
+                            bg={c.hex}
+                            borderWidth={selected === c.hex ? "2px" : "1px"}
+                            borderColor={selected === c.hex ? "brand.solid" : "blackAlpha.300"}
+                        />
+                    </Menu.Item>
+                ))}
+            </Grid>
+            {selected && (
+                <Menu.Item value={`${label}-none`} onClick={() => onPick(null)} fontSize="xs">
+                    Ukloni
+                </Menu.Item>
+            )}
+        </>
     )
 }
 
@@ -435,8 +472,8 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             never edits a name; the row only navigates
                             into the team's detail. */}
                         <HStack gap="1.5" align="center" minW="0">
-                            {/* Jersey-colour chip - "kraj svake ekipe". */}
-                            {p.jerseyColor && <JerseySwatch color={p.jerseyColor} />}
+                            {/* Kit chip (dres + hlače) - "kraj svake ekipe". */}
+                            <KitSwatch jersey={p.jerseyColor} shorts={p.shortsColor} />
                             <Text
                                 fontSize="sm"
                                 fontWeight={isPodiumTeam ? "bold" : "medium"}
@@ -1062,7 +1099,7 @@ function RosterPanel({
                                 />
                             ) : (
                                 <HStack gap="1.5" align="center" minW="0">
-                                    {team.jerseyColor && <JerseySwatch color={team.jerseyColor} size={14} />}
+                                    <KitSwatch jersey={team.jerseyColor} shorts={team.shortsColor} size={14} />
                                     <Text fontWeight="semibold" lineHeight="short" truncate>
                                         {team.name || "-"}
                                     </Text>

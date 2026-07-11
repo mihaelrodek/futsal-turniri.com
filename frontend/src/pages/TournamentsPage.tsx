@@ -66,6 +66,7 @@ import {
     writeStreamBannerHint,
     type StreamBanner,
 } from "../api/streamBanner"
+import { useStreamPresence } from "../hooks/useStreamPresence"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Turniri (listing) - "Pitch" theme.
@@ -1929,6 +1930,8 @@ export default function TournamentsPage() {
             .catch(() => { /* keep last state; next tick retries */ })
     }, 30_000)
     const streamBannerLive = !!streamBanner?.live && !!streamBanner?.url
+    // "How many people are watching" - heartbeats while the stream is on.
+    const streamViewers = useStreamPresence(streamBannerLive)
 
     // Which live match drives the stream hero's side panels (tijek utakmice +
     // group table). When the stream is linked to a tournament, follow THAT
@@ -2072,6 +2075,8 @@ export default function TournamentsPage() {
                 <TheaterMode
                     url={streamBanner!.url!}
                     match={streamMatch}
+                    tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
+                    viewers={streamViewers}
                     onClose={() => setTheaterOpen(false)}
                 />
             )}
@@ -2084,6 +2089,8 @@ export default function TournamentsPage() {
                     url={streamBanner!.url!}
                     match={streamMatch}
                     tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
+                    tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
+                    viewers={streamViewers}
                     onEnterTheater={() => setTheaterOpen(true)}
                 />
             ) : streamBanner?.url ? (

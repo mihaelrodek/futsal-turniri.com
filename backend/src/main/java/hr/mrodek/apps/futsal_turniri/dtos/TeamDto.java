@@ -35,7 +35,11 @@ public record TeamDto(
 
         // Optional jersey colour ("#rrggbb", lowercase). Chosen by the
         // organizer on the Ekipe tab; null = not set.
-        String jerseyColor
+        String jerseyColor,
+
+        // Optional shorts (hlače) colour ("#rrggbb", lowercase), chosen
+        // separately from the jersey; null = not set.
+        String shortsColor
 ) {
     /** Backwards-compat constructor for callers that don't yet enrich submitter info. */
     public TeamDto(
@@ -44,7 +48,7 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     /** Earlier constructor without co-owner / token fields. */
@@ -55,6 +59,6 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, submittedBySlug, submittedByName,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 }

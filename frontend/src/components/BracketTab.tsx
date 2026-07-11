@@ -34,16 +34,15 @@ import {
     pauseMatch,
     resetMatch,
     resumeMatch,
-    startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
-import type { MatchEventDto, MatchLiveMode } from "../types/matchEvents"
+import type { MatchEventDto } from "../types/matchEvents"
 import { fetchSchedule } from "../api/schedule"
 import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
 import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
-import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, StartLivePopover, matchPhase } from "./liveMatch"
+import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, matchPhase } from "./liveMatch"
 import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { LuRotateCcw, LuShuffle } from "react-icons/lu"
 import { useNavigate } from "react-router-dom"
@@ -492,7 +491,6 @@ export default function BracketTab({
     const [form, setForm] = useState<EditForm>({ s1: "", s2: "", p1: "", p2: "" })
     const [saving, setSaving] = useState(false)
     /** matchId of the card whose "start live" call is in flight. */
-    const [startingId, setStartingId] = useState<number | null>(null)
     /** The match currently open in the live dialog, or null. */
     const [liveMatch, setLiveMatch] = useState<BracketMatch | null>(null)
     /** Match whose read-only timeline modal is open (any viewer can open it). */
@@ -681,25 +679,6 @@ export default function BracketTab({
     }
 
     /** SCHEDULED -> LIVE, then open the live dialog and re-fetch. */
-    async function handleStartLive(m: BracketMatch, mode: MatchLiveMode) {
-        setStartingId(m.matchId)
-        try {
-            await startMatch(uuid, m.matchId, mode)
-            await reloadBracket()
-            setLiveMatch({
-                ...m,
-                status: "LIVE",
-                liveMode: mode,
-                liveStartedAt: new Date().toISOString(),
-                secondHalfStartedAt: null,
-            })
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setStartingId(null)
-        }
-    }
-
     /* ── Library bridge + auto-scroll - every hook here MUST run on
        every render regardless of the loading / no-bracket early
        returns below. React's "Rules of Hooks" rejects any render where
@@ -875,7 +854,7 @@ export default function BracketTab({
             ro?.disconnect()
             window.removeEventListener("resize", compute)
         }
-    }, [bracket, editingId, startingId, liveMatch])
+    }, [bracket, editingId, liveMatch])
 
     // ─── Manual draw - organizer arranges teams into first-round slots ───
     const nextPow2 = (x: number) => {
@@ -1487,7 +1466,6 @@ export default function BracketTab({
                         form={form}
                         showPenaltyRow={showPenaltyRow}
                         saving={saving}
-                        starting={startingId === original.matchId}
                         halfLengthMin={halfLengthMin}
                         halfCount={halfCount}
                         onEdit={startEdit}
@@ -1496,7 +1474,6 @@ export default function BracketTab({
                         onSavePenalties={saveResultWithPenalties}
                         onCancel={() => setEditingId(null)}
                         onFormChange={setForm}
-                        onStartLive={handleStartLive}
                         onOpenLive={setLiveMatch}
                         onOpenTimeline={setTimelineMatch}
                     />
@@ -1663,7 +1640,6 @@ export default function BracketTab({
                                     form={form}
                                     showPenaltyRow={showPenaltyRow}
                                     saving={saving}
-                                    starting={startingId === bracket.thirdPlace.matchId}
                                     halfLengthMin={halfLengthMin}
                                     halfCount={halfCount}
                                     onEdit={startEdit}
@@ -1672,8 +1648,7 @@ export default function BracketTab({
                                     onSavePenalties={saveResultWithPenalties}
                                     onCancel={() => setEditingId(null)}
                                     onFormChange={setForm}
-                                    onStartLive={handleStartLive}
-                                    onOpenLive={setLiveMatch}
+                                                onOpenLive={setLiveMatch}
                                     onOpenTimeline={setTimelineMatch}
                                 />
                             </Box>
@@ -1769,7 +1744,6 @@ type MatchCardProps = {
     form: EditForm
     showPenaltyRow: boolean
     saving: boolean
-    starting: boolean
     isFinal?: boolean
     isThirdPlace?: boolean
     /** Tournament half config - drives the inline TIMER clock countdown. */
@@ -1782,7 +1756,6 @@ type MatchCardProps = {
     onSavePenalties: (m: BracketMatch, pen1: number, pen2: number) => void
     onCancel: () => void
     onFormChange: (updater: (prev: EditForm) => EditForm) => void
-    onStartLive: (m: BracketMatch, mode: MatchLiveMode) => void
     onOpenLive: (m: BracketMatch) => void
     /** Open the read-only timeline (tijek) - clicking the match result. */
     onOpenTimeline: (m: BracketMatch) => void
@@ -1795,7 +1768,6 @@ function MatchCard({
     form,
     showPenaltyRow,
     saving,
-    starting,
     isFinal = false,
     isThirdPlace = false,
     halfLengthMin = null,
@@ -1806,7 +1778,6 @@ function MatchCard({
     onSavePenalties,
     onCancel,
     onFormChange,
-    onStartLive,
     onOpenLive,
     onOpenTimeline,
 }: MatchCardProps) {
@@ -2008,32 +1979,24 @@ function MatchCard({
                 // organizer / admin. Anonymous and regular-user viewers
                 // get a read-only scoreboard - no "Unesi rezultat",
                 // "Pokreni" or live-management controls leak through.
-                canEdit && editable && (
+                canEdit && (isLive || isFinished || (isScheduled && editable)) && (
                     <VStack align="stretch" gap="1.5" mt="2">
-                        {isScheduled &&
-                            (m.kickoffAt ? (
-                                <StartLivePopover
-                                    loading={starting}
-                                    onStart={(mode) => onStartLive(m, mode)}
-                                    onEnterResult={() => onEdit(m)}
-                                />
-                            ) : (
-                                // No kickoff yet → can't start. Nudge the
-                                // organizer to (re)confirm the schedule first.
-                                <Box
-                                    rounded="lg"
-                                    borderWidth="1px"
-                                    borderColor="border"
-                                    bg="bg.subtle"
-                                    px="2"
-                                    py="1.5"
-                                    textAlign="center"
-                                >
-                                    <Text fontSize="2xs" color="fg.muted" fontWeight={600} lineHeight="1.2">
-                                        Potvrdi raspored za pokretanje
-                                    </Text>
-                                </Box>
-                            ))}
+                        {/* Knockout matches are STARTED from the Zapisnik - the
+                            bracket's live-start popover was removed (it broke the
+                            iOS layout and made accidental live-starts too easy).
+                            The bracket only enters/edits a result and opens an
+                            already-live match ("Uživo" → "Poništi utakmicu"). */}
+                        {isScheduled && editable && (
+                            <Button
+                                size="xs"
+                                variant="outline"
+                                colorPalette="pitch"
+                                rounded="lg"
+                                onClick={() => onEdit(m)}
+                            >
+                                <FiEdit2 /> Unesi rezultat
+                            </Button>
+                        )}
                         {isLive && (
                             <Button
                                 size="xs"

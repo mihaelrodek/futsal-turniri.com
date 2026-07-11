@@ -20,19 +20,29 @@ export default function LiveScoreBug({
     score2,
     color1,
     color2,
+    shorts1,
+    shorts2,
     live = true,
     size = "md",
+    centerText,
 }: {
     team1Name: string | null
     team2Name: string | null
     score1: number
     score2: number
+    /** Jersey (dres) colour per side - the top of the two-tone accent bar. */
     color1?: string | null
     color2?: string | null
+    /** Shorts (hlače) colour per side - the bottom of the accent bar. */
+    shorts1?: string | null
+    shorts2?: string | null
     /** Show the pulsing live marker (default true). */
     live?: boolean
     /** "md" for the video overlay, "lg" for the fullscreen display. */
     size?: "md" | "lg"
+    /** Overrides the "score1 : score2" centre (e.g. an upcoming match's kickoff
+     *  time). */
+    centerText?: string | null
 }) {
     const maxLen = Math.max((team1Name ?? "").length, (team2Name ?? "").length)
     const lg = size === "lg"
@@ -85,7 +95,7 @@ export default function LiveScoreBug({
                 >
                     {team1Name ?? "-"}
                 </Text>
-                <Box w={lg ? "6px" : "4px"} alignSelf="stretch" rounded="sm" bg={color1 ?? "whiteAlpha.400"} flexShrink={0} />
+                <KitBar jersey={color1} shorts={shorts1} lg={lg} />
             </Flex>
 
             {/* Score. */}
@@ -99,13 +109,13 @@ export default function LiveScoreBug({
                     whiteSpace="nowrap"
                     lineHeight="1"
                 >
-                    {score1} : {score2}
+                    {centerText ?? `${score1} : ${score2}`}
                 </Text>
             </Flex>
 
             {/* Team 2 - colour bar + name (left-aligned toward the score). */}
             <Flex align="center" gap="2" pl="2" pr={lg ? "4" : "3"} py={lg ? "2.5" : "1.5"} minW="0">
-                <Box w={lg ? "6px" : "4px"} alignSelf="stretch" rounded="sm" bg={color2 ?? "whiteAlpha.400"} flexShrink={0} />
+                <KitBar jersey={color2} shorts={shorts2} lg={lg} />
                 <Text
                     color="white"
                     fontWeight={800}
@@ -120,5 +130,21 @@ export default function LiveScoreBug({
                 </Text>
             </Flex>
         </Flex>
+    )
+}
+
+/** Two-tone kit accent bar beside a team name: jersey (top) over shorts
+ *  (bottom). Falls back to a single jersey bar when shorts isn't set. */
+function KitBar({ jersey, shorts, lg }: { jersey?: string | null; shorts?: string | null; lg: boolean }) {
+    const w = lg ? "6px" : "4px"
+    const j = jersey ?? "whiteAlpha.400"
+    if (!shorts) {
+        return <Box w={w} alignSelf="stretch" rounded="sm" bg={j} flexShrink={0} />
+    }
+    return (
+        <Box w={w} alignSelf="stretch" rounded="sm" overflow="hidden" flexShrink={0} display="flex" flexDirection="column">
+            <Box flex="1.15" bg={j} />
+            <Box flex="0.85" bg={shorts} />
+        </Box>
     )
 }

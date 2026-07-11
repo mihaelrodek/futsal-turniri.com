@@ -235,15 +235,18 @@ export async function fetchTournamentAccess(
     return data ?? { canManage: false }
 }
 
+/** A team's kit colours: jersey (dres) + shorts (hlače). Either may be null. */
+export type TeamKit = { jersey: string | null; shorts: string | null }
+
 /**
- * Jersey colours per team ({@code teamId → "#rrggbb"}) for a tournament, so the
- * live/timeline views can mark each side with its kit colour. Only teams with a
- * colour set are included. One request; silent (background enrichment).
+ * Kit colours per team ({@code teamId → {jersey, shorts}}) for a tournament, so
+ * the live/timeline views can mark each side with its kit. Only teams with at
+ * least one colour set are included. One request; silent (background).
  */
 export async function fetchTeamJerseyColors(
     uuid: string,
-): Promise<Record<string, string>> {
-    const { data } = await http.get<Record<string, string>>(
+): Promise<Record<string, TeamKit>> {
+    const { data } = await http.get<Record<string, TeamKit>>(
         `/tournaments/${uuid}/teams/jersey-colors`,
         { silent: true } as any,
     )
@@ -262,7 +265,24 @@ export async function setTeamJerseyColor(
     const { data } = await http.put<TeamShort>(
         `/tournaments/${tournamentUuid}/teams/${teamId}/jersey-color`,
         { color },
-        { successMessage: color ? "Boja dresova je spremljena." : "Boja dresova je uklonjena." } as any,
+        { successMessage: color ? "Boja dresa je spremljena." : "Boja dresa je uklonjena." } as any,
+    )
+    return data
+}
+
+/**
+ * Set (or clear with null) a team's shorts (hlače) colour ("#rrggbb").
+ * Organizer/admin only. Returns the fresh team DTO.
+ */
+export async function setTeamShortsColor(
+    tournamentUuid: string,
+    teamId: number,
+    color: string | null,
+): Promise<TeamShort> {
+    const { data } = await http.put<TeamShort>(
+        `/tournaments/${tournamentUuid}/teams/${teamId}/shorts-color`,
+        { color },
+        { successMessage: color ? "Boja hlača je spremljena." : "Boja hlača je uklonjena." } as any,
     )
     return data
 }

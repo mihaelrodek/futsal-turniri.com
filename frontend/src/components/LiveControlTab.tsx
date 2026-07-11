@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Box, Flex, Menu, Portal, Text, VStack } from "@chakra-ui/react"
-import { FiChevronDown } from "react-icons/fi"
+import { Box, Button, Flex, HStack, Menu, Portal, Text, VStack } from "@chakra-ui/react"
+import { FiChevronDown, FiEyeOff, FiPlay } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
 import { fetchGroups } from "../api/groups"
 import { fetchBracket } from "../api/bracket"
+import { fetchStreamBanner, type StreamBanner } from "../api/streamBanner"
 import type { Group } from "../types/groups"
 import type { BracketMatch } from "../types/bracket"
+import { usePolling } from "../hooks/usePolling"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
 import LiveMatchPanel, { type PanelMatch } from "./LiveMatchPanel"
+import StreamPlayer from "./StreamPlayer"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Zapisnik" - organizer-only match-recording control centre, fully inline.
@@ -282,13 +285,80 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
     // Keyed by id+status so a status change (SCHEDULED→LIVE→…) remounts it with
     // fresh state.
     return selected ? (
-        <LiveMatchPanel
-            key={`${selected.match.matchId}-${selected.match.status}`}
-            uuid={uuid}
-            kind={selected.kind}
-            match={selected.match}
-            onChanged={reload}
-            selector={selector}
-        />
+        <VStack align="stretch" gap="4">
+            {/* Optional live stream of the match being recorded (organizer aid):
+                only when the admin has linked a stream to THIS tournament. */}
+            <StreamSection uuid={uuid} />
+            <LiveMatchPanel
+                key={`${selected.match.matchId}-${selected.match.status}`}
+                uuid={uuid}
+                kind={selected.kind}
+                match={selected.match}
+                onChanged={reload}
+                selector={selector}
+            />
+        </VStack>
     ) : null
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   StreamSection - lets the scorekeeper watch the tournament's live stream right
+   inside the Zapisnik, so goals can be entered the moment they happen. Uses
+   ONLY the stream the admin linked to this tournament (the home-page banner);
+   there's no URL to paste. Off by default; the show/hide choice is remembered
+   per tournament. Renders nothing when no stream is linked here.
+   ────────────────────────────────────────────────────────────────────────── */
+function StreamSection({ uuid }: { uuid: string }) {
+    const [banner, setBanner] = useState<StreamBanner | null>(null)
+    const [shown, setShown] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(`zapisnik-stream-${uuid}`) === "1"
+        } catch {
+            return false
+        }
+    })
+
+    useEffect(() => {
+        let cancelled = false
+        fetchStreamBanner()
+            .then((b) => { if (!cancelled) setBanner(b) })
+            .catch(() => { /* silent - next poll retries */ })
+        return () => { cancelled = true }
+    }, [])
+    // The admin may link/paste a stream mid-match; keep it fresh.
+    usePolling(() => {
+        fetchStreamBanner().then(setBanner).catch(() => { /* silent */ })
+    }, 30_000)
+
+    // A stream is available here only when the admin linked one to THIS
+    // tournament (t.uuid is canonical, same as banner.tournamentUuid).
+    const url = banner?.url && banner.tournamentUuid === uuid ? banner.url : null
+    if (!url) return null
+
+    function toggle() {
+        setShown((prev) => {
+            const next = !prev
+            try { localStorage.setItem(`zapisnik-stream-${uuid}`, next ? "1" : "0") } catch { /* ignore */ }
+            return next
+        })
+    }
+
+    return (
+        <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" p={{ base: "3", md: "4" }}>
+            <Flex align="center" justify="space-between" gap="2" mb={shown ? "3" : "0"}>
+                <HStack gap="2" minW="0">
+                    <Box color="accent.red" display="inline-flex"><LuRadioTower size={16} /></Box>
+                    <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>Prijenos utakmice</Text>
+                </HStack>
+                <Button size="sm" variant={shown ? "outline" : "solid"} colorPalette="pitch" onClick={toggle} flexShrink={0}>
+                    {shown ? <><FiEyeOff /> Sakrij prijenos</> : <><FiPlay /> Prikaži prijenos</>}
+                </Button>
+            </Flex>
+            {shown && (
+                <Box maxW={{ base: "full", md: "560px" }} mx="auto">
+                    <StreamPlayer url={url} />
+                </Box>
+            )}
+        </Box>
+    )
 }

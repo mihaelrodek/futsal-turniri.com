@@ -2,7 +2,8 @@ import { Box, Flex, Grid, HStack, Text, VStack } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { PulseDot } from "../ui/pitch"
 import { LiveClock } from "./liveMatch"
-import { useTeamColors, teamColor, JerseyDot } from "./jersey"
+import { useTeamColors, TeamKitChip } from "./jersey"
+import type { TeamKit } from "../api/tournaments"
 import type { LiveMatch } from "../api/live"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ function ActiveMatchCard({
 }: {
     m: LiveMatch
     uuidOrSlug: string
-    colors: Record<string, string>
+    colors: Record<string, TeamKit>
 }) {
     const isTimer = m.liveMode === "TIMER"
     // Shrink the name font once a club name is long so it stays readable and
@@ -104,7 +105,7 @@ function ActiveMatchCard({
                 {/* Scoreboard: team1 — score — team2. */}
                 <Grid templateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2", md: "3" }}>
                     <HStack gap="1.5" justify="flex-end" minW="0">
-                        <JerseyDot color={teamColor(colors, m.team1Id)} size={11} />
+                        <TeamKitChip colors={colors} teamId={m.team1Id} size={11} />
                         <Text
                             fontSize={nameFont}
                             fontWeight={700}
@@ -142,7 +143,7 @@ function ActiveMatchCard({
                         >
                             {m.team2Name ?? "-"}
                         </Text>
-                        <JerseyDot color={teamColor(colors, m.team2Id)} size={11} />
+                        <TeamKitChip colors={colors} teamId={m.team2Id} size={11} />
                     </HStack>
                 </Grid>
             </Box>

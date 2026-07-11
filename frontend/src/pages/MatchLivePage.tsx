@@ -8,7 +8,7 @@ import { fetchTournamentDetails } from "../api/tournaments"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
-import { useTeamColors, teamColor, JerseyDot } from "../components/jersey"
+import { useTeamColors, teamColor, teamShorts, KitSwatch } from "../components/jersey"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
@@ -173,6 +173,8 @@ export default function MatchLivePage() {
     const team2Name = scheduled.team2Name ?? live?.team2Name ?? "-"
     const jerseyC1 = teamColor(teamColors, scheduled.team1Id)
     const jerseyC2 = teamColor(teamColors, scheduled.team2Id)
+    const shortsC1 = teamShorts(teamColors, scheduled.team1Id)
+    const shortsC2 = teamShorts(teamColors, scheduled.team2Id)
     const halfLengthMin = schedule?.halfLengthMin ?? live?.halfLengthMin ?? null
     const halfCount = schedule?.halfCount ?? live?.halfCount ?? null
     const phaseLbl = matchPhaseLabel({ stage: scheduled.stage, groupName: scheduled.groupName })
@@ -299,7 +301,7 @@ export default function MatchLivePage() {
                     the only thing in the centre cell). */}
                 <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
                     <HStack gap="2" justify="flex-end" minW="0">
-                        <JerseyDot color={jerseyC1} size={12} />
+                        <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={12} />
                         <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
                             {team1Name}
                         </Text>
@@ -326,7 +328,7 @@ export default function MatchLivePage() {
                         <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
                             {team2Name}
                         </Text>
-                        <JerseyDot color={jerseyC2} size={12} />
+                        <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={12} />
                     </HStack>
                 </Box>
 

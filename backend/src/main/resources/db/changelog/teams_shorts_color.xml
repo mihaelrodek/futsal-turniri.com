@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Optional shorts (hlače) colour per team, alongside jersey_color. Lets a
+        kit be described by two colours (dres + hlače), each chosen separately on
+        the Ekipe tab. Lowercase "#rrggbb"; NULL = not set. Purely presentational.
+    -->
+    <changeSet id="2026-07-11-teams-shorts-color" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="shorts_color" type="varchar(9)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>
