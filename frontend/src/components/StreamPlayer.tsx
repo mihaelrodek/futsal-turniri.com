@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Flex, HStack, Text, VStack, chakra } from "@chakra-ui/react"
-import { FiMaximize, FiMinimize, FiEye } from "react-icons/fi"
+import { FiMaximize, FiMinimize, FiEye, FiRefreshCw } from "react-icons/fi"
 
 import { PulseDot } from "../ui/pitch"
 
@@ -19,6 +19,16 @@ import { PulseDot } from "../ui/pitch"
        recoveries; if the pipeline still dies, the whole player re-creates
        itself automatically every few seconds ("Ponovno spajanje…") until
        the stream is back - no dead banner, no manual reload.
+     • a WATCHDOG catches the freezes that never raise a fatal error
+       (stalled buffer, suspended background tab, drifting off the live
+       window): no playback progress for STALL_LIMIT_MS → first jump back
+       to the live edge, still frozen → rebuild the whole pipeline.
+     • buffers are hard-capped (backBufferLength) so an hours-long live
+       stream can't slowly eat the tab's memory and wedge the page.
+     • returning to a suspended tab re-syncs to the live edge instead of
+       resuming minutes behind (iOS/Safari suspend background tabs).
+     • a manual "Osvježi prijenos" button rebuilds the player in place -
+       the escape hatch that makes reloading the page unnecessary.
      • direct-file errors re-create the same way.
      • nothing about the stream url is ever cached here - the media element
        / hls.js always fetch live.
@@ -32,6 +42,17 @@ type StreamKind = "youtube" | "hls" | "file" | "iframe"
 
 /** How long to wait before automatically re-creating a dead pipeline. */
 const RECONNECT_MS = 8000
+
+/** Watchdog tick - how often playback progress is checked. */
+const WATCHDOG_MS = 3000
+
+/** No forward progress for this long while "playing" → the pipeline is
+ *  wedged (frozen picture, no error event) and gets healed. */
+const STALL_LIMIT_MS = 12000
+
+/** A re-stall within this window after a soft heal means the pipeline (not
+ *  the network) is wedged → go straight to the hard rebuild. */
+const SOFT_HEAL_GRACE_MS = 45000
 
 /** Work out how to play the pasted url. Exported for reuse/tests. */
 export function classifyStreamUrl(url: string): { kind: StreamKind; src: string } {
@@ -68,6 +89,8 @@ export default function StreamPlayer({
 
     const wrapRef = useRef<HTMLDivElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
+    // Live hls.js instance - the watchdog reads liveSyncPosition off it.
+    const hlsRef = useRef<import("hls.js").default | null>(null)
     const [isFs, setIsFs] = useState(false)
     // "Reconnecting" overlay while a dead pipeline waits for its re-create.
     const [reconnecting, setReconnecting] = useState(false)
@@ -94,6 +117,97 @@ export default function StreamPlayer({
             }
         }
     }, [src])
+
+    /** Rebuild the player in place, right now - the manual escape hatch (and
+     *  the watchdog's last resort). Never requires a page reload. */
+    function forceReload() {
+        if (reconnectTimer.current != null) {
+            clearTimeout(reconnectTimer.current)
+            reconnectTimer.current = null
+        }
+        setReconnecting(false)
+        setRetryNonce((n) => n + 1)
+    }
+
+    // Watchdog (LIVE HLS only): the pipeline can freeze WITHOUT ever raising
+    // a fatal error (stalled buffer, tab suspended by the OS, playhead
+    // drifted out of the live window). Track playback progress; on a stall
+    // first jump back to the live edge, and if it re-stalls soon after,
+    // rebuild the whole pipeline. Direct files are deliberately excluded -
+    // a slow download is legitimate buffering there, and a rebuild would
+    // throw away the viewer's position in the clip.
+    useEffect(() => {
+        if (kind !== "hls") return
+        let lastTime = -1
+        let lastProgressAt = Date.now()
+        // The soft heal's own seek changes currentTime, so a plain "made
+        // progress" check would reset the escalation and loop soft heals
+        // forever on a wedged-but-advancing stream. Escalate on TIME instead:
+        // a re-stall within SOFT_HEAL_GRACE_MS of the last soft heal goes
+        // straight to the hard rebuild.
+        let lastSoftHealAt = 0
+
+        const liveEdge = (video: HTMLVideoElement): number | null =>
+            hlsRef.current?.liveSyncPosition ??
+            (video.seekable.length > 0
+                ? video.seekable.end(video.seekable.length - 1)
+                : null)
+
+        const toLiveEdge = () => {
+            const video = videoRef.current
+            if (!video) return
+            const end = liveEdge(video)
+            if (end != null && Number.isFinite(end)) {
+                try { video.currentTime = Math.max(0, end - 3) } catch { /* not seekable yet */ }
+            }
+            video.play().catch(() => {})
+        }
+
+        const id = window.setInterval(() => {
+            const video = videoRef.current
+            if (!video || reconnecting) return
+            // A deliberate pause / ended stream / hidden tab isn't a stall.
+            if (video.paused || video.ended || document.hidden) {
+                lastTime = video.currentTime
+                lastProgressAt = Date.now()
+                return
+            }
+            if (video.currentTime !== lastTime) {
+                lastTime = video.currentTime
+                lastProgressAt = Date.now()
+                return
+            }
+            if (Date.now() - lastProgressAt < STALL_LIMIT_MS) return
+            if (Date.now() - lastSoftHealAt > SOFT_HEAL_GRACE_MS) {
+                // First stall in a while → soft heal: back to the live edge.
+                lastSoftHealAt = Date.now()
+                lastProgressAt = Date.now()
+                toLiveEdge()
+            } else {
+                // Re-stalled right after a soft heal → pipeline is wedged;
+                // rebuild it. (retryNonce re-runs this effect with fresh state.)
+                forceReload()
+            }
+        }, WATCHDOG_MS)
+
+        // Waking a suspended tab: resume at the live edge instead of minutes
+        // behind (or frozen). The seekable fallback matters on iOS/Safari
+        // native HLS, where there is no hls.js instance.
+        const onVisible = () => {
+            if (document.hidden) return
+            const video = videoRef.current
+            if (!video || video.ended) return
+            const edge = liveEdge(video)
+            if (edge != null && edge - video.currentTime > 10) toLiveEdge()
+            else video.play().catch(() => {})
+        }
+        document.addEventListener("visibilitychange", onVisible)
+        return () => {
+            clearInterval(id)
+            document.removeEventListener("visibilitychange", onVisible)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [kind, src, retryNonce, reconnecting])
 
     // Track fullscreen so the button flips maximize ↔ minimize.
     useEffect(() => {
@@ -128,7 +242,23 @@ export default function StreamPlayer({
                     scheduleReconnect()
                     return
                 }
-                hls = new Hls({ liveDurationInfinity: true })
+                hls = new Hls({
+                    liveDurationInfinity: true,
+                    // A live stream runs for hours - hard-cap the buffers so
+                    // memory stays flat. The default back buffer would keep
+                    // the whole broadcast in RAM and slowly wedge the tab
+                    // (the "frozen until I reload the page" failure).
+                    backBufferLength: 30,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 120,
+                    // Be patient with a flaky court connection before
+                    // declaring a fatal error (the auto-reconnect still
+                    // catches anything beyond these).
+                    manifestLoadingMaxRetry: 6,
+                    levelLoadingMaxRetry: 6,
+                    fragLoadingMaxRetry: 6,
+                })
+                hlsRef.current = hls
                 hls.loadSource(src)
                 hls.attachMedia(videoRef.current)
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -143,6 +273,7 @@ export default function StreamPlayer({
                     recoveries += 1
                     if (recoveries > 3) {
                         try { hls.destroy() } catch { /* already gone */ }
+                        hlsRef.current = null
                         scheduleReconnect()
                         return
                     }
@@ -150,6 +281,7 @@ export default function StreamPlayer({
                     else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError()
                     else {
                         try { hls.destroy() } catch { /* already gone */ }
+                        hlsRef.current = null
                         scheduleReconnect()
                     }
                 })
@@ -158,6 +290,7 @@ export default function StreamPlayer({
         return () => {
             cancelled = true
             try { hls?.destroy() } catch { /* already gone */ }
+            hlsRef.current = null
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [kind, src, retryNonce])
@@ -310,6 +443,32 @@ export default function StreamPlayer({
                     </HStack>
                 )}
             </VStack>
+
+            {/* Manual refresh - rebuilds the player IN PLACE (new pipeline /
+                fresh iframe embed), so a wedged stream never needs a full
+                page reload. */}
+            <chakra.button
+                type="button"
+                onClick={forceReload}
+                aria-label="Osvježi prijenos"
+                title="Osvježi prijenos"
+                position="absolute"
+                top="2"
+                right="12"
+                display="inline-flex"
+                alignItems="center"
+                justifyContent="center"
+                w="8"
+                h="8"
+                rounded="full"
+                bg="blackAlpha.600"
+                color="white"
+                cursor="pointer"
+                _hover={{ bg: "blackAlpha.800" }}
+                transition="background 150ms"
+            >
+                <FiRefreshCw size={14} />
+            </chakra.button>
 
             {/* Fullscreen toggle - kept custom so iframe embeds get one too. */}
             <chakra.button

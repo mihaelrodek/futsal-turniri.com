@@ -43,6 +43,8 @@ import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, matchPhase } from "./liveMatch"
+import { useTeamColors, teamKit } from "./jersey"
+import type { TeamKit } from "../api/tournaments"
 import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
 import { LuRotateCcw, LuShuffle } from "react-icons/lu"
 import { useNavigate } from "react-router-dom"
@@ -110,7 +112,7 @@ const bracketTheme = createTheme({
         backgroundColor: "#e9f7ee", // pitch.50
         fontColor: "#0b6b3a",        // pitch.500
     },
-    connectorColor: "#cbd5e1",       // muted slate so connectors don't shout
+    connectorColor: "#c7d4c9",       // muted sage so connectors sit in the pitch palette
     connectorColorHighlight: "#0b6b3a",
     svgBackground: "transparent",
     fontFamily: "'Inter', system-ui, sans-serif",
@@ -761,6 +763,9 @@ export default function BracketTab({
 
     // Grab-to-pan the bracket viewport (mouse/pen; touch scrolls natively).
     const pan = useDragPan()
+
+    // Kit (dres + hlače) colours → the initials tile on every team row.
+    const kitColors = useTeamColors(uuid)
 
     // Share the bracket as a PNG image (native share sheet → WhatsApp etc. on
     // mobile; download fallback on desktop browsers without file sharing).
@@ -1470,6 +1475,7 @@ export default function BracketTab({
                         halfCount={halfCount}
                         onEdit={startEdit}
                         uuid={uuid}
+                        colors={kitColors}
                         onSave={saveResult}
                         onSavePenalties={saveResultWithPenalties}
                         onCancel={() => setEditingId(null)}
@@ -1644,11 +1650,12 @@ export default function BracketTab({
                                     halfCount={halfCount}
                                     onEdit={startEdit}
                                     uuid={uuid}
+                                    colors={kitColors}
                                     onSave={saveResult}
                                     onSavePenalties={saveResultWithPenalties}
                                     onCancel={() => setEditingId(null)}
                                     onFormChange={setForm}
-                                                onOpenLive={setLiveMatch}
+                                    onOpenLive={setLiveMatch}
                                     onOpenTimeline={setTimelineMatch}
                                 />
                             </Box>
@@ -1751,6 +1758,8 @@ type MatchCardProps = {
     halfCount?: number | null
     /** Tournament uuid - needed to persist the optional penalty shooter. */
     uuid: string
+    /** Kit colours per team ({teamId → {jersey, shorts}}) - the initials tile. */
+    colors: Record<string, TeamKit>
     onEdit: (m: BracketMatch) => void
     onSave: (m: BracketMatch) => void
     onSavePenalties: (m: BracketMatch, pen1: number, pen2: number) => void
@@ -1773,6 +1782,7 @@ function MatchCard({
     halfLengthMin = null,
     halfCount = null,
     uuid,
+    colors,
     onEdit,
     onSave,
     onSavePenalties,
@@ -1795,15 +1805,29 @@ function MatchCard({
             ? "yellow.emphasized"
             : "border"
 
+    // SafeFlow-style "mlabel": FINALE / ZA 3. MJESTO tag + kickoff, falling
+    // back to the round name when no kickoff is set yet.
+    const kick = m.kickoffAt ? fmtKick(m.kickoffAt) : null
+    const headerLabel =
+        [isFinal ? "FINALE" : isThirdPlace ? "ZA 3. MJESTO" : null, kick]
+            .filter(Boolean)
+            .join(" · ") || (STAGE_SHORT[m.stage] ?? "UTAKMICA")
+
     return (
         <Box
             bg="bg.panel"
-            borderWidth={isFinal || isLive ? "1.5px" : "1px"}
+            borderWidth={isLive ? "2px" : isFinal ? "1.5px" : "1px"}
             borderColor={accentBorder}
             rounded="xl"
             shadow={isFinal ? "md" : "xs"}
             overflow="hidden"
             cursor={editing ? "default" : "pointer"}
+            // Soft red halo while live - same convention as the MiniBracket.
+            css={
+                isLive
+                    ? { boxShadow: "0 0 0 3px color-mix(in srgb, var(--chakra-colors-accent-red) 18%, transparent)" }
+                    : undefined
+            }
             // Click anywhere on the card → a played (FINISHED) match opens the
             // full "detalji utakmice" page; anything else opens the read-only
             // match timeline (tijek) modal. Clicks on the action controls (start
@@ -1826,67 +1850,61 @@ function MatchCard({
                 }
             }}
         >
-            {/* Card top strip - final badge / live indicator */}
-            {(isFinal || isThirdPlace || isLive) && (
-                <Flex
-                    align="center"
-                    justify="space-between"
-                    px="3"
-                    py="1.5"
-                    bg={
-                        isLive
-                            ? "red.subtle"
-                            : isFinal
-                                ? "yellow.subtle"
-                                : "gray.subtle"
-                    }
-                    borderBottomWidth="1px"
-                    borderColor="border"
-                >
-                    <HStack gap="1.5">
-                        {isFinal && (
-                            <Text fontSize="sm" lineHeight="1">🏆</Text>
+            {/* Header strip - the SafeFlow "mlabel": tag + kickoff left, live
+                state right. Always shown so every card carries its context
+                (groups-style bg.surfaceTint strip on regular matches). */}
+            <Flex
+                align="center"
+                justify="space-between"
+                gap="2"
+                px="2.5"
+                py="1.5"
+                bg={isLive ? "red.subtle" : isFinal ? "yellow.subtle" : "bg.surfaceTint"}
+                borderBottomWidth="1px"
+                borderColor="border"
+            >
+                <HStack gap="1.5" minW="0">
+                    {isFinal ? (
+                        <Text fontSize="xs" lineHeight="1">🏆</Text>
+                    ) : !isLive && kick ? (
+                        <Box color="fg.muted" display="inline-flex" flexShrink={0}>
+                            <FiClock size={10} />
+                        </Box>
+                    ) : null}
+                    <Text
+                        fontFamily="mono"
+                        fontSize="9px"
+                        fontWeight={800}
+                        letterSpacing="0.08em"
+                        color={isLive ? "red.fg" : isFinal ? "yellow.fg" : "fg.muted"}
+                        truncate
+                    >
+                        {headerLabel}
+                    </Text>
+                </HStack>
+                {isLive && (
+                    <HStack gap="2" flexShrink={0}>
+                        {m.liveMode === "TIMER" && (
+                            <LiveClock
+                                liveStartedAt={m.liveStartedAt}
+                                firstHalfEndedAt={m.firstHalfEndedAt}
+                                secondHalfStartedAt={m.secondHalfStartedAt}
+                                livePausedAt={m.livePausedAt}
+                                halfLengthMin={halfLengthMin}
+                                halfCount={halfCount}
+                                showLabel
+                            />
                         )}
-                        <Text
-                            fontSize="2xs"
-                            fontWeight="bold"
-                            letterSpacing="wider"
-                            textTransform="uppercase"
-                            color={
-                                isLive
-                                    ? "red.fg"
-                                    : isFinal
-                                        ? "yellow.fg"
-                                        : "fg.muted"
-                            }
-                        >
-                            {isFinal ? "Finale" : isThirdPlace ? "Za 3. mjesto" : "Utakmica"}
-                        </Text>
+                        <LivePill />
                     </HStack>
-                    {isLive && (
-                        <HStack gap="2">
-                            <LivePill />
-                            {m.liveMode === "TIMER" && (
-                                <LiveClock
-                                    liveStartedAt={m.liveStartedAt}
-                                    firstHalfEndedAt={m.firstHalfEndedAt}
-                                    secondHalfStartedAt={m.secondHalfStartedAt}
-                                    livePausedAt={m.livePausedAt}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                    showLabel
-                                />
-                            )}
-                        </HStack>
-                    )}
-                </Flex>
-            )}
+                )}
+            </Flex>
 
             {/* Two team rows. The whole card opens the timeline (see the card
                 onClick above); while entering a result the score inputs sit in
                 each team row and the card's interactive-target guard ignores
                 their clicks. */}
-            <Box px="3" py="2.5">
+            <Box px="2.5" py="2">
                 <Box>
                     <TeamRow
                         name={m.team1Name}
@@ -1894,44 +1912,26 @@ function MatchCard({
                         pen={m.penalties1}
                         winner={w1}
                         loser={w2}
+                        live={isLive}
+                        kit={teamKit(colors, m.team1Id)}
                         edit={editing
                             ? { value: form.s1, onChange: (v) => onFormChange((f) => ({ ...f, s1: v })) }
                             : undefined}
                     />
-                    <Box h="1px" bg="border" my="2" />
+                    <Box h="1px" bg="border" my="1.5" />
                     <TeamRow
                         name={m.team2Name}
                         score={m.score2}
                         pen={m.penalties2}
                         winner={w2}
                         loser={w1}
+                        live={isLive}
+                        kit={teamKit(colors, m.team2Id)}
                         edit={editing
                             ? { value: form.s2, onChange: (v) => onFormChange((f) => ({ ...f, s2: v })) }
                             : undefined}
                     />
                 </Box>
-
-                {/* Scheduled kickoff - when this match is set to be played. */}
-                {m.kickoffAt && !editing && (
-                    <HStack
-                        gap="1.5"
-                        mt="2"
-                        justify="center"
-                        fontSize="2xs"
-                        fontWeight="600"
-                        color="fg.muted"
-                        fontFamily="mono"
-                    >
-                        <FiClock size={11} />
-                        <Box>
-                            {(() => {
-                                const d = new Date(m.kickoffAt)
-                                const p = (n: number) => String(n).padStart(2, "0")
-                                return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-                            })()}
-                        </Box>
-                    </HStack>
-                )}
 
                 {editing ? (
                     <VStack align="stretch" gap="2" mt="3">
@@ -2027,15 +2027,92 @@ function MatchCard({
 }
 
 /* ── TeamRow ────────────────────────────────────────────────────────────────
-   One team line inside a match card. The winner's row is emphasised (bold,
-   brand colour, subtle highlighted background); the loser's row is muted.
+   One team line inside a match card, SafeFlow-style: initials tile in the
+   team's kit colour · name · score. The winner's row gets the groups' green
+   tint + bold; the loser is muted; a live score reads red; TBD is italic.
    ────────────────────────────────────────────────────────────────────────── */
+
+/** Compact kickoff for the card header strip: "11.07. 19:30". */
+function fmtKick(iso: string): string {
+    const d = new Date(iso)
+    const p = (n: number) => String(n).padStart(2, "0")
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** Round name fallback for a card with no kickoff yet (mono uppercase). */
+const STAGE_SHORT: Record<string, string> = {
+    ROUND_OF_32: "1/16 FINALA",
+    ROUND_OF_16: "OSMINA FINALA",
+    QUARTERFINAL: "ČETVRTFINALE",
+    SEMIFINAL: "POLUFINALE",
+    FINAL: "FINALE",
+    THIRD_PLACE: "ZA 3. MJESTO",
+}
+
+/** Two-letter initials: first letters of the first two words, else the first
+ *  two characters. "?" for a TBD slot. */
+function teamInitials(name: string | null): string {
+    if (!name) return "?"
+    const words = name.trim().split(/\s+/).filter((w) => w.length > 0)
+    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
+    return name.trim().slice(0, 2).toUpperCase()
+}
+
+/** Black-or-white ink for a "#rrggbb" background (perceived luminance). */
+function contrastInk(hex: string): string {
+    const r = parseInt(hex.slice(1, 3), 16) || 0
+    const g = parseInt(hex.slice(3, 5), 16) || 0
+    const b = parseInt(hex.slice(5, 7), 16) || 0
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111418" : "#ffffff"
+}
+
+/** SafeFlow-style ".av" tile: team initials on the kit colour (jersey over
+ *  shorts when both are set). Neutral tile when no colour / TBD. */
+function TeamTile({ name, kit }: { name: string | null; kit?: TeamKit }) {
+    const jersey = kit?.jersey ?? null
+    const shorts = kit?.shorts ?? null
+    const base = jersey ?? shorts
+    return (
+        <Flex
+            w="22px"
+            h="22px"
+            rounded="md"
+            align="center"
+            justify="center"
+            flexShrink={0}
+            fontFamily="heading"
+            fontSize="9px"
+            fontWeight={800}
+            lineHeight="1"
+            color={base ? contrastInk(base) : "fg.muted"}
+            bg={base ? undefined : "bg.surfaceTint"}
+            borderWidth="1px"
+            borderColor={base ? "blackAlpha.300" : "border"}
+            css={
+                base
+                    ? {
+                          background:
+                              jersey && shorts
+                                  ? `linear-gradient(180deg, ${jersey} 62%, ${shorts} 62%)`
+                                  : base,
+                      }
+                    : undefined
+            }
+            aria-hidden
+        >
+            {teamInitials(name)}
+        </Flex>
+    )
+}
+
 function TeamRow({
     name,
     score,
     pen,
     winner,
     loser,
+    live,
+    kit,
     edit,
 }: {
     name: string | null
@@ -2043,37 +2120,37 @@ function TeamRow({
     pen: number | null
     winner: boolean
     loser: boolean
+    /** Score reads red while the match is live (groups' live convention). */
+    live?: boolean
+    /** Team kit colours for the initials tile. */
+    kit?: TeamKit
     /** When set, the score slot becomes an input (entering a result) - so the
      *  score is typed right where the "–" sits, not in a separate row. */
     edit?: { value: string; onChange: (v: string) => void }
 }) {
-    const nameColor = !name
-        ? "fg.subtle"
-        : winner
-            ? "brand.fg"
-            : loser
-                ? "fg.muted"
-                : "fg"
     return (
         <HStack
             justify="space-between"
             gap="2"
-            mx="-1.5"
-            px="1.5"
-            py="0.5"
+            mx="-1"
+            px="1"
+            py="1"
             rounded="md"
-            bg={winner ? "brand.subtle" : "transparent"}
+            bg={winner ? "green.subtle" : "transparent"}
         >
-            <Text
-                fontSize="sm"
-                fontWeight={winner ? "bold" : "medium"}
-                color={nameColor}
-                lineClamp="2"
-                flex="1"
-                minW="0"
-            >
-                {name ?? "-"}
-            </Text>
+            <HStack gap="2" minW="0" flex="1">
+                <TeamTile name={name} kit={kit} />
+                <Text
+                    fontSize="13px"
+                    fontWeight={winner ? 800 : 600}
+                    color={!name ? "fg.muted" : loser ? "fg.muted" : "fg.ink"}
+                    fontStyle={name ? undefined : "italic"}
+                    lineClamp="2"
+                    minW="0"
+                >
+                    {name ?? "TBD"}
+                </Text>
+            </HStack>
             {edit ? (
                 <Input
                     size="xs"
@@ -2090,9 +2167,10 @@ function TeamRow({
             ) : (
                 <HStack gap="1" flexShrink={0} align="baseline">
                     <Text
+                        fontFamily="mono"
                         fontSize="sm"
-                        fontWeight={winner ? "bold" : "semibold"}
-                        color={winner ? "brand.fg" : loser ? "fg.muted" : "fg"}
+                        fontWeight={winner ? 800 : 600}
+                        color={live ? "red.fg" : winner ? "brand.fg" : loser ? "fg.muted" : "fg.ink"}
                         fontVariantNumeric="tabular-nums"
                         minW="5"
                         textAlign="right"
@@ -2101,8 +2179,9 @@ function TeamRow({
                     </Text>
                     {pen != null && (
                         <Text
+                            fontFamily="mono"
                             fontSize="2xs"
-                            fontWeight={winner ? "bold" : "medium"}
+                            fontWeight={winner ? 800 : 600}
                             color={winner ? "brand.fg" : "fg.muted"}
                             fontVariantNumeric="tabular-nums"
                         >
