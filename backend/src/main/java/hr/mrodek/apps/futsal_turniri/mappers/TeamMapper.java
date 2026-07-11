@@ -51,6 +51,10 @@ public interface TeamMapper {
             @Mapping(target = "pendingApproval",     ignore = true),
             @Mapping(target = "claimToken",          ignore = true),
             @Mapping(target = "coSubmittedByUid",    ignore = true),
+            // Jersey colour is set via its own endpoint; the teams-list
+            // editor doesn't send it, so auto-mapping would null it out
+            // on every replaceTeams save.
+            @Mapping(target = "jerseyColor",         ignore = true),
             @Mapping(target = "createdAt",           ignore = true),
             @Mapping(target = "updatedAt",           ignore = true)
     })
@@ -88,7 +92,8 @@ public interface TeamMapper {
                 e.getCoSubmittedByUid(),
                 co == null ? null : co.getSlug(),
                 co == null ? null : co.getDisplayName(),
-                includeClaimToken ? e.getClaimToken() : null
+                includeClaimToken ? e.getClaimToken() : null,
+                e.getJerseyColor()
         );
     }
 

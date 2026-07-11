@@ -445,7 +445,7 @@ function MatchRow({
                         textAlign="right"
                         lineClamp="3"
                     >
-                        {match.team1Name ?? "-"}
+                        {match.team1Name ?? (isFinished ? "-" : "TBD")}
                     </Text>
                     <Box
                         fontFamily="mono"
@@ -474,7 +474,7 @@ function MatchRow({
                         textAlign="left"
                         lineClamp="3"
                     >
-                        {match.team2Name ?? "-"}
+                        {match.team2Name ?? (isFinished ? "-" : "TBD")}
                     </Text>
                 </Box>
             </VStack>

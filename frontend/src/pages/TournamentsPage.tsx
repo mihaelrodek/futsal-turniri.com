@@ -57,6 +57,15 @@ import {
 } from "../ui/pitch"
 import { clockState, matchPhase } from "../components/liveMatch"
 import HelpFab from "../components/HelpFab"
+import StreamHero from "../components/StreamHero"
+import TheaterMode from "../components/TheaterMode"
+import StreamPausedBanner from "../components/StreamPausedBanner"
+import {
+    fetchStreamBanner,
+    readStreamBannerHint,
+    writeStreamBannerHint,
+    type StreamBanner,
+} from "../api/streamBanner"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Turniri (listing) - "Pitch" theme.
@@ -1827,13 +1836,16 @@ export default function TournamentsPage() {
     const [finished, setFinished] = useState<TournamentCardWithUuid[]>(cachedFinished ?? [])
     const [finishedTotal, setFinishedTotal] = useState(cachedFinishedTotal ?? 0)
     const [loadingMoreFinished, setLoadingMoreFinished] = useState(false)
-    // Seed the featured-match hero from the shared live cache (warmed by the
-    // nav-bar live badge, /uzivo, and the tournament detail page) so on a return
-    // visit the hero paints together with the (also-cached) list instead of
-    // popping in a beat later after its own network round-trip.
-    const [liveTop, setLiveTop] = useState<LiveMatch | null>(
-        () => pickFeaturedFirst(queryClient.getQueryData<LiveMatch[]>(qk.liveMatches) ?? [])[0] ?? null,
+    // Seed the live list from the shared cache (warmed by the nav-bar live
+    // badge, /uzivo, and the tournament detail page) so on a return visit the
+    // hero paints together with the (also-cached) list instead of popping in a
+    // beat later after its own network round-trip. The featured-match hero is
+    // derived from it; when a stream is linked to a tournament we instead pick
+    // that tournament's live match (see streamMatch below).
+    const [liveList, setLiveList] = useState<LiveMatch[]>(
+        () => queryClient.getQueryData<LiveMatch[]>(qk.liveMatches) ?? [],
     )
+    const liveTop = useMemo(() => pickFeaturedFirst(liveList)[0] ?? null, [liveList])
 
     // ---- Search + filters ----
     const [filtersOpen, setFiltersOpen] = useState(false)
@@ -1884,7 +1896,7 @@ export default function TournamentsPage() {
             // Share the full live list with the /uzivo page's cache so opening
             // it from here paints instantly.
             queryClient.setQueryData(qk.liveMatches, live)
-            setLiveTop(pickFeaturedFirst(live)[0] ?? null)
+            setLiveList(live)
         } catch {
             /* keep the last value; the poll / socket will retry */
         }
@@ -1895,6 +1907,47 @@ export default function TournamentsPage() {
     // shows on the home hero immediately instead of on the next reload.
     usePolling(loadLive, 15_000)
     useLiveSocket(() => { void loadLive() })
+
+    // ── Site-wide live-stream banner (Veo camera) ── admin-controlled.
+    // While switched on, the video player takes over the whole hero slot
+    // (promo slides + the live scoreboard). Polled while the tab is visible
+    // (and re-checked on focus) so flipping the switch in the dashboard
+    // shows/hides the banner within seconds - the endpoint itself is
+    // Cache-Control: no-store, so no browser/SW copy can ever go stale.
+    // Seed from the synchronous localStorage hint so a reload paints the right
+    // hero (stream / paused / promo) on the FIRST frame instead of flashing the
+    // green promo hero while the (no-store, polled) banner fetch resolves.
+    const [streamBanner, setStreamBanner] = useState<StreamBanner | null>(
+        () => readStreamBannerHint(),
+    )
+    usePolling(() => {
+        fetchStreamBanner()
+            .then((b) => {
+                writeStreamBannerHint(b)
+                setStreamBanner(b)
+            })
+            .catch(() => { /* keep last state; next tick retries */ })
+    }, 30_000)
+    const streamBannerLive = !!streamBanner?.live && !!streamBanner?.url
+
+    // Which live match drives the stream hero's side panels (tijek utakmice +
+    // group table). When the stream is linked to a tournament, follow THAT
+    // tournament's live match (null when it isn't playing anything right now -
+    // the panels then show their empty state while the video keeps playing).
+    // Unlinked, fall back to the globally-featured live match.
+    const streamMatch = useMemo(() => {
+        const linked = streamBanner?.tournamentUuid
+        if (!linked) return liveTop
+        const inTournament = liveList.filter((m) => m.tournamentUuid === linked)
+        return pickFeaturedFirst(inTournament)[0] ?? null
+    }, [streamBanner?.tournamentUuid, liveList, liveTop])
+
+    // "Turnir mode" - distraction-free theater view of the streamed tournament.
+    const [theaterOpen, setTheaterOpen] = useState(false)
+    // Never leave the theater open once the stream is turned off.
+    useEffect(() => {
+        if (!streamBannerLive) setTheaterOpen(false)
+    }, [streamBannerLive])
 
     useEffect(() => {
         let cancelled = false
@@ -2015,7 +2068,31 @@ export default function TournamentsPage() {
     return (
         <VStack align="stretch" gap={{ base: 4, md: 7 }}>
             <HelpFab />
-            <HomeHero match={liveTop} />
+            {theaterOpen && streamBannerLive && (
+                <TheaterMode
+                    url={streamBanner!.url!}
+                    match={streamMatch}
+                    onClose={() => setTheaterOpen(false)}
+                />
+            )}
+            {/* Camera on → the stream hero takes over: on desktop a compact
+                three-column row (player · tijek utakmice · tablica skupine)
+                so the search + filters stay visible right below; on mobile
+                just the full-width player. Otherwise the promo/live carousel. */}
+            {streamBannerLive ? (
+                <StreamHero
+                    url={streamBanner!.url!}
+                    match={streamMatch}
+                    tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
+                    onEnterTheater={() => setTheaterOpen(true)}
+                />
+            ) : streamBanner?.url ? (
+                // Stream configured but paused (admin stopped it / between
+                // sessions) → sponsor banner instead of the promo carousel.
+                <StreamPausedBanner />
+            ) : (
+                <HomeHero match={liveTop} />
+            )}
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}
             <Box>

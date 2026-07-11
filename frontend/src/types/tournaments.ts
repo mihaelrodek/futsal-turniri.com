@@ -2,6 +2,15 @@ export type RewardType = "FIXED" | "PERCENTAGE";
 export type TournamentStatus = "DRAFT" | "STARTED" | "FINISHED";
 export type TournamentFormat = "GROUPS_KNOCKOUT" | "KNOCKOUT_ONLY";
 export type BracketFill = "BYES" | "WILDCARDS";
+/** Which goals count toward the best-scorer race (ranking + award
+ *  suggestion). KNOCKOUT (default) = group-stage goals don't count. */
+export type ScorerScope =
+    | "ALL"
+    | "KNOCKOUT"
+    | "ROUND_OF_32"
+    | "ROUND_OF_16"
+    | "QUARTERFINAL"
+    | "SEMIFINAL";
 
 export type TournamentCard = {
     id: number;                // numeric PK
@@ -111,6 +120,10 @@ export type TournamentDetails = {
     /** Admin-set "not publicly visible". Only the creator/admin ever see a
      *  hidden tournament - the details page shows a banner + greyed page. */
     hidden?: boolean;
+
+    /** Which goals count toward the best-scorer race. Default KNOCKOUT
+     *  (group-stage goals excluded); set via PUT /{uuid}/scorer-scope. */
+    scorerScope?: ScorerScope | null;
 };
 
 export type CreateTournamentPayload = {

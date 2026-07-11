@@ -91,5 +91,9 @@ public record TournamentDetailsResponse(
         // Admin-set "not publicly visible". Only creator/admin ever receive a
         // hidden tournament (public readers get 404) - drives the greyed-out
         // treatment + banner on the details page and the admin toggle label.
-        boolean hidden
+        boolean hidden,
+
+        // Which goals count toward the best-scorer race (ScorerScope name):
+        // ALL | KNOCKOUT | ROUND_OF_32 | ROUND_OF_16 | QUARTERFINAL | SEMIFINAL.
+        String scorerScope
 ) {}

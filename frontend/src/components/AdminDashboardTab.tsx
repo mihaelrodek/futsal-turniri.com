@@ -7,13 +7,14 @@ import {
     Dialog,
     HStack,
     Input,
+    NativeSelect,
     Portal,
     Spinner,
     Stack,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiRepeat, FiSearch, FiUserPlus } from "react-icons/fi"
+import { FiSearch, FiUserPlus } from "react-icons/fi"
 import {
     adminAttachTeam,
     adminDeleteTournament,
@@ -23,7 +24,9 @@ import {
     adminResetTournament,
     adminSearchUsers,
     adminSetTournamentStatus,
-    adminTransferTournament,
+    adminListEditors,
+    adminAddEditor,
+    adminRemoveEditor,
     adminUnfeatureTournament,
     type AdminTeamDto,
     type AdminTournamentDto,
@@ -36,7 +39,9 @@ import {
     FiStar,
     FiStopCircle,
     FiTrash2,
+    FiVideo,
 } from "react-icons/fi"
+import { fetchStreamBanner, setStreamBanner } from "../api/streamBanner"
 
 /**
  * Admin-only "Dashboard" tab on the profile page. Two parallel flows
@@ -68,6 +73,202 @@ import {
  * context - the dashboard is a single self-contained screen that
  * doesn't share state with anything else.
  */
+/* ─────────────── Live-stream banner (home page) ───────────────
+   Admin pastes the court-camera url (Veo, YouTube, HLS .m3u8, MP4 or an
+   embeddable page) and flips the switch; while on, the HOME page hero
+   (promo slides + "uživo" scoreboard) is replaced by the video player.
+   The public read is Cache-Control: no-store and the home page polls it,
+   so the banner appears/disappears within seconds of the change.
+
+   Linking a tournament makes the home page follow THAT tournament's live
+   match (its "tijek utakmice" + group table) next to the video, instead of
+   the globally-featured live match. */
+function StreamBannerCard({ tournaments }: { tournaments: AdminTournamentDto[] }) {
+    const [url, setUrl] = useState("")
+    const [live, setLive] = useState(false)
+    const [tournamentUuid, setTournamentUuid] = useState("")
+    // The url currently PERSISTED on the server (vs `url` which is the input).
+    // Drives whether the paused-banner state exists → whether "Ukloni" shows.
+    const [savedUrl, setSavedUrl] = useState("")
+    const [loaded, setLoaded] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [err, setErr] = useState<string | null>(null)
+
+    useEffect(() => {
+        let cancelled = false
+        fetchStreamBanner()
+            .then((b) => {
+                if (!cancelled) {
+                    setUrl(b.url ?? "")
+                    setLive(b.live)
+                    setTournamentUuid(b.tournamentUuid ?? "")
+                    setSavedUrl(b.url ?? "")
+                }
+            })
+            .catch(() => { /* toast via interceptor; card stays editable */ })
+            .finally(() => { if (!cancelled) setLoaded(true) })
+        return () => { cancelled = true }
+    }, [])
+
+    async function save(nextLive: boolean) {
+        const trimmed = url.trim()
+        if (nextLive && !trimmed) {
+            setErr("Zalijepi URL prijenosa prije pokretanja.")
+            return
+        }
+        if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+            setErr("URL mora počinjati s http:// ili https://")
+            return
+        }
+        setErr(null)
+        setBusy(true)
+        try {
+            const b = await setStreamBanner(trimmed || null, nextLive, tournamentUuid || null)
+            setUrl(b.url ?? "")
+            setLive(b.live)
+            setTournamentUuid(b.tournamentUuid ?? "")
+            setSavedUrl(b.url ?? "")
+        } catch {
+            // Error toasted by the http interceptor.
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    // Fully remove the stream (clears the url) → the home page drops the
+    // paused banner and shows the normal promo/live hero again.
+    async function clear() {
+        setErr(null)
+        setBusy(true)
+        try {
+            const b = await setStreamBanner(null, false, tournamentUuid || null)
+            setUrl(b.url ?? "")
+            setLive(b.live)
+            setSavedUrl(b.url ?? "")
+        } catch {
+            // Error toasted by the http interceptor.
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "4", md: "6" }}>
+                <Stack gap="3">
+                    <HStack justify="space-between" align="flex-start" wrap="wrap" gap="2">
+                        <Box>
+                            <HStack gap="2">
+                                <Box color="fg.muted" display="inline-flex"><FiVideo size={16} /></Box>
+                                <Text fontSize="lg" fontWeight="semibold">
+                                    Prijenos uživo - banner na glavnoj
+                                </Text>
+                            </HStack>
+                            <Text fontSize="sm" color="fg.muted" mt="1">
+                                Dok je prijenos pokrenut, video player (Veo kamera) zamjenjuje
+                                promo bannere i "uživo" slajd na vrhu glavne stranice. Podržano:
+                                YouTube link, HLS .m3u8, MP4 ili embed stranica.
+                            </Text>
+                        </Box>
+                        <Badge
+                            colorPalette={live ? "red" : savedUrl ? "orange" : "gray"}
+                            variant={live ? "solid" : "surface"}
+                            rounded="full"
+                            px="2.5"
+                        >
+                            {live ? "● UŽIVO" : savedUrl ? "Pauzirano" : "Isključen"}
+                        </Badge>
+                    </HStack>
+
+                    <Box>
+                        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
+                            URL prijenosa
+                        </Text>
+                        <Input
+                            placeholder="https://…"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            disabled={busy || !loaded}
+                        />
+                    </Box>
+
+                    {/* Link the stream to a tournament → the home page shows
+                        that tournament's live match + group table under it. */}
+                    <Box>
+                        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
+                            Poveži s turnirom (za tijek utakmice + tablicu skupine)
+                        </Text>
+                        <NativeSelect.Root size="sm" disabled={busy || !loaded}>
+                            <NativeSelect.Field
+                                value={tournamentUuid}
+                                onChange={(e) => setTournamentUuid(e.currentTarget.value)}
+                            >
+                                <option value="">Bez povezanog turnira</option>
+                                {tournaments.map((t) => (
+                                    <option key={t.id} value={t.uuid ?? ""}>
+                                        {t.name}
+                                        {t.location ? ` · ${t.location}` : ""}
+                                    </option>
+                                ))}
+                            </NativeSelect.Field>
+                            <NativeSelect.Indicator />
+                        </NativeSelect.Root>
+                        <Text fontSize="xs" color="fg.muted" mt="1.5" lineHeight="1.4">
+                            Kad je turnir povezan i na njemu se igra utakmica uživo, ona se
+                            automatski prikazuje pored prijenosa - zajedno s tablicom njezine
+                            skupine. Bez povezanog turnira prikazuje se trenutno istaknuta
+                            utakmica.
+                        </Text>
+                    </Box>
+
+                    {err && (
+                        <Text fontSize="xs" color="red.fg" fontWeight={600}>
+                            {err}
+                        </Text>
+                    )}
+
+                    <HStack justify="flex-end" gap="2" wrap="wrap">
+                        {/* Fully remove the stream - only when one is persisted
+                            and not currently live (i.e. the paused-banner
+                            state). Returns the home page to its normal hero. */}
+                        {!live && !!savedUrl && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                colorPalette="gray"
+                                onClick={clear}
+                                loading={busy}
+                            >
+                                <FiTrash2 /> Ukloni prijenos
+                            </Button>
+                        )}
+                        {live && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                colorPalette="red"
+                                onClick={() => save(false)}
+                                loading={busy}
+                            >
+                                <FiStopCircle /> Zaustavi prijenos
+                            </Button>
+                        )}
+                        <Button
+                            size="sm"
+                            colorPalette="green"
+                            onClick={() => save(true)}
+                            loading={busy}
+                            disabled={!loaded || !url.trim()}
+                        >
+                            <FiPlay /> {live ? "Spremi promjene" : (savedUrl ? "Nastavi prijenos" : "Pokreni prijenos")}
+                        </Button>
+                    </HStack>
+                </Stack>
+            </Card.Body>
+        </Card.Root>
+    )
+}
+
 export default function AdminDashboardTab() {
     /* ─────────────── Tournament list + selection ─────────────── */
 
@@ -161,60 +362,83 @@ export default function AdminDashboardTab() {
         setUserSearch("")
     }
 
-    /* ─────────────── Transfer-tournament dialog ─────────────── */
+    /* ─────────────── Tournament editors (rights) ─────────────── */
 
-    // Kept in parallel to the team-attach user picker rather than shared
-    // because the two flows might both be open in quick succession and
-    // we don't want a stale search list carrying over between them.
-    const [transferDialogOpen, setTransferDialogOpen] = useState(false)
-    const [transferUserSearch, setTransferUserSearch] = useState("")
-    const [transferUsers, setTransferUsers] = useState<AdminUserDto[]>([])
-    const [loadingTransferUsers, setLoadingTransferUsers] = useState(false)
-    const [transferring, setTransferring] = useState<string | null>(null) // userUid in flight
+    // Current editors (co-owners) of the selected tournament.
+    const [editors, setEditors] = useState<AdminUserDto[]>([])
+    const [loadingEditors, setLoadingEditors] = useState(false)
 
     useEffect(() => {
-        if (!transferDialogOpen) return
+        if (selectedTournamentId == null) { setEditors([]); return }
         let cancelled = false
-        setLoadingTransferUsers(true)
+        setLoadingEditors(true)
+        adminListEditors(selectedTournamentId)
+            .then((rows) => { if (!cancelled) setEditors(rows) })
+            .catch(() => { /* handled by toaster */ })
+            .finally(() => { if (!cancelled) setLoadingEditors(false) })
+        return () => { cancelled = true }
+    }, [selectedTournamentId])
+
+    // "Grant rights" user picker. Multi-add: stays open so several people can
+    // be granted in a row. Kept parallel to the team-attach picker so a stale
+    // search list never carries over between the two flows.
+    const [editorDialogOpen, setEditorDialogOpen] = useState(false)
+    const [editorUserSearch, setEditorUserSearch] = useState("")
+    const [editorUsers, setEditorUsers] = useState<AdminUserDto[]>([])
+    const [loadingEditorUsers, setLoadingEditorUsers] = useState(false)
+    const [grantingUid, setGrantingUid] = useState<string | null>(null)
+    const [removingUid, setRemovingUid] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (!editorDialogOpen) return
+        let cancelled = false
+        setLoadingEditorUsers(true)
         const handle = setTimeout(() => {
-            adminSearchUsers(transferUserSearch)
-                .then((rows) => { if (!cancelled) setTransferUsers(rows) })
+            adminSearchUsers(editorUserSearch)
+                .then((rows) => { if (!cancelled) setEditorUsers(rows) })
                 .catch(() => { /* handled by toaster */ })
-                .finally(() => { if (!cancelled) setLoadingTransferUsers(false) })
+                .finally(() => { if (!cancelled) setLoadingEditorUsers(false) })
         }, 200)
         return () => {
             cancelled = true
             clearTimeout(handle)
         }
-    }, [transferUserSearch, transferDialogOpen])
+    }, [editorUserSearch, editorDialogOpen])
 
-    function openTransferDialog() {
-        setTransferDialogOpen(true)
-        setTransferUserSearch("")
-        setTransferUsers([])
+    function openEditorDialog() {
+        setEditorDialogOpen(true)
+        setEditorUserSearch("")
+        setEditorUsers([])
     }
-    function closeTransferDialog() {
-        setTransferDialogOpen(false)
-        setTransferUsers([])
-        setTransferUserSearch("")
+    function closeEditorDialog() {
+        setEditorDialogOpen(false)
+        setEditorUsers([])
+        setEditorUserSearch("")
     }
 
-    async function handleTransfer(user: AdminUserDto) {
+    async function handleGrantEditor(user: AdminUserDto) {
         if (selectedTournament == null) return
         try {
-            setTransferring(user.userUid)
-            const result = await adminTransferTournament(selectedTournament.id, user.userUid)
-            // Patch the tournament list in place - the picker rows show the
-            // owner and we want the new value to appear without a full
-            // refetch (cheaper + avoids losing the user's scroll position).
-            setTournaments((prev) => prev?.map((t) =>
-                t.id === selectedTournament.id
-                    ? { ...t, createdByUid: result.userUid, createdByName: result.displayName }
-                    : t,
-            ) ?? null)
-            closeTransferDialog()
+            setGrantingUid(user.userUid)
+            const added = await adminAddEditor(selectedTournament.id, user.userUid)
+            // Append if not already granted (grant is idempotent). Dialog stays
+            // open so the admin can grant more people in one go.
+            setEditors((prev) =>
+                prev.some((e) => e.userUid === added.userUid) ? prev : [...prev, added],
+            )
         } finally {
-            setTransferring(null)
+            setGrantingUid(null)
+        }
+    }
+
+    async function handleRemoveEditor(userUid: string) {
+        if (selectedTournament == null) return
+        try {
+            setRemovingUid(userUid)
+            await adminRemoveEditor(selectedTournament.id, userUid)
+            setEditors((prev) => prev.filter((e) => e.userUid !== userUid))
+        } finally {
+            setRemovingUid(null)
         }
     }
 
@@ -243,6 +467,9 @@ export default function AdminDashboardTab() {
 
     return (
         <VStack align="stretch" gap="4">
+            {/* Site-wide live-stream banner control (home page hero). */}
+            <StreamBannerCard tournaments={tournaments ?? []} />
+
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
@@ -397,15 +624,16 @@ export default function AdminDashboardTab() {
                         <Stack gap="3">
                             <Box>
                                 <Text fontSize="md" fontWeight="semibold">
-                                    Vlasništvo turnira
+                                    Prava na turnir
                                 </Text>
                                 <Text fontSize="sm" color="fg.muted">
-                                    Prenesi turnir drugom registriranom korisniku - postaje vlasnik
-                                    i može uređivati detalje, upravljati ekipama, generirati kola,
-                                    postavljati pobjednike itd.
+                                    Dodijeli pravo upravljanja turnirom (detalji, ekipe, raspored,
+                                    Zapisnik…) jednoj ili više osoba - bez prijenosa vlasništva.
+                                    Vlasnik ostaje isti.
                                 </Text>
                             </Box>
 
+                            {/* Owner (read-only). */}
                             <Box
                                 p="3"
                                 bg="bg.muted"
@@ -413,17 +641,63 @@ export default function AdminDashboardTab() {
                                 borderWidth="1px"
                                 borderColor="border.subtle"
                             >
-                                <Text fontSize="xs" color="fg.muted">TRENUTNI VLASNIK</Text>
+                                <Text fontSize="xs" color="fg.muted">VLASNIK</Text>
                                 <Text fontSize="sm" fontWeight="medium">
                                     {selectedTournament.createdByName
                                         || (selectedTournament.createdByUid
                                             ? "(bez imena)"
                                             : "- (legacy / nema vlasnika)")}
                                 </Text>
-                                {selectedTournament.createdByUid && (
-                                    <Text fontSize="xs" color="fg.muted" mt="1">
-                                        UID: {selectedTournament.createdByUid}
+                            </Box>
+
+                            {/* Editors (co-owners) with per-row revoke. */}
+                            <Box>
+                                <Text fontSize="xs" color="fg.muted" mb="1.5">
+                                    OSOBE S PRAVIMA ({editors.length})
+                                </Text>
+                                {loadingEditors ? (
+                                    <HStack gap="2" color="fg.muted">
+                                        <Spinner size="sm" />
+                                        <Text fontSize="sm">Učitavanje…</Text>
+                                    </HStack>
+                                ) : editors.length === 0 ? (
+                                    <Text fontSize="sm" color="fg.muted">
+                                        Nitko još nema dodatna prava.
                                     </Text>
+                                ) : (
+                                    <Stack gap="1.5">
+                                        {editors.map((e) => (
+                                            <HStack
+                                                key={e.userUid}
+                                                justify="space-between"
+                                                gap="2"
+                                                p="2"
+                                                bg="bg.subtle"
+                                                rounded="md"
+                                                borderWidth="1px"
+                                                borderColor="border.subtle"
+                                            >
+                                                <Box minW="0">
+                                                    <Text fontSize="sm" fontWeight="medium" truncate>
+                                                        {e.displayName || "(bez imena)"}
+                                                    </Text>
+                                                    <Text fontSize="xs" color="fg.muted" truncate>
+                                                        {e.slug ? `@${e.slug}` : e.userUid}
+                                                    </Text>
+                                                </Box>
+                                                <Button
+                                                    size="xs"
+                                                    variant="ghost"
+                                                    colorPalette="red"
+                                                    flexShrink={0}
+                                                    loading={removingUid === e.userUid}
+                                                    onClick={() => handleRemoveEditor(e.userUid)}
+                                                >
+                                                    <FiTrash2 /> Ukloni
+                                                </Button>
+                                            </HStack>
+                                        ))}
+                                    </Stack>
                                 )}
                             </Box>
 
@@ -432,9 +706,9 @@ export default function AdminDashboardTab() {
                                     size="sm"
                                     variant="solid"
                                     colorPalette="pitch"
-                                    onClick={openTransferDialog}
+                                    onClick={openEditorDialog}
                                 >
-                                    <FiRepeat /> Prenesi vlasništvo
+                                    <FiUserPlus /> Daj prava osobi
                                 </Button>
                             </HStack>
                         </Stack>
@@ -570,12 +844,13 @@ export default function AdminDashboardTab() {
                 </Portal>
             </Dialog.Root>
 
-            {/* Tournament-transfer dialog. Only rendered when the admin has
-                explicitly opened it - keeps the search effect inert
-                otherwise (the effect short-circuits on !transferDialogOpen). */}
+            {/* "Daj prava" dialog - grant editor rights to one or more people.
+                Stays open after each grant so several can be added in a row.
+                Only rendered when opened (the search effect short-circuits on
+                !editorDialogOpen). */}
             <Dialog.Root
-                open={transferDialogOpen}
-                onOpenChange={(e) => { if (!e.open) closeTransferDialog() }}
+                open={editorDialogOpen}
+                onOpenChange={(e) => { if (!e.open) closeEditorDialog() }}
                 placement="center"
                 motionPreset="slide-in-bottom"
             >
@@ -585,7 +860,7 @@ export default function AdminDashboardTab() {
                         <Dialog.Content maxW={{ base: "92%", md: "md" }}>
                             <Dialog.Header>
                                 <Dialog.Title>
-                                    Prenesi vlasništvo turnira
+                                    Daj prava na turnir
                                 </Dialog.Title>
                             </Dialog.Header>
                             <Dialog.Body>
@@ -603,11 +878,8 @@ export default function AdminDashboardTab() {
                                                 {selectedTournament.name}
                                             </Text>
                                             <Text fontSize="xs" color="fg.muted" mt="1">
-                                                Trenutni vlasnik:{" "}
-                                                {selectedTournament.createdByName
-                                                    || (selectedTournament.createdByUid
-                                                        ? "(bez imena)"
-                                                        : "- (legacy)")}
+                                                Osoba dobiva pravo upravljanja, vlasništvo se ne mijenja.
+                                                Možeš dodati više osoba.
                                             </Text>
                                         </Box>
                                     )}
@@ -620,8 +892,8 @@ export default function AdminDashboardTab() {
                                         <Input
                                             pl="9"
                                             placeholder="Pretraži po imenu i prezimenu…"
-                                            value={transferUserSearch}
-                                            onChange={(e) => setTransferUserSearch(e.target.value)}
+                                            value={editorUserSearch}
+                                            onChange={(e) => setEditorUserSearch(e.target.value)}
                                             autoFocus
                                         />
                                     </Box>
@@ -633,17 +905,19 @@ export default function AdminDashboardTab() {
                                         borderColor="border.subtle"
                                         rounded="md"
                                     >
-                                        {loadingTransferUsers ? (
+                                        {loadingEditorUsers ? (
                                             <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
-                                        ) : transferUsers.length === 0 ? (
+                                        ) : editorUsers.length === 0 ? (
                                             <Text p="3" fontSize="sm" color="fg.muted">
                                                 Nema rezultata.
                                             </Text>
                                         ) : (
-                                            transferUsers.map((u) => {
-                                                const isCurrentOwner =
+                                            editorUsers.map((u) => {
+                                                const isOwner =
                                                     !!selectedTournament
                                                     && selectedTournament.createdByUid === u.userUid
+                                                const hasRights =
+                                                    editors.some((e) => e.userUid === u.userUid)
                                                 return (
                                                     <HStack
                                                         key={u.userUid}
@@ -660,9 +934,14 @@ export default function AdminDashboardTab() {
                                                                 <Text fontSize="sm" fontWeight="medium" truncate>
                                                                     {u.displayName || "(bez imena)"}
                                                                 </Text>
-                                                                {isCurrentOwner && (
+                                                                {isOwner && (
                                                                     <Badge size="xs" variant="subtle" colorPalette="gray">
                                                                         vlasnik
+                                                                    </Badge>
+                                                                )}
+                                                                {!isOwner && hasRights && (
+                                                                    <Badge size="xs" variant="subtle" colorPalette="green">
+                                                                        ima prava
                                                                     </Badge>
                                                                 )}
                                                             </HStack>
@@ -676,11 +955,11 @@ export default function AdminDashboardTab() {
                                                             size="xs"
                                                             variant="solid"
                                                             colorPalette="pitch"
-                                                            loading={transferring === u.userUid}
-                                                            disabled={isCurrentOwner}
-                                                            onClick={() => handleTransfer(u)}
+                                                            loading={grantingUid === u.userUid}
+                                                            disabled={isOwner || hasRights}
+                                                            onClick={() => handleGrantEditor(u)}
                                                         >
-                                                            {isCurrentOwner ? "Već vlasnik" : "Prenesi"}
+                                                            {isOwner ? "Vlasnik" : hasRights ? "Dodano" : "Daj prava"}
                                                         </Button>
                                                     </HStack>
                                                 )
@@ -690,7 +969,7 @@ export default function AdminDashboardTab() {
                                 </Stack>
                             </Dialog.Body>
                             <Dialog.Footer>
-                                <Button variant="ghost" onClick={closeTransferDialog}>Zatvori</Button>
+                                <Button variant="ghost" onClick={closeEditorDialog}>Gotovo</Button>
                             </Dialog.Footer>
                         </Dialog.Content>
                     </Dialog.Positioner>

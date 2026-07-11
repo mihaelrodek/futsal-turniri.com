@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Optional jersey (kit) colour per team, chosen by the organizer on the
+        Ekipe tab. Stored as a lowercase "#rrggbb" hex; NULL = not set. Purely
+        presentational - shown as a colour chip next to the team wherever the
+        roster renders it.
+    -->
+    <changeSet id="2026-07-11-teams-jersey-color" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="jersey_color" type="varchar(9)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

@@ -1,9 +1,16 @@
 import { http } from "./http"
 import type { Bracket, KnockoutResult } from "../types/bracket"
 
-/** The knockout bracket. Empty rounds before it is generated. */
-export async function fetchBracket(tournamentUuid: string): Promise<Bracket> {
-    const { data } = await http.get<Bracket>(`/tournaments/${tournamentUuid}/bracket`)
+/** The knockout bracket. Empty rounds before it is generated.
+ *  Pass `{ silent: true }` for background polling (no error toasts). */
+export async function fetchBracket(
+    tournamentUuid: string,
+    opts?: { silent?: boolean },
+): Promise<Bracket> {
+    const { data } = await http.get<Bracket>(
+        `/tournaments/${tournamentUuid}/bracket`,
+        (opts?.silent ? { silent: true } : undefined) as any,
+    )
     return data
 }
 

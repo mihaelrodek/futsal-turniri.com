@@ -3,9 +3,12 @@ import {
     Badge,
     Box,
     Button,
+    Grid,
     HStack,
     IconButton,
     Input,
+    Menu,
+    Portal,
     Spinner,
     Stack,
     Text,
@@ -30,6 +33,7 @@ import { FaMedal, FaTrophy } from "react-icons/fa"
 
 import type { TournamentDetails } from "../types/tournaments"
 import type { TeamShort } from "../types/teams"
+import { setTeamJerseyColor } from "../api/tournaments"
 import type { TeamRequest } from "../api/teamRequests"
 import type { PlayerDto } from "../types/players"
 import {
@@ -59,6 +63,147 @@ function playersWord(n: number): string {
     return n === 1 ? "igrač" : "igrača"
 }
 
+/* ── Jersey colours ─────────────────────────────────────────────────────
+   Preset kit palette the organizer picks from (free-hex isn't needed -
+   futsal kits come in a dozen colours). Stored as lowercase #rrggbb. */
+const JERSEY_COLORS: { hex: string; label: string }[] = [
+    { hex: "#f8fafc", label: "Bijela" },
+    { hex: "#111827", label: "Crna" },
+    { hex: "#dc2626", label: "Crvena" },
+    { hex: "#7a1d2b", label: "Bordo" },
+    { hex: "#f97316", label: "Narančasta" },
+    { hex: "#facc15", label: "Žuta" },
+    { hex: "#16a34a", label: "Zelena" },
+    { hex: "#0ea5e9", label: "Svijetloplava" },
+    { hex: "#2563eb", label: "Plava" },
+    { hex: "#1e3a8a", label: "Tamnoplava" },
+    { hex: "#7c3aed", label: "Ljubičasta" },
+    { hex: "#ec4899", label: "Roza" },
+    { hex: "#6b7280", label: "Siva" },
+]
+
+/** Small kit-colour chip. Bordered so white/light kits stay visible. */
+function JerseySwatch({ color, size = 12 }: { color: string; size?: number }) {
+    return (
+        <Box
+            w={`${size}px`}
+            h={`${size}px`}
+            rounded="sm"
+            bg={color}
+            borderWidth="1px"
+            borderColor="blackAlpha.300"
+            flexShrink={0}
+            title="Boja dresova"
+        />
+    )
+}
+
+/** "Dres" picker - a menu of preset kit swatches. Persists immediately via
+ *  its own endpoint (the teams-list save deliberately ignores the colour). */
+function JerseyColorPicker({
+    uuid,
+    team,
+    onTeamUpdated,
+}: {
+    uuid: string
+    team: TeamShort
+    onTeamUpdated: (updated: TeamShort) => void
+}) {
+    const [busy, setBusy] = useState(false)
+
+    async function pick(hex: string | null) {
+        if (busy) return
+        setBusy(true)
+        try {
+            const updated = await setTeamJerseyColor(uuid, team.id, hex)
+            onTeamUpdated(updated)
+        } catch {
+            // Error toasted by the http interceptor.
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <Menu.Root positioning={{ placement: "bottom-start" }}>
+            <Menu.Trigger asChild>
+                <chakra.button
+                    type="button"
+                    display="inline-flex"
+                    alignItems="center"
+                    gap="1.5"
+                    px="2.5"
+                    py="1"
+                    rounded="full"
+                    borderWidth="1px"
+                    borderColor="border"
+                    bg="bg.panel"
+                    cursor="pointer"
+                    _hover={{ borderColor: "border.emphasized" }}
+                    title="Boja dresova"
+                    aria-label="Boja dresova"
+                    opacity={busy ? 0.6 : 1}
+                >
+                    {team.jerseyColor ? (
+                        <JerseySwatch color={team.jerseyColor} size={14} />
+                    ) : (
+                        <Box
+                            w="14px"
+                            h="14px"
+                            rounded="sm"
+                            borderWidth="1px"
+                            borderStyle="dashed"
+                            borderColor="border.emphasized"
+                            flexShrink={0}
+                        />
+                    )}
+                    <Text fontSize="xs" fontWeight={600} color="fg.muted">
+                        Dres
+                    </Text>
+                    <Box color="fg.muted" display="inline-flex"><FiChevronDown size={12} /></Box>
+                </chakra.button>
+            </Menu.Trigger>
+            <Portal>
+                <Menu.Positioner>
+                    <Menu.Content p="2">
+                        <Text fontSize="xs" color="fg.muted" fontWeight={600} px="1" pb="1.5">
+                            Boja dresova
+                        </Text>
+                        <Grid templateColumns="repeat(5, 1fr)" gap="1.5" px="1" pb="1.5">
+                            {JERSEY_COLORS.map((c) => (
+                                <Menu.Item
+                                    key={c.hex}
+                                    value={c.hex}
+                                    onClick={() => pick(c.hex)}
+                                    p="1"
+                                    minW="0"
+                                    justifyContent="center"
+                                    title={c.label}
+                                    aria-label={c.label}
+                                >
+                                    <Box
+                                        w="22px"
+                                        h="22px"
+                                        rounded="md"
+                                        bg={c.hex}
+                                        borderWidth={team.jerseyColor === c.hex ? "2px" : "1px"}
+                                        borderColor={team.jerseyColor === c.hex ? "brand.solid" : "blackAlpha.300"}
+                                    />
+                                </Menu.Item>
+                            ))}
+                        </Grid>
+                        {team.jerseyColor && (
+                            <Menu.Item value="none" onClick={() => pick(null)} fontSize="xs">
+                                Ukloni boju
+                            </Menu.Item>
+                        )}
+                    </Menu.Content>
+                </Menu.Positioner>
+            </Portal>
+        </Menu.Root>
+    )
+}
+
 type TeamsSectionProps = {
     t: TournamentDetails
     uuid: string
@@ -85,6 +230,9 @@ type TeamsSectionProps = {
     openTeamInfo: (id: number) => void
     onSelfRegisterClick: () => void
     onPodiumUpdated: (updated: TournamentDetails) => void
+    /** Merge a single refreshed team (e.g. after a jersey-colour change)
+     *  into the page-level teams state. */
+    onTeamUpdated: (updated: TeamShort) => void
 }
 
 export default function TeamsSection(props: TeamsSectionProps) {
@@ -109,6 +257,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
         openTeamInfo,
         onSelfRegisterClick,
         onPodiumUpdated,
+        onTeamUpdated,
     } = props
 
     const [bulkTeamsOpen, setBulkTeamsOpen] = useState(false)
@@ -285,19 +434,23 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             Uredi toggle so an accidental tap on the row
                             never edits a name; the row only navigates
                             into the team's detail. */}
-                        <Text
-                            fontSize="sm"
-                            fontWeight={isPodiumTeam ? "bold" : "medium"}
-                            color={
-                                isWinnerTeam ? "yellow.fg"
-                                : isSecondPlaceTeam ? "gray.fg"
-                                : isThirdPlaceTeam ? "orange.fg"
-                                : "fg.ink"
-                            }
-                            truncate
-                        >
-                            {p.name?.trim() ? p.name : "Bez imena"}
-                        </Text>
+                        <HStack gap="1.5" align="center" minW="0">
+                            {/* Jersey-colour chip - "kraj svake ekipe". */}
+                            {p.jerseyColor && <JerseySwatch color={p.jerseyColor} />}
+                            <Text
+                                fontSize="sm"
+                                fontWeight={isPodiumTeam ? "bold" : "medium"}
+                                color={
+                                    isWinnerTeam ? "yellow.fg"
+                                    : isSecondPlaceTeam ? "gray.fg"
+                                    : isThirdPlaceTeam ? "orange.fg"
+                                    : "fg.ink"
+                                }
+                                truncate
+                            >
+                                {p.name?.trim() ? p.name : "Bez imena"}
+                            </Text>
+                        </HStack>
                         {/* Roster size at a glance - hidden when a team has no
                             players yet (0 shows nothing, per request). */}
                         {playerCount > 0 && (
@@ -440,6 +593,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
             uuid={uuid}
             team={selectedTeam}
             canEdit={canEdit}
+            onTeamUpdated={onTeamUpdated}
             /* Renaming + deleting a team is only safe before any
                match using it has been played. After tournamentAlready
                flips we keep the panel read-only for those two
@@ -660,10 +814,13 @@ function RosterPanel({
     onRenameTeam,
     onCommitRename,
     onDeleteTeam,
+    onTeamUpdated,
 }: {
     uuid: string
     team: TeamShort
     canEdit: boolean
+    /** Merge a refreshed team (jersey colour, …) into the parent list. */
+    onTeamUpdated: (updated: TeamShort) => void
     /** When false (tournament has started), the team-name input is
      *  hidden even inside edit mode - renaming a team mid-tournament
      *  would corrupt match-history references. */
@@ -904,13 +1061,28 @@ function RosterPanel({
                                     fontWeight="semibold"
                                 />
                             ) : (
-                                <Text fontWeight="semibold" lineHeight="short" truncate>
-                                    {team.name || "-"}
-                                </Text>
+                                <HStack gap="1.5" align="center" minW="0">
+                                    {team.jerseyColor && <JerseySwatch color={team.jerseyColor} size={14} />}
+                                    <Text fontWeight="semibold" lineHeight="short" truncate>
+                                        {team.name || "-"}
+                                    </Text>
+                                </HStack>
                             )}
-                            <Text fontSize="xs" color="fg.muted">
-                                Sastav igrača · {players.length}
-                            </Text>
+                            <HStack gap="2" align="center" mt="0.5">
+                                <Text fontSize="xs" color="fg.muted">
+                                    Sastav igrača · {players.length}
+                                </Text>
+                                {/* Jersey-colour picker - organizer only. Its own
+                                    endpoint, so it works regardless of edit mode
+                                    and never races the teams-list save. */}
+                                {canEdit && (
+                                    <JerseyColorPicker
+                                        uuid={uuid}
+                                        team={team}
+                                        onTeamUpdated={onTeamUpdated}
+                                    />
+                                )}
+                            </HStack>
                         </Box>
                     </HStack>
                     {canEdit && (

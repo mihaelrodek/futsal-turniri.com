@@ -7,12 +7,16 @@ import { http } from "./http"
    under the "Statistika" section of the tournament page.
    ────────────────────────────────────────────────────────────────────── */
 
-/** One row in the top-scorers ranking. The list is returned already sorted. */
+/** One row in the top-scorers ranking. The list is returned already sorted
+ *  by `goals` (the tally inside the organizer's scorer scope - default:
+ *  knockout only). `goalsAll` is the full tally including the group stage;
+ *  equal to `goals` when the scope is ALL. */
 export type ScorerDto = {
     playerId: number
     playerName: string
     teamName: string
     goals: number
+    goalsAll: number
 }
 
 /** Fetch the top-scorers ranking for a tournament (most goals first). */

@@ -7,6 +7,7 @@ import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
 import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.MatchEventMapper;
 import hr.mrodek.apps.futsal_turniri.mappers.PlayerMapper;
@@ -75,6 +76,7 @@ public class TournamentController {
     @Inject MatchEventRepository matchEventRepo;
     @Inject UserProfileRepository userProfileRepo;
     @Inject UserTeamPresetRepository userTeamPresetRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository editorRepo;
 
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
@@ -116,32 +118,55 @@ public class TournamentController {
     }
 
     /**
-     * Throw 403 if the current user is neither the tournament's creator nor
-     * an admin. Legacy tournaments without a creator can only be edited by
-     * admins, since we have no original owner to defer to.
+     * True if the current caller may manage the tournament: an admin, its
+     * creator (owner), or a granted co-editor (see TournamentEditor). Legacy
+     * tournaments without a creator can only be managed by admins.
+     */
+    private boolean canManage(Tournaments t) {
+        boolean admin = identity != null && identity.hasRole("admin");
+        if (admin) return true;
+        String me = jwt != null ? jwt.getSubject() : null;
+        if (me == null) return false;
+        if (me.equals(t.getCreatedByUid())) return true;
+        return editorRepo.isEditor(t.getId(), me);
+    }
+
+    /**
+     * Throw 403 unless the current user may manage the tournament (admin,
+     * creator, or granted co-editor).
      */
     private void assertCanEdit(Tournaments t) {
-        boolean admin = identity != null && identity.hasRole("admin");
-        if (admin) return;
-        String me = jwt != null ? jwt.getSubject() : null;
-        boolean owner = me != null && me.equals(t.getCreatedByUid());
-        if (!owner) {
-            throw new jakarta.ws.rs.ForbiddenException("Only the creator or an admin can modify this tournament.");
+        if (!canManage(t)) {
+            throw new jakarta.ws.rs.ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
         }
     }
 
     /**
      * Visibility gate for admin-hidden tournaments: visible to everyone when
-     * not hidden; when hidden, only to the creator and admins. Works on
-     * public endpoints too - with no bearer token the identity is anonymous
-     * and this simply returns {@code !t.isHidden()}.
+     * not hidden; when hidden, only to admins, the creator and granted
+     * co-editors. Works on public endpoints too - with no bearer token the
+     * identity is anonymous and this simply returns {@code !t.isHidden()}.
      */
     private boolean canView(Tournaments t) {
         if (!t.isHidden()) return true;
-        boolean admin = identity != null && identity.hasRole("admin");
-        if (admin) return true;
-        String me = jwt != null ? jwt.getSubject() : null;
-        return me != null && me.equals(t.getCreatedByUid());
+        return canManage(t);
+    }
+
+    /**
+     * Whether the CURRENT caller may manage this tournament ({@code
+     * {canManage: boolean}}). Lets the SPA enable the edit UI for granted
+     * co-editors (owner/admin are decided client-side from createdByUid /
+     * the admin claim, but co-editor grants aren't otherwise visible to the
+     * client). Reads the bearer token if present; anonymous → false.
+     */
+    @GET
+    @Path("/{uuid}/access")
+    public Response tournamentAccess(@PathParam("uuid") String uuid) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        return Response.ok(java.util.Map.of("canManage", canManage(t)))
+                .header("Cache-Control", "no-store")
+                .build();
     }
 
     /** Resolve location → lat/lng on create / update. Failure is non-fatal. */
@@ -621,9 +646,16 @@ public class TournamentController {
             return 99;
         };
 
-        // Top scorer - most goals, podium placement as tiebreak.
+        // Top scorer - most goals INSIDE the organizer's scorer scope
+        // (default: knockout only), podium placement as tiebreak. Falls back
+        // to the full tally when no goal fell inside the scope yet, so the
+        // dropdown never suggests nothing while goals exist.
         AwardSuggestionsDto.Suggestion topScorer = null;
-        var goalRows = matchEventRepo.findGoalCountsByTournament(t);
+        var scorerScope = t.getScorerScope() == null ? ScorerScope.KNOCKOUT : t.getScorerScope();
+        var goalRows = scorerScope == ScorerScope.ALL
+                ? matchEventRepo.findGoalCountsByTournament(t)
+                : matchEventRepo.findGoalCountsByTournament(t, scorerScope.stages());
+        if (goalRows.isEmpty()) goalRows = matchEventRepo.findGoalCountsByTournament(t);
         for (Object[] row : goalRows) {
             var player = (Player) row[0];
             var team = (Teams) row[1];
@@ -1179,6 +1211,51 @@ public class TournamentController {
     }
 
     /**
+     * Jersey colours per team ({@code {teamId: "#rrggbb"}}) for the whole
+     * tournament, so the live/timeline views can mark each side with its kit
+     * colour next to the team name. Only teams that have a colour set are
+     * included (others → absent). Public read - purely presentational.
+     */
+    @GET
+    @Path("/{uuid}/teams/jersey-colors")
+    public Response teamJerseyColors(@PathParam("uuid") String uuid) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        var out = new java.util.HashMap<Long, String>();
+        for (var team : teamRepo.findByTournament_Id(t.getId())) {
+            if (team.getJerseyColor() != null) out.put(team.getId(), team.getJerseyColor());
+        }
+        return Response.ok(out).build();
+    }
+
+    /**
+     * Set (or clear) a team's jersey colour - the colour chip shown next to
+     * the team on the Ekipe tab. Organizer/admin only. Body:
+     * {@code {"color": "#rrggbb"}}; null/blank clears it. Kept as its own
+     * endpoint (not part of the teams-list save) so flipping a colour never
+     * races with roster edits - the list save deliberately ignores it.
+     */
+    @PUT
+    @Path("/{uuid}/teams/{teamId}/jersey-color")
+    @Authenticated
+    @Transactional
+    public Response setTeamJerseyColor(@PathParam("uuid") String uuid,
+                                       @PathParam("teamId") Long teamId,
+                                       JerseyColorRequest req) {
+        Teams team = resolveTeamInTournament(uuid, teamId);
+        assertCanEdit(team.getTournament());
+
+        String color = req == null || req.color() == null ? null : req.color().trim();
+        if (color != null && color.isEmpty()) color = null;
+        if (color != null && !color.matches("#[0-9a-fA-F]{6}")) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("JERSEY_COLOR_INVALID").build();
+        }
+        team.setJerseyColor(color == null ? null : color.toLowerCase(Locale.ROOT));
+        return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
+    }
+
+    /**
      * Build a random opaque token for the team-sharing URL. 24 bytes of
      * SecureRandom encoded base64-url-no-padding = 32 chars - short
      * enough to fit in a clipboard-friendly URL, long enough that
@@ -1717,30 +1794,83 @@ public class TournamentController {
 
     /**
      * Public endpoint - no auth required.
-     * Returns the tournament's goal scorers ranked by number of goals,
-     * highest first. Resolves the tournament by UUID or slug (same pattern
-     * as all other {@code /{uuid}} endpoints) and returns 404 if not found.
+     * Returns the tournament's goal scorers with BOTH tallies per player:
+     * {@code goals} = only the goals inside the organizer's scorer scope
+     * (default: knockout only - group goals don't count toward the race) and
+     * {@code goalsAll} = everything including the group stage. Ranked by the
+     * scoped tally (ties broken by the full tally), so a scorer who padded
+     * the count on weak group opponents sorts below a knockout scorer.
      */
     @GET
     @Path("/{uuid}/stats/scorers")
     public Response listScorers(@PathParam("uuid") String uuid) {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+
+        var scope = t.getScorerScope() == null ? ScorerScope.KNOCKOUT : t.getScorerScope();
+
+        // Scoped tally per player id (drives the ranking).
+        var scopedByPlayer = new HashMap<Long, Long>();
+        if (scope == ScorerScope.ALL) {
+            // handled below - scoped == all, one query is enough
+        } else {
+            for (Object[] row : matchEventRepo.findGoalCountsByTournament(t, scope.stages())) {
+                var player = (Player) row[0];
+                if (player != null) scopedByPlayer.put(player.getId(), (Long) row[2]);
+            }
+        }
+
+        // Base list = the full tally, so a group-only scorer still appears
+        // (with 0 counted goals) instead of vanishing from the list.
         List<ScorerDto> scorers = matchEventRepo.findGoalCountsByTournament(t)
                 .stream()
                 .map(row -> {
-                    var player = (hr.mrodek.apps.futsal_turniri.model.Player) row[0];
-                    var team   = (hr.mrodek.apps.futsal_turniri.model.Teams)  row[1];
-                    long goals = (Long) row[2];
+                    var player = (Player) row[0];
+                    var team   = (Teams)  row[1];
+                    long all   = (Long) row[2];
+                    long counted = scope == ScorerScope.ALL
+                            ? all
+                            : scopedByPlayer.getOrDefault(player != null ? player.getId() : null, 0L);
                     return new ScorerDto(
-                            player.getId(),
-                            player.getName(),
+                            player != null ? player.getId() : null,
+                            player != null ? player.getName() : null,
                             team != null ? team.getName() : null,
-                            goals
+                            counted,
+                            all
                     );
                 })
+                .sorted(Comparator.comparingLong(ScorerDto::goals).reversed()
+                        .thenComparing(Comparator.comparingLong(ScorerDto::goalsAll).reversed()))
                 .collect(Collectors.toList());
         return Response.ok(scorers).build();
+    }
+
+    /**
+     * Set which goals count toward the best-scorer race. Organizer/admin
+     * only. Body: {@code {"scope": "ALL" | "KNOCKOUT" | "ROUND_OF_32" |
+     * "ROUND_OF_16" | "QUARTERFINAL" | "SEMIFINAL"}}. Returns the fresh
+     * details DTO so the SPA can re-render the scorers list immediately.
+     */
+    @PUT
+    @Path("/{uuid}/scorer-scope")
+    @Authenticated
+    @Transactional
+    public Response setScorerScope(@PathParam("uuid") String uuid, ScorerScopeRequest req) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        assertCanEdit(t);
+
+        ScorerScope scope;
+        try {
+            scope = ScorerScope.valueOf(
+                    req == null || req.scope() == null ? "" : req.scope().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("SCORER_SCOPE_INVALID").build();
+        }
+        t.setScorerScope(scope);
+        t.setUpdatedAt(OffsetDateTime.now());
+        return Response.ok(tournamentMapper.toDetails(t)).build();
     }
 
     /* ===================== Live match (status + events) ===================== */

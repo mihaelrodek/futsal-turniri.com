@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Which goals count toward the best-scorer race (see ScorerScope enum):
+        ALL | KNOCKOUT | ROUND_OF_32 | ROUND_OF_16 | QUARTERFINAL | SEMIFINAL.
+        Default KNOCKOUT = group-stage goals do NOT count (guards against
+        padding the tally on weak group opponents); the organizer can widen
+        or narrow it on the Statistika tab.
+    -->
+    <changeSet id="2026-07-11-tournament-scorer-scope" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="scorer_scope" type="varchar(20)" defaultValue="KNOCKOUT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

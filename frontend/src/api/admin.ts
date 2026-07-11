@@ -148,6 +148,43 @@ export async function adminTransferTournament(
     return data
 }
 
+/* ───────────────────── Tournament editors (co-owners) ─────────────────────
+   Grant management rights on a single tournament to registered users WITHOUT
+   transferring ownership. The creator stays the owner; each editor also passes
+   the edit gate (details, teams, schedule, Zapisnik…). Many allowed. */
+
+/** Current editors of a tournament (with display info). */
+export async function adminListEditors(tournamentId: number): Promise<AdminUserDto[]> {
+    const { data } = await http.get<AdminUserDto[]>(
+        `/admin/tournaments/${tournamentId}/editors`,
+    )
+    return data
+}
+
+/** Grant editor rights to a user (idempotent). Returns the granted user. */
+export async function adminAddEditor(
+    tournamentId: number,
+    userUid: string,
+): Promise<AdminUserDto> {
+    const { data } = await http.post<AdminUserDto>(
+        `/admin/tournaments/${tournamentId}/editors`,
+        { userUid },
+        { successMessage: "Prava na turnir dodijeljena." } as any,
+    )
+    return data
+}
+
+/** Revoke a user's editor rights (idempotent). */
+export async function adminRemoveEditor(
+    tournamentId: number,
+    userUid: string,
+): Promise<void> {
+    await http.delete(
+        `/admin/tournaments/${tournamentId}/editors/${encodeURIComponent(userUid)}`,
+        { successMessage: "Prava na turnir uklonjena." } as any,
+    )
+}
+
 /* ─────────────────────── Admin tournament actions ───────────────────────
    These wrap endpoints that admin already had access to via the regular
    ownership-check assertCanEdit (admin role bypasses owner check), plus

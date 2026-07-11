@@ -59,4 +59,27 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
                 .setParameter("t", tournament)
                 .getResultList();
     }
+
+    /**
+     * Like {@link #findGoalCountsByTournament(hr.mrodek.apps.futsal_turniri.model.Tournaments)},
+     * but only counting goals scored in the given match stages - backs the
+     * organizer's best-scorer scope (e.g. knockout-only, from the QF onward).
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<Object[]> findGoalCountsByTournament(
+            hr.mrodek.apps.futsal_turniri.model.Tournaments tournament,
+            java.util.Collection<hr.mrodek.apps.futsal_turniri.enums.MatchStage> stages) {
+        return em.createQuery("""
+                        select e.player, e.player.team, count(e)
+                        from MatchEvent e
+                        where e.type = hr.mrodek.apps.futsal_turniri.enums.MatchEventType.GOAL
+                          and e.match.tournament = :t
+                          and e.match.stage in :stages
+                        group by e.player, e.player.team
+                        order by count(e) desc
+                        """)
+                .setParameter("t", tournament)
+                .setParameter("stages", stages)
+                .getResultList();
+    }
 }

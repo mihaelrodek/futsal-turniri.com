@@ -204,6 +204,69 @@ export async function setPodium(
     return data
 }
 
+/**
+ * Set which goals count toward the best-scorer race (ranking on the
+ * Statistika tab + the award suggestion). Organizer/admin only.
+ */
+export async function setScorerScope(
+    uuid: string,
+    scope: import("../types/tournaments").ScorerScope,
+): Promise<TournamentDetails> {
+    const { data } = await http.put<TournamentDetails>(
+        `/tournaments/${uuid}/scorer-scope`,
+        { scope },
+        { successMessage: "Pravilo za strijelce je spremljeno." } as any,
+    )
+    return data
+}
+
+/**
+ * Whether the CURRENT caller may manage this tournament (owner / admin /
+ * granted co-editor). Lets the SPA enable the edit UI for co-editors, whose
+ * grants aren't otherwise visible client-side. Silent + never cached.
+ */
+export async function fetchTournamentAccess(
+    uuid: string,
+): Promise<{ canManage: boolean }> {
+    const { data } = await http.get<{ canManage: boolean }>(
+        `/tournaments/${uuid}/access`,
+        { silent: true } as any,
+    )
+    return data ?? { canManage: false }
+}
+
+/**
+ * Jersey colours per team ({@code teamId → "#rrggbb"}) for a tournament, so the
+ * live/timeline views can mark each side with its kit colour. Only teams with a
+ * colour set are included. One request; silent (background enrichment).
+ */
+export async function fetchTeamJerseyColors(
+    uuid: string,
+): Promise<Record<string, string>> {
+    const { data } = await http.get<Record<string, string>>(
+        `/tournaments/${uuid}/teams/jersey-colors`,
+        { silent: true } as any,
+    )
+    return data ?? {}
+}
+
+/**
+ * Set (or clear with null) a team's jersey colour ("#rrggbb"). Organizer/admin
+ * only. Returns the fresh team DTO so the list chip updates immediately.
+ */
+export async function setTeamJerseyColor(
+    tournamentUuid: string,
+    teamId: number,
+    color: string | null,
+): Promise<TeamShort> {
+    const { data } = await http.put<TeamShort>(
+        `/tournaments/${tournamentUuid}/teams/${teamId}/jersey-color`,
+        { color },
+        { successMessage: color ? "Boja dresova je spremljena." : "Boja dresova je uklonjena." } as any,
+    )
+    return data
+}
+
 export async function selfRegisterTeam(tournamentUuid: string, name: string): Promise<TeamShort> {
     const { data } = await http.post<TeamShort>(
         `/tournaments/${tournamentUuid}/teams/self-register`,

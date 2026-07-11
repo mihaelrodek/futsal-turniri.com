@@ -5,6 +5,7 @@ import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
 import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
 import { ConfirmDialog } from "../ui/primitives"
+import { useTeamColors, teamColor, JerseyDot } from "./jersey"
 import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
 import type { OptimisticDisplay } from "../hooks/useOfflineMatchEvents"
 import { fetchPlayers } from "../api/players"
@@ -2137,6 +2138,7 @@ export function MatchTimelineModal({
 }) {
     const isLive = match.status === "LIVE"
     const hasScore = match.score1 != null && match.score2 != null
+    const colors = useTeamColors(uuid)
     return (
         <Dialog.Root
             open
@@ -2168,9 +2170,12 @@ export function MatchTimelineModal({
                                             Uživo
                                         </Box>
                                     )}
-                                    <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
-                                        {match.team1Name ?? "-"}
-                                    </Text>
+                                    <HStack gap="1.5" justify="center">
+                                        <JerseyDot color={teamColor(colors, match.team1Id)} size={11} />
+                                        <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
+                                            {match.team1Name ?? "-"}
+                                        </Text>
+                                    </HStack>
                                     {hasScore ? (
                                         <>
                                             <Text
@@ -2197,9 +2202,12 @@ export function MatchTimelineModal({
                                             vs
                                         </Text>
                                     )}
-                                    <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
-                                        {match.team2Name ?? "-"}
-                                    </Text>
+                                    <HStack gap="1.5" justify="center">
+                                        <JerseyDot color={teamColor(colors, match.team2Id)} size={11} />
+                                        <Text fontSize="md" fontWeight="bold" color="fg.ink" textAlign="center">
+                                            {match.team2Name ?? "-"}
+                                        </Text>
+                                    </HStack>
                                 </VStack>
                             </Dialog.Title>
                         </Dialog.Header>

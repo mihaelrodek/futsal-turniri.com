@@ -8,6 +8,7 @@ import { fetchTournamentDetails } from "../api/tournaments"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
+import { useTeamColors, teamColor, JerseyDot } from "../components/jersey"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
@@ -58,6 +59,9 @@ export default function MatchLivePage() {
     // Bumped on every relevant WebSocket live-update so the timeline refetches
     // instantly (GoalscorersPanel refreshSignal).
     const [scorerTick, setScorerTick] = useState(0)
+
+    // Jersey colours per team → a kit-colour chip next to each name.
+    const teamColors = useTeamColors(uuid)
 
     // Tournament name - fetched once (rarely changes); the schedule doesn't
     // carry it. Falls back to the live DTO's name below if this hasn't landed.
@@ -167,6 +171,8 @@ export default function MatchLivePage() {
     const score2 = live?.score2 ?? scheduled.score2 ?? 0
     const team1Name = scheduled.team1Name ?? live?.team1Name ?? "-"
     const team2Name = scheduled.team2Name ?? live?.team2Name ?? "-"
+    const jerseyC1 = teamColor(teamColors, scheduled.team1Id)
+    const jerseyC2 = teamColor(teamColors, scheduled.team2Id)
     const halfLengthMin = schedule?.halfLengthMin ?? live?.halfLengthMin ?? null
     const halfCount = schedule?.halfCount ?? live?.halfCount ?? null
     const phaseLbl = matchPhaseLabel({ stage: scheduled.stage, groupName: scheduled.groupName })
@@ -292,9 +298,12 @@ export default function MatchLivePage() {
                     horizontal line (grid is vertically centred and the score is
                     the only thing in the centre cell). */}
                 <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
-                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
-                        {team1Name}
-                    </Text>
+                    <HStack gap="2" justify="flex-end" minW="0">
+                        <JerseyDot color={jerseyC1} size={12} />
+                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
+                            {team1Name}
+                        </Text>
+                    </HStack>
                     {isScheduled ? (
                         <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
                             {formatKickoff(scheduled.kickoffAt)}
@@ -313,9 +322,12 @@ export default function MatchLivePage() {
                             {score1} : {score2}
                         </Text>
                     )}
-                    <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
-                        {team2Name}
-                    </Text>
+                    <HStack gap="2" justify="flex-start" minW="0">
+                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
+                            {team2Name}
+                        </Text>
+                        <JerseyDot color={jerseyC2} size={12} />
+                    </HStack>
                 </Box>
 
                 {/* Penalty shootout result under the score (centred). */}

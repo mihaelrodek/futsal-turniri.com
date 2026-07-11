@@ -27,6 +27,7 @@ import type { TeamShort } from "../types/teams"
 
 import {
     fetchTournamentDetails,
+    fetchTournamentAccess,
     fetchRosterLocked,
     fetchTournamentTeams,
     replaceTeams,
@@ -552,8 +553,22 @@ export default function TournamentDetailsPage() {
     /* ──────────────────────────────────────────────────────────────────────
        Derived values
        ────────────────────────────────────────────────────────────────────── */
-    // organizer = admin OR creator.
-    const canEdit = !!t && (isAdmin || (!!user?.uid && user.uid === t.createdByUid))
+    // Granted co-editors aren't visible in the details payload, so ask the
+    // backend whether THIS caller may manage. Owner/admin are still resolved
+    // locally (instant, no flicker); this only ADDS edit rights for a granted
+    // editor once the small check returns.
+    const [canManageAccess, setCanManageAccess] = useState(false)
+    useEffect(() => {
+        if (!uuid || !user?.uid) { setCanManageAccess(false); return }
+        let cancelled = false
+        fetchTournamentAccess(uuid)
+            .then((a) => { if (!cancelled) setCanManageAccess(a.canManage) })
+            .catch(() => { if (!cancelled) setCanManageAccess(false) })
+        return () => { cancelled = true }
+    }, [uuid, user?.uid])
+
+    // organizer = admin OR creator OR granted co-editor.
+    const canEdit = !!t && (isAdmin || (!!user?.uid && user.uid === t.createdByUid) || canManageAccess)
 
     /* ──────────────────────────────────────────────────────────────────────
        Details edit handlers
@@ -1077,6 +1092,11 @@ export default function TournamentDetailsPage() {
                         openTeamInfo={setInfoTeamId}
                         onSelfRegisterClick={onSelfRegisterClick}
                         onPodiumUpdated={setT}
+                        onTeamUpdated={(updated) =>
+                            setTeams((ps) =>
+                                ps.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)),
+                            )
+                        }
                     />
                 )}
 
@@ -1172,7 +1192,14 @@ export default function TournamentDetailsPage() {
                     />
                 )}
 
-                {section === "stats" && <StatsSection uuid={t.uuid} />}
+                {section === "stats" && (
+                    <StatsSection
+                        uuid={t.uuid}
+                        canEdit={canEdit}
+                        scorerScope={t.scorerScope}
+                        onTournamentChanged={(updated) => setT(updated)}
+                    />
+                )}
             </Box>
 
             {/* ===== Dialogs ===== */}

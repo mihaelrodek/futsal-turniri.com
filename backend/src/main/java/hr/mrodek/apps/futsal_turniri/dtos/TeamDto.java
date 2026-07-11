@@ -31,7 +31,11 @@ public record TeamDto(
         // Opaque token that goes in the /claim-team/{token} URL. Only sent
         // to the primary submitter and to organizers/admins - viewers who
         // shouldn't see the share link get null here.
-        String claimToken
+        String claimToken,
+
+        // Optional jersey colour ("#rrggbb", lowercase). Chosen by the
+        // organizer on the Ekipe tab; null = not set.
+        String jerseyColor
 ) {
     /** Backwards-compat constructor for callers that don't yet enrich submitter info. */
     public TeamDto(
@@ -40,7 +44,7 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     /** Earlier constructor without co-owner / token fields. */
@@ -51,6 +55,6 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, submittedBySlug, submittedByName,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

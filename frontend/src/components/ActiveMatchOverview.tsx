@@ -2,6 +2,7 @@ import { Box, Flex, Grid, HStack, Text, VStack } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { PulseDot } from "../ui/pitch"
 import { LiveClock } from "./liveMatch"
+import { useTeamColors, teamColor, JerseyDot } from "./jersey"
 import type { LiveMatch } from "../api/live"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -22,17 +23,27 @@ export default function ActiveMatchOverview({
     /** Slug (preferred) or uuid for the /utakmica/:id deep link. */
     uuidOrSlug: string
 }) {
+    // All matches here belong to the same tournament → one shared colour fetch.
+    const colors = useTeamColors(uuidOrSlug)
     if (matches.length === 0) return null
     return (
         <VStack align="stretch" gap="2">
             {matches.map((m) => (
-                <ActiveMatchCard key={m.matchId} m={m} uuidOrSlug={uuidOrSlug} />
+                <ActiveMatchCard key={m.matchId} m={m} uuidOrSlug={uuidOrSlug} colors={colors} />
             ))}
         </VStack>
     )
 }
 
-function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }) {
+function ActiveMatchCard({
+    m,
+    uuidOrSlug,
+    colors,
+}: {
+    m: LiveMatch
+    uuidOrSlug: string
+    colors: Record<string, string>
+}) {
     const isTimer = m.liveMode === "TIMER"
     // Shrink the name font once a club name is long so it stays readable and
     // wraps (up to three lines) instead of truncating with an ellipsis.
@@ -92,16 +103,19 @@ function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }
 
                 {/* Scoreboard: team1 — score — team2. */}
                 <Grid templateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2", md: "3" }}>
-                    <Text
-                        fontSize={nameFont}
-                        fontWeight={700}
-                        color="fg.ink"
-                        textAlign="right"
-                        lineClamp="3"
-                        minW="0"
-                    >
-                        {m.team1Name ?? "-"}
-                    </Text>
+                    <HStack gap="1.5" justify="flex-end" minW="0">
+                        <JerseyDot color={teamColor(colors, m.team1Id)} size={11} />
+                        <Text
+                            fontSize={nameFont}
+                            fontWeight={700}
+                            color="fg.ink"
+                            textAlign="right"
+                            lineClamp="3"
+                            minW="0"
+                        >
+                            {m.team1Name ?? "-"}
+                        </Text>
+                    </HStack>
                     <Text
                         fontFamily="mono"
                         fontSize={{ base: "22px", md: "26px" }}
@@ -117,16 +131,19 @@ function ActiveMatchCard({ m, uuidOrSlug }: { m: LiveMatch; uuidOrSlug: string }
                         </Box>
                         {m.score2 ?? 0}
                     </Text>
-                    <Text
-                        fontSize={nameFont}
-                        fontWeight={700}
-                        color="fg.ink"
-                        textAlign="left"
-                        lineClamp="3"
-                        minW="0"
-                    >
-                        {m.team2Name ?? "-"}
-                    </Text>
+                    <HStack gap="1.5" justify="flex-start" minW="0">
+                        <Text
+                            fontSize={nameFont}
+                            fontWeight={700}
+                            color="fg.ink"
+                            textAlign="left"
+                            lineClamp="3"
+                            minW="0"
+                        >
+                            {m.team2Name ?? "-"}
+                        </Text>
+                        <JerseyDot color={teamColor(colors, m.team2Id)} size={11} />
+                    </HStack>
                 </Grid>
             </Box>
         </RouterLink>

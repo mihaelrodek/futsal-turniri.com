@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.model;
 
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
+import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import jakarta.persistence.*;
@@ -262,6 +263,15 @@ public class Tournaments {
     private boolean hidden = false;
 
     /**
+     * Which goals count toward the best-scorer race (ranking + award
+     * suggestion). Default {@link ScorerScope#KNOCKOUT} = group-stage goals
+     * don't count; the organizer can widen/narrow it on the Statistika tab.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scorer_scope", length = 20, nullable = false)
+    private ScorerScope scorerScope = ScorerScope.KNOCKOUT;
+
+    /**
      * Admin-curated "tournament of the day" highlight. When non-null, this
      * is the timestamp at which an admin promoted the tournament to the
      * daily hero shown on /uzivo. The public lookup picks the row with
@@ -278,6 +288,7 @@ public class Tournaments {
         // maxTeams left null on purpose = unlimited; do NOT coerce to a number.
         if (format == null) format = TournamentFormat.GROUPS_KNOCKOUT;
         if (entryPrice == null) entryPrice = BigDecimal.ZERO;
+        if (scorerScope == null) scorerScope = ScorerScope.KNOCKOUT;
     }
 
     /**

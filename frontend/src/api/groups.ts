@@ -1,9 +1,16 @@
 import { http } from "./http"
 import type { Group, DrawRequest, ThirdPlacedTable } from "../types/groups"
 
-/** Live group tables for a tournament. Empty array before the draw. */
-export async function fetchGroups(tournamentUuid: string): Promise<Group[]> {
-    const { data } = await http.get<Group[]>(`/tournaments/${tournamentUuid}/groups`)
+/** Live group tables for a tournament. Empty array before the draw.
+ *  Pass `{ silent: true }` for background polling (no error toasts). */
+export async function fetchGroups(
+    tournamentUuid: string,
+    opts?: { silent?: boolean },
+): Promise<Group[]> {
+    const { data } = await http.get<Group[]>(
+        `/tournaments/${tournamentUuid}/groups`,
+        (opts?.silent ? { silent: true } : undefined) as any,
+    )
     return data
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Box, Flex, Menu, Portal, Text } from "@chakra-ui/react"
+import { Box, Flex, Menu, Portal, Text, VStack } from "@chakra-ui/react"
 import { FiChevronDown } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
@@ -36,12 +36,30 @@ function fmtKickoff(k?: string | null): string {
     })
 }
 
+/** Croatian round name for a knockout stage enum (mirrors the bracket UI) so a
+ *  not-yet-drawn fixture reads "Polufinale" / "Finale", not a bare
+ *  "Eliminacija". */
+function stageLabel(stage?: string | null): string {
+    switch (stage) {
+        case "ROUND_OF_32": return "Šesnaestina finala"
+        case "ROUND_OF_16": return "Osmina finala"
+        case "QUARTERFINAL": return "Četvrtfinale"
+        case "SEMIFINAL": return "Polufinale"
+        case "FINAL": return "Finale"
+        case "THIRD_PLACE": return "Za 3. mjesto"
+        default: return "Eliminacija"
+    }
+}
+
 /** Trigger / menu label: a status tag (● UŽIVO / ▶ NA REDU), the teams, then
- *  stage + time - e.g. "● UŽIVO · Roma – Đurđ · Grupa · 10. 07. 20:00". */
+ *  stage + time - e.g. "● UŽIVO · Roma – Đurđ · Grupa · 10. 07. 20:00". A
+ *  knockout fixture that's on the schedule before its teams are decided shows
+ *  "TBD – TBD" (the group stage still has to say who plays). */
 function optionLabel(e: Entry, onDeck: boolean): string {
     const m = e.match
-    const teams = `${m.team1Name ?? "-"} – ${m.team2Name ?? "-"}`
-    const stage = e.kind === "group" ? "Grupa" : "Eliminacija"
+    const teams = `${m.team1Name ?? "TBD"} – ${m.team2Name ?? "TBD"}`
+    const stage =
+        e.kind === "group" ? "Grupa" : stageLabel((m as { stage?: string | null }).stage)
     const when = m.kickoffAt ? fmtKickoff(m.kickoffAt) : ""
     const meta = [stage, when].filter(Boolean).join(" · ")
     const tag = m.status === "LIVE" ? "● UŽIVO · " : onDeck ? "▶ NA REDU · " : ""
@@ -99,6 +117,28 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
             })
     }, [groups, knockout])
 
+    // Generated knockout fixtures whose participants aren't decided yet - e.g. a
+    // semifinal/final drawn with a reserved kickoff while the group stage is
+    // still running. They can't be recorded (no teams), but the organizer should
+    // still see them on the schedule as upcoming "TBD" games. Byes are
+    // auto-FINISHED, so the SCHEDULED filter already leaves them out.
+    const pending = useMemo<Entry[]>(() => {
+        const out: Entry[] = []
+        for (const m of knockout ?? []) {
+            const pm = m as PanelMatch
+            if (
+                pm.kickoffAt != null &&
+                pm.status === "SCHEDULED" &&
+                (pm.team1Id == null || pm.team2Id == null)
+            ) {
+                out.push({ kind: "knockout", match: pm })
+            }
+        }
+        return out.sort(
+            (a, b) => kickoffMs(a.match.kickoffAt) - kickoffMs(b.match.kickoffAt),
+        )
+    }, [knockout])
+
     // Default selection = the match the schedule says is up now: the current
     // LIVE one, else the next-to-play (earliest kickoff SCHEDULED). A manual
     // pick (selectedId) overrides until that match leaves the list (finished).
@@ -107,7 +147,7 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
 
     if (loading) return <Loader />
 
-    if (manageable.length === 0) {
+    if (manageable.length === 0 && pending.length === 0) {
         return (
             <Panel>
                 <EmptyState
@@ -119,11 +159,49 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
         )
     }
 
+    // Nothing to record yet, but the schedule already holds knockout fixtures
+    // waiting on the draw: list them as upcoming "TBD" games instead of the
+    // empty state, so it's clear the final/semifinal is scheduled.
+    if (manageable.length === 0) {
+        return (
+            <Panel>
+                <VStack align="stretch" gap="3">
+                    <Flex align="center" gap="2">
+                        <Box color="fg.muted" display="inline-flex"><LuRadioTower size={16} /></Box>
+                        <Text fontSize="sm" fontWeight={800} color="fg.ink">
+                            Nadolazeće utakmice
+                        </Text>
+                    </Flex>
+                    <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
+                        Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
+                    </Text>
+                    <VStack align="stretch" gap="2">
+                        {pending.map((e) => (
+                            <Flex
+                                key={`pending-${e.match.matchId}`}
+                                align="center"
+                                borderWidth="1px"
+                                borderColor="border"
+                                rounded="lg"
+                                px="3"
+                                py="2.5"
+                            >
+                                <Text fontSize="sm" fontWeight={700} color="fg.ink" minW="0" truncate>
+                                    {optionLabel(e, false)}
+                                </Text>
+                            </Flex>
+                        ))}
+                    </VStack>
+                </VStack>
+            </Panel>
+        )
+    }
+
     // The styled match-selector (design: an outlined full-width button with the
     // current match label + a chevron; a Menu lists the other manageable ones).
     const selectorLabel = selected ? optionLabel(selected, selected.match.matchId === fallback?.match.matchId) : "-"
     const selector =
-        manageable.length > 1 ? (
+        manageable.length + pending.length > 1 ? (
             <Menu.Root>
                 <Menu.Trigger asChild>
                     <Flex
@@ -162,6 +240,21 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
                                     {optionLabel(e, e.match.matchId === fallback?.match.matchId)}
                                 </Menu.Item>
                             ))}
+                            {pending.length > 0 && (
+                                <>
+                                    <Menu.Separator />
+                                    {pending.map((e) => (
+                                        <Menu.Item
+                                            key={`pending-${e.match.matchId}`}
+                                            value={`pending-${e.match.matchId}`}
+                                            disabled
+                                            color="fg.muted"
+                                        >
+                                            {optionLabel(e, false)}
+                                        </Menu.Item>
+                                    ))}
+                                </>
+                            )}
                         </Menu.Content>
                     </Menu.Positioner>
                 </Portal>

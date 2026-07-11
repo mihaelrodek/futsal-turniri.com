@@ -55,5 +55,6 @@ export const qk = {
     schedule: (uuid: string) => ["schedule", uuid] as const,
     bracket: (uuid: string) => ["bracket", uuid] as const,
     scorers: (uuid: string) => ["scorers", uuid] as const,
+    teamColors: (uuid: string) => ["teamColors", uuid] as const,
     liveMatches: ["liveMatches"] as const,
 }

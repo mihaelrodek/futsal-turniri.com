@@ -15,6 +15,9 @@ export type TeamShort = {
     coSubmittedByName?: string | null;
     /** Opaque token for the /claim-team/{token} URL -- only sent to the primary submitter. */
     claimToken?: string | null;
+    /** Jersey colour ("#rrggbb", lowercase) chosen by the organizer on the
+     *  Ekipe tab; null = not set. Shown as a colour chip next to the team. */
+    jerseyColor?: string | null;
 };
 
 // Local-only helper for brand-new rows before the server assigns an id.

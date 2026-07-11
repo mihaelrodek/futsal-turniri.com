@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
-import { Box, Flex, Grid, HStack, Text, VStack } from "@chakra-ui/react"
+import { Box, Flex, Grid, HStack, NativeSelect, Text, VStack } from "@chakra-ui/react"
 import { FiAward, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
+import { setScorerScope } from "../api/tournaments"
+import type { ScorerScope, TournamentDetails } from "../types/tournaments"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { Loader } from "../ui/primitives"
@@ -58,13 +60,42 @@ function teamColor(name: string | null | undefined): string {
 
 const MEDAL_COLORS = ["#f5c842", "#c0c5cc", "#cd8654"]
 
-function ScorerRow({ scorer, rank }: { scorer: ScorerDto; rank: number }) {
+/** Croatian label for a scorer-scope option. */
+const SCOPE_LABEL: Record<ScorerScope, string> = {
+    ALL: "Grupe + eliminacija",
+    KNOCKOUT: "Samo eliminacija",
+    ROUND_OF_32: "Od šesnaestine finala",
+    ROUND_OF_16: "Od osmine finala",
+    QUARTERFINAL: "Od četvrtfinala",
+    SEMIFINAL: "Od polufinala",
+}
+const SCOPE_ORDER: ScorerScope[] = [
+    "KNOCKOUT",
+    "ALL",
+    "ROUND_OF_32",
+    "ROUND_OF_16",
+    "QUARTERFINAL",
+    "SEMIFINAL",
+]
+
+function ScorerRow({
+    scorer,
+    rank,
+    splitTallies,
+}: {
+    scorer: ScorerDto
+    rank: number
+    /** True when group goals don't count - show the full tally next to the
+     *  counted one so both reads stay visible. */
+    splitTallies: boolean
+}) {
     const medal = rank <= 3 ? MEDAL_COLORS[rank - 1] : null
     const num = jerseyNumber(scorer.playerId)
     const tc = teamColor(scorer.teamName)
+    const showAll = splitTallies && scorer.goalsAll !== scorer.goals
     return (
         <Grid
-            templateColumns="40px 50px 1fr 60px"
+            templateColumns="40px 50px 1fr auto"
             alignItems="center"
             gap="3"
             px="4"
@@ -115,27 +146,59 @@ function ScorerRow({ scorer, rank }: { scorer: ScorerDto; rank: number }) {
                     </Text>
                 </HStack>
             </Box>
-            <HStack gap="1.5" justify="flex-end">
-                <BallIcon size={14} color="var(--chakra-colors-pitch-500)" />
-                <Text
-                    fontSize="22px"
-                    fontWeight={800}
-                    color="fg.ink"
-                    letterSpacing="-0.02em"
-                >
-                    {scorer.goals}
-                </Text>
-            </HStack>
+            <VStack gap="0" align="flex-end">
+                <HStack gap="1.5" justify="flex-end">
+                    <BallIcon size={14} color="var(--chakra-colors-pitch-500)" />
+                    <Text
+                        fontSize="22px"
+                        fontWeight={800}
+                        color="fg.ink"
+                        letterSpacing="-0.02em"
+                    >
+                        {scorer.goals}
+                    </Text>
+                </HStack>
+                {/* Full tally incl. the group stage - only when it differs. */}
+                {showAll && (
+                    <Text
+                        fontSize="10px"
+                        color="fg.muted"
+                        fontWeight={600}
+                        whiteSpace="nowrap"
+                        lineHeight="1.2"
+                    >
+                        s grupama {scorer.goalsAll}
+                    </Text>
+                )}
+            </VStack>
         </Grid>
     )
 }
 
-export default function StatsSection({ uuid }: { uuid: string }) {
+export default function StatsSection({
+    uuid,
+    canEdit = false,
+    scorerScope,
+    onTournamentChanged,
+}: {
+    uuid: string
+    /** Organizer/admin - shows the "which goals count" picker. */
+    canEdit?: boolean
+    /** The tournament's scorer scope (from the details payload). */
+    scorerScope?: ScorerScope | null
+    /** Called with the fresh details DTO after the scope is saved. */
+    onTournamentChanged?: (t: TournamentDetails) => void
+}) {
     const queryClient = useQueryClient()
     // Seed from cache so returning to the Statistika tab paints instantly.
     const cachedScorers = queryClient.getQueryData<ScorerDto[]>(qk.scorers(uuid))
     const [scorers, setScorers] = useState<ScorerDto[]>(cachedScorers ?? [])
     const [loading, setLoading] = useState(!cachedScorers)
+    const [savingScope, setSavingScope] = useState(false)
+
+    const scope: ScorerScope = scorerScope ?? "KNOCKOUT"
+    // When group goals don't count, every row shows both tallies.
+    const splitTallies = scope !== "ALL"
 
     useEffect(() => {
         if (!uuid) return
@@ -159,11 +222,29 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         return () => {
             cancelled = true
         }
-    }, [uuid, queryClient])
+        // `scope` in the deps: saving a new scope invalidates the cache, and
+        // this rerun refetches the re-ranked list from the backend.
+    }, [uuid, queryClient, scope])
 
-    // Derived headline stats - currently from the scorers payload only.
+    async function changeScope(next: ScorerScope) {
+        if (next === scope || savingScope) return
+        setSavingScope(true)
+        try {
+            const updated = await setScorerScope(uuid, next)
+            await queryClient.invalidateQueries({ queryKey: qk.scorers(uuid) })
+            onTournamentChanged?.(updated)
+        } catch {
+            // Error toasted by the http interceptor.
+        } finally {
+            setSavingScope(false)
+        }
+    }
+
+    // Derived headline stats. Totals use the FULL tally (incl. groups) - the
+    // scope only decides the race ranking, not how many goals the tournament
+    // actually had.
     const totalGoals = useMemo(
-        () => scorers.reduce((n, s) => n + s.goals, 0),
+        () => scorers.reduce((n, s) => n + s.goalsAll, 0),
         [scorers],
     )
     // Team with the most goals at the tournament (sum of its players' goals).
@@ -171,7 +252,7 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         const byTeam = new Map<string, number>()
         for (const s of scorers) {
             if (!s.teamName) continue
-            byTeam.set(s.teamName, (byTeam.get(s.teamName) ?? 0) + s.goals)
+            byTeam.set(s.teamName, (byTeam.get(s.teamName) ?? 0) + s.goalsAll)
         }
         let best: { name: string; goals: number } | null = null
         for (const [name, goals] of byTeam) {
@@ -179,6 +260,32 @@ export default function StatsSection({ uuid }: { uuid: string }) {
         }
         return best
     }, [scorers])
+
+    // The organizer's scope picker (also a read-only badge for visitors).
+    const scopeControl = canEdit ? (
+        <HStack gap="2" wrap="wrap">
+            <Text fontSize="xs" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
+                Golovi se broje:
+            </Text>
+            <NativeSelect.Root size="xs" w="auto" disabled={savingScope}>
+                <NativeSelect.Field
+                    value={scope}
+                    onChange={(e) => changeScope(e.currentTarget.value as ScorerScope)}
+                >
+                    {SCOPE_ORDER.map((s) => (
+                        <option key={s} value={s}>
+                            {SCOPE_LABEL[s]}
+                        </option>
+                    ))}
+                </NativeSelect.Field>
+                <NativeSelect.Indicator />
+            </NativeSelect.Root>
+        </HStack>
+    ) : (
+        <Text fontSize="xs" color="fg.muted" fontWeight={600}>
+            Golovi se broje: {SCOPE_LABEL[scope]}
+        </Text>
+    )
 
     /* ── Loading ──────────────────────────────────────────────────────── */
     if (loading) {
@@ -263,12 +370,20 @@ export default function StatsSection({ uuid }: { uuid: string }) {
             <SectionCard
                 icon={() => <BallIcon size={16} color="var(--chakra-colors-pitch-500)" />}
                 title="Najbolji strijelci"
-                subtitle="Lista strijelaca po broju postignutih golova"
+                subtitle={
+                    splitTallies
+                        ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
+                        : "Lista strijelaca po broju postignutih golova"
+                }
             >
-                <VStack align="stretch" gap="2">
-                    {scorers.map((s, i) => (
-                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} />
-                    ))}
+                <VStack align="stretch" gap="3">
+                    {/* Which goals count toward the race - organizer can change it. */}
+                    <Flex justify="flex-end">{scopeControl}</Flex>
+                    <VStack align="stretch" gap="2">
+                        {scorers.map((s, i) => (
+                            <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
+                        ))}
+                    </VStack>
                 </VStack>
             </SectionCard>
         </VStack>

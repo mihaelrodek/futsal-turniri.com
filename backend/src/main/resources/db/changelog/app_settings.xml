@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Site-wide key/value settings editable from the admin dashboard.
+        First consumer: the home-page live-stream banner (stream_banner_url +
+        stream_banner_live) - the Veo court camera that replaces the promo/live
+        hero on the main page while the admin has it switched on.
+    -->
+    <changeSet id="2026-07-11-app-settings" author="mrodek">
+        <createTable tableName="app_settings">
+            <column name="setting_key" type="varchar(80)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="setting_value" type="text"/>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

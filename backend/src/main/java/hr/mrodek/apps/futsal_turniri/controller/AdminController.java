@@ -51,6 +51,7 @@ public class AdminController {
     @Inject TeamsRepository teamsRepo;
     @Inject UserProfileRepository profileRepo;
     @Inject UserTeamPresetRepository presetRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository editorRepo;
 
     /** Cap on user-search results - see UserProfileRepository.searchByDisplayName. */
     private static final int USER_SEARCH_LIMIT = 25;
@@ -266,6 +267,67 @@ public class AdminController {
                 tournament.getId(),
                 target.getUserUid(),
                 target.getDisplayName())).build();
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+     * Tournament editors (co-owners): grant management rights on a single
+     * tournament to registered users WITHOUT transferring ownership. The
+     * creator stays the owner; each editor additionally passes assertCanEdit
+     * (edit details, teams, schedule, run the Zapisnik, …). Many allowed.
+     * ────────────────────────────────────────────────────────────────── */
+
+    /** Current editors of a tournament (with profile display info). */
+    @GET
+    @Path("/tournaments/{tournamentId}/editors")
+    public Response listEditors(@PathParam("tournamentId") Long tournamentId) {
+        Tournaments tournament = tournamentsRepo.findById(tournamentId);
+        if (tournament == null) {
+            return Response.status(Response.Status.NOT_FOUND).entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        List<AdminUserDto> dtos = editorRepo.findByTournament_Id(tournamentId).stream()
+                .map(e -> {
+                    UserProfile p = profileRepo.findByUid(e.getUserUid()).orElse(null);
+                    return new AdminUserDto(
+                            e.getUserUid(),
+                            p == null ? null : p.getDisplayName(),
+                            p == null ? null : p.getSlug());
+                })
+                .toList();
+        return Response.ok(dtos).build();
+    }
+
+    /** Grant editor rights to a user. Idempotent (re-granting is a no-op). */
+    @POST
+    @Path("/tournaments/{tournamentId}/editors")
+    @Transactional
+    public Response addEditor(@PathParam("tournamentId") Long tournamentId,
+                              TransferTournamentRequest body) {
+        if (body == null || body.userUid() == null || body.userUid().isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("USER_UID_REQUIRED").build();
+        }
+        Tournaments tournament = tournamentsRepo.findById(tournamentId);
+        if (tournament == null) {
+            return Response.status(Response.Status.NOT_FOUND).entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        UserProfile target = profileRepo.findByUid(body.userUid()).orElse(null);
+        if (target == null) {
+            return Response.status(Response.Status.NOT_FOUND).entity("USER_NOT_FOUND").build();
+        }
+        if (!editorRepo.isEditor(tournamentId, target.getUserUid())) {
+            editorRepo.persist(new hr.mrodek.apps.futsal_turniri.model.TournamentEditor(tournament, target.getUserUid()));
+        }
+        return Response.ok(new AdminUserDto(
+                target.getUserUid(), target.getDisplayName(), target.getSlug())).build();
+    }
+
+    /** Revoke a user's editor rights. Idempotent. */
+    @DELETE
+    @Path("/tournaments/{tournamentId}/editors/{userUid}")
+    @Transactional
+    public Response removeEditor(@PathParam("tournamentId") Long tournamentId,
+                                 @PathParam("userUid") String userUid) {
+        editorRepo.removeByTournamentAndUid(tournamentId, userUid);
+        return Response.noContent().build();
     }
 
     /** ──────────────────────────────────────────────────────────────────

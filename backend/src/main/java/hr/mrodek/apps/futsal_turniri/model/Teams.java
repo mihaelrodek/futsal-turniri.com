@@ -52,6 +52,13 @@ public class Teams {
     @Column(name = "name", length = 200, nullable = false)
     private String name;
 
+    /**
+     * Optional jersey (kit) colour, chosen by the organizer on the Ekipe tab.
+     * Lowercase {@code #rrggbb} hex; null = not set. Purely presentational.
+     */
+    @Column(name = "jersey_color", length = 9)
+    private String jerseyColor;
+
     @Column(name = "is_eliminated", nullable = false)
     private boolean eliminated = false;
 

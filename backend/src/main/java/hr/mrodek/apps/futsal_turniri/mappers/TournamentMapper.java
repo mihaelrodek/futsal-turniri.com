@@ -94,6 +94,8 @@ public interface TournamentMapper {
             // istaknuto" without a second fetch.
             @Mapping(target = "featuredAt", source = "featuredAt"),
             @Mapping(target = "hidden", source = "hidden"),
+            // Best-scorer goal scope (which stages count toward the race).
+            @Mapping(target = "scorerScope", source = "scorerScope", qualifiedByName = "enumToName"),
     })
     TournamentDetailsResponse toDetails(Tournaments t);
 
