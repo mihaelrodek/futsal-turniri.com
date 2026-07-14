@@ -1008,7 +1008,7 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     }
 
     return (
-        <Box mb={{ base: 0, md: 7 }}>
+        <Box mb="0">
             <Box
                 ref={viewportRef}
                 position="relative"
@@ -2086,7 +2086,7 @@ export default function TournamentsPage() {
     const gridCols = { base: "1fr", md: "1fr 1fr", lg: "repeat(3, 1fr)" }
 
     return (
-        <VStack align="stretch" gap={{ base: 4, md: 5 }}>
+        <VStack align="stretch" gap="4">
             <HelpFab />
             {/* Stream mode drives the hero slot: STREAMING → the video hero;
                 ADS → sponsor banner; PAUSED → "pauziran" placeholder; OFF →
