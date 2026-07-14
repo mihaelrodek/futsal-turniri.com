@@ -7,7 +7,6 @@ import {
     Dialog,
     HStack,
     Input,
-    NativeSelect,
     Portal,
     Spinner,
     Stack,
@@ -39,9 +38,7 @@ import {
     FiStar,
     FiStopCircle,
     FiTrash2,
-    FiVideo,
 } from "react-icons/fi"
-import { fetchStreamBanner, setStreamBanner } from "../api/streamBanner"
 
 /**
  * Admin-only "Dashboard" tab on the profile page. Two parallel flows
@@ -73,202 +70,6 @@ import { fetchStreamBanner, setStreamBanner } from "../api/streamBanner"
  * context - the dashboard is a single self-contained screen that
  * doesn't share state with anything else.
  */
-/* ─────────────── Live-stream banner (home page) ───────────────
-   Admin pastes the court-camera url (Veo, YouTube, HLS .m3u8, MP4 or an
-   embeddable page) and flips the switch; while on, the HOME page hero
-   (promo slides + "uživo" scoreboard) is replaced by the video player.
-   The public read is Cache-Control: no-store and the home page polls it,
-   so the banner appears/disappears within seconds of the change.
-
-   Linking a tournament makes the home page follow THAT tournament's live
-   match (its "tijek utakmice" + group table) next to the video, instead of
-   the globally-featured live match. */
-function StreamBannerCard({ tournaments }: { tournaments: AdminTournamentDto[] }) {
-    const [url, setUrl] = useState("")
-    const [live, setLive] = useState(false)
-    const [tournamentUuid, setTournamentUuid] = useState("")
-    // The url currently PERSISTED on the server (vs `url` which is the input).
-    // Drives whether the paused-banner state exists → whether "Ukloni" shows.
-    const [savedUrl, setSavedUrl] = useState("")
-    const [loaded, setLoaded] = useState(false)
-    const [busy, setBusy] = useState(false)
-    const [err, setErr] = useState<string | null>(null)
-
-    useEffect(() => {
-        let cancelled = false
-        fetchStreamBanner()
-            .then((b) => {
-                if (!cancelled) {
-                    setUrl(b.url ?? "")
-                    setLive(b.live)
-                    setTournamentUuid(b.tournamentUuid ?? "")
-                    setSavedUrl(b.url ?? "")
-                }
-            })
-            .catch(() => { /* toast via interceptor; card stays editable */ })
-            .finally(() => { if (!cancelled) setLoaded(true) })
-        return () => { cancelled = true }
-    }, [])
-
-    async function save(nextLive: boolean) {
-        const trimmed = url.trim()
-        if (nextLive && !trimmed) {
-            setErr("Zalijepi URL prijenosa prije pokretanja.")
-            return
-        }
-        if (trimmed && !/^https?:\/\//i.test(trimmed)) {
-            setErr("URL mora počinjati s http:// ili https://")
-            return
-        }
-        setErr(null)
-        setBusy(true)
-        try {
-            const b = await setStreamBanner(trimmed || null, nextLive, tournamentUuid || null)
-            setUrl(b.url ?? "")
-            setLive(b.live)
-            setTournamentUuid(b.tournamentUuid ?? "")
-            setSavedUrl(b.url ?? "")
-        } catch {
-            // Error toasted by the http interceptor.
-        } finally {
-            setBusy(false)
-        }
-    }
-
-    // Fully remove the stream (clears the url) → the home page drops the
-    // paused banner and shows the normal promo/live hero again.
-    async function clear() {
-        setErr(null)
-        setBusy(true)
-        try {
-            const b = await setStreamBanner(null, false, tournamentUuid || null)
-            setUrl(b.url ?? "")
-            setLive(b.live)
-            setSavedUrl(b.url ?? "")
-        } catch {
-            // Error toasted by the http interceptor.
-        } finally {
-            setBusy(false)
-        }
-    }
-
-    return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "4", md: "6" }}>
-                <Stack gap="3">
-                    <HStack justify="space-between" align="flex-start" wrap="wrap" gap="2">
-                        <Box>
-                            <HStack gap="2">
-                                <Box color="fg.muted" display="inline-flex"><FiVideo size={16} /></Box>
-                                <Text fontSize="lg" fontWeight="semibold">
-                                    Prijenos uživo - banner na glavnoj
-                                </Text>
-                            </HStack>
-                            <Text fontSize="sm" color="fg.muted" mt="1">
-                                Dok je prijenos pokrenut, video player (Veo kamera) zamjenjuje
-                                promo bannere i "uživo" slajd na vrhu glavne stranice. Podržano:
-                                YouTube link, HLS .m3u8, MP4 ili embed stranica.
-                            </Text>
-                        </Box>
-                        <Badge
-                            colorPalette={live ? "red" : savedUrl ? "orange" : "gray"}
-                            variant={live ? "solid" : "surface"}
-                            rounded="full"
-                            px="2.5"
-                        >
-                            {live ? "● UŽIVO" : savedUrl ? "Pauzirano" : "Isključen"}
-                        </Badge>
-                    </HStack>
-
-                    <Box>
-                        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                            URL prijenosa
-                        </Text>
-                        <Input
-                            placeholder="https://…"
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
-                            disabled={busy || !loaded}
-                        />
-                    </Box>
-
-                    {/* Link the stream to a tournament → the home page shows
-                        that tournament's live match + group table under it. */}
-                    <Box>
-                        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                            Poveži s turnirom (za tijek utakmice + tablicu skupine)
-                        </Text>
-                        <NativeSelect.Root size="sm" disabled={busy || !loaded}>
-                            <NativeSelect.Field
-                                value={tournamentUuid}
-                                onChange={(e) => setTournamentUuid(e.currentTarget.value)}
-                            >
-                                <option value="">Bez povezanog turnira</option>
-                                {tournaments.map((t) => (
-                                    <option key={t.id} value={t.uuid ?? ""}>
-                                        {t.name}
-                                        {t.location ? ` · ${t.location}` : ""}
-                                    </option>
-                                ))}
-                            </NativeSelect.Field>
-                            <NativeSelect.Indicator />
-                        </NativeSelect.Root>
-                        <Text fontSize="xs" color="fg.muted" mt="1.5" lineHeight="1.4">
-                            Kad je turnir povezan i na njemu se igra utakmica uživo, ona se
-                            automatski prikazuje pored prijenosa - zajedno s tablicom njezine
-                            skupine. Bez povezanog turnira prikazuje se trenutno istaknuta
-                            utakmica.
-                        </Text>
-                    </Box>
-
-                    {err && (
-                        <Text fontSize="xs" color="red.fg" fontWeight={600}>
-                            {err}
-                        </Text>
-                    )}
-
-                    <HStack justify="flex-end" gap="2" wrap="wrap">
-                        {/* Fully remove the stream - only when one is persisted
-                            and not currently live (i.e. the paused-banner
-                            state). Returns the home page to its normal hero. */}
-                        {!live && !!savedUrl && (
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                colorPalette="gray"
-                                onClick={clear}
-                                loading={busy}
-                            >
-                                <FiTrash2 /> Ukloni prijenos
-                            </Button>
-                        )}
-                        {live && (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                colorPalette="red"
-                                onClick={() => save(false)}
-                                loading={busy}
-                            >
-                                <FiStopCircle /> Zaustavi prijenos
-                            </Button>
-                        )}
-                        <Button
-                            size="sm"
-                            colorPalette="green"
-                            onClick={() => save(true)}
-                            loading={busy}
-                            disabled={!loaded || !url.trim()}
-                        >
-                            <FiPlay /> {live ? "Spremi promjene" : (savedUrl ? "Nastavi prijenos" : "Pokreni prijenos")}
-                        </Button>
-                    </HStack>
-                </Stack>
-            </Card.Body>
-        </Card.Root>
-    )
-}
-
 export default function AdminDashboardTab() {
     /* ─────────────── Tournament list + selection ─────────────── */
 
@@ -467,9 +268,6 @@ export default function AdminDashboardTab() {
 
     return (
         <VStack align="stretch" gap="4">
-            {/* Site-wide live-stream banner control (home page hero). */}
-            <StreamBannerCard tournaments={tournaments ?? []} />
-
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">

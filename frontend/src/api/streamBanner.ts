@@ -1,4 +1,5 @@
 import { http } from "./http"
+import type { AdMediaType } from "./streamAds"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Site-wide live-stream banner (Veo court camera on the HOME page).
@@ -16,13 +17,29 @@ import { http } from "./http"
    PUT is admin-only (dashboard).
    ────────────────────────────────────────────────────────────────────── */
 
+/** The banner's mode. STREAMING plays the video; PAUSED shows a "paused"
+ *  placeholder; ADS shows the sponsor banner; OFF shows the normal promo hero.
+ *  The url is kept across all of them (OFF no longer deletes it). */
+export type StreamState = "STREAMING" | "PAUSED" | "ADS" | "OFF"
+
 export type StreamBanner = {
     url: string | null
+    /** Convenience derived flag (state === "STREAMING"). */
     live: boolean
+    /** The current mode - drives what the home hero slot renders. */
+    state: StreamState
     /** Tournament this stream is linked to (immutable uuid), or null. */
     tournamentUuid: string | null
     /** Linked tournament's display name (for the admin card), or null. */
     tournamentName: string | null
+    /** Active ad (ADS mode): its id, media proxy url + IMAGE|VIDEO, or null. */
+    adId: number | null
+    adUrl: string | null
+    adMediaType: AdMediaType | null
+    /** Overlay currently shown OVER the video (any state), or null when hidden. */
+    overlayId: number | null
+    overlayUrl: string | null
+    overlayMediaType: AdMediaType | null
 }
 
 /** Current banner state. Silent - polled in the background from the home page. */
@@ -31,7 +48,21 @@ export async function fetchStreamBanner(): Promise<StreamBanner> {
         "/stream-banner",
         { silent: true } as any,
     )
-    return data ?? { url: null, live: false, tournamentUuid: null, tournamentName: null }
+    return (
+        data ?? {
+            url: null,
+            live: false,
+            state: "OFF",
+            tournamentUuid: null,
+            tournamentName: null,
+            adId: null,
+            adUrl: null,
+            adMediaType: null,
+            overlayId: null,
+            overlayUrl: null,
+            overlayMediaType: null,
+        }
+    )
 }
 
 /* ── Synchronous first-paint hint ──────────────────────────────────────────
@@ -75,22 +106,24 @@ export function writeStreamBannerHint(banner: StreamBanner): void {
     }
 }
 
-/** Admin: set the camera url, the "camera is on" switch, and the linked
- *  tournament (uuid/slug; null = not linked). */
+/** Admin: set the camera url, the mode (state), and the linked tournament
+ *  (uuid/slug; null = not linked). The url is kept regardless of state. */
 export async function setStreamBanner(
     url: string | null,
-    live: boolean,
+    state: StreamState,
     tournamentUuid: string | null,
+    adId: number | null = null,
+    overlayId: number | null = null,
 ): Promise<StreamBanner> {
     const { data } = await http.put<StreamBanner>(
         "/stream-banner",
-        { url, live, tournamentUuid },
+        { url, state, tournamentUuid, adId, overlayId },
         {
-            successMessage: live
-                ? "Prijenos uživo je pokrenut."
-                : url
-                    ? "Prijenos je zaustavljen."
-                    : "Prijenos je uklonjen.",
+            successMessage:
+                state === "STREAMING" ? "Prijenos uživo je pokrenut."
+                    : state === "PAUSED" ? "Prijenos je pauziran."
+                        : state === "ADS" ? "Uključene su reklame."
+                            : "Prijenos je ugašen.",
         } as any,
     )
     return data

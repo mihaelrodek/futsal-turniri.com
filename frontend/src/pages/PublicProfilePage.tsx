@@ -51,6 +51,7 @@ import AvatarPreview from "../components/AvatarPreview"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
+import LiveStreamAdminTab from "../components/LiveStreamAdminTab"
 import AdminPlayersListTab from "../components/AdminPlayersListTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
@@ -104,7 +105,7 @@ export default function PublicProfilePage() {
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
     // see Turniri only.
-    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "dashboard" | "popis-igraca">("turniri")
+    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "dashboard" | "popis-igraca" | "live-stream">("turniri")
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -364,6 +365,18 @@ export default function PublicProfilePage() {
                             Popis igrača
                         </Button>
                     )}
+                    {/* Admin-only Live stream tab - controls the site-wide
+                        home-page stream banner (streaming / paused / ads / off). */}
+                    {isAdmin && (
+                        <Button
+                            size="sm"
+                            variant={profileTab === "live-stream" ? "solid" : "ghost"}
+                            colorPalette="purple"
+                            onClick={() => setProfileTab("live-stream")}
+                        >
+                            Live stream
+                        </Button>
+                    )}
                 </HStack>
             )}
 
@@ -500,6 +513,11 @@ export default function PublicProfilePage() {
             {/* === POPIS IGRAČA tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "popis-igraca" && (
                 <AdminPlayersListTab />
+            )}
+
+            {/* === LIVE STREAM tab - admin-only, on own profile === */}
+            {isOwner && isAdmin && profileTab === "live-stream" && (
+                <LiveStreamAdminTab />
             )}
         </VStack>
     )

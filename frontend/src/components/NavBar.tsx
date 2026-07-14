@@ -58,11 +58,11 @@ function PillNavLink({
             asChild
             display="inline-flex"
             alignItems="center"
-            gap="1.5"
-            px="4"
-            py="2"
+            gap="1"
+            px="3"
+            py="1.5"
             rounded="full"
-            fontSize="13px"
+            fontSize="12px"
             fontWeight={600}
             color={isActive ? "white" : "fg.ink"}
             bg={isActive ? "pitch.500" : "transparent"}
@@ -241,7 +241,7 @@ export default function NavBar() {
             // Beats Leaflet's internal panes - see prior NavBar comment.
             zIndex={1000}
         >
-            <Container maxW="6xl" py="3">
+            <Container maxW="6xl" py="2">
                 {/* ── Desktop layout ───────────────────────────────────────── */}
                 <Box
                     display={{ base: "none", md: "grid" }}

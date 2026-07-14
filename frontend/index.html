@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo/mark-green.svg" />
+    <!-- PNG favicon fallback - Google's favicon crawler doesn't reliably
+         pick up SVG favicons; it wants a raster icon whose size is a
+         multiple of 48px (192 = 4×48). Without this the search result
+         shows the generic globe instead of the logo. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <!-- Apple touch icon - 180x180 PNG with white padding so iOS doesn't
          clip the suits when it rounds the corners on the home screen. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -94,6 +99,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="description" content="Futsal turniri u Hrvatskoj - prati turnire na jednom mjestu, pogledaj raspored, rezultate uživo i statistiku strijelaca." />
+    <!-- Let Google show LARGE image previews next to results / in Discover.
+         Without this the default preview size is a tiny thumbnail (or none). -->
+    <meta name="robots" content="max-image-preview:large" />
 
     <!-- Open Graph / link previews. og:image must be a raster format
          (PNG/JPEG) - WhatsApp and Facebook crawlers silently drop SVG
@@ -208,6 +216,15 @@
       @keyframes pitchPulse {
         0%, 100% { opacity: 1; }
         50%      { opacity: 0.4; }
+      }
+      /* Live "U TIJEKU" badge pulse - an expanding red ring (radar ping) that
+         emanates from the status pill of a tournament with a match in progress,
+         so the badge itself visibly throbs. Applied via
+         `css={{ animation: "livePillPulse …" }}` on StatusChip's live variant. */
+      @keyframes livePillPulse {
+        0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+        70%  { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
       }
       /* Live-tournament map marker - expanding "radar ping" ring that
          emanates from the pin head. Rendered inside the Leaflet DivIcon

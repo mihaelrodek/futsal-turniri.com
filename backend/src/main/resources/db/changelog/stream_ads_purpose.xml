@@ -1,0 +1,18 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!-- Split the media library into two purposes: AD (replaces the stream in
+         ADS mode) and OVERLAY (drawn CENTRED OVER the live video, toggled by
+         the admin - e.g. a halftime graphic). Existing rows default to AD. -->
+    <changeSet id="2026-07-14-03-stream-ads-purpose" author="mrodek">
+        <addColumn tableName="stream_ads">
+            <column name="purpose" type="varchar(16)" defaultValue="AD">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

@@ -91,23 +91,30 @@ export function useOfflineMatchEvents(uuid: string, matchId: number) {
     // Last snapshot fetched from the server (source of truth for synced events).
     const [serverEvents, setServerEvents] = useState<MatchEventDto[]>([])
     const [loaded, setLoaded] = useState(false)
-    const [queue, setQueue] = useState<Op[]>(() => loadQueue(uuid, matchId))
+    // The queue REF is the synchronous source of truth; the state mirror only
+    // triggers re-renders. This ordering matters: persisting used to happen
+    // inside a React setState updater, which runs on the NEXT render - so the
+    // replay fired right after addEvent read a stale queue, saw nothing to
+    // send, and the goal sat "syncing" until a remount/refresh flushed it.
+    const queueRef = useRef<Op[]>(loadQueue(uuid, matchId))
+    const [queue, setQueueState] = useState<Op[]>(queueRef.current)
     const [online, setOnline] = useState<boolean>(
         typeof navigator === "undefined" ? true : navigator.onLine,
     )
     const [syncing, setSyncing] = useState(false)
     const seqRef = useRef<number>(
-        Math.max(0, ...loadQueue(uuid, matchId).map((o) => o.seq)) + 1,
+        Math.max(0, ...queueRef.current.map((o) => o.seq)) + 1,
     )
     const replayingRef = useRef(false)
+    // A replay was requested while one was in flight → run one more pass when
+    // the current one ends, so ops enqueued mid-drain never hang.
+    const rerunRef = useRef(false)
 
     const persist = useCallback(
         (updater: (q: Op[]) => Op[]) => {
-            setQueue((prev) => {
-                const next = updater(prev)
-                saveQueue(uuid, matchId, next)
-                return next
-            })
+            queueRef.current = updater(queueRef.current)
+            saveQueue(uuid, matchId, queueRef.current)
+            setQueueState(queueRef.current)
         },
         [uuid, matchId],
     )
@@ -149,16 +156,21 @@ export function useOfflineMatchEvents(uuid: string, matchId: number) {
         }
     }, [uuid, matchId])
 
-    // Drain the queue in strict order. A network failure stops the drain (the
-    // remaining ops stay queued for the next attempt).
+    // Drain the queue in strict order, head-first off the LIVE ref - an op
+    // enqueued while a previous one is being sent is picked up by the next
+    // loop iteration instead of waiting for a new trigger. A network failure
+    // stops the drain (the remaining ops stay queued for the next attempt).
     const replay = useCallback(async () => {
-        if (replayingRef.current) return
-        const current = loadQueue(uuid, matchId)
-        if (current.length === 0) return
+        if (replayingRef.current) {
+            rerunRef.current = true
+            return
+        }
+        if (queueRef.current.length === 0) return
         replayingRef.current = true
         setSyncing(true)
         try {
-            for (const op of current) {
+            while (queueRef.current.length > 0) {
+                const op = queueRef.current[0]
                 try {
                     if (op.kind === "add") {
                         await addMatchEvent(
@@ -189,6 +201,12 @@ export function useOfflineMatchEvents(uuid: string, matchId: number) {
             setSyncing(false)
             // Re-sync the snapshot so optimistic rows collapse into real ones.
             await refetch()
+            // Somebody asked for a replay while this one ran - go again so
+            // that op doesn't sit queued until the next external trigger.
+            if (rerunRef.current) {
+                rerunRef.current = false
+                void replay()
+            }
         }
     }, [uuid, matchId, persist, refetch])
 
@@ -196,8 +214,9 @@ export function useOfflineMatchEvents(uuid: string, matchId: number) {
     useEffect(() => {
         setServerEvents([])
         setLoaded(false)
-        setQueue(loadQueue(uuid, matchId))
-        seqRef.current = Math.max(0, ...loadQueue(uuid, matchId).map((o) => o.seq)) + 1
+        queueRef.current = loadQueue(uuid, matchId)
+        setQueueState(queueRef.current)
+        seqRef.current = Math.max(0, ...queueRef.current.map((o) => o.seq)) + 1
         void refetch().then(() => { void replay() })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [uuid, matchId])

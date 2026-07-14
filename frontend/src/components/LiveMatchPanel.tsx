@@ -965,7 +965,42 @@ function PairingEntry({
                 />
             </Box>
 
-            <Eyebrow>2 · Odaberi radnju</Eyebrow>
+            {/* Minute sits BETWEEN the player and the action pick on purpose:
+                the event commits the instant both are chosen, so a wrong
+                auto-minute has to be correctable BEFORE the action tap. */}
+            <Eyebrow>2 · Minuta</Eyebrow>
+            <Flex align="center" gap="2.5" mb="4" wrap="wrap">
+                <Input
+                    type="number"
+                    min={0}
+                    w="92px"
+                    size="lg"
+                    textAlign="center"
+                    fontWeight={800}
+                    fontSize="2xl"
+                    fontFamily="mono"
+                    value={minute}
+                    onChange={(e) => { setMinute(e.target.value); setAutoMinute(false) }}
+                />
+                {isTimer && (
+                    <Button
+                        size="md"
+                        variant={autoMinute ? "solid" : "outline"}
+                        colorPalette="brand"
+                        onClick={() => setAutoMinute(true)}
+                        title="Vrati minutu na automatsko praćenje mjerača"
+                    >
+                        Sada
+                    </Button>
+                )}
+                {isTimer && (
+                    <Text fontSize="xs" color="fg.muted" fontWeight={600}>
+                        {autoMinute ? "Prati mjerač automatski" : "Ručno upisana minuta"}
+                    </Text>
+                )}
+            </Flex>
+
+            <Eyebrow>3 · Odaberi radnju</Eyebrow>
             <Box display="grid" gridTemplateColumns="repeat(4, 1fr)" gap="2" mb="3.5">
                 {ACTIONS.map((a) => (
                     <ActionButton
@@ -982,33 +1017,9 @@ function PairingEntry({
                 <Text fontSize="xs" fontWeight={700} color="fg.muted" flex="1" minW="180px">
                     {hint}
                 </Text>
-                <HStack gap="2">
-                    <Text fontSize="2xs" fontWeight={700} color="fg.muted">Min.</Text>
-                    <Input
-                        type="number"
-                        min={0}
-                        w="56px"
-                        size="sm"
-                        textAlign="center"
-                        fontWeight={700}
-                        value={minute}
-                        onChange={(e) => { setMinute(e.target.value); setAutoMinute(false) }}
-                    />
-                    {isTimer && (
-                        <Button
-                            size="sm"
-                            variant={autoMinute ? "solid" : "outline"}
-                            colorPalette="brand"
-                            onClick={() => setAutoMinute(true)}
-                            title="Vrati minutu na automatsko praćenje mjerača"
-                        >
-                            Sada
-                        </Button>
-                    )}
-                    <Button size="sm" variant="outline" colorPalette="gray" onClick={clearPending} disabled={!pendingPlayer && !pendingAction}>
-                        Odustani
-                    </Button>
-                </HStack>
+                <Button size="sm" variant="outline" colorPalette="gray" onClick={clearPending} disabled={!pendingPlayer && !pendingAction}>
+                    Odustani
+                </Button>
             </Flex>
         </Box>
     )
@@ -1211,7 +1222,8 @@ function ActionButton({
     const icon =
         type === "GOAL" ? <Text as="span" fontSize="xl" lineHeight="1">⚽</Text>
             : type === "OWN_GOAL" ? (
-                <Box as="span" w="20px" h="20px" rounded="full" css={{ background: "radial-gradient(circle at 35% 30%, #e8635a, #b7301f)", boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,.10)" }} />
+                // Same ball as the timeline's autogol icon, in red.
+                <Box as="span" display="inline-flex" lineHeight="1" color="red.solid"><GiSoccerBall size={22} /></Box>
             ) : (
                 <Box as="span" w="15px" h="19px" rounded="sm" bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
             )
@@ -1304,9 +1316,10 @@ function CenterTimeline({
 
     return (
         <Box position="relative" py="2" w="full">
-            {/* Continuous central line behind the rows. */}
-            <Box position="absolute" left="50%" top="2" bottom="2" borderLeftWidth="2px" borderStyle="dashed" borderColor="border.emphasized" />
-            <VStack position="relative" align="stretch" gap="1">
+            {/* Continuous central line behind the rows - centred exactly on 50%
+                (translateX) and layered under the rows, matching /uzivo → tijek. */}
+            <Box position="absolute" top="3" bottom="3" left="50%" transform="translateX(-50%)" borderLeftWidth="2px" borderStyle="dashed" borderColor="border" zIndex={0} />
+            <VStack position="relative" zIndex={1} align="stretch" gap="1">
                 {rows.map((r, i) =>
                     r.kind === "half" ? (
                         <Flex key={`h-${i}`} justify="center" py="1">
@@ -1363,7 +1376,7 @@ function TimelineEventRow({ row, canDelete, onUndo }: { row: Extract<TimelineRow
                 {row.center.score[0]} - {row.center.score[1]}
             </Box>
         )
-        : <Box boxSize="10px" rounded="full" bg="fg.ink" boxShadow="0 0 0 5px var(--chakra-colors-bg-panel)" />
+        : <Box boxSize="10px" rounded="full" bg="fg.ink" flexShrink={0} />
     const minEl = (
         <Text as="span" fontSize="xs" fontWeight="bold" color="fg.ink" fontVariantNumeric="tabular-nums" whiteSpace="nowrap" flexShrink={0}>
             {row.min}&apos;

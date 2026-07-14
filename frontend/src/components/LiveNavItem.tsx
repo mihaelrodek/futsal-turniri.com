@@ -50,11 +50,11 @@ export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
             asChild
             display="inline-flex"
             alignItems="center"
-            gap="1.5"
-            px="4"
-            py="2"
+            gap="1"
+            px="3"
+            py="1.5"
             rounded="full"
-            fontSize="13px"
+            fontSize="12px"
             fontWeight={600}
             color={isActive ? "white" : isLive ? "accent.red" : "fg.ink"}
             bg={isActive ? "pitch.500" : "transparent"}

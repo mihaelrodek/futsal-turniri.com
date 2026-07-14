@@ -56,6 +56,7 @@ const CreateTournamentPage = lazyWithReload(() => import('./pages/CreateTourname
 const TournamentDetailsPage = lazyWithReload(() => import('./pages/TournamentDetailsPage'))
 const FullscreenTournamentPage = lazyWithReload(() => import('./pages/FullscreenTournamentPage'))
 const MatchLivePage = lazyWithReload(() => import('./pages/MatchLivePage'))
+const TournamentLivePage = lazyWithReload(() => import('./pages/TournamentLivePage'))
 const FindTeamPage = lazyWithReload(() => import('./pages/FindTeamPage'))
 const LivePage = lazyWithReload(() => import('./pages/LivePage'))
 const MapPage = lazyWithReload(() => import('./pages/MapPage'))
@@ -231,6 +232,12 @@ export default function App() {
                     <Route
                         path="/turniri/:uuid/fullscreen"
                         element={<FullscreenTournamentPage />}
+                    />
+                    {/* Shareable "turnir mode" - immersive live-stream view of a
+                        tournament (camera + combined Utakmica/Tablica panel). */}
+                    <Route
+                        path="/turniri/:uuid/uzivo"
+                        element={<TournamentLivePage />}
                     />
                     {/* A single match's own live page (SofaScore-style) - public,
                         shareable, follows the game live. */}

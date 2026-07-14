@@ -257,6 +257,20 @@ futsal-turniri.com, www.futsal-turniri.com {
 		reverse_proxy backend:8085
 	}
 
+	# ─── 5b. Tournament LIVE-STREAM SSR preview for crawlers ───────────
+	# The shareable "turnir mode" page /turniri/<slug>/uzivo. A spectator
+	# sharing the live link gets a "Uživo prijenos … putem kamere" OG card
+	# instead of the generic site preview. Anchored on the /uzivo suffix so
+	# it never collides with the bare tournament matcher above.
+	@tournament_live_for_bot {
+		path_regexp tournament_live_slug ^/turniri/([a-z0-9][a-z0-9-]*)/uzivo$
+		header_regexp User-Agent (?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)
+	}
+	handle @tournament_live_for_bot {
+		rewrite * /api/preview/tournaments/{re.tournament_live_slug.1}/uzivo
+		reverse_proxy backend:8085
+	}
+
 	# ─── 6. Profile SSR preview for crawlers ──────────────────────────
 	# SPA route is /profil/<slug> (singular); backend endpoint is
 	# /api/preview/profiles/<slug> (plural English) - see comment above

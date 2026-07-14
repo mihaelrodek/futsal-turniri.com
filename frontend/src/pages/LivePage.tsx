@@ -301,8 +301,8 @@ function LiveMatchCard({
             {/* Header strip: top row (UŽIVO · centred phase/clock · bell), then
                 the tournament name centred underneath, right above the score. */}
             <Box
-                px="4"
-                py="2.5"
+                px="3.5"
+                py="2"
                 bg="bg.surfaceTint2"
                 borderBottomWidth="1px"
                 borderColor="border"
@@ -361,7 +361,7 @@ function LiveMatchCard({
                     color="fg.ink"
                     textAlign="center"
                     truncate
-                    mt="1.5"
+                    mt="1"
                 >
                     {match.tournamentName}
                 </Text>
@@ -374,8 +374,8 @@ function LiveMatchCard({
                 templateColumns="1fr auto 1fr"
                 alignItems="center"
                 gap={{ base: "2", md: "3" }}
-                px={{ base: "3", md: "5" }}
-                py={{ base: "3", md: "5" }}
+                px={{ base: "3", md: "4" }}
+                py={{ base: "2.5", md: "3.5" }}
             >
                 <Text
                     fontSize={heroNameFont}
@@ -425,8 +425,8 @@ function LiveMatchCard({
                 align="center"
                 justify="center"
                 gap="1.5"
-                px="4"
-                py="2.5"
+                px="3.5"
+                py="2"
                 borderTopWidth="1px"
                 borderColor="border"
                 color="fg.muted"

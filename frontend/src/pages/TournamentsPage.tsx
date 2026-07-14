@@ -16,7 +16,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { Link as RouterLink } from "react-router-dom"
+import { Link as RouterLink, useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import {
@@ -57,8 +57,7 @@ import {
 } from "../ui/pitch"
 import { clockState, matchPhase } from "../components/liveMatch"
 import HelpFab from "../components/HelpFab"
-import StreamHero from "../components/StreamHero"
-import TheaterMode from "../components/TheaterMode"
+import StreamHero, { buildStreamOverlay } from "../components/StreamHero"
 import StreamPausedBanner from "../components/StreamPausedBanner"
 import {
     fetchStreamBanner,
@@ -1173,7 +1172,15 @@ function TournamentCardView({
                 cursor="pointer"
                 // Admin-hidden tournament (only its creator/admin receive it):
                 // greyed-out + dashed border so it visibly differs from public.
-                css={t.hidden ? { filter: "grayscale(0.7)", opacity: 0.75 } : undefined}
+                // A FINISHED tournament is desaturated too (lighter than hidden)
+                // so a spectator instantly reads it as "over" in the list.
+                css={
+                    t.hidden
+                        ? { filter: "grayscale(0.7)", opacity: 0.75 }
+                        : status.status === "finished"
+                            ? { filter: "grayscale(0.6)", opacity: 0.82 }
+                            : undefined
+                }
             >
                 {/* Poster area - shorter on mobile so the card stays compact
                      and the body remains the focus. */}
@@ -1928,8 +1935,16 @@ export default function TournamentsPage() {
                 setStreamBanner(b)
             })
             .catch(() => { /* keep last state; next tick retries */ })
-    }, 30_000)
-    const streamBannerLive = !!streamBanner?.live && !!streamBanner?.url
+        // Poll fast while streaming so an admin-toggled overlay (halftime
+        // graphic…) appears within a few seconds; slow otherwise.
+    }, streamBanner?.state === "STREAMING" && !!streamBanner?.url ? 7_000 : 30_000)
+    // The banner's mode drives what the home hero slot renders. Fall back to
+    // the legacy live/url shape for a stale first-paint hint without `state`.
+    const streamState =
+        streamBanner?.state ?? (streamBanner?.live ? "STREAMING" : streamBanner?.url ? "PAUSED" : "OFF")
+    const streamBannerLive = streamState === "STREAMING" && !!streamBanner?.url
+    // Admin-toggled media drawn centred over the video (halftime graphic, etc.).
+    const streamOverlay = buildStreamOverlay(streamBanner?.overlayUrl, streamBanner?.overlayMediaType)
     // "How many people are watching" - heartbeats while the stream is on.
     const streamViewers = useStreamPresence(streamBannerLive)
 
@@ -1945,12 +1960,14 @@ export default function TournamentsPage() {
         return pickFeaturedFirst(inTournament)[0] ?? null
     }, [streamBanner?.tournamentUuid, liveList, liveTop])
 
-    // "Turnir mode" - distraction-free theater view of the streamed tournament.
-    const [theaterOpen, setTheaterOpen] = useState(false)
-    // Never leave the theater open once the stream is turned off.
-    useEffect(() => {
-        if (!streamBannerLive) setTheaterOpen(false)
-    }, [streamBannerLive])
+    // "Turnir mode" - opens the immersive, SHAREABLE live-stream page for the
+    // streamed tournament at its own URL (/turniri/{slug}/uzivo) instead of an
+    // in-place overlay, so the link can be sent to spectators.
+    const navigate = useNavigate()
+    const enterTheater = () => {
+        const dest = streamMatch?.tournamentSlug ?? streamBanner?.tournamentUuid
+        if (dest) navigate(`/turniri/${dest}/uzivo`)
+    }
 
     useEffect(() => {
         let cancelled = false
@@ -2069,21 +2086,11 @@ export default function TournamentsPage() {
     const gridCols = { base: "1fr", md: "1fr 1fr", lg: "repeat(3, 1fr)" }
 
     return (
-        <VStack align="stretch" gap={{ base: 4, md: 7 }}>
+        <VStack align="stretch" gap={{ base: 4, md: 5 }}>
             <HelpFab />
-            {theaterOpen && streamBannerLive && (
-                <TheaterMode
-                    url={streamBanner!.url!}
-                    match={streamMatch}
-                    tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
-                    viewers={streamViewers}
-                    onClose={() => setTheaterOpen(false)}
-                />
-            )}
-            {/* Camera on → the stream hero takes over: on desktop a compact
-                three-column row (player · tijek utakmice · tablica skupine)
-                so the search + filters stay visible right below; on mobile
-                just the full-width player. Otherwise the promo/live carousel. */}
+            {/* Stream mode drives the hero slot: STREAMING → the video hero;
+                ADS → sponsor banner; PAUSED → "pauziran" placeholder; OFF →
+                the normal promo/live carousel. */}
             {streamBannerLive ? (
                 <StreamHero
                     url={streamBanner!.url!}
@@ -2091,12 +2098,17 @@ export default function TournamentsPage() {
                     tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
                     tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
                     viewers={streamViewers}
-                    onEnterTheater={() => setTheaterOpen(true)}
+                    onEnterTheater={enterTheater}
+                    centerOverlay={streamOverlay}
                 />
-            ) : streamBanner?.url ? (
-                // Stream configured but paused (admin stopped it / between
-                // sessions) → sponsor banner instead of the promo carousel.
-                <StreamPausedBanner />
+            ) : streamState === "ADS" ? (
+                <StreamPausedBanner
+                    mode="ads"
+                    adUrl={streamBanner?.adUrl ?? null}
+                    adMediaType={streamBanner?.adMediaType ?? null}
+                />
+            ) : streamState === "PAUSED" ? (
+                <StreamPausedBanner mode="paused" />
             ) : (
                 <HomeHero match={liveTop} />
             )}

@@ -301,6 +301,9 @@ export function StatusChip({
             rounded="full"
             fontWeight={700}
             letterSpacing="0.04em"
+            // The live badge itself throbs (expanding red ring), not just its
+            // dot - so a tournament with a match in progress stands out.
+            css={cfg.pulse ? { animation: "livePillPulse 1.6s ease-out infinite" } : undefined}
             {...dims}
         >
             <PulseDot
@@ -894,7 +897,13 @@ export function PageTitle({
             // to drop below the big title as before.
             wrap={{ base: "wrap", md: "nowrap" }}
         >
-            <Box minW="0" flex="1">
+            {/* Mobile: with a plain action (summary tiles, search) the title
+                takes a full row (basis 100%) so the action wraps BELOW it
+                instead of crushing the title into a sliver that wraps
+                letter-by-letter. With a status chip (tournament header) keep
+                flex:1 so the chip/actions stay top-right as before. Desktop
+                always keeps flex:1. */}
+            <Box minW="0" flex={{ base: status && statusLabel ? "1" : "1 0 100%", md: "1" }}>
                 {kicker ? (
                     <Box mb="1">
                         <MonoLabel color="pitch.500" letterSpacing="0.2em">

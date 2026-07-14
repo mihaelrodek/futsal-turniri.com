@@ -4,9 +4,11 @@
 
 # Default policy for everything not matched below. We block the auth and
 # create-tournament routes (no public value indexing them) and the bulk of
-# /api/, but Allow the three /api/ subtrees that crawlers legitimately need:
+# /api/, but Allow the /api/ subtrees that crawlers legitimately need:
 #   /api/preview/    - server-side-rendered OG previews for crawlers
 #   /api/resources/  - proxied tournament posters and avatars (og:image targets)
+#   /api/og/         - branded og:image cards (default.png etc.) - blocking
+#                      these is what stops Google showing our thumbnail
 #   /api/sitemap.xml - the sitemap itself
 User-agent: *
 # Disallow lists use the Croatian canonical paths. English aliases
@@ -21,6 +23,7 @@ Disallow: /pronadi-para
 Disallow: /api/
 Allow: /api/preview/
 Allow: /api/resources/
+Allow: /api/og/
 Allow: /api/sitemap.xml
 
 # Social / link-preview crawlers - explicitly allowed everywhere with an

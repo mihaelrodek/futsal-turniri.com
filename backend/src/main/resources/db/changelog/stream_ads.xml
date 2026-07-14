@@ -1,0 +1,37 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!-- The admin's library of home-page stream advertisements. Each row points
+         at a MinIO-backed `resources` blob (image or video); the site-wide
+         stream banner (app_settings) references the active one by id while it's
+         in ADS mode. -->
+
+    <changeSet id="2026-07-14-01-stream-ads-seq" author="mrodek">
+        <createSequence sequenceName="seq_stream_ads_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-14-02-stream-ads" author="mrodek">
+        <createTable tableName="stream_ads">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="resource_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <!-- IMAGE | VIDEO - how the public banner renders the blob. -->
+            <column name="media_type" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="label" type="varchar(200)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="stream_ads" baseColumnNames="resource_id"
+                                 constraintName="fk_stream_ads_resource"
+                                 referencedTableName="resources" referencedColumnNames="id"/>
+    </changeSet>
+</databaseChangeLog>

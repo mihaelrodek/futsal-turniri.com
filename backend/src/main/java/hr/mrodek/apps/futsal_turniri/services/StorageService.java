@@ -42,6 +42,11 @@ public class StorageService {
     private static final int MAX_POSTER_DIM = 1600;
     private static final int MAX_AVATAR_DIM = 512;
 
+    /** Hard cap on an ad VIDEO (bytes). Bounded by the global body limit
+     *  (quarkus.http.limits.max-body-size) - keep the two in step. Image ads
+     *  reuse the poster cap + pipeline. */
+    private static final long MAX_AD_VIDEO_BYTES = 50L * 1024 * 1024;
+
     /** Tournament poster upload - keyed under {@code posters/...}. */
     public Resources uploadPoster(org.jboss.resteasy.reactive.multipart.FileUpload file) {
         return uploadImage(file, "poster", "posters", MAX_POSTER_BYTES, MAX_POSTER_DIM);
@@ -50,6 +55,97 @@ public class StorageService {
     /** User avatar upload - keyed under {@code avatars/...}. */
     public Resources uploadAvatar(org.jboss.resteasy.reactive.multipart.FileUpload file) {
         return uploadImage(file, "avatar", "avatars", MAX_AVATAR_BYTES, MAX_AVATAR_DIM);
+    }
+
+    /**
+     * Stream-ad upload - keyed under {@code ads/...}. Accepts an IMAGE
+     * (jpg/png/webp → the same downscale pipeline as posters) OR a VIDEO
+     * (mp4/webm → stored verbatim). The kind is decided by magic bytes, not the
+     * filename. The caller reads the returned resource's content-type to know
+     * which it got.
+     */
+    public Resources uploadAd(org.jboss.resteasy.reactive.multipart.FileUpload file) {
+        java.nio.file.Path path = file.uploadedFile();
+        String videoExt = sniffVideoExt(path);
+        if (videoExt != null) {
+            return uploadVideoAd(file, path, videoExt);
+        }
+        // Not a recognised video → try the image pipeline (jpg/png/webp).
+        return uploadImage(file, "ad", "ads", MAX_POSTER_BYTES, MAX_POSTER_DIM);
+    }
+
+    /** Identify a video by magic bytes: MP4/MOV ("ftyp" box at offset 4) or
+     *  WebM/Matroska (EBML header {@code 1A 45 DF A3}). Null when neither. */
+    private String sniffVideoExt(java.nio.file.Path path) {
+        byte[] head = new byte[16];
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(path)) {
+            int read = in.read(head);
+            if (read < 12) return null;
+        } catch (Exception e) {
+            return null;
+        }
+        if (head[4] == 'f' && head[5] == 't' && head[6] == 'y' && head[7] == 'p') return "mp4";
+        if ((head[0] & 0xff) == 0x1a && (head[1] & 0xff) == 0x45
+                && (head[2] & 0xff) == 0xdf && (head[3] & 0xff) == 0xa3) return "webm";
+        return null;
+    }
+
+    /** Store a video blob verbatim (no recompression) under {@code ads/...}. */
+    private Resources uploadVideoAd(
+            org.jboss.resteasy.reactive.multipart.FileUpload file,
+            java.nio.file.Path path,
+            String ext) {
+        try {
+            if (file.size() > MAX_AD_VIDEO_BYTES) {
+                throw new IllegalArgumentException(
+                        "Video je prevelik. Maksimum: " + (MAX_AD_VIDEO_BYTES / (1024 * 1024)) + " MB.");
+            }
+            boolean exists = minio.bucketExists(
+                    io.minio.BucketExistsArgs.builder().bucket(bucket).build());
+            if (!exists) {
+                minio.makeBucket(io.minio.MakeBucketArgs.builder().bucket(bucket).build());
+            }
+
+            byte[] body = Files.readAllBytes(path);
+            String objectKey = buildObjectKey("ads", ext);
+            String safeContentType = "webm".equals(ext) ? "video/webm" : "video/mp4";
+
+            var put = io.minio.PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectKey)
+                    .contentType(safeContentType)
+                    .extraHeaders(java.util.Map.of(
+                            "Content-Disposition", "inline",
+                            "X-Content-Type-Options", "nosniff"
+                    ))
+                    .stream(new java.io.ByteArrayInputStream(body), body.length, -1)
+                    .build();
+
+            var result = minio.putObject(put);
+
+            Resources r = new Resources();
+            r.setBucketName(bucket);
+            r.setObjectKey(objectKey);
+            r.setContentType(safeContentType);
+            r.setSizeBytes((long) body.length);
+            r.setEtag(result.etag());
+            r.setCreatedAt(OffsetDateTime.now());
+            r.setUpdatedAt(OffsetDateTime.now());
+
+            com.fasterxml.jackson.databind.node.ObjectNode meta = objectMapper.createObjectNode();
+            if (file.fileName() != null) meta.put("originalFilename", file.fileName());
+            meta.put("kind", "ad");
+            meta.put("uploadedAt", OffsetDateTime.now().toString());
+            r.setMetadata(meta);
+
+            return resourcesRepo.save(r);
+        } catch (MinioException me) {
+            throw new RuntimeException("MinIO error: " + me.getMessage(), me);
+        } catch (IllegalArgumentException iae) {
+            throw iae;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload video ad", e);
+        }
     }
 
     /**

@@ -113,7 +113,86 @@ public class TournamentPreviewController {
         return Response.ok(renderHtml(t, name, description, image, spaUrl)).build();
     }
 
+    /**
+     * SSR preview for the shareable "turnir mode" page
+     * ({@code /turniri/<slug>/uzivo}). A spectator sharing the live-stream link
+     * on WhatsApp / Facebook / … gets a "Uživo prijenos … putem kamere" card
+     * instead of the generic site preview. Caddy rewrites crawler hits on
+     * {@code /turniri/<slug>/uzivo} to {@code /api/preview/tournaments/<slug>/uzivo}.
+     */
+    @GET
+    @Path("/{idOrSlug}/uzivo")
+    @Produces("text/html; charset=UTF-8")
+    public Response previewLive(@PathParam("idOrSlug") String idOrSlug) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
+        if (t == null || t.isHidden()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .type("text/html; charset=UTF-8")
+                    .entity(notFoundHtml())
+                    .build();
+        }
+
+        String name = t.getName() != null ? t.getName() : "Futsal turnir";
+        String title = "Uživo prijenos — " + name;
+        String description = "Gledaj uživo prijenos turnira " + name
+                + " putem kamere - rezultati, tijek utakmice i tablica u stvarnom vremenu.";
+
+        String base = publicBaseUrl.replaceAll("/+$", "");
+        String key = t.getSlug() != null ? t.getSlug() : t.getUuid().toString();
+        String spaUrl = base + "/turniri/" + key + "/uzivo";
+
+        // Prefer the tournament's own banner as the card image; else the
+        // branded default OG card.
+        String image;
+        if (t.getResource() != null && t.getResource().getId() != null) {
+            image = base + "/api/resources/" + t.getResource().getId() + "/image";
+        } else {
+            image = defaultOgImage.filter(s -> !s.isBlank()).orElse(null);
+        }
+
+        return Response.ok(renderLiveHtml(title, description, image, spaUrl)).build();
+    }
+
     /* ───────────────────── helpers ───────────────────── */
+
+    /** Minimal live-stream OG head + plain-text body (see {@link #previewLive}). */
+    private String renderLiveHtml(String title, String description, String image, String spaUrl) {
+        StringBuilder sb = new StringBuilder(1024);
+        sb.append("<!doctype html>\n<html lang=\"hr\">\n<head>\n");
+        sb.append("<meta charset=\"UTF-8\">\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+        sb.append("<title>").append(escapeHtml(title)).append(" - futsal-turniri.com</title>\n");
+        sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
+        sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
+
+        sb.append("<meta property=\"og:type\" content=\"video.other\">\n");
+        sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");
+        sb.append("<meta property=\"og:title\" content=\"").append(escapeAttr(title)).append("\">\n");
+        sb.append("<meta property=\"og:description\" content=\"").append(escapeAttr(description)).append("\">\n");
+        sb.append("<meta property=\"og:url\" content=\"").append(escapeAttr(spaUrl)).append("\">\n");
+        if (image != null && !image.isBlank()) {
+            sb.append("<meta property=\"og:image\" content=\"").append(escapeAttr(image)).append("\">\n");
+            sb.append("<meta property=\"og:image:alt\" content=\"").append(escapeAttr(title)).append("\">\n");
+        }
+
+        sb.append("<meta name=\"twitter:card\" content=\"")
+                .append(image != null && !image.isBlank() ? "summary_large_image" : "summary")
+                .append("\">\n");
+        sb.append("<meta name=\"twitter:title\" content=\"").append(escapeAttr(title)).append("\">\n");
+        sb.append("<meta name=\"twitter:description\" content=\"").append(escapeAttr(description)).append("\">\n");
+        if (image != null && !image.isBlank()) {
+            sb.append("<meta name=\"twitter:image\" content=\"").append(escapeAttr(image)).append("\">\n");
+        }
+
+        sb.append("</head>\n<body>\n<article>\n");
+        sb.append("<h1>").append(escapeHtml(title)).append("</h1>\n");
+        sb.append("<p>").append(escapeHtml(description)).append("</p>\n");
+        sb.append("<p><a href=\"").append(escapeAttr(spaUrl))
+                .append("\">Otvori uživo prijenos na futsal-turniri.com</a></p>\n");
+        sb.append("</article>\n</body>\n</html>\n");
+        return sb.toString();
+    }
 
     /**
      * Compose the og:description as: "{location} • {datetime} • Kotizacija

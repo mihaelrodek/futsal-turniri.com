@@ -75,6 +75,7 @@ export function classifyStreamUrl(url: string): { kind: StreamKind; src: string 
 export default function StreamPlayer({
     url,
     overlay,
+    centerOverlay,
     viewers,
 }: {
     url: string
@@ -82,6 +83,9 @@ export default function StreamPlayer({
      *  of the player. Rendered INSIDE the fullscreen element so it stays
      *  visible when the video goes fullscreen. */
     overlay?: React.ReactNode
+    /** Optional admin-toggled media (image/video) drawn CENTRED over the video
+     *  - the match stays visible around it. Non-interactive. */
+    centerOverlay?: React.ReactNode
     /** Live-viewer count for the "👁 N" badge; null/0 hides it. */
     viewers?: number | null
 }) {
@@ -384,6 +388,16 @@ export default function StreamPlayer({
                     <Text fontSize="xs" color="whiteAlpha.800" fontWeight={600}>
                         Ponovno spajanje…
                     </Text>
+                </Flex>
+            )}
+
+            {/* Admin-toggled centre overlay (halftime graphic, sponsor spot…) -
+                drawn over the video, the match stays visible around it. Inside
+                the fullscreen element so it shows fullscreen too; non-interactive
+                so the video controls still work. */}
+            {centerOverlay && (
+                <Flex position="absolute" inset="0" align="center" justify="center" px="6" py="10" pointerEvents="none">
+                    {centerOverlay}
                 </Flex>
             )}
 

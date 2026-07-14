@@ -24,24 +24,30 @@ import type { TeamKit } from "../api/tournaments"
 /* ──────────────────────────────────────────────────────────────────────────
    StreamHero - the home-page hero while the admin's live-stream banner is on.
 
-   Desktop (lg+) is a three-column row of equal height:
-     [ video player ] [ tijek utakmice ] [ tablica skupine ]
-   compact enough that the search + filters stay visible right below.
+   Desktop (lg+) is a two-column row of equal height:
+     [ video player (widened) ] [ side panel: Utakmica | Tablica ]
+   The video takes the larger share; the side panel is a single card with
+   two tabs. Compact enough that the search + filters stay visible below.
 
-   • Tijek utakmice - the current LIVE match: fixed header (team names +
-     score), events scroll inside the fixed-height body, grouped into
-     1./2. poluvrijeme exactly like the match page's timeline. Auto-scrolls
-     to the newest event.
-   • Tablica skupine - the group currently being played (live-overlaid
-     standings, provisional cells in red like the Grupe tab); chips let the
-     viewer flip to any other group.
+   • Utakmica (default tab) - the current LIVE match ticker: fixed header
+     (team names + score), events scroll inside the body, grouped into
+     1./2. poluvrijeme like the match page's timeline. Auto-scrolls to the
+     newest event.
+   • Tablica - the group currently being played (live-overlaid standings,
+     provisional cells in red like the Grupe tab) or the knockout bracket;
+     chips let the viewer flip to any other group.
+
+   Both tab bodies stay mounted (visibility toggles) so their polling and
+   scroll position survive a tab switch.
 
    Mobile keeps only the full-width 16:9 player - the panels live on the
    match page / tournament tabs there.
    ────────────────────────────────────────────────────────────────────────── */
 
-/** Height of the desktop hero row - all three columns align to it. */
-const ROW_H = "330px"
+/** Height of the desktop hero row - the video and side panel align to it.
+ *  Taller than the old three-column row so the widened video fills it (the
+ *  name + turnir-mode button moved into the side panel free up the space). */
+const ROW_H = "450px"
 
 /** Overlay pinned to the top of the stream: the live scorebug when a match is
  *  in progress, else a "SLJEDEĆA UTAKMICA" card for the tournament's next
@@ -103,6 +109,29 @@ export function buildScoreBug(
     return undefined
 }
 
+/** Admin-toggled media (image/video) to draw CENTRED over the live video.
+ *  Returns the media node (StreamPlayer centres it), or undefined when hidden. */
+export function buildStreamOverlay(
+    overlayUrl?: string | null,
+    overlayMediaType?: "IMAGE" | "VIDEO" | null,
+) {
+    if (!overlayUrl) return undefined
+    return overlayMediaType === "VIDEO" ? (
+        <chakra.video
+            src={overlayUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+            maxW="72%"
+            maxH="72%"
+            css={{ objectFit: "contain" }}
+        />
+    ) : (
+        <chakra.img src={overlayUrl} alt="Overlay" maxW="72%" maxH="72%" css={{ objectFit: "contain" }} />
+    )
+}
+
 export default function StreamHero({
     url,
     match,
@@ -110,6 +139,7 @@ export default function StreamHero({
     tournamentUuid,
     viewers,
     onEnterTheater,
+    centerOverlay,
 }: {
     url: string
     /** The featured LIVE match (home page already polls it) - drives both
@@ -126,6 +156,9 @@ export default function StreamHero({
     viewers?: number | null
     /** When set, shows a "Turnir mode" button that opens the theater view. */
     onEnterTheater?: () => void
+    /** Admin-toggled media drawn centred over the video (built by
+     *  {@link buildStreamOverlay}). */
+    centerOverlay?: React.ReactNode
 }) {
     const uuid = match?.tournamentUuid ?? tournamentUuid ?? null
     const colors = useTeamColors(uuid)
@@ -134,9 +167,13 @@ export default function StreamHero({
     const scoreBug = buildScoreBug(match, colors, nextMatch)
 
     return (
-        <Box mb={{ base: 0, md: 5 }}>
+        <Box mb="0">
+            {/* Mobile/tablet only: name + turnir-mode button above the player
+                (the side panel is hidden below lg). On lg+ they move INTO the
+                side-panel header, so this row is hidden there and the grid
+                rises to the top. */}
             {(onEnterTheater || tournamentName) && (
-                <Flex justify="center" align="center" gap={{ base: "2", md: "3" }} wrap="wrap" mb="2.5">
+                <Flex display={{ base: "flex", lg: "none" }} justify="center" align="center" gap={{ base: "2", md: "3" }} wrap="wrap" mb="2.5">
                     {tournamentName && (
                         <Text
                             fontSize={{ base: "sm", md: "md" }}
@@ -157,18 +194,21 @@ export default function StreamHero({
                 </Flex>
             )}
             <Grid
-                templateColumns={{ base: "1fr", lg: "minmax(0, 1.75fr) minmax(0, 1fr) minmax(0, 1.05fr)" }}
+                templateColumns={{ base: "1fr", lg: "minmax(0, 2.2fr) minmax(0, 0.95fr)" }}
                 gap="3"
                 alignItems="stretch"
             >
                 <Box h={{ lg: ROW_H }} minW="0">
-                    <StreamPlayer url={url} overlay={scoreBug} viewers={viewers} />
+                    <StreamPlayer url={url} overlay={scoreBug} centerOverlay={centerOverlay} viewers={viewers} />
                 </Box>
                 <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
-                    <MatchTickerPanel match={match} uuid={uuid} nextMatch={nextMatch} />
-                </Box>
-                <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
-                    <GroupTablePanel match={match} uuid={uuid} />
+                    <StreamSidePanel
+                        match={match}
+                        uuid={uuid}
+                        nextMatch={nextMatch}
+                        tournamentName={tournamentName}
+                        onEnterTheater={onEnterTheater}
+                    />
                 </Box>
             </Grid>
         </Box>
@@ -179,18 +219,14 @@ export default function StreamHero({
 
 const REGULATION: ReadonlySet<string> = new Set(["GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD"])
 
-export function MatchTickerPanel({
-    match,
-    uuid: uuidProp,
-    nextMatch,
-}: {
-    match: LiveMatch | null
-    /** Streamed tournament's uuid, so jersey colours resolve even with no live
-     *  match (when the "next match" is shown). Events still load only when live. */
-    uuid?: string | null
-    /** Shown when nothing is live: the tournament's next fixture. */
-    nextMatch?: ScheduledMatch | null
-}) {
+/** Ticker state - events fetch + poll, half-split sections, autoscroll ref.
+ *  Shared by the standalone MatchTickerPanel (theater) and the tabbed
+ *  StreamSidePanel (home hero) so both render identically. */
+function useMatchTicker(
+    match: LiveMatch | null,
+    uuidProp?: string | null,
+    nextMatch?: ScheduledMatch | null,
+) {
     const uuid = match?.tournamentUuid ?? null
     const matchId = match?.matchId ?? null
     const colors = useTeamColors(match?.tournamentUuid ?? uuidProp ?? null)
@@ -248,157 +284,195 @@ export function MatchTickerPanel({
         return out
     }, [events, match?.halfLengthMin])
 
+    return { colors, showUpcoming, bodyRef, sections }
+}
+
+type MatchTicker = ReturnType<typeof useMatchTicker>
+
+/** Header kicker + "Otvori →" link for the standalone ticker panel. */
+function MatchTickerHeader({ match, showUpcoming }: { match: LiveMatch | null; showUpcoming: boolean }) {
     return (
-        <PanelShell>
-            {/* Fixed header: kicker + link to the match page. */}
-            <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
-                <HStack gap="1.5" minW="0">
-                    {showUpcoming
-                        ? <Box color="accent.amber" display="inline-flex" flexShrink={0}><FiClock size={12} /></Box>
-                        : <PulseDot color="var(--chakra-colors-accent-red)" size={6} />}
-                    <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted">
-                        {showUpcoming ? "SLJEDEĆA UTAKMICA" : "TIJEK UTAKMICE"}
+        <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
+            <HStack gap="1.5" minW="0">
+                {showUpcoming
+                    ? <Box color="accent.amber" display="inline-flex" flexShrink={0}><FiClock size={12} /></Box>
+                    : <PulseDot color="var(--chakra-colors-accent-red)" size={6} />}
+                <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted">
+                    {showUpcoming ? "SLJEDEĆA UTAKMICA" : "TIJEK UTAKMICE"}
+                </Text>
+            </HStack>
+            {match && (
+                <chakra.a
+                    asChild
+                    fontSize="11px"
+                    fontWeight={700}
+                    color="pitch.500"
+                    flexShrink={0}
+                    _hover={{ textDecoration: "underline" }}
+                >
+                    <RouterLink to={`/turniri/${match.tournamentSlug ?? match.tournamentUuid}/utakmica/${match.matchId}`}>
+                        Otvori →
+                    </RouterLink>
+                </chakra.a>
+            )}
+        </Flex>
+    )
+}
+
+/** Scoreboard + scrolling event feed (no shell / no kicker header) - rendered
+ *  inside a flex column by the panel wrapper or the tabbed side panel. */
+function MatchTickerBody({
+    match,
+    nextMatch,
+    t,
+}: {
+    match: LiveMatch | null
+    nextMatch?: ScheduledMatch | null
+    t: MatchTicker
+}) {
+    const { colors, bodyRef, sections } = t
+    return match ? (
+        <>
+            {/* Fixed scoreboard: names never scroll away. */}
+            <Grid
+                templateColumns="1fr auto 1fr"
+                alignItems="center"
+                gap="2"
+                px="3"
+                py="2"
+                borderBottomWidth="1px"
+                borderColor="border"
+                flexShrink={0}
+            >
+                <HStack gap="1.5" justify="flex-end" minW="0">
+                    <TeamKitChip colors={colors} teamId={match.team1Id} size={9} />
+                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="right" lineClamp={2} minW="0">
+                        {match.team1Name ?? "-"}
                     </Text>
                 </HStack>
-                {match && (
-                    <chakra.a
-                        asChild
-                        fontSize="11px"
-                        fontWeight={700}
-                        color="pitch.500"
-                        flexShrink={0}
-                        _hover={{ textDecoration: "underline" }}
-                    >
-                        <RouterLink to={`/turniri/${match.tournamentSlug ?? match.tournamentUuid}/utakmica/${match.matchId}`}>
-                            Otvori →
-                        </RouterLink>
-                    </chakra.a>
-                )}
-            </Flex>
+                <Text
+                    fontFamily="mono"
+                    fontSize="lg"
+                    fontWeight={800}
+                    color="red.fg"
+                    fontVariantNumeric="tabular-nums"
+                    lineHeight="1"
+                >
+                    {match.score1 ?? 0}:{match.score2 ?? 0}
+                </Text>
+                <HStack gap="1.5" justify="flex-start" minW="0">
+                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
+                        {match.team2Name ?? "-"}
+                    </Text>
+                    <TeamKitChip colors={colors} teamId={match.team2Id} size={9} />
+                </HStack>
+            </Grid>
 
-            {match ? (
-                <>
-                    {/* Fixed scoreboard: names never scroll away. */}
-                    <Grid
-                        templateColumns="1fr auto 1fr"
-                        alignItems="center"
-                        gap="2"
-                        px="3"
-                        py="2"
-                        borderBottomWidth="1px"
-                        borderColor="border"
-                        flexShrink={0}
-                    >
-                        <HStack gap="1.5" justify="flex-end" minW="0">
-                            <TeamKitChip colors={colors} teamId={match.team1Id} size={9} />
-                            <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="right" lineClamp={2} minW="0">
-                                {match.team1Name ?? "-"}
-                            </Text>
-                        </HStack>
-                        <Text
-                            fontFamily="mono"
-                            fontSize="lg"
-                            fontWeight={800}
-                            color="red.fg"
-                            fontVariantNumeric="tabular-nums"
-                            lineHeight="1"
-                        >
-                            {match.score1 ?? 0}:{match.score2 ?? 0}
+            {/* Scrolling event feed. */}
+            <Box ref={bodyRef} flex="1" minH="0" overflowY="auto" px="2.5" py="2">
+                {sections.length === 0 ? (
+                    <Flex h="full" align="center" justify="center">
+                        <Text fontSize="xs" color="fg.muted" textAlign="center">
+                            Još nema događaja - golovi i kartoni pojavit će se ovdje.
                         </Text>
-                        <HStack gap="1.5" justify="flex-start" minW="0">
-                            <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
-                                {match.team2Name ?? "-"}
-                            </Text>
-                            <TeamKitChip colors={colors} teamId={match.team2Id} size={9} />
-                        </HStack>
-                    </Grid>
-
-                    {/* Scrolling event feed. */}
-                    <Box ref={bodyRef} flex="1" minH="0" overflowY="auto" px="2.5" py="2">
-                        {sections.length === 0 ? (
-                            <Flex h="full" align="center" justify="center">
-                                <Text fontSize="xs" color="fg.muted" textAlign="center">
-                                    Još nema događaja - golovi i kartoni pojavit će se ovdje.
-                                </Text>
-                            </Flex>
-                        ) : (
-                            sections.map((s) => (
-                                <Box key={s.key} mb="1.5">
-                                    {s.title && (
-                                        <Flex justify="center" my="1.5">
-                                            <Text
-                                                fontSize="9px"
-                                                fontFamily="mono"
-                                                fontWeight={800}
-                                                letterSpacing="0.08em"
-                                                color="fg.muted"
-                                                borderWidth="1px"
-                                                borderColor="border"
-                                                rounded="full"
-                                                px="2"
-                                                py="0.5"
-                                            >
-                                                {s.title.toUpperCase()}
-                                            </Text>
-                                        </Flex>
-                                    )}
-                                    {s.events.map((e) => (
-                                        <TickerRow key={e.id} e={e} left={e.teamId === match.team1Id} />
-                                    ))}
-                                </Box>
-                            ))
-                        )}
-                    </Box>
-                </>
-            ) : nextMatch ? (
-                <>
-                    {/* Fixed scoreboard for the NEXT match - kickoff time in the
-                        middle instead of a score. */}
-                    <Grid templateColumns="1fr auto 1fr" alignItems="center" gap="2" px="3" py="2" borderBottomWidth="1px" borderColor="border" flexShrink={0}>
-                        <HStack gap="1.5" justify="flex-end" minW="0">
-                            <TeamKitChip colors={colors} teamId={nextMatch.team1Id} size={9} />
-                            <Text fontSize="xs" fontWeight={700} color={nextMatch.team1Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team1Name ? undefined : "italic"} textAlign="right" lineClamp={2} minW="0">
-                                {nextMatch.team1Name ?? "TBD"}
-                            </Text>
-                        </HStack>
-                        <Text fontFamily="mono" fontSize="sm" fontWeight={800} color="accent.amber" fontVariantNumeric="tabular-nums" lineHeight="1" whiteSpace="nowrap">
-                            {nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
-                        </Text>
-                        <HStack gap="1.5" justify="flex-start" minW="0">
-                            <Text fontSize="xs" fontWeight={700} color={nextMatch.team2Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team2Name ? undefined : "italic"} textAlign="left" lineClamp={2} minW="0">
-                                {nextMatch.team2Name ?? "TBD"}
-                            </Text>
-                            <TeamKitChip colors={colors} teamId={nextMatch.team2Id} size={9} />
-                        </HStack>
-                    </Grid>
-                    <Flex flex="1" minH="0" align="center" justify="center" px="4" py="3">
-                        <Box textAlign="center">
-                            <Text fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="wider" textTransform="uppercase">
-                                {roundLabel(nextMatch)}
-                            </Text>
-                            <Text fontSize="sm" fontWeight={700} color="fg.ink" mt="1">
-                                Utakmica još nije počela
-                            </Text>
-                            {nextMatch.kickoffAt && (
-                                <Text fontSize="xs" color="fg.muted" mt="0.5">
-                                    Početak u {formatKickoff(nextMatch.kickoffAt)}
-                                </Text>
-                            )}
-                        </Box>
                     </Flex>
-                </>
-            ) : (
-                <Flex flex="1" align="center" justify="center" px="4">
-                    <Box textAlign="center">
-                        <Text fontSize="sm" fontWeight={700} color="fg.ink">
-                            Trenutno se ne igra nijedna utakmica
+                ) : (
+                    sections.map((s) => (
+                        <Box key={s.key} mb="1.5">
+                            {s.title && (
+                                <Flex justify="center" my="1.5">
+                                    <Text
+                                        fontSize="9px"
+                                        fontFamily="mono"
+                                        fontWeight={800}
+                                        letterSpacing="0.08em"
+                                        color="fg.muted"
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        rounded="full"
+                                        px="2"
+                                        py="0.5"
+                                    >
+                                        {s.title.toUpperCase()}
+                                    </Text>
+                                </Flex>
+                            )}
+                            {s.events.map((e) => (
+                                <TickerRow key={e.id} e={e} left={e.teamId === match.team1Id} />
+                            ))}
+                        </Box>
+                    ))
+                )}
+            </Box>
+        </>
+    ) : nextMatch ? (
+        <>
+            {/* Fixed scoreboard for the NEXT match - kickoff time in the
+                middle instead of a score. */}
+            <Grid templateColumns="1fr auto 1fr" alignItems="center" gap="2" px="3" py="2" borderBottomWidth="1px" borderColor="border" flexShrink={0}>
+                <HStack gap="1.5" justify="flex-end" minW="0">
+                    <TeamKitChip colors={colors} teamId={nextMatch.team1Id} size={9} />
+                    <Text fontSize="xs" fontWeight={700} color={nextMatch.team1Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team1Name ? undefined : "italic"} textAlign="right" lineClamp={2} minW="0">
+                        {nextMatch.team1Name ?? "TBD"}
+                    </Text>
+                </HStack>
+                <Text fontFamily="mono" fontSize="sm" fontWeight={800} color="accent.amber" fontVariantNumeric="tabular-nums" lineHeight="1" whiteSpace="nowrap">
+                    {nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
+                </Text>
+                <HStack gap="1.5" justify="flex-start" minW="0">
+                    <Text fontSize="xs" fontWeight={700} color={nextMatch.team2Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team2Name ? undefined : "italic"} textAlign="left" lineClamp={2} minW="0">
+                        {nextMatch.team2Name ?? "TBD"}
+                    </Text>
+                    <TeamKitChip colors={colors} teamId={nextMatch.team2Id} size={9} />
+                </HStack>
+            </Grid>
+            <Flex flex="1" minH="0" align="center" justify="center" px="4" py="3">
+                <Box textAlign="center">
+                    <Text fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="wider" textTransform="uppercase">
+                        {roundLabel(nextMatch)}
+                    </Text>
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink" mt="1">
+                        Utakmica još nije počela
+                    </Text>
+                    {nextMatch.kickoffAt && (
+                        <Text fontSize="xs" color="fg.muted" mt="0.5">
+                            Početak u {formatKickoff(nextMatch.kickoffAt)}
                         </Text>
-                        <Text fontSize="xs" color="fg.muted" mt="1">
-                            Tijek utakmice prikazat će se čim krene sljedeća.
-                        </Text>
-                    </Box>
-                </Flex>
-            )}
+                    )}
+                </Box>
+            </Flex>
+        </>
+    ) : (
+        <Flex flex="1" align="center" justify="center" px="4">
+            <Box textAlign="center">
+                <Text fontSize="sm" fontWeight={700} color="fg.ink">
+                    Trenutno se ne igra nijedna utakmica
+                </Text>
+                <Text fontSize="xs" color="fg.muted" mt="1">
+                    Tijek utakmice prikazat će se čim krene sljedeća.
+                </Text>
+            </Box>
+        </Flex>
+    )
+}
+
+export function MatchTickerPanel({
+    match,
+    uuid: uuidProp,
+    nextMatch,
+}: {
+    match: LiveMatch | null
+    /** Streamed tournament's uuid, so jersey colours resolve even with no live
+     *  match (when the "next match" is shown). Events still load only when live. */
+    uuid?: string | null
+    /** Shown when nothing is live: the tournament's next fixture. */
+    nextMatch?: ScheduledMatch | null
+}) {
+    const t = useMatchTicker(match, uuidProp, nextMatch)
+    return (
+        <PanelShell>
+            <MatchTickerHeader match={match} showUpcoming={t.showUpcoming} />
+            <MatchTickerBody match={match} nextMatch={nextMatch} t={t} />
         </PanelShell>
     )
 }
@@ -472,15 +546,39 @@ function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
 
 type PanelMode = "groups" | "bracket"
 
-export function GroupTablePanel({
-    match,
-    uuid: uuidProp,
-}: {
-    match: LiveMatch | null
-    /** Streamed tournament's uuid - shows the groups even when that tournament
-     *  isn't playing a live match right now (match would be null). */
-    uuid?: string | null
-}) {
+/** Skupine ↔ Završnica segmented toggle - shared by the standalone header and
+ *  the tabbed side panel's Tablica tab. */
+function ModeToggle({ mode, onPick }: { mode: PanelMode; onPick: (m: PanelMode) => void }) {
+    return (
+        <HStack gap="1" bg="bg.surfaceTint" rounded="full" p="1" borderWidth="1px" borderColor="border">
+            {(["groups", "bracket"] as PanelMode[]).map((m) => (
+                <chakra.button
+                    key={m}
+                    type="button"
+                    onClick={() => onPick(m)}
+                    px="2.5"
+                    py="0.5"
+                    rounded="full"
+                    fontSize="10px"
+                    fontWeight={800}
+                    cursor="pointer"
+                    bg={mode === m ? "pitch.500" : "transparent"}
+                    color={mode === m ? "white" : "fg.muted"}
+                    boxShadow={mode === m ? "sm" : undefined}
+                    _hover={mode === m ? undefined : { color: "fg.ink" }}
+                    transition="background 150ms, color 150ms"
+                >
+                    {m === "groups" ? "Skupine" : "Završnica"}
+                </chakra.button>
+            ))}
+        </HStack>
+    )
+}
+
+/** Groups + bracket state: fetch + poll, live-phase auto-follow, selected
+ *  group, live-standings overlay. Shared by the standalone GroupTablePanel
+ *  (theater) and the tabbed StreamSidePanel (home hero). */
+function useGroupTable(match: LiveMatch | null, uuidProp?: string | null) {
     const uuid = match?.tournamentUuid ?? uuidProp ?? null
     const [groups, setGroups] = useState<Group[]>([])
     const [bracket, setBracket] = useState<Bracket | null>(null)
@@ -555,36 +653,150 @@ export function GroupTablePanel({
         return ids
     }, [match, selected, playingGroupId])
 
+    return {
+        uuid, groups, bracket, mode, setManualMode, showToggle,
+        selected, live, liveTeamIds, pickedId, setPickedId,
+        liveMatchId: match?.matchId ?? null,
+    }
+}
+
+type GroupTable = ReturnType<typeof useGroupTable>
+
+/** Group chips + live standings / mini bracket (no shell / no kicker header). */
+function GroupTableBody({ d }: { d: GroupTable }) {
+    const { uuid, groups, bracket, mode, selected, live, liveTeamIds, setPickedId, liveMatchId } = d
+    if (!uuid) {
+        return (
+            <Flex flex="1" align="center" justify="center" px="4">
+                <Box textAlign="center">
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Nema aktivnog turnira</Text>
+                    <Text fontSize="xs" color="fg.muted" mt="1">
+                        Prikaz se pojavi za vrijeme utakmice.
+                    </Text>
+                </Box>
+            </Flex>
+        )
+    }
+    if (mode === "bracket") {
+        return <MiniBracket bracket={bracket} liveMatchId={liveMatchId} />
+    }
+    return (
+        <>
+            {groups.length > 0 && (
+                <Flex gap="1" px="2.5" py="1.5" borderBottomWidth="1px" borderColor="border" overflowX="auto" flexShrink={0}>
+                    {groups.map((g) => {
+                        const active = selected?.id === g.id
+                        const hasLive = g.matches.some((m) => m.status === "LIVE")
+                        return (
+                            <chakra.button
+                                key={g.id}
+                                type="button"
+                                onClick={() => setPickedId(g.id)}
+                                display="inline-flex"
+                                alignItems="center"
+                                gap="1"
+                                px="2"
+                                py="0.5"
+                                rounded="full"
+                                fontSize="11px"
+                                fontWeight={800}
+                                flexShrink={0}
+                                cursor="pointer"
+                                bg={active ? "fg.ink" : "bg.surfaceTint"}
+                                color={active ? "bg.panel" : "fg.ink"}
+                                borderWidth="1px"
+                                borderColor={active ? "fg.ink" : "border"}
+                                transition="background 120ms, color 120ms"
+                            >
+                                {g.name}
+                                {hasLive && <PulseDot color="var(--chakra-colors-accent-red)" size={5} />}
+                            </chakra.button>
+                        )
+                    })}
+                </Flex>
+            )}
+
+            {!selected || !live ? (
+                <Flex flex="1" align="center" justify="center" px="4">
+                    <Box textAlign="center">
+                        <Text fontSize="sm" fontWeight={700} color="fg.ink">Turnir nema grupnu fazu</Text>
+                        <Text fontSize="xs" color="fg.muted" mt="1">Rezultati su na stranici turnira.</Text>
+                    </Box>
+                </Flex>
+            ) : (
+                <Box flex="1" minH="0" overflowY="auto" px="2.5" py="1.5">
+                    {/* Column header. */}
+                    <Grid templateColumns="16px minmax(0,1fr) 26px 32px 30px" gap="1" px="1" pb="1">
+                        {["#", "EKIPA", "UT", "+/-", "BOD"].map((h, i) => (
+                            <Text
+                                key={h}
+                                fontFamily="mono"
+                                fontSize="9px"
+                                fontWeight={800}
+                                color="fg.muted"
+                                textAlign={i >= 2 ? "right" : "left"}
+                            >
+                                {h}
+                            </Text>
+                        ))}
+                    </Grid>
+                    {live.rows.map((r, i) => {
+                        const isPlaying = liveTeamIds.has(r.teamId)
+                        const advancing = i < (selected.effectiveAdvance ?? 0)
+                        return (
+                            <Grid
+                                key={r.teamId}
+                                templateColumns="16px minmax(0,1fr) 26px 32px 30px"
+                                gap="1"
+                                alignItems="center"
+                                px="1"
+                                py="1"
+                                rounded="md"
+                                bg={isPlaying ? "red.subtle" : undefined}
+                                borderLeftWidth="2px"
+                                borderLeftColor={advancing ? "accent.goal" : "transparent"}
+                            >
+                                <Text fontSize="10px" fontFamily="mono" fontWeight={700} color="fg.muted">
+                                    {i + 1}.
+                                </Text>
+                                <Text fontSize="11px" fontWeight={isPlaying ? 800 : 600} color="fg.ink" truncate>
+                                    {r.teamName}
+                                </Text>
+                                <Cell changed={r.liveChanged.has("played")}>{r.played}</Cell>
+                                <Cell changed={r.liveChanged.has("goalDiff")}>
+                                    {r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}
+                                </Cell>
+                                <Cell changed={r.liveChanged.has("points")} bold>
+                                    {r.points}
+                                </Cell>
+                            </Grid>
+                        )
+                    })}
+                </Box>
+            )}
+        </>
+    )
+}
+
+export function GroupTablePanel({
+    match,
+    uuid: uuidProp,
+}: {
+    match: LiveMatch | null
+    /** Streamed tournament's uuid - shows the groups even when that tournament
+     *  isn't playing a live match right now (match would be null). */
+    uuid?: string | null
+}) {
+    const d = useGroupTable(match, uuidProp)
     return (
         <PanelShell>
             {/* Fixed header: kicker + tab toggle + tournament link. */}
             <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
                 <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted" flexShrink={0}>
-                    {mode === "bracket" ? "ZAVRŠNICA" : "TABLICA SKUPINE"}
+                    {d.mode === "bracket" ? "ZAVRŠNICA" : "TABLICA SKUPINE"}
                 </Text>
                 <HStack gap="2" flexShrink={0}>
-                    {showToggle && (
-                        <HStack gap="0.5" bg="bg.surfaceTint" rounded="full" p="0.5" borderWidth="1px" borderColor="border">
-                            {(["groups", "bracket"] as PanelMode[]).map((m) => (
-                                <chakra.button
-                                    key={m}
-                                    type="button"
-                                    onClick={() => setManualMode(m)}
-                                    px="2"
-                                    py="0.5"
-                                    rounded="full"
-                                    fontSize="10px"
-                                    fontWeight={800}
-                                    cursor="pointer"
-                                    bg={mode === m ? "fg.ink" : "transparent"}
-                                    color={mode === m ? "bg.panel" : "fg.muted"}
-                                    transition="background 120ms, color 120ms"
-                                >
-                                    {m === "groups" ? "Skupine" : "Završnica"}
-                                </chakra.button>
-                            ))}
-                        </HStack>
-                    )}
+                    {d.showToggle && <ModeToggle mode={d.mode} onPick={d.setManualMode} />}
                     {match && (
                         <chakra.a
                             asChild
@@ -600,113 +812,117 @@ export function GroupTablePanel({
                     )}
                 </HStack>
             </Flex>
+            <GroupTableBody d={d} />
+        </PanelShell>
+    )
+}
 
-            {!uuid ? (
-                <Flex flex="1" align="center" justify="center" px="4">
-                    <Box textAlign="center">
-                        <Text fontSize="sm" fontWeight={700} color="fg.ink">Nema aktivnog turnira</Text>
-                        <Text fontSize="xs" color="fg.muted" mt="1">
-                            Prikaz se pojavi za vrijeme utakmice.
-                        </Text>
-                    </Box>
+/* ═══════════════════ Home-hero side panel (Utakmica | Tablica) ═══════════════════ */
+
+/** The home-hero side card: a single panel with two tabs. "Utakmica" (default)
+ *  holds the live-match ticker; "Tablica" holds the group/bracket standings
+ *  that used to live in a separate third column. Both bodies stay mounted -
+ *  visibility toggles - so each keeps its polling and scroll position when the
+ *  viewer flips tabs. Reused by the shareable turnir-mode page (/uzivo). */
+export function StreamSidePanel({
+    match,
+    uuid,
+    nextMatch,
+    tournamentName,
+    onEnterTheater,
+}: {
+    match: LiveMatch | null
+    uuid?: string | null
+    nextMatch?: ScheduledMatch | null
+    /** Streamed tournament's name - shown at the top of the panel (lg+). */
+    tournamentName?: string | null
+    /** Opens the theater view; renders the "Turnir mode" button when set. */
+    onEnterTheater?: () => void
+}) {
+    const [tab, setTab] = useState<"match" | "table">("match")
+    const ticker = useMatchTicker(match, uuid, nextMatch)
+    const table = useGroupTable(match, uuid)
+
+    // "Turnir" link → the tournament page. Built from the live match when there
+    // is one, else the tournament uuid, so it works even between games (turnir
+    // mode). It lives in the footer's bottom-right corner now.
+    const tournamentHref = match?.tournamentSlug ?? match?.tournamentUuid ?? uuid ?? null
+
+    return (
+        <PanelShell>
+            {/* Header (top), everything centred. Row 1: tournament name (full
+                width, truncated); row 2: the Utakmica/Tablica selector (+ the
+                Skupine/Završnica toggle on the table tab). The turnir-mode
+                button and the "Turnir →" link live in the footer. */}
+            <VStack align="stretch" gap="1" px="2" py="1.5" borderBottomWidth="1px" borderColor="border">
+                {tournamentName && (
+                    <Text fontSize="xs" fontWeight={800} color="fg.ink" lineClamp={1} minW="0" textAlign="center">
+                        {tournamentName}
+                    </Text>
+                )}
+                <HStack justify="center" gap="2" minW="0" wrap="wrap">
+                    <HStack gap="1" bg="bg.surfaceTint" rounded="full" p="1" borderWidth="1px" borderColor="border" flexShrink={0}>
+                        {([["match", "Utakmica"], ["table", "Tablica"]] as const).map(([k, label]) => (
+                            <chakra.button
+                                key={k}
+                                type="button"
+                                onClick={() => setTab(k)}
+                                px="3.5"
+                                py="1"
+                                rounded="full"
+                                fontSize="11px"
+                                fontWeight={800}
+                                cursor="pointer"
+                                bg={tab === k ? "pitch.500" : "transparent"}
+                                color={tab === k ? "white" : "fg.muted"}
+                                boxShadow={tab === k ? "sm" : undefined}
+                                _hover={tab === k ? undefined : { color: "fg.ink" }}
+                                transition="background 150ms, color 150ms"
+                            >
+                                {label}
+                            </chakra.button>
+                        ))}
+                    </HStack>
+                    {tab === "table" && table.showToggle && (
+                        <ModeToggle mode={table.mode} onPick={table.setManualMode} />
+                    )}
+                </HStack>
+            </VStack>
+
+            {/* Both bodies mounted; only the active one is shown. */}
+            <Flex direction="column" flex="1" minH="0" display={tab === "match" ? "flex" : "none"}>
+                <MatchTickerBody match={match} nextMatch={nextMatch} t={ticker} />
+            </Flex>
+            <Flex direction="column" flex="1" minH="0" display={tab === "table" ? "flex" : "none"}>
+                <GroupTableBody d={table} />
+            </Flex>
+
+            {/* Footer: "Turnir mode" button centred, with the "Turnir →" link
+                pinned to the bottom-right corner (shows on the turnir-mode page
+                too, where there's no mode button). */}
+            {(onEnterTheater || tournamentHref) && (
+                <Flex position="relative" align="center" justify="center" px="2" py="1.5" minH="9" borderTopWidth="1px" borderColor="border">
+                    {onEnterTheater && (
+                        <Button size="xs" variant="outline" colorPalette="pitch" onClick={onEnterTheater}>
+                            <FiMaximize /> Turnir mode
+                        </Button>
+                    )}
+                    {tournamentHref && (
+                        <chakra.a
+                            asChild
+                            position="absolute"
+                            right="2.5"
+                            top="50%"
+                            fontSize="11px"
+                            fontWeight={700}
+                            color="pitch.500"
+                            _hover={{ textDecoration: "underline" }}
+                            css={{ transform: "translateY(-50%)" }}
+                        >
+                            <RouterLink to={`/turniri/${tournamentHref}`}>Turnir →</RouterLink>
+                        </chakra.a>
+                    )}
                 </Flex>
-            ) : mode === "bracket" ? (
-                <MiniBracket bracket={bracket} liveMatchId={match?.matchId ?? null} />
-            ) : (
-                <>
-                    {groups.length > 0 && (
-                        <Flex gap="1" px="2.5" py="1.5" borderBottomWidth="1px" borderColor="border" overflowX="auto" flexShrink={0}>
-                            {groups.map((g) => {
-                                const active = selected?.id === g.id
-                                const hasLive = g.matches.some((m) => m.status === "LIVE")
-                                return (
-                                    <chakra.button
-                                        key={g.id}
-                                        type="button"
-                                        onClick={() => setPickedId(g.id)}
-                                        display="inline-flex"
-                                        alignItems="center"
-                                        gap="1"
-                                        px="2"
-                                        py="0.5"
-                                        rounded="full"
-                                        fontSize="11px"
-                                        fontWeight={800}
-                                        flexShrink={0}
-                                        cursor="pointer"
-                                        bg={active ? "fg.ink" : "bg.surfaceTint"}
-                                        color={active ? "bg.panel" : "fg.ink"}
-                                        borderWidth="1px"
-                                        borderColor={active ? "fg.ink" : "border"}
-                                        transition="background 120ms, color 120ms"
-                                    >
-                                        {g.name}
-                                        {hasLive && <PulseDot color="var(--chakra-colors-accent-red)" size={5} />}
-                                    </chakra.button>
-                                )
-                            })}
-                        </Flex>
-                    )}
-
-                    {!selected || !live ? (
-                        <Flex flex="1" align="center" justify="center" px="4">
-                            <Box textAlign="center">
-                                <Text fontSize="sm" fontWeight={700} color="fg.ink">Turnir nema grupnu fazu</Text>
-                                <Text fontSize="xs" color="fg.muted" mt="1">Rezultati su na stranici turnira.</Text>
-                            </Box>
-                        </Flex>
-                    ) : (
-                        <Box flex="1" minH="0" overflowY="auto" px="2.5" py="1.5">
-                            {/* Column header. */}
-                            <Grid templateColumns="16px minmax(0,1fr) 26px 32px 30px" gap="1" px="1" pb="1">
-                                {["#", "EKIPA", "UT", "+/-", "BOD"].map((h, i) => (
-                                    <Text
-                                        key={h}
-                                        fontFamily="mono"
-                                        fontSize="9px"
-                                        fontWeight={800}
-                                        color="fg.muted"
-                                        textAlign={i >= 2 ? "right" : "left"}
-                                    >
-                                        {h}
-                                    </Text>
-                                ))}
-                            </Grid>
-                            {live.rows.map((r, i) => {
-                                const isPlaying = liveTeamIds.has(r.teamId)
-                                const advancing = i < (selected.effectiveAdvance ?? 0)
-                                return (
-                                    <Grid
-                                        key={r.teamId}
-                                        templateColumns="16px minmax(0,1fr) 26px 32px 30px"
-                                        gap="1"
-                                        alignItems="center"
-                                        px="1"
-                                        py="1"
-                                        rounded="md"
-                                        bg={isPlaying ? "red.subtle" : undefined}
-                                        borderLeftWidth="2px"
-                                        borderLeftColor={advancing ? "accent.goal" : "transparent"}
-                                    >
-                                        <Text fontSize="10px" fontFamily="mono" fontWeight={700} color="fg.muted">
-                                            {i + 1}.
-                                        </Text>
-                                        <Text fontSize="11px" fontWeight={isPlaying ? 800 : 600} color="fg.ink" truncate>
-                                            {r.teamName}
-                                        </Text>
-                                        <Cell changed={r.liveChanged.has("played")}>{r.played}</Cell>
-                                        <Cell changed={r.liveChanged.has("goalDiff")}>
-                                            {r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}
-                                        </Cell>
-                                        <Cell changed={r.liveChanged.has("points")} bold>
-                                            {r.points}
-                                        </Cell>
-                                    </Grid>
-                                )
-                            })}
-                        </Box>
-                    )}
-                </>
             )}
         </PanelShell>
     )
