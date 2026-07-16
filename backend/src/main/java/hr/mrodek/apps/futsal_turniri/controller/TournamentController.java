@@ -1183,9 +1183,7 @@ public class TournamentController {
         // Other viewers don't see tokens - the share link is for the
         // primary to hand out, not for the whole tournament to see.
         String viewerUid = (jwt != null) ? jwt.getSubject() : null;
-        boolean viewerIsOrganizerOrAdmin =
-                (identity != null && identity.hasRole("admin"))
-                || (viewerUid != null && viewerUid.equals(t.getCreatedByUid()));
+        boolean viewerIsOrganizerOrAdmin = canManage(t);
         return Response.ok(
                 teamMapper.toDtoListEnrichedForViewer(
                         teams,
@@ -1388,9 +1386,7 @@ public class TournamentController {
         // of each row sees their own claim token; everyone else gets
         // null in that field.
         String viewerUid = (jwt != null) ? jwt.getSubject() : null;
-        boolean viewerIsOrganizerOrAdmin =
-                (identity != null && identity.hasRole("admin"))
-                || (viewerUid != null && viewerUid.equals(tournament.getCreatedByUid()));
+        boolean viewerIsOrganizerOrAdmin = canManage(tournament);
         return Response.ok(
                 teamMapper.toDtoListEnrichedForViewer(
                         all,

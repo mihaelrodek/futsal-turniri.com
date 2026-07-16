@@ -5,6 +5,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupReorderRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupResultRequest;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import hr.mrodek.apps.futsal_turniri.services.GroupStageService;
 import io.quarkus.security.Authenticated;
@@ -31,16 +32,17 @@ import java.util.List;
  *
  * <pre>
  *   GET  /tournaments/{uuid}/groups                      - group tables (live)
- *   POST /tournaments/{uuid}/groups/draw                 - owner/admin only
- *   POST /tournaments/{uuid}/groups/matches/{id}/result  - owner/admin only
+ *   POST /tournaments/{uuid}/groups/draw                 - organizer/admin only
+ *   POST /tournaments/{uuid}/groups/matches/{id}/result  - organizer/admin only
  * </pre>
  *
  * <p>Reads are public so anonymous viewers see standings. Every write
- * requires a Firebase OIDC token AND the caller must be either the
- * tournament's creator or an admin - same pattern as
- * {@link RoundController}. Until 2026-06 these writes were left open
- * "because Firebase OIDC is temporarily disabled"; OIDC has been on for
- * a while now so this was an active access-control gap.
+ * requires a Firebase OIDC token AND the caller must be the tournament's
+ * creator, a granted co-editor ({@link
+ * hr.mrodek.apps.futsal_turniri.model.TournamentEditor}) or an admin -
+ * same pattern as {@link RoundController}. Until 2026-06 these writes were
+ * left open "because Firebase OIDC is temporarily disabled"; OIDC has been
+ * on for a while now so this was an active access-control gap.
  */
 @Path("/tournaments/{uuid}/groups")
 @Produces(MediaType.APPLICATION_JSON)
@@ -51,19 +53,24 @@ public class GroupController {
     @Inject GroupStageService groupStageService;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
+    @Inject TournamentEditorRepository editorRepo;
     @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
 
-    /** Throws 403 if the current user is neither the tournament's creator
-     *  nor an admin. Mirrors {@link RoundController#assertCanEdit}. */
+    /** Throws 403 if the current user is not an admin, the tournament's
+     *  creator, or a granted co-editor. Mirrors
+     *  {@link RoundController#assertCanEdit}. */
     private Tournaments assertCanEdit(String idOrSlug) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
         if (t == null) throw new NotFoundException();
         boolean admin = identity != null && identity.hasRole("admin");
         if (admin) return t;
         String me = jwt != null ? jwt.getSubject() : null;
-        boolean owner = me != null && me.equals(t.getCreatedByUid());
-        if (!owner) {
-            throw new ForbiddenException("Only the creator or an admin can modify this tournament.");
+        if (me == null) {
+            throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
+        }
+        boolean owner = me.equals(t.getCreatedByUid());
+        if (!owner && !editorRepo.isEditor(t.getId(), me)) {
+            throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
         }
         return t;
     }

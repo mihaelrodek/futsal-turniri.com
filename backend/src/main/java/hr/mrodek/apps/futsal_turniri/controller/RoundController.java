@@ -5,6 +5,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.MatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.RoundDto;
 import hr.mrodek.apps.futsal_turniri.dtos.UpdateMatchRequest;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import hr.mrodek.apps.futsal_turniri.services.RoundService;
 import io.quarkus.security.Authenticated;
@@ -29,8 +30,10 @@ public class RoundController {
     @Inject TournamentsRepository tournamentsRepo;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
+    @Inject TournamentEditorRepository editorRepo;
 
-    /** Throws 403 if the current user is neither the tournament's creator nor an admin. */
+    /** Throws 403 if the current user is not an admin, the tournament's
+     *  creator, or a granted co-editor. */
     private void assertCanEdit(String idOrSlug) {
         // Accept slug or UUID - the URL the user is on may be either form
         // because tournaments now expose a pretty slug.
@@ -39,9 +42,12 @@ public class RoundController {
         boolean admin = identity != null && identity.hasRole("admin");
         if (admin) return;
         String me = jwt != null ? jwt.getSubject() : null;
-        boolean owner = me != null && me.equals(t.getCreatedByUid());
-        if (!owner) {
-            throw new ForbiddenException("Only the creator or an admin can modify this tournament.");
+        if (me == null) {
+            throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
+        }
+        boolean owner = me.equals(t.getCreatedByUid());
+        if (!owner && !editorRepo.isEditor(t.getId(), me)) {
+            throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
         }
     }
 
