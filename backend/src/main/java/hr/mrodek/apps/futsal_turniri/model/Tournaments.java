@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.model;
 
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
 import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
@@ -114,6 +115,23 @@ public class Tournaments {
     /** Halftime break between the halves, in minutes. */
     @Column(name = "halftime_break_min")
     private Integer halftimeBreakMin;
+
+    /**
+     * Knockout-phase half length override, in minutes. Null (or 0) means the
+     * knockout plays the same half length as the group stage - the common case
+     * is a longer final round, e.g. groups 2x6 and knockout 2x8.
+     */
+    @Column(name = "ko_half_length_min")
+    private Integer koHalfLengthMin;
+
+    /**
+     * Knockout-phase halftime break override, in minutes. Null means "same as
+     * the group stage"; 0 is a real value (no halftime break in the knockout).
+     * Only meaningful together with {@link #koHalfLengthMin} - the organizer
+     * toggles the whole knockout override on or off as one unit.
+     */
+    @Column(name = "ko_halftime_break_min")
+    private Integer koHalftimeBreakMin;
 
     /** "Pauza između utakmica" - break between consecutive matches, in minutes. */
     @Column(name = "break_between_matches_min")
@@ -300,5 +318,39 @@ public class Tournaments {
         if (status == TournamentStatus.DRAFT) {
             status = TournamentStatus.STARTED;
         }
+    }
+
+    /* ── Per-stage match format ──────────────────────────────────────────
+       The knockout may play a different format than the groups (e.g. groups
+       2x6, knockout 2x8). These resolve the effective value for one match's
+       stage and are the single source of truth for both the scheduler's slot
+       maths and the live TIMER clock - they must agree, or the clock would
+       count to a different length than the schedule reserved.
+
+       Null-preserving: a caller that needs a hard number applies its own
+       default, exactly as it did before the override existed. */
+
+    /** True once the knockout plays a different format than the group stage. */
+    public boolean hasKnockoutFormatOverride() {
+        return koHalfLengthMin != null && koHalfLengthMin > 0;
+    }
+
+    /** Half length in minutes for a match in {@code stage}. */
+    public Integer halfLengthForStage(MatchStage stage) {
+        if (isKnockoutStage(stage) && hasKnockoutFormatOverride()) return koHalfLengthMin;
+        return halfLengthMin;
+    }
+
+    /** Halftime break in minutes for a match in {@code stage}. */
+    public Integer halftimeBreakForStage(MatchStage stage) {
+        if (isKnockoutStage(stage) && hasKnockoutFormatOverride() && koHalftimeBreakMin != null) {
+            return koHalftimeBreakMin;
+        }
+        return halftimeBreakMin;
+    }
+
+    /** Everything that isn't the round-robin group phase is a knockout match. */
+    private static boolean isKnockoutStage(MatchStage s) {
+        return s != null && s != MatchStage.GROUP;
     }
 }

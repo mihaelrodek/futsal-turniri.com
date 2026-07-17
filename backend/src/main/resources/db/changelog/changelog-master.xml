@@ -54,4 +54,5 @@
     <include file="db/changelog/tournament_editors.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/stream_ads.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/stream_ads_purpose.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_knockout_format.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

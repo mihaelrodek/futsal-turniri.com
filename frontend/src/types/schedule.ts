@@ -6,6 +6,11 @@ export type ScheduleConfig = {
     halftimeBreakMin: number | null
     breakBetweenMatchesMin: number | null
     bufferMin: number | null
+    /** Knockout half length. Null/0 = the knockout plays like the group stage
+     *  (e.g. set to 8 for groups 2x6 + knockout 2x8). */
+    koHalfLengthMin?: number | null
+    /** Knockout halftime break. Only read when koHalfLengthMin is set. */
+    koHalftimeBreakMin?: number | null
 }
 
 export type ScheduledMatch = {
@@ -30,7 +35,11 @@ export type ScheduledMatch = {
 }
 
 export type Schedule = ScheduleConfig & {
+    /** The GROUP-stage slot length. */
     slotLengthMin: number
+    /** The knockout slot length - equal to slotLengthMin unless the knockout
+     *  has its own format. */
+    koSlotLengthMin: number
     /** Every match in play order. */
     matches: ScheduledMatch[]
 }

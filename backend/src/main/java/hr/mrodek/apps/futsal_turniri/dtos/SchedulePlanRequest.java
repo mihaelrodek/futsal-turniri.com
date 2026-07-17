@@ -13,6 +13,10 @@ public record SchedulePlanRequest(
         Integer halftimeBreakMin,
         Integer breakBetweenMatchesMin,
         Integer bufferMin,
+        /** Knockout half-length override; null/0 = knockout plays like the groups. */
+        Integer koHalfLengthMin,
+        /** Knockout halftime-break override; only read when koHalfLengthMin is set. */
+        Integer koHalftimeBreakMin,
         List<DaySchedule> days,
         /**
          * Optional custom play order from the preview's drag-and-drop: the

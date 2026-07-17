@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Knockout-phase match-format override. Tournaments commonly play shorter
+        group matches than finals (e.g. groups 2x6 min, knockout 2x8 min), but
+        the format used to be a single tournament-wide setting.
+
+        Both columns are nullable and NULL means "the knockout plays exactly
+        like the group stage" - so every existing tournament keeps its current
+        schedule and live clock untouched. Deliberately no DEFAULT here: unlike
+        half_length_min (which the TIMER clock must always have), an absent
+        value is a meaningful state, not a gap to backfill.
+    -->
+    <changeSet id="2026-07-17-tournament-knockout-format" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="ko_half_length_min" type="INT"/>
+            <column name="ko_halftime_break_min" type="INT"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

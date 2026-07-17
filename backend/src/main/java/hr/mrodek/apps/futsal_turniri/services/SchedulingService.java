@@ -88,6 +88,7 @@ public class SchedulingService {
         t.setHalftimeBreakMin(cfg.halftimeBreakMin());
         t.setBreakBetweenMatchesMin(cfg.breakBetweenMatchesMin());
         t.setBufferMin(cfg.bufferMin());
+        applyKnockoutFormat(t, cfg.koHalfLengthMin(), cfg.koHalftimeBreakMin());
 
         int slot = slotLength(t);
         if (slot <= 0) {
@@ -96,11 +97,27 @@ public class SchedulingService {
 
         // Single court → matches are played back-to-back. Order: group matches
         // round-robin INTERLEAVED across groups (one A, one B, one C, one D,
-        // then around again), then the knockout matches by stage.
+        // then around again), then the knockout matches by stage. Each match
+        // advances the cursor by ITS OWN slot - the knockout may be longer.
         OffsetDateTime cursor = t.getStartAt();
         for (Matches m : orderForSingleCourt(t)) {
             m.setKickoffAt(cursor);
-            cursor = cursor.plusMinutes(slot);
+            cursor = cursor.plusMinutes(slotFor(t, m.getStage()));
+        }
+    }
+
+    /**
+     * Store the knockout format override. An absent/non-positive half length
+     * means "the knockout plays like the groups" and clears BOTH fields, so
+     * turning the override off never leaves a stale halftime break behind.
+     */
+    private static void applyKnockoutFormat(Tournaments t, Integer koHalfLength, Integer koHalftimeBreak) {
+        if (koHalfLength != null && koHalfLength > 0) {
+            t.setKoHalfLengthMin(koHalfLength);
+            t.setKoHalftimeBreakMin(koHalftimeBreak);
+        } else {
+            t.setKoHalfLengthMin(null);
+            t.setKoHalftimeBreakMin(null);
         }
     }
 
@@ -129,8 +146,9 @@ public class SchedulingService {
      */
     @Transactional
     public SchedulePreviewDto previewMultiDay(Tournaments t, SchedulePlanRequest req) {
-        int slot = slotFromRequest(req);
-        if (slot <= 0) {
+        int slot = slotFromRequest(req, false);
+        int koSlot = slotFromRequest(req, true);
+        if (slot <= 0 || koSlot <= 0) {
             throw new BadRequestException("The match format must total more than 0 minutes");
         }
 
@@ -197,7 +215,12 @@ public class SchedulingService {
         String planHash = planFingerprint(fingerprintParts);
 
         int total = plan.size();
-        List<OffsetDateTime> times = layoutTimes(total, req.days(), slot);
+        // Group rows carry the group slot, knockout rows the knockout slot.
+        List<Integer> slots = new ArrayList<>(total);
+        for (Plan p : plan) {
+            slots.add("GROUP".equals(p.stage()) ? slot : koSlot);
+        }
+        List<OffsetDateTime> times = layoutTimes(slots, req.days());
 
         Map<String, List<SchedulePreviewDto.Match>> byDay = new LinkedHashMap<>();
         int scheduled = 0;
@@ -236,9 +259,9 @@ public class SchedulingService {
         t.setHalftimeBreakMin(req.halftimeBreakMin());
         t.setBreakBetweenMatchesMin(req.breakBetweenMatchesMin());
         t.setBufferMin(req.bufferMin());
+        applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin());
 
-        int slot = slotLength(t);
-        if (slot <= 0) {
+        if (slotLength(t) <= 0 || slotFor(t, MatchStage.FINAL) <= 0) {
             throw new BadRequestException("The match format must total more than 0 minutes");
         }
 
@@ -248,7 +271,10 @@ public class SchedulingService {
         }
 
         List<Matches> ordered = orderForSingleCourt(t);
-        List<OffsetDateTime> times = layoutTimes(ordered.size(), req.days(), slot);
+        // Slots are per PLAY POSITION. A custom drag order is only allowed to
+        // permute matches within a stage (validated below), so the stage - and
+        // therefore the slot - at position j is the same either way.
+        List<OffsetDateTime> times = layoutTimes(slotsFor(t, ordered), req.days());
 
         // The preview's drag-and-drop sends the plan indices in the desired
         // play order: the j-th listed match takes the j-th time slot. The
@@ -321,7 +347,8 @@ public class SchedulingService {
      * {@code slot} minutes apart. Returns a list of length {@code total}; any
      * match beyond the plan's capacity gets a null time.
      */
-    private List<OffsetDateTime> layoutTimes(int total, List<DaySchedule> days, int slot) {
+    private List<OffsetDateTime> layoutTimes(List<Integer> slots, List<DaySchedule> days) {
+        int total = slots.size();
         List<OffsetDateTime> times = new ArrayList<>();
         if (days != null) {
             for (DaySchedule d : days) {
@@ -329,6 +356,9 @@ public class SchedulingService {
                 OffsetDateTime cursor = OffsetDateTime.parse(d.firstKickoff());
                 int cnt = Math.max(0, d.matches());
                 for (int i = 0; i < cnt && times.size() < total; i++) {
+                    // Each match occupies its own slot - a knockout match with a
+                    // longer format pushes the rest of the day back accordingly.
+                    int slot = slots.get(times.size());
                     times.add(cursor);
                     cursor = cursor.plusMinutes(slot);
                 }
@@ -338,10 +368,20 @@ public class SchedulingService {
         return times;
     }
 
-    private static int slotFromRequest(SchedulePlanRequest req) {
+    /**
+     * Slot length straight from an unsaved request - the preview must do the
+     * same per-stage maths as the persisted layout. {@code ko} selects the
+     * knockout format when the request carries an override.
+     */
+    private static int slotFromRequest(SchedulePlanRequest req, boolean ko) {
+        boolean koOverride = ko && req.koHalfLengthMin() != null && req.koHalfLengthMin() > 0;
         int hc = req.halfCount() != null ? req.halfCount() : 2;
-        int hl = req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10;
-        int ht = nz(req.halftimeBreakMin());
+        int hl = koOverride
+                ? req.koHalfLengthMin()
+                : (req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10);
+        int ht = koOverride && req.koHalftimeBreakMin() != null
+                ? req.koHalftimeBreakMin()
+                : nz(req.halftimeBreakMin());
         int pb = nz(req.breakBetweenMatchesMin());
         int bf = nz(req.bufferMin());
         return hc * hl + ht + pb + bf;
@@ -359,11 +399,13 @@ public class SchedulingService {
     public void confirmSchedule(Tournaments t) {
         List<Matches> all = matchesRepo.findByTournament_Id(t.getId());
         OffsetDateTime lastKickoff = null;
+        Matches lastScheduled = null;
         List<Matches> missing = new ArrayList<>();
         for (Matches m : all) {
             if (m.getKickoffAt() != null) {
                 if (lastKickoff == null || m.getKickoffAt().isAfter(lastKickoff)) {
                     lastKickoff = m.getKickoffAt();
+                    lastScheduled = m;
                 }
             } else if (!m.isKnockoutBye()) { // a BYE never needs a slot
                 missing.add(m);
@@ -371,12 +413,16 @@ public class SchedulingService {
         }
         if (missing.isEmpty()) return;
 
-        int slot = slotLength(t);
-        if (slot <= 0) slot = 30; // no stored config yet - sensible default
-
-        OffsetDateTime cursor = lastKickoff != null
-                ? lastKickoff.plusMinutes(slot)
-                : t.getStartAt();
+        // The gap after the last scheduled match is ITS slot - that match is
+        // the one still being played when the first missing one should start.
+        OffsetDateTime cursor;
+        if (lastKickoff != null) {
+            int lastSlot = slotFor(t, lastScheduled.getStage());
+            if (lastSlot <= 0) lastSlot = 30; // no stored config yet - sensible default
+            cursor = lastKickoff.plusMinutes(lastSlot);
+        } else {
+            cursor = t.getStartAt();
+        }
         if (cursor == null) {
             throw new BadRequestException("Tournament has no start time");
         }
@@ -387,6 +433,8 @@ public class SchedulingService {
                 .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
         for (Matches m : missing) {
             m.setKickoffAt(cursor);
+            int slot = slotFor(t, m.getStage());
+            if (slot <= 0) slot = 30;
             cursor = cursor.plusMinutes(slot);
         }
     }
@@ -564,10 +612,36 @@ public class SchedulingService {
                 t.getHalftimeBreakMin(),
                 t.getBreakBetweenMatchesMin(),
                 t.getBufferMin(),
+                t.getKoHalfLengthMin(),
+                t.getKoHalftimeBreakMin(),
                 slotLength(t),
+                slotFor(t, MatchStage.FINAL),
                 dtos);
     }
 
+    /**
+     * Slot length for a match in {@code stage}. The knockout may play a longer
+     * format than the groups (e.g. 2x6 → 2x8), so a tournament no longer has
+     * ONE slot - every layout walks matches in play order and advances the
+     * cursor by that match's own slot.
+     */
+    private static int slotFor(Tournaments t, MatchStage stage) {
+        int hc = t.getHalfCount() != null ? t.getHalfCount() : 2;
+        int hl = nz(t.halfLengthForStage(stage));
+        int ht = nz(t.halftimeBreakForStage(stage));
+        int pb = nz(t.getBreakBetweenMatchesMin());
+        int bf = nz(t.getBufferMin());
+        return hc * hl + ht + pb + bf;
+    }
+
+    /** Per-position slot lengths for matches already in play order. */
+    private static List<Integer> slotsFor(Tournaments t, List<Matches> ordered) {
+        List<Integer> slots = new ArrayList<>(ordered.size());
+        for (Matches m : ordered) slots.add(slotFor(t, m.getStage()));
+        return slots;
+    }
+
+    /** The group-stage slot. Kept as the tournament's headline slot length. */
     private static int slotLength(Tournaments t) {
         int hc = t.getHalfCount() != null ? t.getHalfCount() : 2;
         int hl = nz(t.getHalfLengthMin());

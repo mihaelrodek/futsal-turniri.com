@@ -1764,7 +1764,10 @@ public class TournamentController {
                             m.getFirstHalfEndedAt(),
                             m.getSecondHalfStartedAt(),
                             m.getLivePausedAt(),
-                            t != null ? t.getHalfLengthMin() : null,
+                            // Per-stage: a knockout match may play a longer half
+                            // than the groups, and the TIMER clock must count to
+                            // the same length the schedule reserved for it.
+                            t != null ? t.halfLengthForStage(m.getStage()) : null,
                             t != null ? t.getHalfCount() : null,
                             m.getFouls1First(),
                             m.getFouls1Second(),

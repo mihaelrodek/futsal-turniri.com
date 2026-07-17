@@ -62,6 +62,21 @@ type Cfg = {
     halftimeBreakMin: string
     breakBetweenMatchesMin: string
     bufferMin: string
+    /** Knockout plays a different format than the groups (e.g. 2x6 → 2x8).
+     *  Off → the ko* values are sent as null and the knockout inherits. */
+    koEnabled: boolean
+    koHalfLengthMin: string
+    koHalftimeBreakMin: string
+}
+
+/** The knockout format the config currently describes, in the shape the API
+ *  wants: nulls when the override is off (backend then clears both fields). */
+function koPayload(c: Cfg): { koHalfLengthMin: number | null; koHalftimeBreakMin: number | null } {
+    if (!c.koEnabled) return { koHalfLengthMin: null, koHalftimeBreakMin: null }
+    return {
+        koHalfLengthMin: numVal(c.koHalfLengthMin),
+        koHalftimeBreakMin: numVal(c.koHalftimeBreakMin),
+    }
 }
 
 function isoToLocal(iso: string | null): string {
@@ -598,6 +613,9 @@ export default function ScheduleTab({
         breakBetweenMatchesMin: "5",
         // Buffer is hidden in the UI now; kept at 0 so the backend field stays.
         bufferMin: "0",
+        koEnabled: false,
+        koHalfLengthMin: "10",
+        koHalftimeBreakMin: "5",
     })
 
     useEffect(() => {
@@ -609,15 +627,26 @@ export default function ScheduleTab({
             .then((s) => {
                 if (cancelled) return
                 setSchedule(s)
+                const groupHalf = s.halfLengthMin != null ? String(s.halfLengthMin) : "10"
+                const groupBreak = s.halftimeBreakMin != null ? String(s.halftimeBreakMin) : "5"
+                // A stored koHalfLengthMin is what "the knockout differs" means;
+                // with none, seed the (hidden) inputs from the group values so
+                // toggling the override on starts from the current format.
+                const koOn = s.koHalfLengthMin != null && s.koHalfLengthMin > 0
                 setCfg({
-                    halfLengthMin: s.halfLengthMin != null ? String(s.halfLengthMin) : "10",
-                    halftimeBreakMin:
-                        s.halftimeBreakMin != null ? String(s.halftimeBreakMin) : "5",
+                    halfLengthMin: groupHalf,
+                    halftimeBreakMin: groupBreak,
                     breakBetweenMatchesMin:
                         s.breakBetweenMatchesMin != null
                             ? String(s.breakBetweenMatchesMin)
                             : "5",
                     bufferMin: "0",
+                    koEnabled: koOn,
+                    koHalfLengthMin: koOn ? String(s.koHalfLengthMin) : groupHalf,
+                    koHalftimeBreakMin:
+                        koOn && s.koHalftimeBreakMin != null
+                            ? String(s.koHalftimeBreakMin)
+                            : groupBreak,
                 })
             })
             .catch(() => {
@@ -697,11 +726,16 @@ export default function ScheduleTab({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dragId])
 
-    const slot =
-        HALF_COUNT * numVal(cfg.halfLengthMin) +
-        numVal(cfg.halftimeBreakMin) +
-        numVal(cfg.breakBetweenMatchesMin) +
-        numVal(cfg.bufferMin)
+    const fixedBreaks = numVal(cfg.breakBetweenMatchesMin) + numVal(cfg.bufferMin)
+    const slot = HALF_COUNT * numVal(cfg.halfLengthMin) + numVal(cfg.halftimeBreakMin) + fixedBreaks
+    // The knockout slot only differs while the override is on; mirrors the
+    // backend's slotFor(stage) so the footer never disagrees with the layout.
+    const koSlot = cfg.koEnabled
+        ? HALF_COUNT * numVal(cfg.koHalfLengthMin) + numVal(cfg.koHalftimeBreakMin) + fixedBreaks
+        : slot
+    // The override is only meaningful when there IS a knockout to differ from
+    // the groups - KNOCKOUT_ONLY has no group stage, GROUPS_ONLY no knockout.
+    const canSplitFormat = format === "GROUPS_KNOCKOUT"
 
     // A schedule change creates/retimes the group + knockout fixtures that the
     // Grupe and Eliminacija tabs render from their OWN cached queries. Those
@@ -723,6 +757,7 @@ export default function ScheduleTab({
                 halftimeBreakMin: numVal(cfg.halftimeBreakMin),
                 breakBetweenMatchesMin: numVal(cfg.breakBetweenMatchesMin),
                 bufferMin: numVal(cfg.bufferMin),
+                ...koPayload(cfg),
             })
             setSchedule(s)
             refreshLinkedTabs()
@@ -977,8 +1012,14 @@ export default function ScheduleTab({
     const scheduleHasConfig = schedule != null && schedule.halfLengthMin != null
     // One-line summary shown in the collapsed settings header, e.g.
     // "2x12min - pauze 1min/5min - ukupno termin 30min".
+    // When the knockout has its own format, the summary leads with the group
+    // format and appends the knockout one, e.g. "2x6min … / ZAVRŠNICA 2x8min".
+    const koFormatOn = schedule != null && schedule.koHalfLengthMin != null && schedule.koHalfLengthMin > 0
     const settingsSummary = schedule
         ? `${schedule.halfCount ?? 2}x${schedule.halfLengthMin ?? 0}min - PAUZE ${schedule.halftimeBreakMin ?? 0}min/${schedule.breakBetweenMatchesMin ?? 0}min - UKUPNO ${schedule.slotLengthMin}min`
+          + (koFormatOn
+              ? ` / ZAVRŠNICA ${schedule.halfCount ?? 2}x${schedule.koHalfLengthMin}min - UKUPNO ${schedule.koSlotLengthMin}min`
+              : "")
         : ""
     // Matches without a kickoff (e.g. knockout drawn after the group schedule).
     const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
@@ -1055,10 +1096,32 @@ export default function ScheduleTab({
                                 gap="3"
                             >
                                 <SettingStat label="Broj poluvremena" value={`${schedule.halfCount ?? 2}`} />
-                                <SettingStat label="Trajanje poluvrijeme" value={`${schedule.halfLengthMin ?? 0} min`} />
+                                <SettingStat
+                                    label={koFormatOn ? "Grupe - poluvrijeme" : "Trajanje poluvrijeme"}
+                                    value={`${schedule.halfLengthMin ?? 0} min`}
+                                />
                                 <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
                                 <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
-                                <SettingStat label="Trajanje termina" value={`${schedule.slotLengthMin} min`} />
+                                <SettingStat
+                                    label={koFormatOn ? "Termin grupe" : "Trajanje termina"}
+                                    value={`${schedule.slotLengthMin} min`}
+                                />
+                                {koFormatOn && (
+                                    <>
+                                        <SettingStat
+                                            label="Završnica - poluvrijeme"
+                                            value={`${schedule.koHalfLengthMin} min`}
+                                        />
+                                        <SettingStat
+                                            label="Završnica - pauza"
+                                            value={`${schedule.koHalftimeBreakMin ?? schedule.halftimeBreakMin ?? 0} min`}
+                                        />
+                                        <SettingStat
+                                            label="Termin završnice"
+                                            value={`${schedule.koSlotLengthMin} min`}
+                                        />
+                                    </>
+                                )}
                             </Box>
                             {canEdit && tournamentStarted && (
                                 <Flex justify="center" mt="4">
@@ -1144,6 +1207,88 @@ export default function ScheduleTab({
                         />
                     </Box>
 
+                    {/* ── Završnica igra drugačije ───────────────────────────
+                         Optional knockout format override (e.g. groups 2x6,
+                         knockout 2x8). Only offered when the tournament has
+                         both phases; off → the knockout inherits the format
+                         above and the ko* fields go to the API as null. */}
+                    {canSplitFormat && (
+                        <Box
+                            mt="4"
+                            pt="4"
+                            borderTopWidth="1px"
+                            borderColor="border.subtle"
+                        >
+                            <Flex
+                                as="label"
+                                align="center"
+                                gap="2.5"
+                                cursor="pointer"
+                                userSelect="none"
+                            >
+                                <chakra.input
+                                    type="checkbox"
+                                    checked={cfg.koEnabled}
+                                    // Read the value synchronously: the updater below
+                                    // runs in React's reducer phase, by which time the
+                                    // synthetic event's currentTarget is already null.
+                                    onChange={(e) => {
+                                        const checked = e.target.checked
+                                        setCfg((c) => ({ ...c, koEnabled: checked }))
+                                    }}
+                                    w="16px"
+                                    h="16px"
+                                    accentColor="pitch.500"
+                                    cursor="pointer"
+                                />
+                                <Box>
+                                    <Text fontSize="13px" fontWeight={700} color="fg.ink">
+                                        Završnica se igra drugačije
+                                    </Text>
+                                    <Text fontSize="11px" color="fg.muted">
+                                        Npr. grupe 2x6 min, završnica 2x8 min
+                                    </Text>
+                                </Box>
+                            </Flex>
+
+                            {cfg.koEnabled && (
+                                <Box
+                                    mt="3"
+                                    display="grid"
+                                    gridTemplateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
+                                    gap="3"
+                                    alignItems="end"
+                                >
+                                    <CfgField
+                                        label="Završnica - poluvrijeme"
+                                        align={{ base: "center", md: "start" }}
+                                        value={cfg.koHalfLengthMin}
+                                        onChange={(v) => setCfg((c) => ({ ...c, koHalfLengthMin: v }))}
+                                    />
+                                    <CfgField
+                                        label="Završnica - pauza poluvrijeme"
+                                        align="center"
+                                        value={cfg.koHalftimeBreakMin}
+                                        onChange={(v) => setCfg((c) => ({ ...c, koHalftimeBreakMin: v }))}
+                                    />
+                                    <HStack
+                                        justify={{ base: "center", md: "flex-end" }}
+                                        gap="1.5"
+                                        pb="1"
+                                    >
+                                        <FiClock size={13} />
+                                        <Text fontSize="12px" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
+                                            Termin završnice:
+                                        </Text>
+                                        <Box fontFamily="mono" fontSize="15px" color="pitch.500" fontWeight={800}>
+                                            {koSlot} min
+                                        </Box>
+                                    </HStack>
+                                </Box>
+                            )}
+                        </Box>
+                    )}
+
                     {/* Green action bar: format description (left) · generate
                         action (centre) · computed slot duration (right). */}
                     <Flex
@@ -1203,7 +1348,7 @@ export default function ScheduleTab({
                         <HStack flex={{ base: "1 1 100%", md: "1" }} justify={{ base: "flex-start", md: "flex-end" }} gap="1.5">
                             <FiClock size={13} />
                             <Text fontSize="12px" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
-                                Trajanje termina:
+                                {cfg.koEnabled ? "Termin grupe:" : "Trajanje termina:"}
                             </Text>
                             <Box fontFamily="mono" fontSize="15px" color="pitch.500" fontWeight={800}>
                                 {slot} min
@@ -1477,6 +1622,7 @@ export default function ScheduleTab({
                         halftimeBreakMin: numVal(cfg.halftimeBreakMin),
                         breakBetweenMatchesMin: numVal(cfg.breakBetweenMatchesMin),
                         bufferMin: numVal(cfg.bufferMin),
+                        ...koPayload(cfg),
                     }}
                     onClose={() => setPlannerOpen(false)}
                     onGenerated={(s) => { setSchedule(s); refreshLinkedTabs() }}
