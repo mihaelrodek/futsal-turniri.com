@@ -55,11 +55,17 @@ export type Schedule = ScheduleConfig & {
 
 /* ── Multi-day scheduling ─────────────────────────────────────────────── */
 
-/** Predicted match counts, for the "matches remaining to schedule" counter. */
+/** Predicted match counts, for the "matches remaining to schedule" counter.
+ *  The `remaining*` fields exclude already FINISHED/LIVE matches (which keep
+ *  their times) - preview/generate only plan the remaining matches. */
 export type SchedulePlanInfo = {
     groupMatches: number
     knockoutMatches: number
     totalMatches: number
+    /** Group matches still to schedule (total minus FINISHED/LIVE). */
+    remainingGroupMatches: number
+    /** Knockout matches still to schedule (total minus FINISHED/LIVE). */
+    remainingKnockoutMatches: number
 }
 
 /** One day of the plan: the day's first kickoff (ISO offset) + how many

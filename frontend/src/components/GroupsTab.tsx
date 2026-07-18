@@ -1768,6 +1768,8 @@ export default function GroupsTab({
                 {groups!.map((g) => (
                     <Box
                         key={g.id}
+                        display="flex"
+                        flexDirection="column"
                         bg="bg.panel"
                         borderWidth="1px"
                         borderColor="border"
@@ -2115,6 +2117,15 @@ export default function GroupsTab({
                                 )
                             })}
                         </Box>
+
+                        {/* Filler: the cards sit in a 2-column grid whose rows
+                        stretch to the tallest card, so a shorter group (e.g. 3
+                        teams next to a 4-team group) used to leave a white void
+                        under the footer. This growing tinted strip fills that
+                        leftover space (matching the header tint) and pins the
+                        "Prikaži utakmice" footer to the bottom edge. It collapses
+                        to nothing when the card is already the tallest in its row. */}
+                        <Box flex="1" minH="0" bg="bg.surfaceTint" />
 
                         {/* Fixtures section - collapsed by default; "Prikaži
                         utakmice" expands this group's matches. */}

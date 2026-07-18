@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import {
     Box,
     Button,
@@ -13,8 +13,8 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiInfo, FiList, FiRefreshCw, FiTrash2 } from "react-icons/fi"
-import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
-import { clearSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
+import { LuCalendarClock, LuCalendarX2 } from "react-icons/lu"
+import { clearSchedule, fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
 import { DateTimeField } from "./DateTimeField"
 import { fetchGroups } from "../api/groups"
@@ -779,9 +779,6 @@ export default function ScheduleTab({
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
-    /** "Uredi raspored" - after the tournament starts, lets the organizer edit
-     *  times + reorder matches that haven't started yet. */
-    const [editScheduleMode, setEditScheduleMode] = useState(false)
     /** "Uredi format" - once the schedule is laid out, the inline format editor
      *  is hidden behind this toggle (before it's laid out the editor is always
      *  open, so the organizer can't miss it). No portal / popover involved. */
@@ -845,12 +842,6 @@ export default function ScheduleTab({
             /* storage unavailable - the expand choice just won't persist */
         }
     }, [formatBoxOpen])
-    /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
-    const [dragId, setDragId] = useState<number | null>(null)
-    const [overId, setOverId] = useState<number | null>(null)
-    /** Latest values read by the global pointer listeners (avoid stale state). */
-    const overIdRef = useRef<number | null>(null)
-    const orderRef = useRef<number[]>([])
     /** Team id (as string) to filter the schedule by; "" = all teams. */
     const [teamFilter, setTeamFilter] = useState<string>("")
     /** Group name (A, B, …) to filter by; "" = all groups. */
@@ -958,46 +949,6 @@ export default function ScheduleTab({
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
     }, [focusMatchId, loading, schedule])
 
-    // Pointer-based drag reorder - works with BOTH mouse and touch. While a row
-    // is dragged we track the row under the pointer (elementFromPoint) and
-    // commit the new order on release. orderRef holds the current draggable ids.
-    useEffect(() => {
-        if (dragId == null) return
-        const onMove = (e: PointerEvent) => {
-            const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
-            const row = el?.closest("[data-sched-row]") as HTMLElement | null
-            const attr = row?.getAttribute("data-match-id")
-            const id = attr ? Number(attr) : null
-            overIdRef.current = id
-            setOverId(id)
-        }
-        const finish = () => {
-            const dragged = dragId
-            const target = overIdRef.current
-            overIdRef.current = null
-            setOverId(null)
-            setDragId(null)
-            if (dragged == null || target == null || dragged === target) return
-            const ids = orderRef.current
-            const from = ids.indexOf(dragged)
-            const to = ids.indexOf(target)
-            if (from === -1 || to === -1 || from === to) return
-            const next = [...ids]
-            const [moved] = next.splice(from, 1)
-            next.splice(to, 0, moved)
-            void commitReorder(next)
-        }
-        window.addEventListener("pointermove", onMove)
-        window.addEventListener("pointerup", finish)
-        window.addEventListener("pointercancel", finish)
-        return () => {
-            window.removeEventListener("pointermove", onMove)
-            window.removeEventListener("pointerup", finish)
-            window.removeEventListener("pointercancel", finish)
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dragId])
-
     const fixedBreaks = numVal(cfg.breakBetweenMatchesMin) + numVal(cfg.bufferMin)
     const slot = HALF_COUNT * numVal(cfg.halfLengthMin) + numVal(cfg.halftimeBreakMin) + fixedBreaks
     // The knockout break between matches falls back to the group break when the
@@ -1053,17 +1004,6 @@ export default function ScheduleTab({
             /* error toast surfaced by the http interceptor */
         } finally {
             setClearing(false)
-        }
-    }
-
-    /** Persist a new play order - the backend keeps the time slots fixed and
-     *  reassigns them to the matches in this order (so a move swaps times). */
-    async function commitReorder(orderedIds: number[]) {
-        try {
-            setSchedule(await reorderSchedule(uuid, orderedIds))
-            refreshLinkedTabs()
-        } catch {
-            /* error toast surfaced by the http interceptor */
         }
     }
 
@@ -1217,14 +1157,7 @@ export default function ScheduleTab({
         ? null
         : byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
 
-    const renderRow = (
-        m: ScheduledMatch,
-        dnd?: {
-            handle: React.ReactNode
-            isOver: boolean
-            isDragging: boolean
-        },
-    ) => {
+    const renderRow = (m: ScheduledMatch) => {
         const content = (
             <MatchRow
                 match={m}
@@ -1235,7 +1168,7 @@ export default function ScheduleTab({
                 slotMinutes={slot}
                 halfLengthMin={schedule?.halfLengthMin}
                 onTimeChange={onTimeChange}
-                canEdit={scheduleEditable && m.status === "SCHEDULED"}
+                canEdit={inlineTimeEditable && m.status === "SCHEDULED"}
                 isNext={m.matchId === nextMatchId}
             />
         )
@@ -1244,27 +1177,13 @@ export default function ScheduleTab({
                 key={m.matchId}
                 id={`sched-match-${m.matchId}`}
                 rounded="xl"
-                opacity={dnd?.isDragging ? 0.4 : 1}
-                transition="opacity 0.12s"
-                data-sched-row={dnd ? "" : undefined}
-                data-match-id={dnd ? m.matchId : undefined}
-                css={{
-                    ...(focusMatchId === m.matchId
+                css={
+                    focusMatchId === m.matchId
                         ? { outline: "2px solid var(--chakra-colors-brand-solid)", outlineOffset: "2px" }
-                        : {}),
-                    ...(dnd?.isOver
-                        ? { boxShadow: "0 -3px 0 0 var(--chakra-colors-brand-solid)" }
-                        : {}),
-                }}
+                        : undefined
+                }
             >
-                {dnd ? (
-                    <Flex align="center" gap="1">
-                        {dnd.handle}
-                        <Box flex="1" minW="0">{content}</Box>
-                    </Flex>
-                ) : (
-                    content
-                )}
+                {content}
             </Box>
         )
     }
@@ -1330,25 +1249,20 @@ export default function ScheduleTab({
     // Then the organizer gets "ponovno postavi" / "očisti" instead of the
     // first-time "Generiraj raspored".
     const scheduleLaidOut = rawMatches.some((m) => m.kickoffAt != null)
-    // The schedule is freely editable before the tournament starts. Once it
-    // starts it's read-only UNLESS the organizer turns on "Uredi raspored" -
-    // which re-enables editing kickoff times + reorder for matches that haven't
-    // started yet (SCHEDULED only).
-    const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode) && !finishedLocked
-    // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, not
-    // while any filter is active (the visible subset isn't the real order),
-    // and only in the list view (the grid is a view-only layout).
-    const reorderEnabled = scheduleEditable && scheduleLaidOut && !anyFilter && viewMode === "list"
-    // Keep the current draggable order in a ref the pointer listeners can read.
-    orderRef.current = reorderEnabled
-        ? upcomingMatches
-              .filter((m) => m.status === "SCHEDULED" && m.kickoffAt != null)
-              .map((m) => m.matchId)
-        : []
+    // Inline per-match kickoff editing is available ONLY before the tournament
+    // starts. Once it starts (or when finished-locked) every edit - times and
+    // reordering alike - goes through the planner ("Uredi raspored"), so the
+    // inline time pickers go read-only.
+    const inlineTimeEditable = canEdit && !tournamentStarted && !finishedLocked
 
-    // Any knockout matches (stage !== "GROUP")? Gates the "Termini završnice"
-    // button that opens the knockout-only planner (group kickoffs untouched).
-    const hasKnockout = byKickoff.some((m) => m.stage !== "GROUP")
+    // At least one not-yet-finished knockout match? Gates "Termini završnice",
+    // which opens the knockout-only planner (group kickoffs untouched). With the
+    // backend's remaining semantics the planner stays useful while ≥1 knockout
+    // match is unplayed (finished KO matches keep their times, excluded from the
+    // plan) - e.g. the user's case of 2 matches left.
+    const hasUnfinishedKnockout = byKickoff.some(
+        (m) => m.stage !== "GROUP" && m.status !== "FINISHED",
+    )
 
     /* ── Format summary (read-only) ────────────────────────────────────────
        Compact "2×6 min · završnica 2×8 min" readout of the STORED schedule
@@ -1588,13 +1502,14 @@ export default function ScheduleTab({
         </VStack>
     )
 
-    // The compact action cluster shown in the "Raspored" header (or standalone
-    // above the list when there is no upcoming section to host it).
+    // The compact action cluster rendered inside the dedicated controls box
+    // (the single home for these actions) that sits above the match list.
     const scheduleControls = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
-            {/* Reopen the knockout planner any time knockout matches exist - so
-                the završnica kickoffs stay schedulable after the one-shot flow. */}
-            {canEdit && hasKnockout && !finishedLocked && (
+            {/* Reopen the knockout planner while any knockout match is still
+                unplayed - so the završnica kickoffs stay schedulable after the
+                one-shot flow (finished KO matches keep their times). */}
+            {canEdit && !finishedLocked && hasUnfinishedKnockout && (
                 <GhostButton
                     px="3.5"
                     py="2"
@@ -1616,15 +1531,18 @@ export default function ScheduleTab({
                     {formatEditorOpen ? "Zatvori format" : "Uredi format"}
                 </GhostButton>
             )}
-            {canEdit && tournamentStarted && !finishedLocked && (
+            {/* "Uredi raspored" now opens the planner (same modal as sketching,
+                full mode) - all drag&drop reordering + time edits after start
+                happen there. The backend only re-plans the remaining matches. */}
+            {canEdit && !finishedLocked && (
                 <PrimaryButton
                     px="3.5"
                     py="2"
                     fontSize="13px"
                     icon={<FiEdit2 size={14} />}
-                    onClick={() => setEditScheduleMode((v) => !v)}
+                    onClick={() => setPlannerMode("full")}
                 >
-                    {editScheduleMode ? "Gotovo" : "Uredi raspored"}
+                    Uredi raspored
                 </PrimaryButton>
             )}
             {rawMatches.length > 0 && (
@@ -1667,11 +1585,6 @@ export default function ScheduleTab({
             )}
         </HStack>
     )
-    // The "Raspored" section header hosts the controls whenever it renders;
-    // otherwise (empty list, filtered-out, or finished-only) they sit in a
-    // standalone row above the list so generate / export stay reachable.
-    const controlsInHeader = upcomingMatches.length > 0
-
     return (
         <VStack align="stretch" gap="5" py="2">
             {/* Finished-lock notice - replaces every editing entry point with a
@@ -1693,14 +1606,6 @@ export default function ScheduleTab({
                         Turnir je završen. Obrati se administratoru za otključavanje.
                     </Text>
                 </Flex>
-            )}
-
-            {/* Schedule controls (Termini završnice · Uredi format · Uredi
-                raspored · Preuzmi · view toggle). When there is an upcoming
-                list they live in its "Raspored" header; otherwise they sit here
-                so generate / export stay reachable. */}
-            {!controlsInHeader && rawMatches.length > 0 && (
-                <Flex justify="flex-end">{scheduleControls}</Flex>
             )}
 
             {/* Inline format editor - an always-open, prominent box for the
@@ -1984,6 +1889,24 @@ export default function ScheduleTab({
                 </Box>
             )}
 
+            {/* Schedule controls box - a dedicated, always-visible row that sits
+                below the format summary and above the match list. Keeps the
+                actions (Termini završnice · Uredi format · Uredi raspored ·
+                Preuzmi · view toggle) put and reachable even when only finished
+                matches remain. Single source - no header-action / fallback-row. */}
+            {rawMatches.length > 0 && (
+                <Box
+                    borderWidth="1px"
+                    borderColor="border"
+                    bg="bg.surfaceTint"
+                    rounded="xl"
+                    px="3"
+                    py="2"
+                >
+                    {scheduleControls}
+                </Box>
+            )}
+
             {/* Match list - upcoming (the schedule) first, finished at the bottom. */}
             {rawMatches.length === 0 ? (
                 <Panel>
@@ -2014,25 +1937,7 @@ export default function ScheduleTab({
                         <SectionCard
                             icon={LuCalendarClock}
                             title="Raspored"
-                            subtitle={
-                                reorderEnabled ? (
-                                    <>
-                                        Povuci utakmicom klikom na{" "}
-                                        <Box
-                                            as="span"
-                                            display="inline-flex"
-                                            verticalAlign="middle"
-                                            color="fg.muted"
-                                            mx="0.5"
-                                        >
-                                            <LuGripVertical size={14} />
-                                        </Box>{" "}
-                                        za promjenu rasporeda - satnica se ažurira automatski
-                                    </>
-                                ) : undefined
-                            }
                             padding="4"
-                            action={scheduleControls}
                         >
                             {viewMode === "grid" ? (
                                 /* Grid prikaz - view-only cards, day dividers
@@ -2055,54 +1960,16 @@ export default function ScheduleTab({
                             <VStack align="stretch" gap="2">
                                 {displayedUpcoming.map((m, idx) => {
                                     // Day separator before the first match of each
-                                    // day (multi-day tournaments only). Doesn't touch
-                                    // the drag order - it's not a [data-sched-row].
+                                    // day (multi-day tournaments only).
                                     const curKey = dateKey(m.kickoffAt)
                                     const prevKey = idx > 0 ? dateKey(displayedUpcoming[idx - 1].kickoffAt) : null
                                     const dayNode = multiDay && curKey !== prevKey
                                         ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
                                         : null
-                                    const row = !(reorderEnabled && m.status === "SCHEDULED" && m.kickoffAt != null)
-                                        ? renderRow(m)
-                                        : renderRow(m, {
-                                            isOver: overId === m.matchId && dragId != null && dragId !== m.matchId,
-                                            isDragging: dragId === m.matchId,
-                                            handle: (
-                                            <Box
-                                                onPointerDown={(e) => {
-                                                    e.preventDefault()
-                                                    // Capture the pointer so the drag keeps tracking even
-                                                    // when the finger/cursor leaves the small handle - this
-                                                    // is what makes touch drag-and-drop work on phones.
-                                                    try {
-                                                        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                                                    } catch { /* not supported - falls back to window listeners */ }
-                                                    setDragId(m.matchId)
-                                                    overIdRef.current = m.matchId
-                                                }}
-                                                cursor="grab"
-                                                color={dragId === m.matchId ? "brand.solid" : "fg.subtle"}
-                                                _hover={{ color: "fg.muted" }}
-                                                display="flex"
-                                                alignItems="center"
-                                                justifyContent="center"
-                                                px="2"
-                                                py="1.5"
-                                                flexShrink={0}
-                                                style={{ touchAction: "none", userSelect: "none" }}
-                                                title="Povuci za promjenu rasporeda"
-                                                aria-label="Povuci za promjenu rasporeda"
-                                            >
-                                                {/* pointer-events none so the touch lands on the handle Box
-                                                    (which has touch-action:none), not the SVG. */}
-                                                <LuGripVertical size={18} style={{ pointerEvents: "none" }} />
-                                            </Box>
-                                        ),
-                                    })
                                     return (
                                         <Fragment key={m.matchId}>
                                             {dayNode}
-                                            {row}
+                                            {renderRow(m)}
                                         </Fragment>
                                     )
                                 })}
@@ -2175,12 +2042,16 @@ export default function ScheduleTab({
             {/* Multi-day generate flow: date range → per-day matches → sketch
                 preview → confirm & generate. In "ko" mode it plans only the
                 knockout matches ("Raspored završnice") - the group kickoffs are
-                left untouched - replacing the old KnockoutTimesDialog. */}
+                left untouched - replacing the old KnockoutTimesDialog. The
+                "full" mode ("Uredi raspored") skips straight to the sketch via
+                autoSketch, since both entry points now land on the same
+                drag-drop screen. */}
             {plannerMode && (
                 <MultiDaySchedulePlanner
                     uuid={uuid}
                     startAt={startAt}
                     koOnly={plannerMode === "ko"}
+                    autoSketch={plannerMode === "full"}
                     cfg={{
                         halfCount: HALF_COUNT,
                         halfLengthMin: numVal(cfg.halfLengthMin),

@@ -25,8 +25,9 @@ import { MonoLabel } from "../ui/pitch"
 
    1. Pick a date range (od - do) → one row per day.
    2. Per day: how many matches + when the first match kicks off.
-   3. A live counter shows how many matches remain to schedule (of the whole
-      tournament's predicted total: group fixtures + reserved knockout).
+   3. A live counter shows how many matches remain to schedule (of the
+      tournament's remaining fixtures: group + reserved knockout, minus any
+      already played/live matches that keep their times).
    4. "Skiciraj" computes the schedule WITHOUT persisting and shows a short
       day-by-day list (knockout matches appear as placeholders - teams decided
       only after the group stage).
@@ -34,7 +35,9 @@ import { MonoLabel } from "../ui/pitch"
 
    koOnly mode ("Raspored završnice"): the exact same UX, but the plan covers
    ONLY the knockout matches (group kickoffs are left untouched) - the counter
-   uses SchedulePlanInfo.knockoutMatches and the request carries koOnly: true.
+   uses SchedulePlanInfo.remainingKnockoutMatches and the request carries
+   koOnly: true. Both modes count only the REMAINING matches: already
+   FINISHED/LIVE matches keep their times and the backend excludes them.
 
    "Dodaj pauzu": the sketch's draggable row list also accepts PAUSE rows -
    breaks that shift every match after them later. They drag & drop like match
@@ -309,6 +312,7 @@ export default function MultiDaySchedulePlanner({
     cfg,
     startAt,
     koOnly = false,
+    autoSketch = false,
     onClose,
     onGenerated,
 }: {
@@ -320,6 +324,11 @@ export default function MultiDaySchedulePlanner({
     /** Knockout-only mode ("Raspored završnice"): plan only the knockout
      *  matches; the group kickoffs are left untouched. */
     koOnly?: boolean
+    /** "Uredi raspored" mode: skips the config step and runs the sketch
+     *  automatically the moment the plan is ready (the same readiness the
+     *  "Skiciraj" button relies on) - the organizer lands straight on the
+     *  drag-drop sketch list instead of the date/matches-per-day form. */
+    autoSketch?: boolean
     onClose: () => void
     onGenerated: (s: Schedule) => void
 }) {
@@ -329,12 +338,19 @@ export default function MultiDaySchedulePlanner({
     const defaultTime = `${p(seed.getHours())}:${p(seed.getMinutes())}`
 
     const [info, setInfo] = useState<SchedulePlanInfo | null>(null)
+    /** True once the plan-info fetch has settled (success OR failure) - lets
+     *  autoSketch tell "still loading" apart from "nothing left to plan". */
+    const [infoLoaded, setInfoLoaded] = useState(false)
     const [from, setFrom] = useState(defaultDate)
     const [to, setTo] = useState(defaultDate)
     const [rows, setRows] = useState<DayRow[]>([])
     const [preview, setPreview] = useState<SchedulePreview | null>(null)
     const [sketching, setSketching] = useState(false)
     const [generating, setGenerating] = useState(false)
+    /** autoSketch mode: true once the automatic sketch attempt has failed -
+     *  falls back to showing the normal config step instead of leaving the
+     *  organizer stuck on the loading spinner. */
+    const [autoSketchFailed, setAutoSketchFailed] = useState(false)
     /** Sketch rows in the organizer's (possibly re-dragged) play order, mixing
      *  MATCH rows and inserted PAUSE rows. The time slots stay put - position i
      *  always shows the preview's i-th match slot time; dragging changes WHICH
@@ -361,10 +377,18 @@ export default function MultiDaySchedulePlanner({
     const blockHiRef = useRef(0)
     /** Latest-wins guard for the silent "re-price" preview re-runs. */
     const previewSeqRef = useRef(0)
+    /** autoSketch mode: guards the automatic sketch so React StrictMode's
+     *  dev-only double effect invocation (or an unrelated re-render) can't
+     *  fire it twice. */
+    const autoSketchFiredRef = useRef(false)
+    /** autoSketch mode: true once a sketch has succeeded at least once - lets
+     *  "Natrag" from the preview reach the normal config form instead of the
+     *  initial loading spinner reappearing. */
+    const hasSketchedOnceRef = useRef(false)
 
     // Predicted total (group + knockout).
     useEffect(() => {
-        fetchPlanInfo(uuid).then(setInfo).catch(() => setInfo(null))
+        fetchPlanInfo(uuid).then(setInfo).catch(() => setInfo(null)).finally(() => setInfoLoaded(true))
     }, [uuid])
 
     // Rebuild the day rows when the range changes, keeping edits per date.
@@ -377,8 +401,12 @@ export default function MultiDaySchedulePlanner({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [from, to])
 
-    // In koOnly mode the counter + seeding cover only the knockout matches.
-    const total = koOnly ? (info?.knockoutMatches ?? 0) : (info?.totalMatches ?? 0)
+    // Counter + day seeding cover only the REMAINING matches (already
+    // FINISHED/LIVE ones keep their times and are excluded by the backend).
+    // koOnly → remaining knockout; full → remaining group + knockout.
+    const total = koOnly
+        ? (info?.remainingKnockoutMatches ?? 0)
+        : (info?.remainingGroupMatches ?? 0) + (info?.remainingKnockoutMatches ?? 0)
 
     // Once the total is known, seed the first day with everything (single-day
     // default) if nothing has been allocated yet.
@@ -396,6 +424,17 @@ export default function MultiDaySchedulePlanner({
         [rows],
     )
     const remaining = total - allocated
+    // Same readiness gate as the "Skiciraj" button - also arms the automatic
+    // sketch in autoSketch mode.
+    const sketchDisabled = allocated <= 0 || (total > 0 && allocated > total)
+    // autoSketch mode: show the loading spinner instead of the config form
+    // while the automatic sketch is pending. Cleared for good once a sketch
+    // has succeeded once, so a later "Natrag" reaches the config form rather
+    // than a stuck spinner. Also cleared when the settled plan info says there
+    // is nothing left to plan (all matches played, or the fetch failed) - the
+    // auto sketch would never arm, so fall back to the config form.
+    const autoSketchStuck = infoLoaded && total <= 0
+    const showAutoSketchLoading = autoSketch && !autoSketchFailed && !autoSketchStuck && !hasSketchedOnceRef.current
 
     /** Flattened preview slots (day index + fixed kickoff time) in play order -
      *  the k-th slot backs the k-th MATCH row in `sketchRows`. */
@@ -567,6 +606,7 @@ export default function MultiDaySchedulePlanner({
      *  IS the backend's single-court plan order - unscheduled rows are the
      *  tail and never appear in the days). Resets any pauses / reorder. */
     function applyPreview(pv: SchedulePreview) {
+        hasSketchedOnceRef.current = true
         setPreview(pv)
         const flat: SketchRow[] = []
         for (const day of pv.days) {
@@ -597,10 +637,22 @@ export default function MultiDaySchedulePlanner({
             applyPreview(await previewSchedule(uuid, buildRequest()))
         } catch {
             /* error toast surfaced by the http interceptor */
+            if (autoSketch) setAutoSketchFailed(true)
         } finally {
             setSketching(false)
         }
     }
+
+    // autoSketch mode ("Uredi raspored"): skip the config step and sketch
+    // automatically the moment the plan is ready - the same readiness the
+    // "Skiciraj" button uses. Fires exactly once; the ref guard survives
+    // React StrictMode's dev-only double effect invocation.
+    useEffect(() => {
+        if (!autoSketch || autoSketchFiredRef.current || preview || sketchDisabled) return
+        autoSketchFiredRef.current = true
+        void doSketch()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoSketch, sketchDisabled, preview])
 
     /** Re-price the sketch after a pause is added / moved / removed (or a match
      *  crosses a pause): the backend recomputes the shifted kickoff times. Only
@@ -692,7 +744,9 @@ export default function MultiDaySchedulePlanner({
                             <Dialog.Title>
                                 <HStack gap="2">
                                     <LuCalendarClock size={18} />
-                                    <Text fontWeight={800}>{koOnly ? "Raspored završnice" : "Generiranje rasporeda"}</Text>
+                                    <Text fontWeight={800}>
+                                        {koOnly ? "Raspored završnice" : autoSketch ? "Uredi raspored" : "Generiranje rasporeda"}
+                                    </Text>
                                 </HStack>
                             </Dialog.Title>
                         </Dialog.Header>
@@ -893,6 +947,13 @@ export default function MultiDaySchedulePlanner({
                                         </Box>
                                     ))}
                                 </VStack>
+                            ) : showAutoSketchLoading ? (
+                                /* autoSketch mode: sketching automatically - nothing to
+                                   configure, so show a loading state instead of the form. */
+                                <Flex direction="column" align="center" justify="center" gap="3" minH="200px" color="fg.muted">
+                                    <Spinner size="lg" />
+                                    <Text fontSize="sm">Učitavam raspored...</Text>
+                                </Flex>
                             ) : (
                                 /* ── Plan setup ──────────────────────────── */
                                 <VStack align="stretch" gap="4">
@@ -1065,6 +1126,10 @@ export default function MultiDaySchedulePlanner({
                                         </Button>
                                     </HStack>
                                 </VStack>
+                            ) : showAutoSketchLoading ? (
+                                <HStack gap="2" justify="flex-end" w="full">
+                                    <Button variant="ghost" onClick={onClose}>Odustani</Button>
+                                </HStack>
                             ) : (
                                 <HStack gap="2" justify="flex-end" w="full">
                                     <Button variant="ghost" onClick={onClose}>Odustani</Button>
@@ -1072,7 +1137,7 @@ export default function MultiDaySchedulePlanner({
                                         colorPalette="pitch"
                                         loading={sketching}
                                         onClick={doSketch}
-                                        disabled={allocated <= 0 || (total > 0 && allocated > total)}
+                                        disabled={sketchDisabled}
                                         title={
                                             total > 0 && allocated > total
                                                 ? "Smanji broj utakmica - rasporedio si više nego što turnir ima"

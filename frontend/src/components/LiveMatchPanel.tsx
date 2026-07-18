@@ -509,21 +509,49 @@ export default function LiveMatchPanel({
                                     </HStack>
                                 )}
 
-                                {/* Result-only toggle. */}
+                                {/* Result-only toggle - also cancels a pending
+                                    shootout so closing the form never leaves the
+                                    shootout panel orphaned. */}
                                 <Flex justify="center">
                                     <Button
                                         variant="plain"
                                         size="sm"
                                         fontWeight={700}
                                         color="fg.ink"
-                                        onClick={() => setShowDirectScore((v) => !v)}
+                                        onClick={() => {
+                                            setShowDirectScore((v) => !v)
+                                            setShootout(false)
+                                            setPendingScore(null)
+                                        }}
                                     >
                                         <FiEdit2 /> {showDirectScore ? "Odustani od unosa rezultata" : "Unesi samo rezultat"}
                                     </Button>
                                 </Flex>
 
-                                {/* Result-only panel. */}
-                                {showDirectScore && (
+                                {/* Result-only panel. A level knockout score hands
+                                    off to the penalty shootout RIGHT HERE - the
+                                    live-branch shootout render is unreachable for
+                                    a scheduled match, so without this the Spremi
+                                    click would silently do nothing. */}
+                                {showDirectScore && shootout && (
+                                    <Box mt="3">
+                                        <PenaltyShootout
+                                            uuid={uuid}
+                                            matchId={matchId}
+                                            team1Id={match.team1Id ?? null}
+                                            team1Name={match.team1Name ?? null}
+                                            team2Id={match.team2Id ?? null}
+                                            team2Name={match.team2Name ?? null}
+                                            saving={finishing}
+                                            onConfirm={confirmShootout}
+                                            onCancel={() => {
+                                                setShootout(false)
+                                                setPendingScore(null)
+                                            }}
+                                        />
+                                    </Box>
+                                )}
+                                {showDirectScore && !shootout && (
                                     <Box mt="3">
                                         <DirectScoreEditor
                                             team1Name={match.team1Name}

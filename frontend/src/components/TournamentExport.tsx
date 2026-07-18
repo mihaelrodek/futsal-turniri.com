@@ -590,7 +590,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                     fontSize: showResult ? "15px" : "16px",
                     fontWeight: 800,
                     color: leadColor,
-                    width: stackDay ? "86px" : showPens ? "66px" : "58px",
+                    width: stackDay ? "86px" : "58px",
                     flexShrink: 0,
                     whiteSpace: "nowrap",
                     fontVariantNumeric: "tabular-nums",
@@ -604,7 +604,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         <>
                             <span>{`${row.score1} : ${row.score2}`}</span>
                             <span style={{ fontSize: "10px", fontWeight: 700, color: C.muted }}>
-                                {`pen ${row.penalties1}:${row.penalties2}`}
+                                {`${row.penalties1}:${row.penalties2}`}
                             </span>
                         </>
                     ) : (
@@ -1156,10 +1156,9 @@ function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
         }
         const pages: ReactNode[] = [<SingleGroupCardPage g={g} showStandings={showStandings} />]
         if (rows.length > 0) {
-            // Same rows-per-page budget as the schedule poster; one row is
-            // reserved for the repeating "Utakmice · Grupa X" heading.
-            const perPage = Math.max(1, SCHEDULE_ROWS_PER_PAGE - 1)
-            for (const pageRows of chunk(rows, perPage)) {
+            // Same per-page PIXEL budget as the schedule poster's continuation
+            // pages; the repeating "Utakmice · Grupa X" heading costs one header.
+            for (const pageRows of paginateGroupFixtureRows(rows)) {
                 pages.push(<GroupMatchesSection groupName={g.name} rows={pageRows} />)
             }
         }
@@ -1440,18 +1439,77 @@ function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
     return sections
 }
 
-/* Pixel-height model for schedule pagination - more reliable than counting rows
-   as equal "units" (a match row with its stage pill + padding is taller than a
-   day heading). Conservative (rounded up) so the last row never clips or crams
-   against the footer. A match row ≈ 44px + 6px gap; a day heading block ≈ 28px +
-   its 20px section gap. Page-1 body is smaller (the QR lockup makes its header
-   ~185px tall); continuation pages carry only a compact one-line header. */
+/* Pixel-height model for schedule pagination - each match row is costed by its
+   REAL height, not a flat "unit", because team names that wrap to 2-3 lines make
+   a row much taller than a one-liner (the old flat cost overflowed the body and
+   clipped the last row(s) against the footer). SCHED_ROW_PX is a plain one-line
+   row (15px name cell + 11px pads + border + the 6px inter-row gap); each extra
+   wrapped line adds ~19px, and a decided-shootout row carries a second lead line
+   so it costs >= 2 lines (see schedRowPx). SCHED_HEADER_PX covers a day-heading
+   block + its 20px section gap. Page-1 body is smaller (the QR lockup makes its
+   header ~185px tall); continuation pages carry only a compact one-line header.
+   All values rounded up so the last row never clips or crams against the footer. */
 const SCHED_ROW_PX = 52
 const SCHED_HEADER_PX = 50
 const SCHED_FIRST_PX = 760
 const SCHED_REST_PX = 880
-/** Kept for the single-group fixtures pages (page 2+, compact header). */
-const SCHEDULE_ROWS_PER_PAGE = 16
+
+/** Conservative wrapped-line estimate for a team name in a poster row's name
+ *  cell. `perLine` is the chars-per-line for that layout (24 for the day-
+ *  sectioned schedule, where the stage pill narrows the cell; ~30 for the
+ *  pill-less single-group fixtures list). Clamped to 1-3 lines. */
+function estNameLines(s: string, perLine = 24): number {
+    return Math.min(3, Math.max(1, Math.ceil(s.length / perLine)))
+}
+
+/** Real per-row pixel cost for the day-sectioned schedule poster. Resolves BOTH
+ *  pairing names exactly like ScheduleSections / MatchRowPoster, takes the
+ *  taller side's wrapped-line count, and forces >= 2 lines when the row shows a
+ *  penalty second line (the renderer's showPens condition). A one-line row costs
+ *  SCHED_ROW_PX (52); each extra line adds 19px (== 33 + 19*lines). */
+function schedRowPx(m: ScheduledMatch): number {
+    const t1 = pairingName(m.team1Name, m.slot1PredictedName, m.slot1Label)
+    const t2 = pairingName(m.team2Name, m.slot2PredictedName, m.slot2Label)
+    let lines = Math.max(estNameLines(t1), estNameLines(t2))
+    const showResult = (m.status === "LIVE" || m.status === "FINISHED") && m.score1 != null && m.score2 != null
+    if (showResult && m.penalties1 != null && m.penalties2 != null) lines = Math.max(lines, 2)
+    return SCHED_ROW_PX + 19 * (lines - 1)
+}
+
+/** Per-row cost for the single-group fixtures list: no stage pill → wider name
+ *  cells (~30 chars/line), otherwise the same MatchRowPoster and the same
+ *  base/line model as schedRowPx. Group matches have no shootout, but the pens
+ *  check mirrors the renderer for parity. */
+function groupFixtureRowPx(row: PosterMatchRow): number {
+    let lines = Math.max(estNameLines(row.t1, 30), estNameLines(row.t2, 30))
+    const showResult = (row.status === "LIVE" || row.status === "FINISHED") && row.score1 != null && row.score2 != null
+    if (showResult && row.penalties1 != null && row.penalties2 != null) lines = Math.max(lines, 2)
+    // Multi-day group: the lead cell stacks day+date above HH:mm (stackDay in
+    // MatchRowPoster) - a second lead line, so the row costs >= 2 lines too.
+    if (!showResult && row.kickoffAt && row.showDay) lines = Math.max(lines, 2)
+    return SCHED_ROW_PX + 19 * (lines - 1)
+}
+
+/** Split the single-group fixtures across pages under the schedule poster's
+ *  continuation-page pixel budget (SCHED_REST_PX); the repeating "Utakmice ·
+ *  Grupa X" heading costs one SCHED_HEADER_PX. Every page keeps >= 1 row. */
+function paginateGroupFixtureRows(rows: PosterMatchRow[]): PosterMatchRow[][] {
+    const pages: PosterMatchRow[][] = []
+    let page: PosterMatchRow[] = []
+    let usedPx = SCHED_HEADER_PX
+    for (const row of rows) {
+        const rowPx = groupFixtureRowPx(row)
+        if (page.length > 0 && usedPx + rowPx > SCHED_REST_PX) {
+            pages.push(page)
+            page = []
+            usedPx = SCHED_HEADER_PX
+        }
+        page.push(row)
+        usedPx += rowPx
+    }
+    if (page.length > 0) pages.push(page)
+    return pages
+}
 
 /** Split the day sections across pages under a per-page PIXEL budget. Page 1 gets
  *  the smaller `firstPx` (its tall QR header leaves less room); continuation
@@ -1481,15 +1539,26 @@ function paginateScheduleSections(
         let rest = sec.matches
         while (rest.length > 0) {
             const remainingPx = budgetPx - usedPx
-            // Need room for the day header + at least one match row, else break.
-            if (remainingPx < SCHED_HEADER_PX + SCHED_ROW_PX) {
+            // Need room for the day header + at least the first (real-height)
+            // match row; if it won't fit and the page already has content, start
+            // this section (chunk) on a fresh page. A fresh page always keeps
+            // >= 1 row below its header, so a day header is never orphaned.
+            if (pageSecs.length > 0 && remainingPx < SCHED_HEADER_PX + schedRowPx(rest[0])) {
                 flush()
                 continue
             }
-            const fit = Math.max(1, Math.floor((remainingPx - SCHED_HEADER_PX) / SCHED_ROW_PX))
-            const take = Math.min(fit, rest.length)
+            // Walk the section's matches, accumulating each row's real pixel cost
+            // until the budget is spent; always take at least one row.
+            let take = 0
+            let chunkPx = SCHED_HEADER_PX
+            for (const m of rest) {
+                const rowPx = schedRowPx(m)
+                if (take > 0 && usedPx + chunkPx + rowPx > budgetPx) break
+                chunkPx += rowPx
+                take++
+            }
             pageSecs.push({ key: sec.key, label: sec.label, matches: rest.slice(0, take) })
-            usedPx += SCHED_HEADER_PX + take * SCHED_ROW_PX
+            usedPx += chunkPx
             rest = rest.slice(take)
             // Any remainder of this section continues on a fresh page.
             if (rest.length > 0) flush()
@@ -2460,9 +2529,10 @@ function MatchHeaderBlock({ match }: { match: MatchExportData }) {
     )
 }
 
-/* Row budgets for the match timeline (mirrors SCHEDULE_ROWS_PER_PAGE). Page 1
-   shares its body with the match header block + the "TIJEK UTAKMICE" heading, so
-   it takes fewer event rows; continuation pages get the fuller budget. A section
+/* Row budgets for the match timeline (mirrors the schedule poster's per-page
+   budget pattern). Page 1 shares its body with the match header block + the
+   "TIJEK UTAKMICE" heading, so it takes fewer event rows; continuation pages get
+   the fuller budget. A section
    header ("1./2. poluvrijeme" / "Penali") costs one row and never dangles as a
    page's last row (same rule as the schedule paginator). */
 const MATCH_ROWS_FIRST = 13

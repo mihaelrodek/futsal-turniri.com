@@ -132,6 +132,13 @@ public class SchedulingService {
      * generate UI can show "still to schedule". Group matches come from the
      * drawn groups (round-robin); knockout is the predicted bracket size
      * (elimination + third place), reserved even before the bracket is drawn.
+     *
+     * <p>{@code remainingGroupMatches} / {@code remainingKnockoutMatches} are the
+     * PERSISTED matches that still need a slot: everything that is neither played
+     * (LIVE or FINISHED) nor a bye. Mid-tournament the planner lays out only these
+     * (see {@link #previewMultiDay}/{@link #generateMultiDay}), so the counters
+     * mirror that. Both are 0 for a stage whose matches don't exist yet or are all
+     * already played, whereas the predicted totals above stay unchanged.
      */
     @Transactional
     public SchedulePlanInfoDto planInfo(Tournaments t) {
@@ -139,14 +146,32 @@ public class SchedulingService {
                 ? groupStageService.plannedGroupFixtures(t).size()
                 : 0;
         int knockoutMatches = knockoutService.plannedKnockoutMatchCount(t);
-        return new SchedulePlanInfoDto(groupMatches, knockoutMatches, groupMatches + knockoutMatches);
+
+        // The matches actually left to (re)schedule: not played (LIVE/FINISHED),
+        // not a bye. Same remaining set the preview/generate plans range over.
+        int remainingGroupMatches = 0;
+        int remainingKnockoutMatches = 0;
+        for (Matches m : matchesRepo.findByTournament_Id(t.getId())) {
+            if (m.isKnockoutBye() || isPlayed(m)) continue;
+            if (m.getStage() == MatchStage.GROUP) remainingGroupMatches++;
+            else remainingKnockoutMatches++;
+        }
+
+        return new SchedulePlanInfoDto(groupMatches, knockoutMatches, groupMatches + knockoutMatches,
+                remainingGroupMatches, remainingKnockoutMatches);
     }
 
     /**
      * Compute the multi-day schedule WITHOUT persisting anything ("Skiciraj").
-     * Lays every match (group fixtures interleaved, then the knockout - real if
-     * a bracket exists, else placeholders) across the day plan and groups the
-     * result by day. Matches that don't fit the plan are counted as unscheduled.
+     * Lays the REMAINING matches (group fixtures interleaved, then the knockout -
+     * real if a bracket exists, else placeholders) across the day plan and groups
+     * the result by day. Already-played (LIVE / FINISHED) matches and byes are
+     * excluded - their kickoffs are never touched - so re-opening the planner
+     * mid-tournament only sketches what is still to be played. The plan rows,
+     * planHash and day-capacity all range over this remaining list, built with the
+     * same filter + sort {@link #generateMultiDay} uses so the drag indices stay
+     * aligned. Matches that don't fit the plan are counted as unscheduled; when
+     * nothing remains the result is simply an empty-day plan (no error).
      */
     @Transactional
     public SchedulePreviewDto previewMultiDay(Tournaments t, SchedulePlanRequest req) {
@@ -174,9 +199,16 @@ public class SchedulingService {
             // played matches), generateMultiDay reuses them (generateFixtures
             // no-ops) - so the preview must line up with the PERSISTED list,
             // not a recompute, or the drag order would address wrong matches.
-            List<Matches> persisted = persistedGroupFixturesInPlayOrder(t);
-            if (!persisted.isEmpty()) {
-                for (Matches m : persisted) {
+            //
+            // The persisted-vs-planned choice is by EXISTENCE, not by how many
+            // remain: persistedGroupFixturesInPlayOrder already drops the played
+            // matches, so it can come back empty even though fixtures exist. We
+            // must NOT then fall back to the planned pairings (that would re-add
+            // played group matches), hence the explicit count() existence check.
+            boolean groupFixturesExist =
+                    matchesRepo.count("tournament = ?1 and stage = ?2", t, MatchStage.GROUP) > 0;
+            if (groupFixturesExist) {
+                for (Matches m : persistedGroupFixturesInPlayOrder(t)) {
                     plan.add(new Plan("GROUP",
                             m.getGroup() != null ? m.getGroup().getName() : null,
                             m.getTeam1() != null ? m.getTeam1().getName() : null,
@@ -200,9 +232,16 @@ public class SchedulingService {
         int knockoutMatches;
         List<Matches> existingKo = matchesRepo.list(
                 "tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        // "Bracket exists" = real knockout rows are persisted. Decided BEFORE the
+        // filters below so an all-played bracket still counts as existing - we then
+        // lay out its zero REMAINING matches instead of the placeholder skeleton.
         boolean bracketExists = !existingKo.isEmpty();
         // BYEs are never played - they don't belong in the schedule at all.
         existingKo.removeIf(Matches::isKnockoutBye);
+        // Already-played (LIVE / FINISHED) knockout matches keep their kickoff too;
+        // the plan ranges over the REMAINING knockout only. Same filter + sort as
+        // knockoutMatchesInPlayOrder (the koOnly generate list) so indices align.
+        existingKo.removeIf(SchedulingService::isPlayed);
         if (bracketExists) {
             // Predicted-pairing labels for the persisted bracket/skeleton, keyed
             // by match id (labels only where a team is still null; empty for
@@ -279,9 +318,14 @@ public class SchedulingService {
     /**
      * Persist the multi-day schedule ("Potvrdi"). Stores the format config,
      * creates the group fixtures + the knockout placeholder skeleton (so the
-     * elimination has reserved slots), then lays out every match's kickoff per
-     * the day plan. Re-runnable. For KNOCKOUT_ONLY the existing bracket matches
-     * are simply laid out across the days.
+     * elimination has reserved slots), then lays out the REMAINING matches'
+     * kickoffs per the day plan. Already-played (LIVE / FINISHED) matches and byes
+     * are excluded from the layout - their kickoffs stay put - so re-opening the
+     * planner mid-tournament re-times only what is still to be played, over the
+     * exact same remaining list (same filter + sort) {@link #previewMultiDay}
+     * showed, keeping the drag order/planHash/stage-order guard aligned.
+     * Re-runnable. For KNOCKOUT_ONLY the existing bracket matches are laid out
+     * across the days. When nothing remains to schedule this is a no-op.
      */
     @Transactional
     public void generateMultiDay(Tournaments t, SchedulePlanRequest req) {
@@ -551,8 +595,11 @@ public class SchedulingService {
     }
 
     /**
-     * The single-court play order: group matches interleaved across groups
-     * (A1, B1, C1, D1, A2, B2, …), then knockout matches by stage then id.
+     * The single-court play order of the REMAINING matches: group matches
+     * interleaved across groups (A1, B1, C1, D1, A2, B2, …), then knockout matches
+     * by stage then id. Byes and already-played (LIVE / FINISHED) matches are
+     * excluded - the latter keep their kickoff and are never relaid - so this is
+     * the full-mode generate list the preview mirrors.
      */
     private List<Matches> orderForSingleCourt(Tournaments t) {
         List<Matches> all = matchesRepo.findByTournament_Id(t.getId());
@@ -562,6 +609,7 @@ public class SchedulingService {
         List<Matches> knockout = new ArrayList<>();
         for (Matches m : all) {
             if (m.isKnockoutBye()) continue; // never played, never scheduled
+            if (isPlayed(m)) continue;       // LIVE / FINISHED - kickoff frozen, out of the plan
             if (m.getStage() == MatchStage.GROUP && m.getGroup() != null) {
                 byGroup.computeIfAbsent(m.getGroup().getId(), k -> new ArrayList<>()).add(m);
             } else {
@@ -613,15 +661,20 @@ public class SchedulingService {
     }
 
     /**
-     * The PERSISTED group fixtures in single-court play order - exactly the
-     * group prefix of {@link #orderForSingleCourt}. The multi-day preview uses
-     * this when fixtures already exist, because generate will reuse them
-     * (generateFixtures no-ops) rather than recompute the planned pairings.
+     * The PERSISTED, still-to-play group fixtures in single-court play order -
+     * exactly the group prefix of {@link #orderForSingleCourt}. The multi-day
+     * preview uses this when fixtures already exist, because generate will reuse
+     * them (generateFixtures no-ops) rather than recompute the planned pairings.
+     * Already-played (LIVE / FINISHED) group matches are dropped BEFORE the
+     * interleave (matching {@code orderForSingleCourt}), so filtering-then-
+     * interleaving produces the identical remaining sequence on both sides. May
+     * return empty even when fixtures exist (all played) - callers decide
+     * planned-vs-persisted by existence, not by this being empty.
      */
     private List<Matches> persistedGroupFixturesInPlayOrder(Tournaments t) {
         Map<Long, List<Matches>> byGroup = new LinkedHashMap<>();
         for (Matches m : matchesRepo.list("tournament = ?1 and stage = ?2", t, MatchStage.GROUP)) {
-            if (m.getGroup() != null) {
+            if (m.getGroup() != null && !isPlayed(m)) {
                 byGroup.computeIfAbsent(m.getGroup().getId(), k -> new ArrayList<>()).add(m);
             }
         }
@@ -629,15 +682,17 @@ public class SchedulingService {
     }
 
     /**
-     * The PERSISTED knockout matches (stage != GROUP, byes excluded) in play
-     * order - the same list, built the same way, that the multi-day preview's
-     * knockout block walks (query "stage &lt;&gt; GROUP", drop byes, sort by
-     * stage rank then id). Used by the koOnly generate so its ordered list lines
-     * up 1:1 with the preview's knockout-only plan.
+     * The PERSISTED, still-to-play knockout matches (stage != GROUP, byes and
+     * already-played matches excluded) in play order - the same list, built the
+     * same way, that the multi-day preview's knockout block walks (query
+     * "stage &lt;&gt; GROUP", drop byes, drop LIVE / FINISHED, sort by stage rank
+     * then id). Used by the koOnly generate so its ordered list lines up 1:1 with
+     * the preview's knockout-only plan and no played match is ever relaid.
      */
     private List<Matches> knockoutMatchesInPlayOrder(Tournaments t) {
         List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
         ko.removeIf(Matches::isKnockoutBye);
+        ko.removeIf(SchedulingService::isPlayed);
         ko.sort(Comparator
                 .comparingInt((Matches m) -> stageRank(m.getStage()))
                 .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
@@ -785,6 +840,16 @@ public class SchedulingService {
 
     private static int nz(Integer v) {
         return v == null ? 0 : v;
+    }
+
+    /**
+     * A match is "played" once it is LIVE or FINISHED - it has (or is having) its
+     * moment on the court, so the scheduler must never touch its kickoff. Every
+     * multi-day plan (preview + generate, full + koOnly) ranges over the REMAINING
+     * matches, i.e. those for which this returns false (SCHEDULED or statusless).
+     */
+    private static boolean isPlayed(Matches m) {
+        return m.getStatus() == MatchStatus.LIVE || m.getStatus() == MatchStatus.FINISHED;
     }
 
     private ScheduledMatchDto toDto(Matches m, Map<Long, KnockoutService.SlotLabels> labels) {

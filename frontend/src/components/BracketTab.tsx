@@ -1652,7 +1652,6 @@ export default function BracketTab({
                         uuid={uuid}
                         colors={kitColors}
                         onSave={saveResult}
-                        onSavePenalties={saveResultWithPenalties}
                         onCancel={() => setEditingId(null)}
                         onFormChange={setForm}
                         onOpenLive={handleOpenLive}
@@ -1902,7 +1901,6 @@ export default function BracketTab({
                                     uuid={uuid}
                                     colors={kitColors}
                                     onSave={saveResult}
-                                    onSavePenalties={saveResultWithPenalties}
                                     onCancel={() => setEditingId(null)}
                                     onFormChange={setForm}
                                     onOpenLive={handleOpenLive}
@@ -1996,6 +1994,30 @@ export default function BracketTab({
                     onChanged={reloadBracket}
                 />
             )}
+
+            {/* ── Guided penalty shootout for a LEVEL inline result. Rendered
+                here (top level, portalled) instead of inside the match card:
+                the bracket library draws each card in a fixed-size SVG box, so
+                an inline shootout overflowed onto the absolutely-positioned
+                3rd-place card AND reset its entered kicks on every background
+                re-render (the lib remounts each card). A portalled dialog floats
+                above the bracket and keeps its state across those refreshes. */}
+            {(() => {
+                if (editingId == null || !showPenaltyRow) return null
+                const em =
+                    matchById.get(editingId) ??
+                    (bracket.thirdPlace?.matchId === editingId ? bracket.thirdPlace : null)
+                if (!em) return null
+                return (
+                    <BracketPenaltyDialog
+                        uuid={uuid}
+                        match={em}
+                        saving={saving}
+                        onConfirm={(p1, p2) => saveResultWithPenalties(em, p1, p2)}
+                        onClose={() => setEditingId(null)}
+                    />
+                )
+            })()}
 
             {/* Read-only timeline modal - opens for anyone clicking a match. */}
             {timelineMatch && (
@@ -2258,7 +2280,6 @@ type MatchCardProps = {
     colors: Record<string, TeamKit>
     onEdit: (m: BracketMatch) => void
     onSave: (m: BracketMatch) => void
-    onSavePenalties: (m: BracketMatch, pen1: number, pen2: number) => void
     onCancel: () => void
     onFormChange: (updater: (prev: EditForm) => EditForm) => void
     onOpenLive: (m: BracketMatch) => void
@@ -2282,7 +2303,6 @@ function MatchCard({
     colors,
     onEdit,
     onSave,
-    onSavePenalties,
     onCancel,
     onFormChange,
     onOpenLive,
@@ -2437,21 +2457,22 @@ function MatchCard({
 
                 {editing ? (
                     <VStack align="stretch" gap="2" mt="3">
-                    {/* Neriješeno → guided penalty shootout (decides + saves). */}
+                    {/* Neriješeno → the guided penalty shootout is rendered in a
+                        portalled dialog (BracketPenaltyDialog) at the tab's top
+                        level, NOT inline here: the library renders this card in a
+                        fixed-size SVG box, so an inline shootout overflowed onto
+                        the 3rd-place card AND lost its kicks on every background
+                        re-render (the lib remounts each card). This is just a
+                        hint; the dialog opens automatically for a level score. */}
                     {showPenaltyRow && (
-                        <PenaltyShootout
-                            uuid={uuid}
-                            matchId={m.matchId}
-                            team1Id={m.team1Id}
-                            team1Name={m.team1Name}
-                            team2Id={m.team2Id}
-                            team2Name={m.team2Name}
-                            saving={saving}
-                            onConfirm={(p1, p2) => onSavePenalties(m, p1, p2)}
-                        />
+                        <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5" bg="bg.surfaceTint">
+                            <Text fontSize="2xs" color="fg.muted" textAlign="center" fontWeight={600}>
+                                Neriješeno - raspucavanje penala otvoreno u zasebnom prozoru.
+                            </Text>
+                        </Box>
                     )}
 
-                    {/* Action buttons - for a level score the shootout above
+                    {/* Action buttons - for a level score the shootout dialog
                         does the saving, so only show "Spremi" for a decisive
                         result. */}
                     <HStack gap="2">
@@ -2784,6 +2805,68 @@ function LivePill() {
    score, the chronological event log, controls to add goals/cards and a
    "Završi" button. For a FINISHED match it shows the same log read-only.
    ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Guided penalty shootout in its own portalled dialog, used for a LEVEL inline
+ * result on the bracket (the "Unesi rezultat" flow, and the LIVE dialog reuses
+ * PenaltyShootout directly). Rendering the shootout inline inside the library's
+ * fixed-size match box overflowed onto the (absolutely positioned) 3rd-place
+ * card and lost its entered kicks whenever the bracket re-rendered in the
+ * background (the library remounts every match card on each parent render). A
+ * portalled dialog at the tab's top level floats above the bracket and keeps
+ * its state across those background refreshes.
+ */
+function BracketPenaltyDialog({
+    uuid,
+    match,
+    saving,
+    onConfirm,
+    onClose,
+}: {
+    uuid: string
+    match: BracketMatch
+    saving: boolean
+    onConfirm: (pen1: number, pen2: number) => void
+    onClose: () => void
+}) {
+    return (
+        <Dialog.Root
+            open
+            onOpenChange={(e) => { if (!e.open) onClose() }}
+            placement="center"
+            motionPreset="slide-in-bottom"
+            scrollBehavior="inside"
+        >
+            <Portal>
+                <Dialog.Backdrop />
+                <Dialog.Positioner>
+                    <Dialog.Content maxW={{ base: "94%", md: "460px" }}>
+                        <Dialog.Header pb="2">
+                            <Dialog.Title flex="1">
+                                <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
+                                    Raspucavanje penala
+                                </Text>
+                            </Dialog.Title>
+                        </Dialog.Header>
+                        <Dialog.Body pb="4">
+                            <PenaltyShootout
+                                uuid={uuid}
+                                matchId={match.matchId}
+                                team1Id={match.team1Id ?? null}
+                                team1Name={match.team1Name ?? null}
+                                team2Id={match.team2Id ?? null}
+                                team2Name={match.team2Name ?? null}
+                                saving={saving}
+                                onConfirm={onConfirm}
+                                onCancel={onClose}
+                            />
+                        </Dialog.Body>
+                    </Dialog.Content>
+                </Dialog.Positioner>
+            </Portal>
+        </Dialog.Root>
+    )
+}
 
 export function BracketLiveMatchDialog({
     uuid,
