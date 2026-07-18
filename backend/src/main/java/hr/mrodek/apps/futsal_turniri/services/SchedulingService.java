@@ -150,6 +150,10 @@ public class SchedulingService {
      */
     @Transactional
     public SchedulePreviewDto previewMultiDay(Tournaments t, SchedulePlanRequest req) {
+        validateBreaks(req.breaks());
+        // Knockout-only: the plan covers just the knockout matches, so the group
+        // rows are skipped below and the whole ordered list is knockout-only.
+        boolean koOnly = Boolean.TRUE.equals(req.koOnly());
         int slot = slotFromRequest(req, false);
         int koSlot = slotFromRequest(req, true);
         if (slot <= 0 || koSlot <= 0) {
@@ -163,7 +167,9 @@ public class SchedulingService {
         List<Plan> plan = new ArrayList<>();
 
         int groupMatches = 0;
-        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+        // koOnly leaves the group stage entirely out of the plan (its kickoffs
+        // are never touched); only the knockout block below builds the rows.
+        if (!koOnly && t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
             // Once fixtures exist (e.g. re-planning after a partial clear kept
             // played matches), generateMultiDay reuses them (generateFixtures
             // no-ops) - so the preview must line up with the PERSISTED list,
@@ -247,7 +253,7 @@ public class SchedulingService {
         for (Plan p : plan) {
             slots.add("GROUP".equals(p.stage()) ? slot : koSlot);
         }
-        List<OffsetDateTime> times = layoutTimes(slots, req.days());
+        List<OffsetDateTime> times = layoutTimes(slots, req.days(), req.breaks());
 
         Map<String, List<SchedulePreviewDto.Match>> byDay = new LinkedHashMap<>();
         int scheduled = 0;
@@ -282,28 +288,55 @@ public class SchedulingService {
         if (req == null || req.days() == null || req.days().isEmpty()) {
             throw new BadRequestException("No day plan provided");
         }
-        t.setHalfCount(req.halfCount() != null ? req.halfCount() : 2);
-        t.setHalfLengthMin(
-                req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10);
-        t.setHalftimeBreakMin(req.halftimeBreakMin());
-        t.setBreakBetweenMatchesMin(req.breakBetweenMatchesMin());
-        t.setBufferMin(req.bufferMin());
-        applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin(), req.koBreakBetweenMatchesMin());
+        validateBreaks(req.breaks());
+        boolean koOnly = Boolean.TRUE.equals(req.koOnly());
 
-        if (slotLength(t) <= 0 || slotFor(t, MatchStage.FINAL) <= 0) {
+        if (koOnly) {
+            // Knockout-only replan: the group schedule keeps its own stored
+            // format, so we DON'T overwrite the group-format fields (halfCount,
+            // halfLengthMin, halftimeBreakMin, breakBetweenMatchesMin, bufferMin).
+            // Only the ko* overrides are (re)applied - applyKnockoutFormat sets
+            // them when a positive koHalfLengthMin is given and otherwise clears
+            // them, i.e. "the knockout plays like the (stored) groups". The KO
+            // slot then resolves via slotFor(t, stage) exactly as elsewhere: the
+            // ko override when present, the stored group format as the fallback.
+            applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin(), req.koBreakBetweenMatchesMin());
+        } else {
+            t.setHalfCount(req.halfCount() != null ? req.halfCount() : 2);
+            t.setHalfLengthMin(
+                    req.halfLengthMin() != null && req.halfLengthMin() > 0 ? req.halfLengthMin() : 10);
+            t.setHalftimeBreakMin(req.halftimeBreakMin());
+            t.setBreakBetweenMatchesMin(req.breakBetweenMatchesMin());
+            t.setBufferMin(req.bufferMin());
+            applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin(), req.koBreakBetweenMatchesMin());
+        }
+
+        // koOnly only lays out knockout matches, so only the knockout slot must
+        // be positive; the group slot is irrelevant (its schedule is untouched).
+        boolean formatInvalid = koOnly
+                ? slotFor(t, MatchStage.FINAL) <= 0
+                : (slotLength(t) <= 0 || slotFor(t, MatchStage.FINAL) <= 0);
+        if (formatInvalid) {
             throw new BadRequestException("The match format must total more than 0 minutes");
         }
 
         if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
-            groupStageService.generateFixtures(t);  // group matches (idempotent)
-            knockoutService.createSkeleton(t);       // knockout placeholders (no-op if bracket exists)
+            // koOnly skips the group fixtures entirely (they already exist and
+            // stay untouched) but still ensures the knockout skeleton is present.
+            if (!koOnly) {
+                groupStageService.generateFixtures(t);  // group matches (idempotent)
+            }
+            knockoutService.createSkeleton(t);           // knockout placeholders (no-op if bracket exists)
         }
 
-        List<Matches> ordered = orderForSingleCourt(t);
+        // koOnly lays out ONLY the knockout matches, in the SAME order the
+        // preview used (knockoutMatchesInPlayOrder mirrors the preview's KO list),
+        // so planIndex/order/planHash line up and no GROUP match is ever retimed.
+        List<Matches> ordered = koOnly ? knockoutMatchesInPlayOrder(t) : orderForSingleCourt(t);
         // Slots are per PLAY POSITION. A custom drag order is only allowed to
         // permute matches within a stage (validated below), so the stage - and
         // therefore the slot - at position j is the same either way.
-        List<OffsetDateTime> times = layoutTimes(slotsFor(t, ordered), req.days());
+        List<OffsetDateTime> times = layoutTimes(slotsFor(t, ordered), req.days(), req.breaks());
 
         // The preview's drag-and-drop sends the plan indices in the desired
         // play order: the j-th listed match takes the j-th time slot. The
@@ -375,8 +408,18 @@ public class SchedulingService {
      * places its {@code matches} back-to-back from that day's first kickoff,
      * {@code slot} minutes apart. Returns a list of length {@code total}; any
      * match beyond the plan's capacity gets a null time.
+     *
+     * <p>{@code breaks} are draggable pauses (Feature C): before placing the
+     * match at a given 0-based play-order position, the cursor is advanced by the
+     * summed pause minutes for that position. A pause consumes TIME only, never a
+     * match slot - the day still places its {@code matches} count, the pause just
+     * pushes their kickoffs (and everything after) later. Capacity is therefore
+     * still counted in matches, so a match beyond the day counts falls off the
+     * plan exactly as before. With {@code breaks} null/empty this is
+     * bit-identical to the pre-Feature-C layout.
      */
-    private List<OffsetDateTime> layoutTimes(List<Integer> slots, List<DaySchedule> days) {
+    private List<OffsetDateTime> layoutTimes(List<Integer> slots, List<DaySchedule> days,
+                                             List<SchedulePlanRequest.Break> breaks) {
         int total = slots.size();
         List<OffsetDateTime> times = new ArrayList<>();
         if (days != null) {
@@ -385,9 +428,14 @@ public class SchedulingService {
                 OffsetDateTime cursor = OffsetDateTime.parse(d.firstKickoff());
                 int cnt = Math.max(0, d.matches());
                 for (int i = 0; i < cnt && times.size() < total; i++) {
+                    int pos = times.size();
+                    // A pause in front of this play-order position shifts this and
+                    // every later kickoff without taking a match slot.
+                    int pause = breakMinutesBefore(breaks, pos);
+                    if (pause > 0) cursor = cursor.plusMinutes(pause);
                     // Each match occupies its own slot - a knockout match with a
                     // longer format pushes the rest of the day back accordingly.
-                    int slot = slots.get(times.size());
+                    int slot = slots.get(pos);
                     times.add(cursor);
                     cursor = cursor.plusMinutes(slot);
                 }
@@ -395,6 +443,38 @@ public class SchedulingService {
         }
         while (times.size() < total) times.add(null);
         return times;
+    }
+
+    /** Total pause minutes to insert BEFORE play-order position {@code pos} -
+     *  the additive sum of every break that targets it. 0 when there are none,
+     *  which keeps the layout walk bit-identical to the pre-Feature-C behavior. */
+    private static int breakMinutesBefore(List<SchedulePlanRequest.Break> breaks, int pos) {
+        if (breaks == null || breaks.isEmpty()) return 0;
+        int sum = 0;
+        for (SchedulePlanRequest.Break b : breaks) {
+            if (b != null && b.beforeOrderPos() != null && b.beforeOrderPos() == pos) {
+                sum += nz(b.minutes());
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * Validate the draggable pauses (Feature C): every break needs a
+     * non-negative {@code beforeOrderPos} and {@code minutes} in 1..24*60.
+     * A null/empty list is fine (no pauses). 400 on any violation.
+     */
+    private static void validateBreaks(List<SchedulePlanRequest.Break> breaks) {
+        if (breaks == null) return;
+        for (SchedulePlanRequest.Break b : breaks) {
+            if (b == null) continue;
+            if (b.beforeOrderPos() == null || b.beforeOrderPos() < 0) {
+                throw new BadRequestException("Break position must be >= 0");
+            }
+            if (b.minutes() == null || b.minutes() < 1 || b.minutes() > 24 * 60) {
+                throw new BadRequestException("Break minutes must be between 1 and 1440");
+            }
+        }
     }
 
     /**
@@ -546,6 +626,22 @@ public class SchedulingService {
             }
         }
         return interleaveGroupBuckets(byGroup);
+    }
+
+    /**
+     * The PERSISTED knockout matches (stage != GROUP, byes excluded) in play
+     * order - the same list, built the same way, that the multi-day preview's
+     * knockout block walks (query "stage &lt;&gt; GROUP", drop byes, sort by
+     * stage rank then id). Used by the koOnly generate so its ordered list lines
+     * up 1:1 with the preview's knockout-only plan.
+     */
+    private List<Matches> knockoutMatchesInPlayOrder(Tournaments t) {
+        List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+        ko.removeIf(Matches::isKnockoutBye);
+        ko.sort(Comparator
+                .comparingInt((Matches m) -> stageRank(m.getStage()))
+                .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
+        return ko;
     }
 
     /**

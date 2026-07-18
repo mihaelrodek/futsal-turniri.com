@@ -574,6 +574,11 @@ export default function TournamentDetailsPage() {
     // organizer = admin OR creator OR granted co-editor.
     const canEdit = !!t && (isAdmin || (!!user?.uid && user.uid === t.createdByUid) || canManageAccess)
 
+    // A FINISHED tournament is locked for everyone except admins: organizers keep
+    // read access but every editing entry point is hidden behind a "contact an
+    // admin to unlock" notice. Threaded into the draw / schedule / live tabs.
+    const finishedLocked = !!t && t.status === "FINISHED" && !isAdmin
+
     /* ──────────────────────────────────────────────────────────────────────
        Details edit handlers
        ────────────────────────────────────────────────────────────────────── */
@@ -1068,7 +1073,9 @@ export default function TournamentDetailsPage() {
                     />
                 )}
 
-                {section === "live" && canEdit && <LiveControlTab uuid={t.uuid} />}
+                {section === "live" && canEdit && (
+                    <LiveControlTab uuid={t.uuid} finishedLocked={finishedLocked} />
+                )}
 
                 {section === "teams" && (
                     <TeamsSection
@@ -1166,6 +1173,7 @@ export default function TournamentDetailsPage() {
                                     bestThirdCount={t.bestThirdCount}
                                     teams={teams}
                                     canEdit={canEdit}
+                                    finishedLocked={finishedLocked}
                                     tournamentStarted={tournamentStarted}
                                     onGoToSchedule={() => setSection("raspored")}
                                     exportMeta={{
@@ -1180,6 +1188,7 @@ export default function TournamentDetailsPage() {
                                 <BracketTab
                                     uuid={t.uuid}
                                     canEdit={canEdit}
+                                    finishedLocked={finishedLocked}
                                     tournamentStarted={tournamentStarted}
                                     tournamentName={t.name}
                                     format={t.format}
@@ -1204,6 +1213,7 @@ export default function TournamentDetailsPage() {
                     <ScheduleTab
                         uuid={t.uuid}
                         canEdit={canEdit}
+                        finishedLocked={finishedLocked}
                         tournamentName={t.name}
                         tournamentLocation={t.location}
                         tournamentSlug={t.slug}

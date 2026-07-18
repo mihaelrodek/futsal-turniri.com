@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Box, Button, Flex, HStack, Menu, Portal, Text, VStack } from "@chakra-ui/react"
-import { FiChevronDown, FiEyeOff, FiPlay } from "react-icons/fi"
+import { FiChevronDown, FiEyeOff, FiInfo, FiPlay } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
 import { fetchGroups } from "../api/groups"
@@ -69,7 +69,15 @@ function optionLabel(e: Entry, onDeck: boolean): string {
     return `${tag}${teams}${meta ? ` · ${meta}` : ""}`
 }
 
-export default function LiveControlTab({ uuid }: { uuid: string }) {
+export default function LiveControlTab({
+    uuid,
+    finishedLocked = false,
+}: {
+    uuid: string
+    /** Tournament FINISHED + non-admin viewer: render the "locked" notice
+     *  instead of the live-control console (the simplest robust lock). */
+    finishedLocked?: boolean
+}) {
     const [groups, setGroups] = useState<Group[] | null>(null)
     const [knockout, setKnockout] = useState<BracketMatch[] | null>(null)
     const [loading, setLoading] = useState(true)
@@ -147,6 +155,20 @@ export default function LiveControlTab({ uuid }: { uuid: string }) {
     // pick (selectedId) overrides until that match leaves the list (finished).
     const fallback = manageable.find((e) => e.match.status === "LIVE") ?? manageable[0] ?? null
     const selected = manageable.find((e) => e.match.matchId === selectedId) ?? fallback
+
+    // Finished + locked: the console is off entirely - show the notice instead.
+    if (finishedLocked) {
+        return (
+            <Panel>
+                <Flex align="center" gap="2" color="fg.muted">
+                    <FiInfo size={14} />
+                    <Text fontFamily="mono" fontSize="xs" fontWeight={600}>
+                        Turnir je završen. Obrati se administratoru za otključavanje.
+                    </Text>
+                </Flex>
+            </Panel>
+        )
+    }
 
     if (loading) return <Loader />
 

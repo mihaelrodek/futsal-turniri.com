@@ -57,6 +57,7 @@ import {ConfirmDialog, EmptyState, Loader, Panel} from "../ui/primitives"
 import {GhostButton} from "../ui/pitch"
 import {FiDownload, FiRefreshCw, FiTrash2} from "react-icons/fi"
 import {ExportDialog, isMultiDay, kickoffLabel, type ExportMeta} from "./TournamentExport"
+import {toaster} from "../toaster"
 import {
     DirectScoreEditor,
     FoulControls,
@@ -306,6 +307,7 @@ export default function GroupsTab({
                                       bestThirdCount,
                                       teams,
                                       canEdit = false,
+                                      finishedLocked = false,
                                       tournamentStarted = false,
                                       onGoToSchedule,
                                       exportMeta,
@@ -323,6 +325,10 @@ export default function GroupsTab({
     /** Owner / admin only - controls visibility of the draw button and
      *  every match-row edit / live action. Read-only by default. */
     canEdit?: boolean
+    /** Tournament FINISHED + non-admin organizer: the draw buttons + advance
+     *  stepper are hidden and result / live entry is blocked with an "ask an
+     *  admin" toast. */
+    finishedLocked?: boolean
     /** Set once any match goes LIVE / FINISHED. While true, "Ponovi
      *  ždrijeb" is hidden because re-drawing groups mid-tournament
      *  would wipe real played results. */
@@ -575,7 +581,7 @@ export default function GroupsTab({
     // gone. One-shot per mount; openDraw() itself restores the draft.
     const autoReopenRef = useRef(false)
     useEffect(() => {
-        if (autoReopenRef.current || loading || drawOpen || !canEdit) return
+        if (autoReopenRef.current || loading || drawOpen || !canEdit || finishedLocked) return
         if (groups && groups.length > 0) return
         // Wait for the team list: restoring with an empty `teams` would drop
         // every assignment. This effect re-runs when registeredTeams.length
@@ -638,6 +644,21 @@ export default function GroupsTab({
 
     function confirmResetGroups() {
         setConfirmResetGroupsOpen(true)
+    }
+
+    /** Block every mutating path (result entry, start-live, manage) once the
+     *  tournament is finished-locked - a toast, no state change. Mirrors the
+     *  bracket's guardUnlocked. */
+    function guardUnlocked(): boolean {
+        if (finishedLocked) {
+            toaster.create({
+                type: "info",
+                title: "Turnir je završen. Obrati se administratoru za otključavanje.",
+                duration: 3000,
+            })
+            return false
+        }
+        return true
     }
 
     function startEdit(m: GroupMatch) {
@@ -1387,7 +1408,7 @@ export default function GroupsTab({
     const started = tournamentStarted || anyMatchPlayed
 
     if (!hasGroups) {
-        if (canEdit && drawOpen) return drawPanel
+        if (canEdit && !finishedLocked && drawOpen) return drawPanel
         return (
             <Panel>
                 <EmptyState
@@ -1399,7 +1420,7 @@ export default function GroupsTab({
                             : "Organizator još nije izvukao grupe."
                     }
                     action={
-                        canEdit ? (
+                        canEdit && !finishedLocked ? (
                             <Button
                                 colorPalette="brand"
                                 onClick={openDraw}
@@ -1456,7 +1477,7 @@ export default function GroupsTab({
                     // spectator on a live match) gets the read-only timeline
                     // modal. Action buttons stopPropagation.
                     if (canEdit && editable && isLive) {
-                        setLiveMatch(m)
+                        if (guardUnlocked()) setLiveMatch(m)
                     } else if (isFinished) {
                         navigate(`/turniri/${uuid}/utakmica/${m.matchId}`)
                     } else {
@@ -1587,8 +1608,8 @@ export default function GroupsTab({
                                     {isScheduled && (
                                         <StartLivePopover
                                             loading={startingId === m.matchId}
-                                            onStart={(mode) => handleStartLive(m, mode)}
-                                            onEnterResult={() => startEdit(m)}
+                                            onStart={(mode) => { if (guardUnlocked()) handleStartLive(m, mode) }}
+                                            onEnterResult={() => { if (guardUnlocked()) startEdit(m) }}
                                         />
                                     )}
                                     {isFinished && (
@@ -1596,7 +1617,7 @@ export default function GroupsTab({
                                             size="xs"
                                             variant="ghost"
                                             colorPalette="gray"
-                                            onClick={() => setLiveMatch(m)}
+                                            onClick={() => { if (guardUnlocked()) setLiveMatch(m) }}
                                         >
                                             Uredi
                                         </Button>
@@ -1658,7 +1679,7 @@ export default function GroupsTab({
                 >
                     Preuzmi
                 </GhostButton>
-                {canEdit && !started && (
+                {canEdit && !started && !finishedLocked && (
                     <>
                         <GhostButton
                             danger
@@ -1692,7 +1713,7 @@ export default function GroupsTab({
             />
 
             {/* Manual re-draw editor (shown above the groups when opened). */}
-            {canEdit && !started && drawOpen && drawPanel}
+            {canEdit && !started && !finishedLocked && drawOpen && drawPanel}
 
             <ConfirmDialog
                 open={confirmResetGroupsOpen}
@@ -1798,9 +1819,10 @@ export default function GroupsTab({
                                     const adv = advForGroup(g)
                                     if (adv == null || adv <= 0) return null
                                     const overridden = g.advanceCount != null
-                                    // Read-only for viewers, and once the bracket is
-                                    // generated (changing it wouldn't rebuild it).
-                                    if (!canEdit || bracketGenerated) {
+                                    // Read-only for viewers, a finished-locked
+                                    // organizer, and once the bracket is generated
+                                    // (changing it then wouldn't rebuild it).
+                                    if (!canEdit || bracketGenerated || finishedLocked) {
                                         return (
                                             <Box
                                                 fontFamily="mono"
@@ -1865,6 +1887,7 @@ export default function GroupsTab({
                                 once every match in this group is finished (the
                                 override settles tiebreakers on a complete group). */}
                                 {canEdit &&
+                                    !finishedLocked &&
                                     g.matches.length > 0 &&
                                     g.matches.every((m) => m.status === "FINISHED") && (
                                         <IconButton

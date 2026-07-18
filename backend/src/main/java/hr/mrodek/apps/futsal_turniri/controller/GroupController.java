@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.DrawRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupReorderRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupResultRequest;
+import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
@@ -22,7 +23,9 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.util.List;
@@ -58,7 +61,13 @@ public class GroupController {
 
     /** Throws 403 if the current user is not an admin, the tournament's
      *  creator, or a granted co-editor. Mirrors
-     *  {@link RoundController#assertCanEdit}. */
+     *  {@link RoundController#assertCanEdit}.
+     *
+     *  <p>Additionally, once the tournament is {@link TournamentStatus#FINISHED}
+     *  this choke point rejects every write with 409 {@code TOURNAMENT_FINISHED}
+     *  - all group writes are pre-finish operations, so a blanket block is
+     *  correct. Admins bypass the lock (they returned early above) so an
+     *  administrator can still unlock and fix a finished tournament. */
     private Tournaments assertCanEdit(String idOrSlug) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(idOrSlug).orElse(null);
         if (t == null) throw new NotFoundException();
@@ -71,6 +80,11 @@ public class GroupController {
         boolean owner = me.equals(t.getCreatedByUid());
         if (!owner && !editorRepo.isEditor(t.getId(), me)) {
             throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
+        }
+        // Finished tournaments are locked for everyone but admins (bypassed above).
+        if (t.getStatus() == TournamentStatus.FINISHED) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT).entity("TOURNAMENT_FINISHED").build());
         }
         return t;
     }

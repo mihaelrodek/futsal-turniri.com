@@ -3,20 +3,18 @@ import {
     Box,
     Button,
     chakra,
-    Dialog,
     Field,
     Flex,
     HStack,
     Input,
     NativeSelect,
-    Portal,
     SimpleGrid,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiList, FiRefreshCw, FiTrash2, FiX } from "react-icons/fi"
+import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiInfo, FiList, FiRefreshCw, FiTrash2 } from "react-icons/fi"
 import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
-import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
+import { clearSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
 import { DateTimeField } from "./DateTimeField"
 import { fetchGroups } from "../api/groups"
@@ -712,150 +710,6 @@ function ViewToggleButton({
 const VIEW_KEY = "futsal:schedule-view"
 type ScheduleView = "list" | "grid"
 
-/* -- Knockout times dialog ----------------------------------------------- */
-/** A focused dialog for the završnica (knockout) kickoff times - the lighter
- *  replacement for the full "Generiranje rasporeda" planner in the
- *  post-manual-draw flow. Lists ONLY knockout matches (stage !== "GROUP",
- *  including any still-unscheduled ones); group kickoffs are never touched
- *  here. Each row = stage label + pairing text + a DateTimeField that edits
- *  that single match's kickoff. "Popuni automatski" fills every missing
- *  knockout time after the last already-scheduled match (confirmSchedule). */
-function KnockoutTimesDialog({
-    matches,
-    onChangeTime,
-    onAutoFill,
-    autoFilling,
-    onClose,
-}: {
-    /** Knockout matches (stage !== "GROUP") in play order, scheduled or not. */
-    matches: ScheduledMatch[]
-    /** Persist a single match's kickoff - same (match, local "YYYY-MM-DDTHH:MM")
-     *  contract as the list's inline editor. */
-    onChangeTime: (m: ScheduledMatch, localValue: string) => void
-    /** Fill every missing knockout kickoff after the last scheduled match. */
-    onAutoFill: () => void
-    /** True while the auto-fill request is in flight - locks the controls. */
-    autoFilling: boolean
-    onClose: () => void
-}) {
-    return (
-        <Dialog.Root
-            open
-            onOpenChange={(e) => { if (!e.open && !autoFilling) onClose() }}
-            placement="center"
-            scrollBehavior="inside"
-        >
-            <Portal>
-                <Dialog.Backdrop />
-                <Dialog.Positioner>
-                    <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
-                        <Dialog.Header pb="2">
-                            <Flex align="center" justify="space-between" w="full" gap="2">
-                                <Dialog.Title>Termini završnice</Dialog.Title>
-                                <Button
-                                    aria-label="Zatvori"
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={onClose}
-                                    disabled={autoFilling}
-                                >
-                                    <FiX size={16} />
-                                </Button>
-                            </Flex>
-                        </Dialog.Header>
-                        <Dialog.Body>
-                            <VStack align="stretch" gap="3">
-                                <Flex align="center" justify="space-between" gap="3" wrap="wrap">
-                                    <Text fontSize="sm" color="fg.muted" flex="1" minW="0">
-                                        Uredi termine utakmica završnice ili ih popuni automatski
-                                        nakon zadnje zakazane utakmice. Termini grupa se ne mijenjaju.
-                                    </Text>
-                                    <GhostButton
-                                        px="3.5"
-                                        py="2"
-                                        fontSize="13px"
-                                        onClick={onAutoFill}
-                                        disabled={autoFilling}
-                                        icon={<LuCalendarClock size={14} />}
-                                    >
-                                        {autoFilling ? "Popunjavanje…" : "Popuni automatski"}
-                                    </GhostButton>
-                                </Flex>
-
-                                {matches.length > 0 ? (
-                                    <VStack align="stretch" gap="2.5">
-                                        {matches.map((m) => {
-                                            const { t1Name, t2Name } = matchDisplay(m)
-                                            return (
-                                                <Flex
-                                                    key={m.matchId}
-                                                    align="center"
-                                                    justify="space-between"
-                                                    gap="3"
-                                                    wrap="wrap"
-                                                    borderWidth="1px"
-                                                    borderColor="border"
-                                                    rounded="lg"
-                                                    px="3"
-                                                    py="2.5"
-                                                >
-                                                    <Box minW="0" flex="1">
-                                                        <Text
-                                                            fontFamily="mono"
-                                                            fontSize="2xs"
-                                                            fontWeight={800}
-                                                            letterSpacing="0.06em"
-                                                            textTransform="uppercase"
-                                                            color="fg.muted"
-                                                        >
-                                                            {STAGE_LABEL[m.stage] ?? m.stage}
-                                                        </Text>
-                                                        <Text
-                                                            fontSize="sm"
-                                                            fontWeight={600}
-                                                            color="fg.ink"
-                                                            lineClamp="1"
-                                                        >
-                                                            {t1Name} - {t2Name}
-                                                        </Text>
-                                                    </Box>
-                                                    <Box w={{ base: "full", sm: "200px" }} maxW="full">
-                                                        <DateTimeField
-                                                            compact
-                                                            value={m.kickoffAt ? new Date(m.kickoffAt) : null}
-                                                            onChange={(d) => {
-                                                                if (!d) return
-                                                                const p = (n: number) => String(n).padStart(2, "0")
-                                                                const local =
-                                                                    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-                                                                    `T${p(d.getHours())}:${p(d.getMinutes())}`
-                                                                onChangeTime(m, local)
-                                                            }}
-                                                        />
-                                                    </Box>
-                                                </Flex>
-                                            )
-                                        })}
-                                    </VStack>
-                                ) : (
-                                    <Text color="fg.muted" fontSize="sm">
-                                        Nema utakmica završnice.
-                                    </Text>
-                                )}
-                            </VStack>
-                        </Dialog.Body>
-                        <Dialog.Footer>
-                            <Button colorPalette="brand" onClick={onClose} disabled={autoFilling}>
-                                Gotovo
-                            </Button>
-                        </Dialog.Footer>
-                    </Dialog.Content>
-                </Dialog.Positioner>
-            </Portal>
-        </Dialog.Root>
-    )
-}
-
 /* -- Main export --------------------------------------------------------- */
 /** `canEdit` - owner/admin gate for the mutating actions: format config
  *  inputs, generate-schedule button, and per-match kickoff edits. When
@@ -863,6 +717,7 @@ function KnockoutTimesDialog({
 export default function ScheduleTab({
     uuid,
     canEdit = false,
+    finishedLocked = false,
     tournamentName,
     tournamentLocation,
     tournamentSlug,
@@ -875,6 +730,10 @@ export default function ScheduleTab({
 }: {
     uuid: string
     canEdit?: boolean
+    /** Tournament is FINISHED and the viewer isn't an admin - every editing
+     *  entry point is hidden and a single "locked" notice is shown instead
+     *  (only for users who could otherwise edit; viewers see no change). */
+    finishedLocked?: boolean
     /** Tournament start ISO - seeds the multi-day planner's default date/time. */
     startAt?: string | null
     /** Tournament format. For GROUPS_KNOCKOUT the group draw places teams into
@@ -895,7 +754,7 @@ export default function ScheduleTab({
     /** Tournament meta for the branded "Export raspored" poster. */
     exportMeta?: ExportMeta
     /** True when the tab is entered from the bracket position-save step - opens
-     *  the KnockoutTimesDialog once on mount so the organizer confirms the new
+     *  the knockout-only planner once on mount so the organizer confirms the new
      *  pairs' times (only the knockout kickoffs, not the group ones). */
     autoOpenKnockoutTimes?: boolean
     /** Called right after `autoOpenKnockoutTimes` is consumed so the parent can
@@ -909,18 +768,14 @@ export default function ScheduleTab({
     const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
     const [loading, setLoading] = useState(!cachedSchedule)
     const [generating, setGenerating] = useState(false)
-    const [confirming, setConfirming] = useState(false)
     const [clearing, setClearing] = useState(false)
     /** Which destructive schedule action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
     /** Branded "Export raspored" poster dialog. */
     const [exportOpen, setExportOpen] = useState(false)
-    /** Multi-day generate planner (date range + per-day matches + preview). */
-    const [plannerOpen, setPlannerOpen] = useState(false)
-    /** Knockout-only kickoff times dialog - the light replacement for the full
-     *  planner in the post-manual-draw flow, and reopenable any time knockout
-     *  matches exist. */
-    const [koDialogOpen, setKoDialogOpen] = useState(false)
+    /** The multi-day planner: "full" plans the whole tournament, "ko" plans
+     *  only the knockout ("Raspored završnice"). null = closed. */
+    const [plannerMode, setPlannerMode] = useState<null | "full" | "ko">(null)
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
@@ -1082,14 +937,14 @@ export default function ScheduleTab({
         if (schedule) queryClient.setQueryData(qk.schedule(uuid), schedule)
     }, [schedule, uuid, queryClient])
 
-    // Arriving from the bracket position-save step: open the knockout-times
-    // dialog once (NOT the full planner - the group schedule is left alone),
-    // then tell the parent to clear the request so a later plain visit to this
-    // tab doesn't re-open it. Runs only on mount (the tab remounts each time the
-    // Raspored section is entered), so it's race-free.
+    // Arriving from the bracket position-save step: open the planner in
+    // knockout-only mode once (NOT the full planner - the group schedule is
+    // left alone), then tell the parent to clear the request so a later plain
+    // visit to this tab doesn't re-open it. Runs only on mount (the tab remounts
+    // each time the Raspored section is entered), so it's race-free.
     useEffect(() => {
         if (autoOpenKnockoutTimes) {
-            setKoDialogOpen(true)
+            if (!finishedLocked) setPlannerMode("ko")
             onAutoOpenKnockoutTimesConsumed?.()
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1186,18 +1041,6 @@ export default function ScheduleTab({
             /* error toast surfaced by the http interceptor */
         } finally {
             setGenerating(false)
-        }
-    }
-
-    async function runConfirm() {
-        setConfirming(true)
-        try {
-            setSchedule(await confirmSchedule(uuid))
-            refreshLinkedTabs()
-        } catch {
-            /* error toast surfaced by the http interceptor */
-        } finally {
-            setConfirming(false)
         }
     }
 
@@ -1476,7 +1319,8 @@ export default function ScheduleTab({
     const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
     // The organizer sees the editable config card (only before the start); the
     // read-only summary is for everyone else - and for organizers after start.
-    const showEditableConfig = canEdit && !tournamentStarted
+    // A finished-locked organizer never sees any editing surface.
+    const showEditableConfig = canEdit && !tournamentStarted && !finishedLocked
     // A schedule can be generated once the draw is done. For KNOCKOUT_ONLY that
     // means the bracket exists (→ matches exist); for GROUPS_KNOCKOUT the group
     // draw is enough, since generating the schedule is what builds the group
@@ -1490,7 +1334,7 @@ export default function ScheduleTab({
     // starts it's read-only UNLESS the organizer turns on "Uredi raspored" -
     // which re-enables editing kickoff times + reorder for matches that haven't
     // started yet (SCHEDULED only).
-    const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode)
+    const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode) && !finishedLocked
     // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, not
     // while any filter is active (the visible subset isn't the real order),
     // and only in the list view (the grid is a view-only layout).
@@ -1502,10 +1346,9 @@ export default function ScheduleTab({
               .map((m) => m.matchId)
         : []
 
-    // Knockout matches (stage !== "GROUP") in play order, scheduled or not -
-    // the KnockoutTimesDialog edits ONLY these; group kickoffs are untouched.
-    const knockoutMatches = byKickoff.filter((m) => m.stage !== "GROUP")
-    const hasKnockout = knockoutMatches.length > 0
+    // Any knockout matches (stage !== "GROUP")? Gates the "Termini završnice"
+    // button that opens the knockout-only planner (group kickoffs untouched).
+    const hasKnockout = byKickoff.some((m) => m.stage !== "GROUP")
 
     /* ── Format summary (read-only) ────────────────────────────────────────
        Compact "2×6 min · završnica 2×8 min" readout of the STORED schedule
@@ -1716,7 +1559,7 @@ export default function ScheduleTab({
                     {scheduleLaidOut ? (
                         <>
                             <PrimaryButton
-                                onClick={() => setPlannerOpen(true)}
+                                onClick={() => setPlannerMode("full")}
                                 disabled={generating || clearing}
                                 icon={<FiRefreshCw size={14} />}
                             >
@@ -1733,7 +1576,7 @@ export default function ScheduleTab({
                         </>
                     ) : (
                         <PrimaryButton
-                            onClick={() => setPlannerOpen(true)}
+                            onClick={() => setPlannerMode("full")}
                             disabled={generating || !drawGenerated}
                             icon={<LuCalendarClock size={14} />}
                         >
@@ -1749,15 +1592,15 @@ export default function ScheduleTab({
     // above the list when there is no upcoming section to host it).
     const scheduleControls = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
-            {/* Reopen the knockout-times dialog any time knockout matches exist -
-                so the završnica kickoffs stay editable after the one-shot flow. */}
-            {canEdit && hasKnockout && (
+            {/* Reopen the knockout planner any time knockout matches exist - so
+                the završnica kickoffs stay schedulable after the one-shot flow. */}
+            {canEdit && hasKnockout && !finishedLocked && (
                 <GhostButton
                     px="3.5"
                     py="2"
                     fontSize="13px"
                     icon={<LuCalendarClock size={14} />}
-                    onClick={() => setKoDialogOpen(true)}
+                    onClick={() => setPlannerMode("ko")}
                 >
                     Termini završnice
                 </GhostButton>
@@ -1773,7 +1616,7 @@ export default function ScheduleTab({
                     {formatEditorOpen ? "Zatvori format" : "Uredi format"}
                 </GhostButton>
             )}
-            {canEdit && tournamentStarted && (
+            {canEdit && tournamentStarted && !finishedLocked && (
                 <PrimaryButton
                     px="3.5"
                     py="2"
@@ -1831,6 +1674,27 @@ export default function ScheduleTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
+            {/* Finished-lock notice - replaces every editing entry point with a
+                single unobtrusive row (only for users who could otherwise edit). */}
+            {finishedLocked && canEdit && (
+                <Flex
+                    align="center"
+                    gap="2"
+                    px="3"
+                    py="2"
+                    borderWidth="1px"
+                    borderColor="border"
+                    rounded="lg"
+                    bg="bg.surfaceTint"
+                    color="fg.muted"
+                >
+                    <FiInfo size={14} />
+                    <Text fontFamily="mono" fontSize="xs" fontWeight={600}>
+                        Turnir je završen. Obrati se administratoru za otključavanje.
+                    </Text>
+                </Flex>
+            )}
+
             {/* Schedule controls (Termini završnice · Uredi format · Uredi
                 raspored · Preuzmi · view toggle). When there is an upcoming
                 list they live in its "Raspored" header; otherwise they sit here
@@ -1870,7 +1734,7 @@ export default function ScheduleTab({
             {/* Some matches have no kickoff (typically the knockout drawn after
                 the group schedule). Let the organizer re-confirm so they get a
                 slot - useful for day-split tournaments. */}
-            {canEdit && unscheduledCount > 0 && (
+            {canEdit && unscheduledCount > 0 && !finishedLocked && (
                 <Flex
                     align="center"
                     justify="space-between"
@@ -1893,7 +1757,7 @@ export default function ScheduleTab({
                         </Text>
                     </HStack>
                     <PrimaryButton
-                        onClick={() => setKoDialogOpen(true)}
+                        onClick={() => setPlannerMode("ko")}
                         icon={<LuCalendarClock size={14} />}
                     >
                         Uredi termine
@@ -2309,11 +2173,14 @@ export default function ScheduleTab({
             />
 
             {/* Multi-day generate flow: date range → per-day matches → sketch
-                preview → confirm & generate. */}
-            {plannerOpen && (
+                preview → confirm & generate. In "ko" mode it plans only the
+                knockout matches ("Raspored završnice") - the group kickoffs are
+                left untouched - replacing the old KnockoutTimesDialog. */}
+            {plannerMode && (
                 <MultiDaySchedulePlanner
                     uuid={uuid}
                     startAt={startAt}
+                    koOnly={plannerMode === "ko"}
                     cfg={{
                         halfCount: HALF_COUNT,
                         halfLengthMin: numVal(cfg.halfLengthMin),
@@ -2322,22 +2189,8 @@ export default function ScheduleTab({
                         bufferMin: numVal(cfg.bufferMin),
                         ...koPayload(cfg),
                     }}
-                    onClose={() => setPlannerOpen(false)}
+                    onClose={() => setPlannerMode(null)}
                     onGenerated={(s) => { setSchedule(s); refreshLinkedTabs() }}
-                />
-            )}
-
-            {/* Knockout-only kickoff times: the light post-manual-draw flow and
-                the reopenable "Termini završnice" dialog. Group kickoffs are
-                never touched here - "Popuni automatski" fills only the missing
-                knockout times after the last scheduled match. */}
-            {koDialogOpen && (
-                <KnockoutTimesDialog
-                    matches={knockoutMatches}
-                    onChangeTime={onTimeChange}
-                    onAutoFill={runConfirm}
-                    autoFilling={confirming}
-                    onClose={() => setKoDialogOpen(false)}
                 />
             )}
         </VStack>

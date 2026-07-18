@@ -143,6 +143,27 @@ public class TournamentController {
     }
 
     /**
+     * Match-mutation lock for a finished tournament: once the tournament is
+     * {@link TournamentStatus#FINISHED} every RESULT/live mutation on its
+     * matches is rejected with 409 {@code TOURNAMENT_FINISHED} - EXCEPT for
+     * admins, who bypass the lock ("administrator otključava" - an administrator
+     * can still unlock and fix a finished tournament).
+     *
+     * <p>Unlike {@link #assertCanEdit}, this is deliberately NOT applied
+     * globally: details / podium / awards edits must keep working after finish
+     * (the finish flow itself sets the podium/awards), so only the
+     * match-mutation endpoints call this - never the details/podium/awards ones.
+     */
+    private void assertMatchesMutable(Tournaments t) {
+        boolean admin = identity != null && identity.hasRole("admin");
+        if (admin) return;
+        if (t != null && t.getStatus() == TournamentStatus.FINISHED) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT).entity("TOURNAMENT_FINISHED").build());
+        }
+    }
+
+    /**
      * Visibility gate for admin-hidden tournaments: visible to everyone when
      * not hidden; when hidden, only to admins, the creator and granted
      * co-editors. Works on public endpoints too - with no bearer token the
@@ -1980,6 +2001,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         // Knockout matches are gated until the bracket is confirmed (GROUPS_KNOCKOUT
         // only) and both teams are decided. Group-stage matches are unaffected.
@@ -2048,6 +2070,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         // Knockout matches must be finalised through the bracket result endpoint
         // (POST /bracket/matches/{id}/result), which also advances the winner,
@@ -2105,6 +2128,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         matchEventRepo.deleteByMatch_Id(match.getId());
 
@@ -2144,6 +2168,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
         if (body == null
                 || (body.team() != 1 && body.team() != 2)
                 || (body.half() != 1 && body.half() != 2)) {
@@ -2183,6 +2208,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
         int h = half == null ? 1 : half;
         if (h != 1 && h != 2) {
             return Response.status(Response.Status.BAD_REQUEST).entity("half must be 1 or 2").build();
@@ -2218,6 +2244,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
         if (body == null
                 || (body.team() != 1 && body.team() != 2)
                 || (body.half() != 1 && body.half() != 2)) {
@@ -2253,6 +2280,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
@@ -2294,6 +2322,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
@@ -2340,6 +2369,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
@@ -2369,6 +2399,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
@@ -2423,6 +2454,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         if (body == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity("Body required").build();
@@ -2577,6 +2609,7 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
 
         MatchEvent event = matchEventRepo.findByIdOptional(eventId).orElse(null);
         if (event == null

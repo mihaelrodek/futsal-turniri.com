@@ -33,5 +33,33 @@ public record SchedulePlanRequest(
          * set together with {@code order}, generate verifies the fixtures
          * still fingerprint the same and rejects a stale order otherwise.
          */
-        String planHash
-) {}
+        String planHash,
+        /**
+         * Knockout-only mode. When {@code true}, this plan covers ONLY the
+         * knockout matches (stage != GROUP, byes excluded): the group kickoffs
+         * are never touched and the group-format fields on the tournament are
+         * left as stored. Preview and generate build their ordered list from the
+         * knockout matches alone, so planIndex/order/planHash all address that
+         * knockout-only list. Null/false = the usual whole-tournament plan.
+         */
+        Boolean koOnly,
+        /**
+         * Draggable pauses. Each break advances the day cursor by {@code minutes}
+         * BEFORE the match at 0-based play-order position {@code beforeOrderPos}
+         * (positions index the final scheduled sequence, i.e. after any custom
+         * {@code order} permutation). A pause never creates a match row - it only
+         * shifts the subsequent kickoffs. Multiple breaks are additive and may
+         * share a position. Null/empty = no pauses (bit-identical to the old
+         * layout).
+         */
+        List<Break> breaks
+) {
+    /**
+     * A single draggable pause in the schedule walk.
+     *
+     * @param beforeOrderPos 0-based play-order position the pause sits in front
+     *                       of (the scheduled sequence the organizer saw/dragged)
+     * @param minutes        how long the pause lasts (1..24*60)
+     */
+    public record Break(Integer beforeOrderPos, Integer minutes) {}
+}

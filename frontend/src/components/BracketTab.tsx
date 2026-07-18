@@ -483,6 +483,7 @@ function SketchLine({ disp }: { disp: SketchDisp }) {
 export default function BracketTab({
     uuid,
     canEdit = false,
+    finishedLocked = false,
     tournamentName,
     format,
     exportMeta,
@@ -490,6 +491,9 @@ export default function BracketTab({
 }: {
     uuid: string
     canEdit?: boolean
+    /** Tournament FINISHED + non-admin organizer: the draw buttons are hidden
+     *  and result / live-match entry is blocked with an "ask an admin" toast. */
+    finishedLocked?: boolean
     /** Accepted for API compatibility; the bracket's "started" lock is derived
      *  from the elimination matches, not the tournament status. */
     tournamentStarted?: boolean
@@ -1479,9 +1483,9 @@ export default function BracketTab({
         )
 
     if (!hasBracket) {
-        if (canEdit && byeOpen) return byePanel
-        if (canEdit && manualOpen && sketchOpen) return sketchPanel
-        if (canEdit && manualOpen) return manualBracketPanel
+        if (canEdit && !finishedLocked && byeOpen) return byePanel
+        if (canEdit && !finishedLocked && manualOpen && sketchOpen) return sketchPanel
+        if (canEdit && !finishedLocked && manualOpen) return manualBracketPanel
         return (
             <Panel p="0">
                 <EmptyState
@@ -1496,7 +1500,7 @@ export default function BracketTab({
                                     : "Ručno složi parove povlačenjem ekipa, ili generiraj automatski (nasumično)."
                     }
                     action={
-                        canEdit ? (
+                        canEdit && !finishedLocked ? (
                             <HStack gap="2" wrap="wrap" justify="center">
                                 {/* Manual (drag the pairs yourself) is the default.
                                     In position mode it works at all times (even
@@ -1576,8 +1580,21 @@ export default function BracketTab({
         }
         return true
     }
-    const handleEdit = (m: BracketMatch) => { if (guardConfirmed()) startEdit(m) }
-    const handleOpenLive = (m: BracketMatch) => { if (guardConfirmed()) setLiveMatch(m) }
+    /** Block the same paths once the tournament is finished-locked (mirrors
+     *  guardConfirmed - a toast, no state change). */
+    function guardUnlocked(): boolean {
+        if (finishedLocked) {
+            toaster.create({
+                type: "info",
+                title: "Turnir je završen. Obrati se administratoru za otključavanje.",
+                duration: 3000,
+            })
+            return false
+        }
+        return true
+    }
+    const handleEdit = (m: BracketMatch) => { if (guardUnlocked() && guardConfirmed()) startEdit(m) }
+    const handleOpenLive = (m: BracketMatch) => { if (guardUnlocked() && guardConfirmed()) setLiveMatch(m) }
 
     const renderLibraryMatch = (props: MatchComponentProps) => {
         const original = matchById.get(props.match.id)
@@ -1651,7 +1668,7 @@ export default function BracketTab({
             {/* Owner draw controls - right-aligned. Hidden once any match is
                 LIVE/FINISHED (re-drawing would destroy real results). The
                 "Podijeli bracket" button now floats at the bottom (below). */}
-            {canEdit && !started && (
+            {canEdit && !started && !finishedLocked && (
                 <Flex justify="flex-end" gap="2" wrap="wrap">
                     <GhostButton
                         icon={<FiRefreshCw size={14} />}
@@ -1695,7 +1712,7 @@ export default function BracketTab({
                             <FiCheck size={12} /> Ždrijeb potvrđen
                         </Flex>
                     </Flex>
-                ) : groupStageComplete && canEdit ? (
+                ) : groupStageComplete && canEdit && !finishedLocked ? (
                     <Flex
                         align="center"
                         justify="space-between"
@@ -1761,7 +1778,7 @@ export default function BracketTab({
             {/* Manual draw editor - shown above the bracket when opened. The
                 "Skiciraj završnicu" step swaps the board for the sketch preview
                 (same as the pre-draw path), so it works for re-draws too. */}
-            {canEdit && !started && manualOpen && (sketchOpen ? sketchPanel : manualBracketPanel)}
+            {canEdit && !started && !finishedLocked && manualOpen && (sketchOpen ? sketchPanel : manualBracketPanel)}
 
             {/* ── Bracket - driven by @g-loot/react-tournament-brackets.
                  The library renders the SVG layout + connectors; our

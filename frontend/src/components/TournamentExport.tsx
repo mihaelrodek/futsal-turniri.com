@@ -220,15 +220,6 @@ function matchKickoffLine(iso: string | null): string | null {
     return `${date} · ${hhmm(iso)}`
 }
 
-/** Croatian count word for teams (1 ekipa / 2-4 ekipe / 5+ ekipa). */
-function ekipeWord(n: number): string {
-    const mod10 = n % 10
-    const mod100 = n % 100
-    if (mod10 === 1 && mod100 !== 11) return "ekipa"
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "ekipe"
-    return "ekipa"
-}
-
 /* ── brand marks (inlined SVG - no network fetch, canvas-safe) ─────────── */
 
 /** Full brand mark (green tile + goal + ball) - footer / header lockup. */
@@ -545,6 +536,13 @@ type PosterMatchRow = {
     t2: string
     score1: number | null
     score2: number | null
+    /** Penalty-shootout totals - shown on a second line under the regulation
+     *  result when both are set (a decided shootout). */
+    penalties1?: number | null
+    penalties2?: number | null
+    /** Which side won (1 = t1, 2 = t2) - the winning name is bolded green.
+     *  Null for a draw / undecided. */
+    winner?: 1 | 2 | null
     status: string
 }
 
@@ -566,8 +564,12 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
     const hasScore = row.score1 != null && row.score2 != null
     const showResult = (live || finished) && hasScore
     const leadColor = live ? C.live : showResult ? C.ink : row.kickoffAt ? C.ink : C.muted
+    // Decided penalty shootout → a second line under the regulation result.
+    const showPens = showResult && row.penalties1 != null && row.penalties2 != null
     // Two-line lead (day above time) only when timed, no result, and multi-day.
     const stackDay = !showResult && !!row.kickoffAt && !!row.showDay
+    const w1 = row.winner === 1
+    const w2 = row.winner === 2
     return (
         <div
             style={{
@@ -588,17 +590,26 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                     fontSize: showResult ? "15px" : "16px",
                     fontWeight: 800,
                     color: leadColor,
-                    width: stackDay ? "86px" : "58px",
+                    width: stackDay ? "86px" : showPens ? "66px" : "58px",
                     flexShrink: 0,
                     whiteSpace: "nowrap",
                     fontVariantNumeric: "tabular-nums",
-                    display: stackDay ? "flex" : undefined,
-                    flexDirection: stackDay ? "column" : undefined,
-                    lineHeight: stackDay ? 1.2 : undefined,
+                    display: stackDay || showPens ? "flex" : undefined,
+                    flexDirection: stackDay || showPens ? "column" : undefined,
+                    lineHeight: stackDay || showPens ? 1.15 : undefined,
                 }}
             >
                 {showResult ? (
-                    `${row.score1} : ${row.score2}`
+                    showPens ? (
+                        <>
+                            <span>{`${row.score1} : ${row.score2}`}</span>
+                            <span style={{ fontSize: "10px", fontWeight: 700, color: C.muted }}>
+                                {`pen ${row.penalties1}:${row.penalties2}`}
+                            </span>
+                        </>
+                    ) : (
+                        `${row.score1} : ${row.score2}`
+                    )
                 ) : row.kickoffAt ? (
                     stackDay ? (
                         <>
@@ -644,8 +655,8 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         flex: 1,
                         textAlign: "right",
                         fontSize: "15px",
-                        fontWeight: 600,
-                        color: C.ink,
+                        fontWeight: w1 ? 800 : 600,
+                        color: w1 ? C.green : C.ink,
                         lineHeight: 1.2,
                         wordBreak: "break-word",
                     }}
@@ -660,8 +671,8 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         flex: 1,
                         textAlign: "left",
                         fontSize: "15px",
-                        fontWeight: 600,
-                        color: C.ink,
+                        fontWeight: w2 ? 800 : 600,
+                        color: w2 ? C.green : C.ink,
                         lineHeight: 1.2,
                         wordBreak: "break-word",
                     }}
@@ -686,15 +697,23 @@ function groupMatchesToRows(matches: GroupMatch[]): PosterMatchRow[] {
             if (ta !== tb) return ta - tb
             return a.matchId - b.matchId
         })
-        .map((m) => ({
-            kickoffAt: m.kickoffAt ?? null,
-            showDay: multiDay,
-            t1: m.team1Name ?? "-",
-            t2: m.team2Name ?? "-",
-            score1: m.score1,
-            score2: m.score2,
-            status: m.status,
-        }))
+        .map((m) => {
+            // Group matches have no shootout - the winner is the higher score of
+            // a finished, non-drawn match.
+            const decided = m.status === "FINISHED" && m.score1 != null && m.score2 != null
+            const winner: 1 | 2 | null =
+                decided && m.score1! !== m.score2! ? (m.score1! > m.score2! ? 1 : 2) : null
+            return {
+                kickoffAt: m.kickoffAt ?? null,
+                showDay: multiDay,
+                t1: m.team1Name ?? "-",
+                t2: m.team2Name ?? "-",
+                score1: m.score1,
+                score2: m.score2,
+                winner,
+                status: m.status,
+            }
+        })
 }
 
 /* ── Groups poster ─────────────────────────────────────────────────────── */
@@ -703,13 +722,18 @@ function groupMatchesToRows(matches: GroupMatch[]): PosterMatchRow[] {
  *  lone group reads as an intentional, centred poster rather than one small
  *  card floating in a grid. When `standings` is set the body switches from the
  *  plain team list to a compact standings table (see GroupCardBody). */
-function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boolean; standings?: boolean }) {
+function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?: boolean; standings?: boolean; dense?: boolean }) {
     const teams = g.standings ?? []
     // Fixed row rhythm for the plain team list (mirrors StandingsTable): every
     // row is tall enough for a two-line name so neighbouring cards align.
     const listNameFont = big ? 20 : 16
     const listPadV = big ? 11 : 7
     const listRowMinH = Math.ceil(listNameFont * 1.25 * 2) + listPadV * 2
+    // Once every group match is played, the top `effectiveAdvance` teams are the
+    // qualifiers - highlight them in the table and show a "{n} PROLAZE" chip.
+    const groupMatches = g.matches ?? []
+    const groupFinished = groupMatches.length > 0 && groupMatches.every((m) => m.status === "FINISHED")
+    const advance = groupFinished ? Math.max(0, Math.min(teams.length, g.effectiveAdvance ?? 0)) : 0
     return (
         <div
             style={{
@@ -726,7 +750,7 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: "10px",
-                    padding: big ? "18px 22px" : "12px 16px",
+                    padding: big ? "18px 22px" : dense ? "8px 14px" : "12px 16px",
                     background: C.surface,
                     borderBottom: `1px solid ${C.line}`,
                 }}
@@ -762,29 +786,34 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
                         Grupa {g.name}
                     </span>
                 </div>
-                <span
-                    style={{
-                        fontFamily: F_MONO,
-                        fontSize: big ? "12px" : "10px",
-                        fontWeight: 700,
-                        letterSpacing: "0.06em",
-                        color: C.muted,
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                    }}
-                >
-                    {teams.length} {ekipeWord(teams.length)}
-                </span>
+                {advance > 0 ? (
+                    <span
+                        style={{
+                            fontFamily: F_MONO,
+                            fontSize: big ? "12px" : "10px",
+                            fontWeight: 700,
+                            letterSpacing: "0.06em",
+                            color: C.green,
+                            background: C.greenWash,
+                            padding: big ? "4px 11px" : "3px 9px",
+                            borderRadius: "999px",
+                            textTransform: "uppercase",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        {advance} prolaze
+                    </span>
+                ) : null}
             </div>
             {/* Body - either the plain numbered team list (no results yet) or a
                 compact standings table (once any group match has started). */}
-            <div style={{ padding: big ? "12px 16px 18px" : "8px 10px 12px" }}>
+            <div style={{ padding: big ? "12px 16px 18px" : dense ? "6px 10px 8px" : "8px 10px 12px" }}>
                 {teams.length === 0 ? (
                     <div style={{ padding: big ? "14px 12px" : "10px 8px", fontSize: big ? "16px" : "13px", color: C.muted }}>
                         Nema ekipa
                     </div>
                 ) : showStandings ? (
-                    <StandingsTable teams={teams} big={big} />
+                    <StandingsTable teams={teams} big={big} advance={advance} dense={dense} />
                 ) : (
                     teams.map((t, i) => (
                         <div
@@ -850,7 +879,7 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
    in-app table (green / red / muted), BOD is the bold points column. Column
    widths are fixed per `big` so the header labels and the data rows line up in
    both the multi-column grid and the single big card. */
-function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boolean }) {
+function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandingRow[]; big?: boolean; advance?: number; dense?: boolean }) {
     const rankW = big ? 30 : 18
     const numW = big ? 32 : 20
     const grW = big ? 42 : 28
@@ -858,7 +887,9 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
     const nameFont = big ? 18 : 13.5
     const numFont = big ? 15 : 12
     const headFont = big ? 11 : 9.5
-    const rowPadV = big ? 9 : 7
+    // Dense (combined "groups + best-placed" page) trims only the vertical
+    // padding - the 2-line name rhythm stays so side-by-side cards keep aligned.
+    const rowPadV = big ? 9 : dense ? 4 : 7
     const rowPadH = big ? 12 : 8
     // Fixed row rhythm: size every row for a TWO-line team name so cards
     // sitting side-by-side share identical row heights regardless of how long
@@ -906,11 +937,23 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
                 <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>GR</span>
                 <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>BOD</span>
             </div>
-            {/* Data rows. */}
+            {/* Data rows. Qualifiers (top `advance`, only once the group is
+                finished) get the green wash + left accent. While highlighting is
+                active the OTHER rows drop the zebra striping entirely (plain
+                white) so a greyish stripe can never read as "qualified" - the
+                zebra only returns when no highlight is shown at all. */}
             {teams.map((t, i) => {
                 const gd = t.goalDiff
                 const grColor = gd > 0 ? C.green : gd < 0 ? C.live : C.muted
                 const grText = gd > 0 ? `+${gd}` : String(gd)
+                const qualifies = advance > 0 && i < advance
+                const rowBg = qualifies
+                    ? C.greenWash
+                    : advance > 0
+                        ? "transparent"
+                        : i % 2 === 0
+                            ? C.zebra
+                            : "transparent"
                 return (
                     <div
                         key={t.teamId}
@@ -921,7 +964,8 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: big ? "10px" : "8px",
-                            background: i % 2 === 0 ? C.zebra : "transparent",
+                            borderLeft: `3px solid ${qualifies ? C.green : "transparent"}`,
+                            background: rowBg,
                         }}
                     >
                         <span
@@ -1067,20 +1111,20 @@ function SingleGroupCombinedPage({
  *  card (the last chunk of an odd count, or a 1-group tournament) is centred;
  *  2-4 cards share a 2-column grid (2×2 for 3-4). Cards get real width so team
  *  names never wrap letter-per-letter. */
-function GroupsGrid({ groups, showStandings }: { groups: Group[]; showStandings: boolean }) {
+function GroupsGrid({ groups, showStandings, dense }: { groups: Group[]; showStandings: boolean; dense?: boolean }) {
     if (groups.length === 1) {
         return (
-            <div style={{ display: "flex", justifyContent: "center", paddingTop: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "center", paddingTop: dense ? "0" : "8px" }}>
                 <div style={{ width: "64%", minWidth: 340, maxWidth: 520 }}>
-                    <GroupCard g={groups[0]} standings={showStandings} />
+                    <GroupCard g={groups[0]} standings={showStandings} dense={dense} />
                 </div>
             </div>
         )
     }
     return (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "22px", alignContent: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: dense ? "14px" : "22px", alignContent: "start" }}>
             {groups.map((g) => (
-                <GroupCard key={g.id} g={g} standings={showStandings} />
+                <GroupCard key={g.id} g={g} standings={showStandings} dense={dense} />
             ))}
         </div>
     )
@@ -1138,17 +1182,16 @@ function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
    "najbolje plasirane" table; non-qualifying rows keep a transparent accent of
    the same width so the numeric columns stay aligned. Same fixed row rhythm,
    signed GR colouring and bold BOD as StandingsTable. Brand hex only. */
-function BestPlacedTable({ rows }: { rows: ThirdPlacedRow[] }) {
-    const rankW = 30
-    const grpW = 46
-    const numW = 32
-    const grW = 42
-    const bodW = 46
-    const nameFont = 17
-    const numFont = 15
-    const headFont = 11
-    const rowPadV = 9
-    const rowPadH = 12
+function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: boolean }) {
+    const rankW = compact ? 22 : 30
+    const numW = compact ? 26 : 32
+    const grW = compact ? 34 : 42
+    const bodW = compact ? 38 : 46
+    const nameFont = compact ? 13.5 : 17
+    const numFont = compact ? 12 : 15
+    const headFont = compact ? 9.5 : 11
+    const rowPadV = compact ? 6 : 9
+    const rowPadH = compact ? 8 : 12
     const nameLineH = 1.25
     const rowMinH = Math.ceil(nameFont * nameLineH * 2) + rowPadV * 2
 
@@ -1185,7 +1228,6 @@ function BestPlacedTable({ rows }: { rows: ThirdPlacedRow[] }) {
             <div style={{ display: "flex", alignItems: "center", padding: `0 ${rowPadH}px`, marginBottom: "6px" }}>
                 <span style={{ width: `${rankW}px`, flexShrink: 0 }} />
                 <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>EKIPA</span>
-                <span style={{ ...headCell, width: `${grpW}px`, flexShrink: 0, textAlign: "center" }}>GRUPA</span>
                 {numCols.map((c) => (
                     <span key={c.label} style={{ ...headCell, width: `${c.w}px`, flexShrink: 0, textAlign: "right" }}>
                         {c.label}
@@ -1245,19 +1287,6 @@ function BestPlacedTable({ rows }: { rows: ThirdPlacedRow[] }) {
                         >
                             {t.teamName}
                         </span>
-                        <span
-                            style={{
-                                width: `${grpW}px`,
-                                flexShrink: 0,
-                                textAlign: "center",
-                                fontFamily: F_MONO,
-                                fontSize: `${numFont}px`,
-                                fontWeight: 700,
-                                color: C.inkSoft,
-                            }}
-                        >
-                            {row.groupName}
-                        </span>
                         {numCols.map((c) => (
                             <span key={c.label} style={{ ...numCell, width: `${c.w}px`, fontWeight: 600, color: C.inkSoft }}>
                                 {c.get(t)}
@@ -1277,46 +1306,103 @@ function BestPlacedTable({ rows }: { rows: ThirdPlacedRow[] }) {
  *  "NAJBOLJE {place}. PLASIRANE" title + a "{bestThirdCount} prolaze dalje"
  *  subtitle, over the BestPlacedTable. Used either as its own standalone page or
  *  as the trailing page of the all-groups poster. */
-function BestPlacedTablePage({ table }: { table: ThirdPlacedTable }) {
+/** The best-placed table as a self-contained bordered card (header + table).
+ *  Shared by the standalone page and the inline "rides under the groups grid"
+ *  layout; `compact` shrinks the chrome + table so it fits below the grid. */
+function BestPlacedCard({ table, compact }: { table: ThirdPlacedTable; compact?: boolean }) {
     const place = table.advancePerGroup + 1
     return (
-        <div style={{ display: "flex", justifyContent: "center", paddingTop: "16px" }}>
-            <div style={{ width: "82%", minWidth: 360, maxWidth: 560 }}>
-                <div style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: "18px", overflow: "hidden" }}>
-                    {/* Card header - title + "{n} prolaze dalje" subtitle. */}
-                    <div style={{ padding: "18px 22px", background: C.surface, borderBottom: `1px solid ${C.line}` }}>
-                        <div
-                            style={{
-                                fontFamily: F_HEAD,
-                                fontSize: "24px",
-                                fontWeight: 800,
-                                letterSpacing: "-0.01em",
-                                color: C.ink,
-                            }}
-                        >
-                            NAJBOLJE {place}. PLASIRANE
-                        </div>
-                        <div
-                            style={{
-                                fontFamily: F_MONO,
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                letterSpacing: "0.06em",
-                                color: C.muted,
-                                textTransform: "uppercase",
-                                marginTop: "6px",
-                            }}
-                        >
-                            {table.bestThirdCount} prolaze dalje
-                        </div>
-                    </div>
-                    <div style={{ padding: "12px 16px 18px" }}>
-                        <BestPlacedTable rows={table.rows} />
-                    </div>
+        <div style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: compact ? "14px" : "18px", overflow: "hidden" }}>
+            {/* Card header - title + "{n} prolaze dalje" subtitle. */}
+            <div style={{ padding: compact ? "12px 16px" : "18px 22px", background: C.surface, borderBottom: `1px solid ${C.line}` }}>
+                <div
+                    style={{
+                        fontFamily: F_HEAD,
+                        fontSize: compact ? "18px" : "24px",
+                        fontWeight: 800,
+                        letterSpacing: "-0.01em",
+                        color: C.ink,
+                    }}
+                >
+                    NAJBOLJE {place}. PLASIRANE
                 </div>
+            </div>
+            <div style={{ padding: compact ? "8px 10px 12px" : "12px 16px 18px" }}>
+                <BestPlacedTable rows={table.rows} compact={compact} />
             </div>
         </div>
     )
+}
+
+function BestPlacedTablePage({ table }: { table: ThirdPlacedTable }) {
+    return (
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: "16px" }}>
+            <div style={{ width: "82%", minWidth: 360, maxWidth: 560 }}>
+                <BestPlacedCard table={table} />
+            </div>
+        </div>
+    )
+}
+
+/** All-groups grid with the best-placed table riding underneath on the SAME
+ *  page - used when both fit one A4 page (see fitsBestPlacedInline). */
+function GroupsWithBestPlacedPage({
+    groups,
+    showStandings,
+    table,
+}: {
+    groups: Group[]
+    showStandings: boolean
+    table: ThirdPlacedTable
+}) {
+    // Odd group count (1 or 3) leaves an EMPTY grid cell - the table slots into
+    // it, spending no extra vertical space at all. Even counts stack it below.
+    if (groups.length % 2 === 1) {
+        return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px", alignContent: "start" }}>
+                {groups.map((g) => (
+                    <GroupCard key={g.id} g={g} standings={showStandings} dense />
+                ))}
+                <BestPlacedCard table={table} compact />
+            </div>
+        )
+    }
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+            <GroupsGrid groups={groups} showStandings={showStandings} dense />
+            <BestPlacedCard table={table} compact />
+        </div>
+    )
+}
+
+/** Whether the all-groups grid + the best-placed table fit ONE portrait A4 page
+ *  together (so the table need not spill onto its own page). Mirrors the DENSE
+ *  combined layout (GroupsWithBestPlacedPage): with an ODD group count the table
+ *  occupies the grid's empty cell (costs no extra height); with an even count it
+ *  stacks below. Measured against the REAL page-1 body budget (1123 − 56 top −
+ *  ~185 QR header/rule − ~86 footer ≈ 750, held a bit under). When unsure it
+ *  returns false and the table keeps its own page - never clips. */
+function fitsBestPlacedInline(groups: Group[], table: ThirdPlacedTable): boolean {
+    // Only a single grid page can host the table (chunks of 4 → >4 groups paginate).
+    if (groups.length === 0 || groups.length > 4) return false
+    const maxTeams = Math.max(1, ...groups.map((g) => (g.standings ?? []).length))
+    // Dense standings card: chrome (header + table head + trimmed paddings) plus
+    // rows sized for a 2-line name (rowPadV 4 → ~42px each).
+    const denseCardH = 88 + maxTeams * 42
+    // Compact best-placed card: chrome (header + subtitle + table head) + rows.
+    const tableH = 90 + table.rows.length * 46
+    const PAGE1_BODY = 740
+    if (groups.length % 2 === 1) {
+        // Table rides in the empty cell: page height = sum of grid row heights,
+        // where the last row is the taller of (group card, table card).
+        const fullRows = Math.floor(groups.length / 2)
+        const lastRowH = Math.max(denseCardH, tableH)
+        const gridH = fullRows * denseCardH + lastRowH + fullRows * 14
+        return gridH <= PAGE1_BODY
+    }
+    const gridRows = Math.ceil(groups.length / 2)
+    const gridH = gridRows * denseCardH + (gridRows - 1) * 14
+    return gridH + 18 + tableH <= PAGE1_BODY
 }
 
 /* ── Schedule poster ───────────────────────────────────────────────────── */
@@ -1354,41 +1440,56 @@ function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
     return sections
 }
 
-/* Row budget per A4 page: a match row and a day header each cost one row. Kept
-   conservative so even page 1 (full header) fits without clipping. */
+/* Pixel-height model for schedule pagination - more reliable than counting rows
+   as equal "units" (a match row with its stage pill + padding is taller than a
+   day heading). Conservative (rounded up) so the last row never clips or crams
+   against the footer. A match row ≈ 44px + 6px gap; a day heading block ≈ 28px +
+   its 20px section gap. Page-1 body is smaller (the QR lockup makes its header
+   ~185px tall); continuation pages carry only a compact one-line header. */
+const SCHED_ROW_PX = 52
+const SCHED_HEADER_PX = 50
+const SCHED_FIRST_PX = 760
+const SCHED_REST_PX = 880
+/** Kept for the single-group fixtures pages (page 2+, compact header). */
 const SCHEDULE_ROWS_PER_PAGE = 16
 
-/** Split the day sections across pages under a fixed rows-per-page budget. A day
- *  header costs a row, and a header is never left as the last row of a page: a
- *  section only lands on a page if the header AND at least one of its matches
- *  fit, otherwise the whole section starts on the next page. Long days split
- *  across pages, each continuation repeating the day header. */
+/** Split the day sections across pages under a per-page PIXEL budget. Page 1 gets
+ *  the smaller `firstPx` (its tall QR header leaves less room); continuation
+ *  pages get `restPx`. A day header is never left as the last thing on a page: a
+ *  section only lands if its header AND at least one match fit, else it starts on
+ *  the next page. Long days split across pages, each continuation repeating the
+ *  day header. */
 function paginateScheduleSections(
     sections: ScheduleSection[],
-    budget = SCHEDULE_ROWS_PER_PAGE,
+    firstPx = SCHED_FIRST_PX,
+    restPx = SCHED_REST_PX,
 ): ScheduleSection[][] {
     const pages: ScheduleSection[][] = []
     let pageSecs: ScheduleSection[] = []
-    let used = 0
+    let usedPx = 0
+    // Page 1's budget is smaller; every page after the first uses restPx.
+    let budgetPx = firstPx
     const flush = () => {
         if (pageSecs.length > 0) {
             pages.push(pageSecs)
             pageSecs = []
-            used = 0
+            usedPx = 0
+            budgetPx = restPx
         }
     }
     for (const sec of sections) {
         let rest = sec.matches
         while (rest.length > 0) {
-            const remaining = budget - used
-            // Need room for the header (1 row) + at least one match, else break.
-            if (remaining < 2) {
+            const remainingPx = budgetPx - usedPx
+            // Need room for the day header + at least one match row, else break.
+            if (remainingPx < SCHED_HEADER_PX + SCHED_ROW_PX) {
                 flush()
                 continue
             }
-            const take = Math.min(remaining - 1, rest.length)
+            const fit = Math.max(1, Math.floor((remainingPx - SCHED_HEADER_PX) / SCHED_ROW_PX))
+            const take = Math.min(fit, rest.length)
             pageSecs.push({ key: sec.key, label: sec.label, matches: rest.slice(0, take) })
-            used += 1 + take
+            usedPx += SCHED_HEADER_PX + take * SCHED_ROW_PX
             rest = rest.slice(take)
             // Any remainder of this section continues on a fresh page.
             if (rest.length > 0) flush()
@@ -1432,6 +1533,16 @@ function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
                                     t2: pairingName(m.team2Name, m.slot2PredictedName, m.slot2Label),
                                     score1: m.score1,
                                     score2: m.score2,
+                                    penalties1: m.penalties1,
+                                    penalties2: m.penalties2,
+                                    winner:
+                                        m.winnerTeamId == null
+                                            ? null
+                                            : m.winnerTeamId === m.team1Id
+                                                ? 1
+                                                : m.winnerTeamId === m.team2Id
+                                                    ? 2
+                                                    : null,
                                     status: m.status,
                                 }}
                             />
@@ -1800,10 +1911,6 @@ function splitBracketHalves(cols: BracketMatch[][], titles: string[]) {
  *  matches, largest round ≥ 9) splits across TWO landscape pages by bracket
  *  halves so nothing clips - upper half on page 1, lower half + final +
  *  3rd-place on page 2, reusing the shared multi-page PosterPage furniture. */
-/** Vertical cost of the podium strip (row height + its bottom gap) - taken out
- *  of the bracket body budget so the busiest column still fits. */
-const PODIUM_STRIP_H = 58
-
 /** Final standings derived straight from the bracket - non-null only once the
  *  final is FINISHED with a winner. Third place comes from the 3rd-place match
  *  when that is decided too. */
@@ -1841,8 +1948,9 @@ function TrophyIcon({ color, size }: { color: string; size: number }) {
     )
 }
 
-/** Centred 1./2./3. row with trophy icons, shown above the bracket once the
- *  tournament's final has been decided. */
+/** 1./2./3. row with trophy icons - rendered in the poster HEADER (directly
+ *  under the date•location line) once the tournament's final has been decided,
+ *  so the bracket body below keeps its full height. */
 function PodiumStrip({
     first,
     second,
@@ -1862,10 +1970,9 @@ function PodiumStrip({
             style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                gap: "36px",
-                height: "44px",
-                marginBottom: "14px",
+                justifyContent: "flex-start",
+                flexWrap: "wrap",
+                gap: "10px 28px",
             }}
         >
             {entries.map((e) => (
@@ -1901,44 +2008,28 @@ function PodiumStrip({
     )
 }
 
+/** Podium for a bracket (or undefined when the final isn't decided) - consumed
+ *  by ExportDialog, which renders it as the page-1 header's extra line so the
+ *  bracket body below keeps its FULL height (no more squeezed boxes). */
+function bracketPodium(bracket: Bracket | undefined) {
+    const rounds = bracket?.rounds ?? []
+    return podiumFromBracket(
+        rounds.map((r) => r.matches),
+        bracket?.thirdPlace ?? null,
+    )
+}
+
 function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
     const rounds = bracket?.rounds ?? []
     const cols = rounds.map((r) => r.matches)
     const titles = rounds.map((r) => r.title)
     const thirdPlace = bracket?.thirdPlace ?? null
     const maxMatches = cols.length ? Math.max(...cols.map((c) => c.length)) : 0
-    const podium = podiumFromBracket(cols, thirdPlace)
     if (maxMatches >= 9) {
         const { upperCols, upperTitles, lowerCols, lowerTitles } = splitBracketHalves(cols, titles)
-        // Podium rides on page 2 - the page that carries the final.
         return [
             <BracketBody cols={upperCols} titles={upperTitles} thirdPlace={null} />,
-            podium ? (
-                <div>
-                    <PodiumStrip {...podium} />
-                    <BracketBody
-                        cols={lowerCols}
-                        titles={lowerTitles}
-                        thirdPlace={thirdPlace}
-                        bodyH={BRACKET_BODY_H - PODIUM_STRIP_H}
-                    />
-                </div>
-            ) : (
-                <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />
-            ),
-        ]
-    }
-    if (podium) {
-        return [
-            <div>
-                <PodiumStrip {...podium} />
-                <BracketBody
-                    cols={cols}
-                    titles={titles}
-                    thirdPlace={thirdPlace}
-                    bodyH={BRACKET_BODY_H - PODIUM_STRIP_H}
-                />
-            </div>,
+            <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />,
         ]
     }
     return [<BracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
@@ -2722,9 +2813,20 @@ export function ExportDialog({
             pageBodies = [<BestPlacedTablePage table={thirdTable} />]
             groupsStandaloneBase = `${slugify(meta.tournamentName)}-najbolji-${bestPlace}`
         } else if (effTableOption === "grupe-najbolji" && thirdTable) {
-            // All-groups pages + the best-placed table as a trailing final page
-            // (the extra page rides along on the "-grupe" filename).
-            pageBodies = [...buildGroupsPages(shown, single), <BestPlacedTablePage table={thirdTable} />]
+            // All-groups + the best-placed table. When both fit one page (≤4
+            // groups and the estimate clears the page budget) the table rides
+            // UNDER the grid on the same page; otherwise it trails on its own
+            // page. Either way the extra content rides the "-grupe" filename.
+            if (!single && fitsBestPlacedInline(shown, thirdTable)) {
+                const showStandings = shown.some((g) =>
+                    (g.matches ?? []).some((m) => m.status === "LIVE" || m.status === "FINISHED"),
+                )
+                pageBodies = [
+                    <GroupsWithBestPlacedPage groups={shown} showStandings={showStandings} table={thirdTable} />,
+                ]
+            } else {
+                pageBodies = [...buildGroupsPages(shown, single), <BestPlacedTablePage table={thirdTable} />]
+            }
         } else {
             pageBodies = buildGroupsPages(shown, single)
         }
@@ -2994,11 +3096,16 @@ export function ExportDialog({
                                                 orientation={orientation}
                                                 pageIndex={i}
                                                 pageCount={pageCount}
-                                                headerExtra={
-                                                    kind === "match" && match ? (
-                                                        <MatchHeaderExtra match={match} />
-                                                    ) : undefined
-                                                }
+                                                headerExtra={(() => {
+                                                    if (kind === "match" && match) {
+                                                        return <MatchHeaderExtra match={match} />
+                                                    }
+                                                    if (kind === "bracket") {
+                                                        const podium = bracketPodium(bracket)
+                                                        return podium ? <PodiumStrip {...podium} /> : undefined
+                                                    }
+                                                    return undefined
+                                                })()}
                                             >
                                                 {body}
                                             </PosterPage>

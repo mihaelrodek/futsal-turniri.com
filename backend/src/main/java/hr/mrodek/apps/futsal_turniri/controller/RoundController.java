@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.ManualRoundRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.MatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.RoundDto;
 import hr.mrodek.apps.futsal_turniri.dtos.UpdateMatchRequest;
+import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
@@ -33,7 +34,13 @@ public class RoundController {
     @Inject TournamentEditorRepository editorRepo;
 
     /** Throws 403 if the current user is not an admin, the tournament's
-     *  creator, or a granted co-editor. */
+     *  creator, or a granted co-editor.
+     *
+     *  <p>Additionally, once the tournament is {@link TournamentStatus#FINISHED}
+     *  this choke point rejects every write with 409 {@code TOURNAMENT_FINISHED}
+     *  - all round writes are pre-finish operations, so a blanket block is
+     *  correct. Admins bypass the lock (they returned early above) so an
+     *  administrator can still unlock and fix a finished tournament. */
     private void assertCanEdit(String idOrSlug) {
         // Accept slug or UUID - the URL the user is on may be either form
         // because tournaments now expose a pretty slug.
@@ -48,6 +55,11 @@ public class RoundController {
         boolean owner = me.equals(t.getCreatedByUid());
         if (!owner && !editorRepo.isEditor(t.getId(), me)) {
             throw new ForbiddenException("Only the creator, a granted editor or an admin can modify this tournament.");
+        }
+        // Finished tournaments are locked for everyone but admins (bypassed above).
+        if (t.getStatus() == TournamentStatus.FINISHED) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT).entity("TOURNAMENT_FINISHED").build());
         }
     }
 

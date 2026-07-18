@@ -79,6 +79,14 @@ export type SchedulePlanRequest = ScheduleConfig & {
     /** The preview's planHash the order was dragged on - generate rejects the
      *  order if the fixtures changed since the sketch. Sent with `order`. */
     planHash?: string | null
+    /** KO-only mode: the plan covers ONLY the knockout matches; the group
+     *  kickoffs are left untouched. Preview rows / order / planHash then span
+     *  the knockout subset. */
+    koOnly?: boolean
+    /** Inserted pauses. Before placing the match at `beforeOrderPos` (a 0-based
+     *  index among MATCH rows in the final play order), the time cursor advances
+     *  by `minutes`; the pause shifts every match after it later. */
+    breaks?: { beforeOrderPos: number; minutes: number }[]
 }
 
 /** One planned match in the (non-persisted) preview. */
