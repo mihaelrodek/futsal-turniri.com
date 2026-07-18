@@ -1095,7 +1095,6 @@ export default function TournamentDetailsPage() {
                         onApproveTeam={onApproveTeam}
                         openTeamInfo={setInfoTeamId}
                         onSelfRegisterClick={onSelfRegisterClick}
-                        onPodiumUpdated={setT}
                         onTeamUpdated={(updated) =>
                             setTeams((ps) =>
                                 ps.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)),

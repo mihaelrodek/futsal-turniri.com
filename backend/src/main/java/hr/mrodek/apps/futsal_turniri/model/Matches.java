@@ -66,8 +66,10 @@ public class Matches {
      * Persisted position-pairing override for a knockout slot - the position-
      * based manual pairing ("A1 vs B2") an organizer can define at any time after
      * the groups are drawn, even before the group stage finishes. The value is a
-     * position token: a group placement ("A1", "D2") or a best-third rank ("3-1").
-     * Null = the default computed layout (classic cross / constraint seeding).
+     * position token: a group placement ("A1", "D2") or a wildcard "best next-
+     * placed" rank "&lt;place&gt;-&lt;rank&gt;" where place = advancePerGroup+1
+     * ("2-1" when one advances, "3-1" when two do). Null = the default computed
+     * layout (classic cross / constraint seeding).
      * Round-one matches carry the real pairs' sources; a round-one bye has no
      * skeleton match of its own, so its surviving position is parked on the
      * next-round landing slot it advances onto (that slot is therefore the only

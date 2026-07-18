@@ -955,11 +955,14 @@ export default function BracketTab({
             }
         }
         const bestThirdCount = thirdPlaced?.bestThirdCount ?? 0
+        // Wildcard place = the rank right after the group advance cut (e.g.
+        // advancePerGroup=1 -> best RUNNERS-UP are place 2, not a hardcoded "3rd").
+        const place = (thirdPlaced?.advancePerGroup ?? 2) + 1
         for (let r = 1; r <= bestThirdCount; r++) {
             items.push({
                 id: idx++,
-                name: `Najbolji 3. (${r})`,
-                submitLabel: `3-${r}`,
+                name: `Najbolji ${place}. (${r})`,
+                submitLabel: `${place}-${r}`,
                 teamName: allGroupsFinished ? (thirdRankedNames[r - 1] ?? null) : null,
             })
         }

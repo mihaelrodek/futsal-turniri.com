@@ -1094,10 +1094,31 @@ public class KnockoutService {
     }
 
     /** A parsed slot-source token: EITHER a group placement ({@code group} +
-     *  0-based {@code placeIndex}) OR a best-third rank (1-based
-     *  {@code thirdRank}, with {@code group} null). */
-    private record ParsedSource(GroupDto group, int placeIndex, int thirdRank) {
-        boolean isThird() { return group == null; }
+     *  0-based {@code placeIndex}) OR a wildcard "best next-placed" rank
+     *  (1-based {@code wildcardRank}, with {@code group} null). */
+    private record ParsedSource(GroupDto group, int placeIndex, int wildcardRank) {
+        boolean isWildcard() { return group == null; }
+    }
+
+    /**
+     * Whether a label has the wildcard-token shape {@code <digits>-<digits>}
+     * (e.g. "2-1", "3-1"). A group-position label ({@link #groupSlotLabel})
+     * never contains a hyphen - it is a letter/short-name followed directly by
+     * the place ("A1", "D2", or a numeric group name "3" → "31") - so the hyphen
+     * unambiguously marks a wildcard token. Purely structural: it does NOT check
+     * the place/rank against the tournament (that is {@link #parseSlotSource}),
+     * so it can prettify a token for display even after the feature is toggled.
+     */
+    private static boolean isWildcardToken(String label) {
+        if (label == null) return false;
+        int dash = label.indexOf('-');
+        if (dash <= 0 || dash >= label.length() - 1) return false;
+        for (int i = 0; i < label.length(); i++) {
+            if (i == dash) continue;
+            char c = label.charAt(i);
+            if (c < '0' || c > '9') return false;
+        }
+        return true;
     }
 
     /**
@@ -1112,24 +1133,35 @@ public class KnockoutService {
      *       emit, for every place up to that group's {@code effectiveAdvance} -
      *       so a place beyond a group's advance count (e.g. "A3" when 2 advance)
      *       is rejected.</li>
-     *   <li><b>Best-third token</b> ("3-&lt;rank&gt;"): valid only while
-     *       {@code bestThirdCount > 0} and {@code 1 <= rank <= bestThirdCount}.</li>
+     *   <li><b>Wildcard ("best next-placed") token</b> "&lt;place&gt;-&lt;rank&gt;":
+     *       the canonical {@code place} is {@code advancePerGroup + 1} - the first
+     *       non-advancing spot - so "2-1" when one advances (best runner-up) and
+     *       "3-1" when two do (best third). Valid only while
+     *       {@code bestThirdCount > 0} and {@code 1 <= rank <= bestThirdCount}.
+     *       LEGACY: the old hardcoded "3-&lt;rank&gt;" token is also accepted
+     *       regardless of advance (old persisted sources / old clients) -
+     *       resolution is by {@code rank} against the thirdPlacedTable only, so
+     *       it stays correct whatever the place digit says.</li>
      * </ul>
      */
     private ParsedSource parseSlotSource(Tournaments t, List<GroupDto> groups, String label) {
         if (label == null) return null;
-        // Best-third token "3-<rank>". A group-position label never contains a
-        // hyphen, and a group named "3" would render "31"/"32" (no hyphen), so
-        // the "3-" prefix is unambiguous.
-        if (label.startsWith("3-")) {
+        // Wildcard token "<place>-<rank>" (place = advance+1: "2-1"/"3-1").
+        if (isWildcardToken(label)) {
             int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
             if (bestThird <= 0) return null;
-            int rank;
+            int dash = label.indexOf('-');
+            int place, rank;
             try {
-                rank = Integer.parseInt(label.substring(2));
+                place = Integer.parseInt(label.substring(0, dash));
+                rank = Integer.parseInt(label.substring(dash + 1));
             } catch (NumberFormatException e) {
                 return null;
             }
+            int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
+            // Canonical place = advance+1; also accept the legacy "3-<rank>"
+            // token (old clients / persisted sources) whatever the advance is.
+            if (place != adv + 1 && place != 3) return null;
             if (rank < 1 || rank > bestThird) return null;
             return new ParsedSource(null, -1, rank);
         }
@@ -1144,20 +1176,30 @@ public class KnockoutService {
         return null;
     }
 
+    /** Display form of a persisted slot source. A wildcard token
+     *  "&lt;place&gt;-&lt;rank&gt;" is prettified to "Najbolji &lt;place&gt;-&lt;rank&gt;"
+     *  (e.g. "2-1" → "Najbolji 2-1"); a group placement ("A1") is shown
+     *  verbatim. Only the EMITTED label changes - the persisted 16-char source
+     *  column keeps the raw canonical token. */
+    private static String displaySourceLabel(String source) {
+        if (source == null) return null;
+        return isWildcardToken(source) ? "Najbolji " + source : source;
+    }
+
     /**
      * Predicted team name for a slot source, or null when it can't be resolved
      * yet. A group placement resolves once THAT group is finished (early, per
      * group - the same {@link #groupPredictedName} path the classic labels
-     * use); a best-third token resolves only once EVERY group is finished (the
-     * cross-group third table isn't final until then).
+     * use); a wildcard token resolves only once EVERY group is finished (the
+     * cross-group best-next-placed table isn't final until then).
      */
     private String resolveSourceName(Tournaments t, List<GroupDto> groups, String label) {
         ParsedSource ps = parseSlotSource(t, groups, label);
         if (ps == null) return null;
-        if (ps.isThird()) {
+        if (ps.isWildcard()) {
             for (GroupDto g : groups) if (!groupComplete(g)) return null;
             for (ThirdPlacedTableDto.Row row : groupStageService.thirdPlacedTable(t).rows()) {
-                if (row.rank() == ps.thirdRank()) return row.standing().teamName();
+                if (row.rank() == ps.wildcardRank()) return row.standing().teamName();
             }
             return null;
         }
@@ -1166,18 +1208,19 @@ public class KnockoutService {
 
     /**
      * Resolve a slot source to a real team using the FINAL group standings /
-     * best-third table (called at draw time, when the group stage is complete).
-     * A group placement reads that group's standings row; a best-third token
-     * reads the ranked third table. Null when the token can't be resolved.
+     * best-next-placed table (called at draw time, when the group stage is
+     * complete). A group placement reads that group's standings row; a wildcard
+     * token reads the ranked best-next-placed table. Null when the token can't
+     * be resolved.
      */
     private Teams resolveSourceTeam(
             Tournaments t, List<GroupDto> groups, ThirdPlacedTableDto thirdTable,
             Map<Long, Teams> teamById, String label) {
         ParsedSource ps = parseSlotSource(t, groups, label);
         if (ps == null) return null;
-        if (ps.isThird()) {
+        if (ps.isWildcard()) {
             for (ThirdPlacedTableDto.Row row : thirdTable.rows()) {
-                if (row.rank() == ps.thirdRank()) return teamById.get(row.standing().teamId());
+                if (row.rank() == ps.wildcardRank()) return teamById.get(row.standing().teamId());
             }
             return null;
         }
@@ -1624,12 +1667,14 @@ public class KnockoutService {
      * and the match is not a bye:
      *
      * <p>A persisted position source ({@link #setManualPositions}) WINS on ANY
-     * round's slot: it is emitted verbatim as the label (resolved to a predicted
-     * name once its group / third table settles), and the computed labels below
+     * round's slot: its {@link #displaySourceLabel pretty} form is emitted as
+     * the label - a group placement ("B2") verbatim, a wildcard token
+     * ("2-1"/"3-1") as "Najbolji 2-1" - and resolved to a predicted name once
+     * its group / best-next-placed table settles; the computed labels below
      * never overwrite it. Round-one real pairs carry their sources on the
      * round-one matches; a round-one bye's survivor carries its source on the
      * next-round landing slot it advances onto, so that card shows the bye's
-     * position (e.g. "B2") directly. Otherwise:
+     * position directly. Otherwise:
      *
      * <ul>
      *   <li><b>Round one</b> (the largest stage present) is labeled "A1" / "D2"
@@ -1713,12 +1758,15 @@ public class KnockoutService {
             boolean s1HasSource = m.getSlot1Source() != null;
             boolean s2HasSource = m.getSlot2Source() != null;
             String l1 = null, l2 = null, p1 = null, p2 = null;
+            // Emit the pretty label for the persisted source: a group placement
+            // ("A1") shows verbatim, a wildcard token ("2-1"/"3-1") shows as
+            // "Najbolji 2-1". The raw token stays only in the DB column.
             if (s1Null && s1HasSource) {
-                l1 = m.getSlot1Source();
+                l1 = displaySourceLabel(m.getSlot1Source());
                 p1 = resolveSourceName(t, groups, m.getSlot1Source());
             }
             if (s2Null && s2HasSource) {
-                l2 = m.getSlot2Source();
+                l2 = displaySourceLabel(m.getSlot2Source());
                 p2 = resolveSourceName(t, groups, m.getSlot2Source());
             }
 

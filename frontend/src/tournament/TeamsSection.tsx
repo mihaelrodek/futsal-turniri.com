@@ -45,7 +45,6 @@ import {
     fetchTeamPlayerCounts,
     updatePlayer,
 } from "../api/players"
-import PodiumEditor from "../components/PodiumEditor"
 import PlayerNameAutocomplete from "../components/PlayerNameAutocomplete"
 import { BulkImportDialog } from "../components/BulkImportDialog"
 import { EmptyState, Panel } from "../ui/primitives"
@@ -266,7 +265,6 @@ type TeamsSectionProps = {
     onApproveTeam: (p: TeamShort) => void
     openTeamInfo: (id: number) => void
     onSelfRegisterClick: () => void
-    onPodiumUpdated: (updated: TournamentDetails) => void
     /** Merge a single refreshed team (e.g. after a jersey-colour change)
      *  into the page-level teams state. */
     onTeamUpdated: (updated: TeamShort) => void
@@ -293,7 +291,6 @@ export default function TeamsSection(props: TeamsSectionProps) {
         onApproveTeam,
         openTeamInfo,
         onSelfRegisterClick,
-        onPodiumUpdated,
         onTeamUpdated,
     } = props
 
@@ -588,17 +585,6 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 </Panel>
             ) : (
                 <>
-                    {t?.status === "FINISHED" && canEdit && (
-                        <PodiumEditor
-                            tournamentUuid={uuid}
-                            winnerName={t.winnerName ?? null}
-                            secondPlaceName={t.secondPlaceName ?? null}
-                            thirdPlaceName={t.thirdPlaceName ?? null}
-                            teams={teams}
-                            onUpdated={onPodiumUpdated}
-                        />
-                    )}
-
                     <Box>
                         <VStack align="stretch" gap="2">
                             {displayActiveTeams.map((p) => renderTeamRow(p, p.isEliminated))}

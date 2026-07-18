@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Box, Flex, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { FiArrowLeft, FiShare2 } from "react-icons/fi"
+import { FiArrowLeft, FiDownload, FiShare2 } from "react-icons/fi"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
 import { fetchTournamentDetails } from "../api/tournaments"
+import type { TournamentDetails } from "../types/tournaments"
+import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
@@ -35,6 +37,14 @@ import type { Schedule, ScheduledMatch } from "../types/schedule"
 
 const POLL_MS = 5_000
 
+/** Tournament meta the poster header uses (not carried by the schedule). */
+type PosterMetaBits = {
+    organizerName: string | null
+    location: string | null
+    startAt: string | null
+    slug: string | null
+}
+
 export default function MatchLivePage() {
     const { uuid, matchId: matchIdParam } = useParams<{ uuid: string; matchId: string }>()
     const matchId = Number(matchIdParam)
@@ -48,13 +58,25 @@ export default function MatchLivePage() {
     const cachedSchedule = uuid ? queryClient.getQueryData<Schedule>(qk.schedule(uuid)) : undefined
     const cachedLive =
         (queryClient.getQueryData<LiveMatch[]>(qk.liveMatches) ?? []).find((m) => m.matchId === matchId) ?? null
-    const cachedName = uuid
-        ? queryClient.getQueryData<{ name: string }>(qk.tournamentDetails(uuid))?.name ?? null
-        : null
+    const cachedDetails = uuid
+        ? queryClient.getQueryData<TournamentDetails>(qk.tournamentDetails(uuid))
+        : undefined
+    const cachedName = cachedDetails?.name ?? null
+
+    // Meta bits for the poster header (organizer / location / start / slug),
+    // seeded from the cached detail so a shared-link open can still fill them.
+    const toMetaBits = (t: TournamentDetails): PosterMetaBits => ({
+        organizerName: t.organizerName ?? t.createdByName ?? null,
+        location: t.location ?? null,
+        startAt: t.startAt ?? null,
+        slug: t.slug ?? null,
+    })
 
     const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
     const [live, setLive] = useState<LiveMatch | null>(cachedLive)
     const [tournamentName, setTournamentName] = useState<string | null>(cachedName)
+    const [tMeta, setTMeta] = useState<PosterMetaBits | null>(cachedDetails ? toMetaBits(cachedDetails) : null)
+    const [exportOpen, setExportOpen] = useState(false)
     const [loading, setLoading] = useState(!cachedSchedule)
     // Bumped on every relevant WebSocket live-update so the timeline refetches
     // instantly (GoalscorersPanel refreshSignal).
@@ -72,7 +94,7 @@ export default function MatchLivePage() {
         // the name rarely changes, so a 30 s stale window avoids a refetch.
         queryClient
             .fetchQuery({ queryKey: qk.tournamentDetails(uuid), queryFn: () => fetchTournamentDetails(uuid), staleTime: 30_000 })
-            .then((t) => { if (!cancelled) setTournamentName(t.name) })
+            .then((t) => { if (!cancelled) { setTournamentName(t.name); setTMeta(toMetaBits(t)) } })
             .catch(() => { /* name is non-critical */ })
         return () => { cancelled = true }
     }, [uuid, queryClient])
@@ -181,6 +203,35 @@ export default function MatchLivePage() {
     const title = tournamentName ?? live?.tournamentName ?? null
     const hasPens = scheduled.penalties1 != null && scheduled.penalties2 != null
 
+    // Poster export - meta from the tournament detail (degrades gracefully when
+    // a shared-link open hasn't fetched it yet) + the match itself, reusing the
+    // exact fields the header above already derived so the two agree.
+    const exportMeta: ExportMeta = {
+        tournamentName: title ?? "Turnir",
+        organizerName: tMeta?.organizerName ?? null,
+        location: tMeta?.location ?? null,
+        startAt: tMeta?.startAt ?? null,
+        tournamentUrl: `${window.location.origin}/turniri/${tMeta?.slug ?? uuid ?? ""}`,
+    }
+    const matchExport: MatchExportData = {
+        tournamentUuid: uuid!,
+        matchId,
+        team1Id: scheduled.team1Id,
+        team2Id: scheduled.team2Id,
+        team1Name,
+        team2Name,
+        score1: isScheduled ? null : score1,
+        score2: isScheduled ? null : score2,
+        penalties1: scheduled.penalties1 ?? null,
+        penalties2: scheduled.penalties2 ?? null,
+        isLive,
+        status: isLive ? "LIVE" : scheduled.status,
+        stage: scheduled.stage,
+        groupName: scheduled.groupName,
+        kickoffAt: scheduled.kickoffAt,
+        halfLengthMin,
+    }
+
     // Shrink the team-name font when a club name is long, so it stays readable
     // and fits (wrapping to at most three lines) instead of truncating hard.
     const maxNameLen = Math.max(team1Name.length, team2Name.length)
@@ -253,6 +304,9 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </VStack>
+                    <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
+                        <FiDownload />
+                    </IconButton>
                     <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
                         <FiShare2 />
                     </IconButton>
@@ -384,6 +438,15 @@ export default function MatchLivePage() {
                     </Box>
                 </Box>
             </Box>
+
+            {/* Branded match poster (portrait PDF / JPG) - same timeline as above. */}
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="match"
+                meta={exportMeta}
+                match={matchExport}
+            />
         </Flex>
     )
 }

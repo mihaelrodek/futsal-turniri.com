@@ -1687,6 +1687,7 @@ export default function GroupsTab({
                 kind="groups"
                 meta={exportMeta ?? { tournamentName: "Turnir", tournamentUrl: `${window.location.origin}/turniri/${uuid}` }}
                 groups={groups ?? []}
+                thirdTable={thirdTable}
                 initialScope={exportScope}
             />
 

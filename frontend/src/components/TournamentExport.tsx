@@ -4,9 +4,11 @@ import { Box, Button, Dialog, Flex, IconButton, Portal, Text } from "@chakra-ui/
 import { FiDownload, FiX } from "react-icons/fi"
 import { toJpeg, toPng } from "html-to-image"
 import { jsPDF } from "jspdf"
-import type { Group, GroupMatch, GroupStandingRow } from "../types/groups"
+import type { Group, GroupMatch, GroupStandingRow, ThirdPlacedRow, ThirdPlacedTable } from "../types/groups"
 import type { Bracket, BracketMatch } from "../types/bracket"
 import type { ScheduledMatch } from "../types/schedule"
+import type { MatchEventDto, MatchEventType } from "../types/matchEvents"
+import { fetchMatchEvents } from "../api/matchEvents"
 import { showError, showSuccess } from "../toaster"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -200,6 +202,24 @@ function pairingName(name: string | null, pred: string | null, label: string | n
     return name ?? pred ?? label ?? "TBD"
 }
 
+/** Stage/group badge for the match poster ("Grupa X" / "Četvrtfinale" …), or
+ *  null when the stage is unknown. Uses the same STAGE_LABEL map as the rest of
+ *  the export so the badge text matches the schedule / bracket posters. */
+function matchStageBadge(stage?: string | null, groupName?: string | null): string | null {
+    if (!stage) return null
+    if (stage === "GROUP") return groupName ? `Grupa ${groupName}` : "Grupa"
+    return STAGE_LABEL[stage] ?? null
+}
+
+/** Full kickoff line for the match header - "subota, 18. srpnja 2026. · 20:30". */
+function matchKickoffLine(iso: string | null): string | null {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return null
+    const date = d.toLocaleDateString("hr-HR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    return `${date} · ${hhmm(iso)}`
+}
+
 /** Croatian count word for teams (1 ekipa / 2-4 ekipe / 5+ ekipa). */
 function ekipeWord(n: number): string {
     const mod10 = n % 10
@@ -289,6 +309,7 @@ function PosterPage({
     orientation = "portrait",
     pageIndex,
     pageCount,
+    headerExtra,
     children,
 }: {
     meta: ExportMeta
@@ -301,6 +322,9 @@ function PosterPage({
     /** 0-based page index (0 → full header) and total page count. */
     pageIndex: number
     pageCount: number
+    /** Optional extra line under the date•location line on page 1 (e.g. the
+     *  match poster's UŽIVO + stage row). */
+    headerExtra?: ReactNode
     children: ReactNode
 }) {
     const dateStr = formatDateLong(meta.startAt)
@@ -389,6 +413,9 @@ function PosterPage({
                                     <div style={{ fontSize: "15px", fontWeight: 600, color: C.inkSoft, marginTop: "6px" }}>
                                         {metaLine}
                                     </div>
+                                ) : null}
+                                {headerExtra ? (
+                                    <div style={{ marginTop: "10px" }}>{headerExtra}</div>
                                 ) : null}
                             </div>
                             {/* Top-right lockup - the branded QR (prominent) once it is
@@ -1104,6 +1131,194 @@ function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
     return chunk(groups, 4).map((c) => <GroupsGrid groups={c} showStandings={showStandings} />)
 }
 
+/* Best "{advancePerGroup+1}. placed" cross-group table for the poster - the
+   StandingsTable columns plus a GRUPA column (which group each team came from),
+   the rank being the cross-group rank (not an in-group index). Qualifying rows
+   (`qualifies`) get the green wash + a left accent, mirroring the in-app
+   "najbolje plasirane" table; non-qualifying rows keep a transparent accent of
+   the same width so the numeric columns stay aligned. Same fixed row rhythm,
+   signed GR colouring and bold BOD as StandingsTable. Brand hex only. */
+function BestPlacedTable({ rows }: { rows: ThirdPlacedRow[] }) {
+    const rankW = 30
+    const grpW = 46
+    const numW = 32
+    const grW = 42
+    const bodW = 46
+    const nameFont = 17
+    const numFont = 15
+    const headFont = 11
+    const rowPadV = 9
+    const rowPadH = 12
+    const nameLineH = 1.25
+    const rowMinH = Math.ceil(nameFont * nameLineH * 2) + rowPadV * 2
+
+    const numCols: { label: string; get: (r: GroupStandingRow) => number; w: number }[] = [
+        { label: "UT", get: (r) => r.played, w: numW },
+        { label: "P", get: (r) => r.won, w: numW },
+        { label: "N", get: (r) => r.drawn, w: numW },
+        { label: "I", get: (r) => r.lost, w: numW },
+    ]
+
+    const headCell = {
+        fontFamily: F_MONO,
+        fontSize: `${headFont}px`,
+        fontWeight: 700,
+        letterSpacing: "0.03em",
+        color: C.muted,
+        textTransform: "uppercase" as const,
+        whiteSpace: "nowrap" as const,
+    }
+    const numCell = {
+        fontFamily: F_MONO,
+        fontSize: `${numFont}px`,
+        fontVariantNumeric: "tabular-nums" as const,
+        textAlign: "right" as const,
+        whiteSpace: "nowrap" as const,
+        flexShrink: 0,
+    }
+
+    return (
+        <div>
+            {/* Header row - shares the exact column widths with the data rows. The
+                left accent's 3px is absorbed by the row padding, so the header
+                needs no extra offset. */}
+            <div style={{ display: "flex", alignItems: "center", padding: `0 ${rowPadH}px`, marginBottom: "6px" }}>
+                <span style={{ width: `${rankW}px`, flexShrink: 0 }} />
+                <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>EKIPA</span>
+                <span style={{ ...headCell, width: `${grpW}px`, flexShrink: 0, textAlign: "center" }}>GRUPA</span>
+                {numCols.map((c) => (
+                    <span key={c.label} style={{ ...headCell, width: `${c.w}px`, flexShrink: 0, textAlign: "right" }}>
+                        {c.label}
+                    </span>
+                ))}
+                <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>GR</span>
+                <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>BOD</span>
+            </div>
+            {/* Data rows - qualifying ones washed green with a left accent. */}
+            {rows.map((row) => {
+                const t = row.standing
+                const gd = t.goalDiff
+                const grColor = gd > 0 ? C.green : gd < 0 ? C.live : C.muted
+                const grText = gd > 0 ? `+${gd}` : String(gd)
+                const q = row.qualifies
+                return (
+                    <div
+                        key={t.teamId}
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            minHeight: `${rowMinH}px`,
+                            boxSizing: "border-box",
+                            padding: `${rowPadV}px ${rowPadH}px`,
+                            borderRadius: "10px",
+                            borderLeft: `3px solid ${q ? C.green : "transparent"}`,
+                            background: q ? C.greenWash : "transparent",
+                        }}
+                    >
+                        <span
+                            style={{
+                                width: `${rankW}px`,
+                                flexShrink: 0,
+                                fontFamily: F_MONO,
+                                fontSize: `${numFont}px`,
+                                fontWeight: 700,
+                                color: C.green,
+                            }}
+                        >
+                            {row.rank}
+                        </span>
+                        <span
+                            style={{
+                                flex: 1,
+                                minWidth: 0,
+                                fontSize: `${nameFont}px`,
+                                fontWeight: 600,
+                                color: C.ink,
+                                lineHeight: nameLineH,
+                                overflowWrap: "break-word",
+                                paddingRight: "6px",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                            }}
+                        >
+                            {t.teamName}
+                        </span>
+                        <span
+                            style={{
+                                width: `${grpW}px`,
+                                flexShrink: 0,
+                                textAlign: "center",
+                                fontFamily: F_MONO,
+                                fontSize: `${numFont}px`,
+                                fontWeight: 700,
+                                color: C.inkSoft,
+                            }}
+                        >
+                            {row.groupName}
+                        </span>
+                        {numCols.map((c) => (
+                            <span key={c.label} style={{ ...numCell, width: `${c.w}px`, fontWeight: 600, color: C.inkSoft }}>
+                                {c.get(t)}
+                            </span>
+                        ))}
+                        <span style={{ ...numCell, width: `${grW}px`, fontWeight: 700, color: grColor }}>{grText}</span>
+                        <span style={{ ...numCell, width: `${bodW}px`, fontWeight: 800, color: C.ink }}>{t.points}</span>
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
+
+/** Poster page for the best "{advancePerGroup+1}. placed" cross-group table: a
+ *  centred card (similar width to a single StandingsTable card page) with the
+ *  "NAJBOLJE {place}. PLASIRANE" title + a "{bestThirdCount} prolaze dalje"
+ *  subtitle, over the BestPlacedTable. Used either as its own standalone page or
+ *  as the trailing page of the all-groups poster. */
+function BestPlacedTablePage({ table }: { table: ThirdPlacedTable }) {
+    const place = table.advancePerGroup + 1
+    return (
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: "16px" }}>
+            <div style={{ width: "82%", minWidth: 360, maxWidth: 560 }}>
+                <div style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: "18px", overflow: "hidden" }}>
+                    {/* Card header - title + "{n} prolaze dalje" subtitle. */}
+                    <div style={{ padding: "18px 22px", background: C.surface, borderBottom: `1px solid ${C.line}` }}>
+                        <div
+                            style={{
+                                fontFamily: F_HEAD,
+                                fontSize: "24px",
+                                fontWeight: 800,
+                                letterSpacing: "-0.01em",
+                                color: C.ink,
+                            }}
+                        >
+                            NAJBOLJE {place}. PLASIRANE
+                        </div>
+                        <div
+                            style={{
+                                fontFamily: F_MONO,
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                letterSpacing: "0.06em",
+                                color: C.muted,
+                                textTransform: "uppercase",
+                                marginTop: "6px",
+                            }}
+                        >
+                            {table.bestThirdCount} prolaze dalje
+                        </div>
+                    </div>
+                    <div style={{ padding: "12px 16px 18px" }}>
+                        <BestPlacedTable rows={table.rows} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 /* ── Schedule poster ───────────────────────────────────────────────────── */
 
 /** One day (or the "no fixed time" bucket) of schedule rows. A `matches` slice
@@ -1448,10 +1663,14 @@ function BracketBody({
     cols,
     titles,
     thirdPlace,
+    bodyH = BRACKET_BODY_H,
 }: {
     cols: BracketMatch[][]
     titles: string[]
     thirdPlace: BracketMatch | null
+    /** Vertical budget for the whole bracket block - reduced when the podium
+     *  strip sits above it so the busiest column still fits without clipping. */
+    bodyH?: number
 }) {
     const lastIdx = cols.length - 1
 
@@ -1471,7 +1690,7 @@ function BracketBody({
     const titleBlockH = t.titleMb + t.titleFont + 8
     // Space reserved for the 3rd-place row (a card + its label + the 18px gap).
     const thirdBlockH = thirdPlace ? (maxMatches <= 4 ? 78 : 50) : 0
-    const colsRowH = BRACKET_BODY_H - (thirdPlace ? thirdBlockH + 18 : 0)
+    const colsRowH = bodyH - (thirdPlace ? thirdBlockH + 18 : 0)
     const matchesRegionH = colsRowH - titleBlockH
     // Per-card height = the region split across the busiest round's cards (gaps
     // taken out first). Floored so n cards + gaps never exceed the region.
@@ -1581,20 +1800,659 @@ function splitBracketHalves(cols: BracketMatch[][], titles: string[]) {
  *  matches, largest round ≥ 9) splits across TWO landscape pages by bracket
  *  halves so nothing clips - upper half on page 1, lower half + final +
  *  3rd-place on page 2, reusing the shared multi-page PosterPage furniture. */
+/** Vertical cost of the podium strip (row height + its bottom gap) - taken out
+ *  of the bracket body budget so the busiest column still fits. */
+const PODIUM_STRIP_H = 58
+
+/** Final standings derived straight from the bracket - non-null only once the
+ *  final is FINISHED with a winner. Third place comes from the 3rd-place match
+ *  when that is decided too. */
+function podiumFromBracket(
+    cols: BracketMatch[][],
+    thirdPlace: BracketMatch | null,
+): { first: string; second: string | null; third: string | null } | null {
+    if (cols.length === 0) return null
+    const finalCol = cols[cols.length - 1]
+    const final = finalCol.length === 1 ? finalCol[0] : null
+    if (!final || final.status !== "FINISHED" || final.winnerTeamId == null) return null
+    const firstIsT1 = final.winnerTeamId === final.team1Id
+    const first = firstIsT1 ? final.team1Name : final.team2Name
+    if (!first) return null
+    const second = firstIsT1 ? final.team2Name : final.team1Name
+    let third: string | null = null
+    if (thirdPlace && thirdPlace.status === "FINISHED" && thirdPlace.winnerTeamId != null) {
+        third =
+            thirdPlace.winnerTeamId === thirdPlace.team1Id
+                ? thirdPlace.team1Name
+                : thirdPlace.team2Name
+    }
+    return { first, second, third }
+}
+
+/** Inline-SVG trophy (no emoji-font dependency - html-to-image safe). */
+function TrophyIcon({ color, size }: { color: string; size: number }) {
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} style={{ flexShrink: 0 }}>
+            <path
+                fill={color}
+                d="M5 3h14v2h3v3c0 2.8-2.2 5-5 5h-.3A7 7 0 0 1 13 16.9V19h3v2H8v-2h3v-2.1A7 7 0 0 1 7.3 13H7c-2.8 0-5-2.2-5-5V5h3V3zm-1 4v1c0 1.7 1.3 3 3 3V7H4zm16 0h-3v4c1.7 0 3-1.3 3-3V7z"
+            />
+        </svg>
+    )
+}
+
+/** Centred 1./2./3. row with trophy icons, shown above the bracket once the
+ *  tournament's final has been decided. */
+function PodiumStrip({
+    first,
+    second,
+    third,
+}: {
+    first: string
+    second: string | null
+    third: string | null
+}) {
+    const entries: Array<{ rank: string; name: string; color: string; big?: boolean }> = [
+        { rank: "1.", name: first, color: "#d4a017", big: true },
+    ]
+    if (second) entries.push({ rank: "2.", name: second, color: "#98a0a6" })
+    if (third) entries.push({ rank: "3.", name: third, color: "#b3763e" })
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "36px",
+                height: "44px",
+                marginBottom: "14px",
+            }}
+        >
+            {entries.map((e) => (
+                <div key={e.rank} style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                    <TrophyIcon color={e.color} size={e.big ? 24 : 19} />
+                    <span
+                        style={{
+                            fontFamily: F_MONO,
+                            fontSize: e.big ? "15px" : "13px",
+                            fontWeight: 800,
+                            color: e.color,
+                        }}
+                    >
+                        {e.rank}
+                    </span>
+                    <span
+                        style={{
+                            fontFamily: F_HEAD,
+                            fontSize: e.big ? "18px" : "15px",
+                            fontWeight: 800,
+                            color: C.ink,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: "260px",
+                        }}
+                    >
+                        {e.name}
+                    </span>
+                </div>
+            ))}
+        </div>
+    )
+}
+
 function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
     const rounds = bracket?.rounds ?? []
     const cols = rounds.map((r) => r.matches)
     const titles = rounds.map((r) => r.title)
     const thirdPlace = bracket?.thirdPlace ?? null
     const maxMatches = cols.length ? Math.max(...cols.map((c) => c.length)) : 0
+    const podium = podiumFromBracket(cols, thirdPlace)
     if (maxMatches >= 9) {
         const { upperCols, upperTitles, lowerCols, lowerTitles } = splitBracketHalves(cols, titles)
+        // Podium rides on page 2 - the page that carries the final.
         return [
             <BracketBody cols={upperCols} titles={upperTitles} thirdPlace={null} />,
-            <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />,
+            podium ? (
+                <div>
+                    <PodiumStrip {...podium} />
+                    <BracketBody
+                        cols={lowerCols}
+                        titles={lowerTitles}
+                        thirdPlace={thirdPlace}
+                        bodyH={BRACKET_BODY_H - PODIUM_STRIP_H}
+                    />
+                </div>
+            ) : (
+                <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />
+            ),
+        ]
+    }
+    if (podium) {
+        return [
+            <div>
+                <PodiumStrip {...podium} />
+                <BracketBody
+                    cols={cols}
+                    titles={titles}
+                    thirdPlace={thirdPlace}
+                    bodyH={BRACKET_BODY_H - PODIUM_STRIP_H}
+                />
+            </div>,
         ]
     }
     return [<BracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
+}
+
+/* ── Match poster (portrait "Utakmica") ─────────────────────────────────────
+   One match blown up to a poster: the standard page-1 header, then a match
+   header block (stage badge · team1 vs team2 with the big result · kickoff),
+   then the "TIJEK UTAKMICE" two-sided timeline mirrored from the public
+   MatchLivePage (GoalscorersPanel). Events derive through deriveMatchTimeline -
+   a faithful copy of the panel's derivation - so the poster always agrees with
+   the page. Icons are recreated as inline SVG / coloured shapes (no emoji font
+   dependency, which html-to-image can't render reliably). Paginated under the
+   same budget pattern as the schedule poster; continuation pages repeat
+   "TIJEK UTAKMICE · nastavak".
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/** Everything the match poster needs - built by MatchLivePage from data it
+ *  already has (no reimplementation of the page's derivation). */
+export type MatchExportData = {
+    tournamentUuid: string
+    matchId: number
+    /** Timeline sides - team1 = left, team2 = right (same as the app panel). */
+    team1Id: number | null
+    team2Id: number | null
+    team1Name: string
+    team2Name: string
+    /** Regulation score - null when the match has not produced one yet. */
+    score1: number | null
+    score2: number | null
+    /** Penalty-shootout total - null when there was none. */
+    penalties1: number | null
+    penalties2: number | null
+    /** True while LIVE (drives the red accent + the UŽIVO pill). */
+    isLive: boolean
+    /** MatchStatus - "SCHEDULED" | "LIVE" | "FINISHED". */
+    status: string
+    /** Raw stage + group letter → the "Grupa X / Četvrtfinale" badge. */
+    stage?: string | null
+    groupName?: string | null
+    kickoffAt: string | null
+    /** Half length (min) - splits the timeline into 1./2. poluvrijeme. */
+    halfLengthMin: number | null
+}
+
+/* Yellow-card hue (theme-independent literal, see file header). Red cards, own
+   goals and missed penalties reuse the live red (C.live). */
+const CARD_YELLOW = "#f2b807"
+
+/** Small football marker - green for a (penalty) goal, red for an own goal.
+ *  Inline SVG (mirrors the brand ball's centre pentagon) so no emoji font is
+ *  needed at capture time. */
+function BallGlyph({ color, size = 14 }: { color: string; size?: number }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 100 100" style={{ display: "block", flexShrink: 0 }}>
+            <circle cx="50" cy="50" r="45" fill="#ffffff" stroke={color} strokeWidth="7" />
+            <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" fill={color} />
+        </svg>
+    )
+}
+
+/** Coloured card square (yellow / red) - the poster stand-in for 🟨 / 🟥. */
+function CardGlyph({ color }: { color: string }) {
+    return <span style={{ display: "inline-block", width: "10px", height: "13px", background: color, borderRadius: "2px", flexShrink: 0 }} />
+}
+
+/** Missed-penalty cross (the poster stand-in for ❌). */
+function CrossGlyph({ color, size = 12 }: { color: string; size?: number }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" style={{ display: "block", flexShrink: 0 }}>
+            <path d="M5 5 L19 19 M19 5 L5 19" stroke={color} strokeWidth="3.5" strokeLinecap="round" />
+        </svg>
+    )
+}
+
+/** Event icon nearest the timeline spine (mirrors TimelineEventLine's icons). */
+function TimelineIcon({ type }: { type: MatchEventType }) {
+    switch (type) {
+        case "GOAL":
+        case "PENALTY_GOAL":
+            return <BallGlyph color={C.green} />
+        case "OWN_GOAL":
+            return <BallGlyph color={C.live} />
+        case "YELLOW_CARD":
+            return <CardGlyph color={CARD_YELLOW} />
+        case "RED_CARD":
+            return <CardGlyph color={C.live} />
+        case "PENALTY_MISSED":
+            return <CrossGlyph color={C.live} />
+        default:
+            return null
+    }
+}
+
+/** Timeline display name + whether it is an unknown/placeholder (italic, muted)
+ *  - a faithful copy of GoalscorersPanel.TimelineEventLine's name logic. */
+function timelineName(e: MatchEventDto): { text: string; unknown: boolean } {
+    const isPenGoal = e.type === "PENALTY_GOAL"
+    const isPenMiss = e.type === "PENALTY_MISSED"
+    if (e.type === "OWN_GOAL") {
+        return e.playerName != null
+            ? { text: `${e.playerName} (ag)`, unknown: false }
+            : { text: "Autogol", unknown: true }
+    }
+    if (e.playerName != null) return { text: e.playerName, unknown: false }
+    const text =
+        e.type === "GOAL" || isPenGoal
+            ? "Nepoznati strijelac"
+            : e.type === "YELLOW_CARD" || e.type === "RED_CARD"
+                ? "Nepoznati igrač"
+                : isPenMiss
+                    ? "(promašaj)"
+                    : ""
+    return { text, unknown: true }
+}
+
+/** One vertical-timeline section (1./2. poluvrijeme / Penali / headerless reg). */
+type TimelineSection = { key: string; title: string; events: MatchEventDto[] }
+
+/** Derive the poster timeline EXACTLY as GoalscorersPanel does, so the two
+ *  never disagree: same team-side detection, same regulation/penalty split,
+ *  same 1./2. poluvrijeme sectioning, same cumulative running score. */
+function deriveMatchTimeline(
+    events: MatchEventDto[],
+    team1Id: number | null,
+    team2Id: number | null,
+    halfLengthMin: number | null | undefined,
+): { sections: TimelineSection[]; scoreLabels: Map<number, string>; t1Id: number | null; t2Id: number | null } {
+    let t1Id = team1Id
+    let t2Id = team2Id
+    if (t1Id == null || t2Id == null) {
+        const distinct = Array.from(new Set(events.map((e) => e.teamId))).sort((a, b) => a - b)
+        t1Id = distinct[0] ?? null
+        t2Id = distinct[1] ?? null
+    }
+
+    const regulation = events
+        .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL" || e.type === "YELLOW_CARD" || e.type === "RED_CARD")
+        .sort((a, b) => a.minute - b.minute)
+    const penalties = events.filter((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED")
+
+    const sections: TimelineSection[] = []
+    const hl = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
+    if (regulation.length > 0) {
+        if (hl != null) {
+            const first = regulation.filter((e) => e.minute < hl)
+            const second = regulation.filter((e) => e.minute >= hl)
+            if (first.length) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
+            if (second.length) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
+        } else {
+            sections.push({ key: "reg", title: "", events: regulation })
+        }
+    }
+    if (penalties.length > 0) {
+        sections.push({ key: "pen", title: "Penali", events: penalties })
+    }
+
+    // Running score for the goal chips - cumulative over the minute-sorted
+    // regulation goals; only GOAL/OWN_GOAL move the score (cards don't).
+    const scoreLabels = new Map<number, string>()
+    let rs1 = 0
+    let rs2 = 0
+    for (const e of regulation) {
+        if (e.type === "GOAL" || e.type === "OWN_GOAL") {
+            if (e.teamId === t1Id) rs1++
+            else rs2++
+            scoreLabels.set(e.id, `${rs1} - ${rs2}`)
+        }
+    }
+    return { sections, scoreLabels, t1Id, t2Id }
+}
+
+/** One event on the poster's centred spine: home (team1) branches left, away
+ *  (team2) right, with the icon nearest the line and a running-score chip in
+ *  the centre for goals (else a small ink dot). Mirrors TimelineEventLine. */
+function TimelineLinePoster({ e, isLeft, scoreLabel }: { e: MatchEventDto; isLeft: boolean; scoreLabel: string | null }) {
+    const isPenalty = e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED"
+    const { text, unknown } = timelineName(e)
+    const nameBlock = (
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, alignItems: isLeft ? "flex-end" : "flex-start" }}>
+            <span
+                style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: unknown ? C.muted : C.ink,
+                    fontStyle: unknown ? "italic" : undefined,
+                    lineHeight: 1.25,
+                    textAlign: isLeft ? "right" : "left",
+                    overflowWrap: "anywhere",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                }}
+            >
+                {text}
+            </span>
+            {e.type === "GOAL" && e.assistPlayerName ? (
+                <span style={{ fontSize: "10px", color: C.muted, lineHeight: 1.2, textAlign: isLeft ? "right" : "left" }}>
+                    asist. {e.assistPlayerName}
+                </span>
+            ) : null}
+        </div>
+    )
+    const minuteEl = !isPenalty ? (
+        <span
+            style={{
+                fontFamily: F_MONO,
+                fontSize: "11px",
+                fontWeight: 700,
+                color: C.inkSoft,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                fontVariantNumeric: "tabular-nums",
+            }}
+        >
+            {`${e.minute}'`}
+        </span>
+    ) : null
+    const icon = <TimelineIcon type={e.type} />
+    const centre = scoreLabel ? (
+        <span
+            style={{
+                fontFamily: F_MONO,
+                fontSize: "11px",
+                fontWeight: 800,
+                color: C.green,
+                background: C.greenWash,
+                borderRadius: "5px",
+                padding: "2px 7px",
+                whiteSpace: "nowrap",
+            }}
+        >
+            {scoreLabel}
+        </span>
+    ) : (
+        <span style={{ width: "9px", height: "9px", borderRadius: "999px", background: C.ink }} />
+    )
+    return (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 74px minmax(0,1fr)", alignItems: "center", minHeight: "29px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "7px", paddingRight: "4px", minWidth: 0, overflow: "hidden" }}>
+                {isLeft ? (
+                    <>
+                        {nameBlock}
+                        {minuteEl}
+                        {icon}
+                    </>
+                ) : null}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>{centre}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "7px", paddingLeft: "4px", minWidth: 0, overflow: "hidden" }}>
+                {!isLeft ? (
+                    <>
+                        {icon}
+                        {minuteEl}
+                        {nameBlock}
+                    </>
+                ) : null}
+            </div>
+        </div>
+    )
+}
+
+/** Centred section header ("1./2. poluvrijeme" / "Penali") - a surface-coloured
+ *  chip so it masks the dashed spine behind it. */
+function TimelineSectionHeaderPoster({ title }: { title: string }) {
+    return (
+        <div style={{ display: "flex", justifyContent: "center", padding: "5px 0" }}>
+            <span
+                style={{
+                    background: C.surface,
+                    padding: "0 12px",
+                    fontFamily: F_MONO,
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    color: C.inkSoft,
+                    textTransform: "uppercase",
+                    whiteSpace: "nowrap",
+                }}
+            >
+                {title}
+            </span>
+        </div>
+    )
+}
+
+/** One page's worth of timeline sections drawn over a continuous dashed spine
+ *  (the SofaScore-style centre line the app draws behind its timeline). */
+function TimelineSpineSections({
+    sections,
+    scoreLabels,
+    t1Id,
+}: {
+    sections: TimelineSection[]
+    scoreLabels: Map<number, string>
+    t1Id: number | null
+}) {
+    return (
+        <div style={{ position: "relative" }}>
+            <div
+                style={{
+                    position: "absolute",
+                    top: "4px",
+                    bottom: "4px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    borderLeft: `2px dashed ${C.line}`,
+                    zIndex: 0,
+                }}
+            />
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
+                {sections.map((sec, si) => (
+                    <div key={`${sec.key}-${si}`}>
+                        {sec.title ? <TimelineSectionHeaderPoster title={sec.title} /> : null}
+                        {sec.events.map((e) => (
+                            <TimelineLinePoster key={e.id} e={e} isLeft={e.teamId === t1Id} scoreLabel={scoreLabels.get(e.id) ?? null} />
+                        ))}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+/** "TIJEK UTAKMICE" section label (exact match of the app's panel label);
+ *  continuation pages append "· nastavak". */
+function TijekHeading({ continued }: { continued?: boolean }) {
+    return (
+        <div style={{ textAlign: "center", marginBottom: "10px" }}>
+            <span
+                style={{
+                    fontFamily: F_MONO,
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    letterSpacing: "0.12em",
+                    color: C.muted,
+                    textTransform: "uppercase",
+                }}
+            >
+                {continued ? "TIJEK UTAKMICE · nastavak" : "TIJEK UTAKMICE"}
+            </span>
+        </div>
+    )
+}
+
+/** The match header block under the standard page-1 furniture: stage badge,
+ *  UŽIVO pill (LIVE), team1 vs team2 with the big result (red when LIVE) or a
+ *  "vs" placeholder before the match, the penalty line, and the kickoff. */
+/** The UŽIVO pill + stage badge shown in the poster HEADER, directly under the
+ *  date•location line - moved out of the score block so the header carries the
+ *  match's status/stage and the block below stays focused on the result. */
+function MatchHeaderExtra({ match }: { match: MatchExportData }) {
+    const badge = matchStageBadge(match.stage, match.groupName)
+    if (!badge && !match.isLive) return null
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+            {match.isLive ? (
+                <span
+                    style={{
+                        fontFamily: F_MONO,
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        color: C.white,
+                        background: C.live,
+                        padding: "3px 11px",
+                        borderRadius: "999px",
+                    }}
+                >
+                    UŽIVO
+                </span>
+            ) : null}
+            {badge ? (
+                <span
+                    style={{
+                        fontFamily: F_MONO,
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        color: C.green,
+                        background: C.greenWash,
+                        padding: "4px 11px",
+                        borderRadius: "999px",
+                    }}
+                >
+                    {badge}
+                </span>
+            ) : null}
+        </div>
+    )
+}
+
+function MatchHeaderBlock({ match }: { match: MatchExportData }) {
+    const finished = match.status === "FINISHED"
+    const hasScore = match.score1 != null && match.score2 != null && (match.isLive || finished)
+    const hasPens = match.penalties1 != null && match.penalties2 != null
+    const kickoff = matchKickoffLine(match.kickoffAt)
+    const nameStyle = { fontFamily: F_HEAD, fontSize: "20px", fontWeight: 800 as const, color: C.ink, lineHeight: 1.15, overflowWrap: "break-word" as const, minWidth: 0 }
+    return (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "9px", marginBottom: "20px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "18px", width: "100%" }}>
+                <span style={{ ...nameStyle, textAlign: "right" }}>{match.team1Name}</span>
+                <span
+                    style={{
+                        fontFamily: F_MONO,
+                        fontSize: hasScore ? "32px" : "18px",
+                        fontWeight: 800,
+                        color: hasScore ? (match.isLive ? C.live : C.ink) : C.muted,
+                        whiteSpace: "nowrap",
+                        fontVariantNumeric: "tabular-nums",
+                        lineHeight: 1,
+                    }}
+                >
+                    {hasScore ? `${match.score1} : ${match.score2}` : "vs"}
+                </span>
+                <span style={{ ...nameStyle, textAlign: "left" }}>{match.team2Name}</span>
+            </div>
+            {hasPens ? (
+                <span style={{ fontFamily: F_MONO, fontSize: "12px", fontWeight: 700, color: C.inkSoft, whiteSpace: "nowrap" }}>
+                    ({match.penalties1} : {match.penalties2} penali)
+                </span>
+            ) : null}
+            {kickoff ? <span style={{ fontSize: "12px", fontWeight: 600, color: C.inkSoft }}>{kickoff}</span> : null}
+        </div>
+    )
+}
+
+/* Row budgets for the match timeline (mirrors SCHEDULE_ROWS_PER_PAGE). Page 1
+   shares its body with the match header block + the "TIJEK UTAKMICE" heading, so
+   it takes fewer event rows; continuation pages get the fuller budget. A section
+   header ("1./2. poluvrijeme" / "Penali") costs one row and never dangles as a
+   page's last row (same rule as the schedule paginator). */
+const MATCH_ROWS_FIRST = 13
+const MATCH_ROWS_REST = 21
+
+/** Split the timeline sections across pages under the row budget - the schedule
+ *  poster's budget pattern applied to event rows: a titled section's header
+ *  costs a row and never lands as a page's last row; a long half splits across
+ *  pages, repeating its header. Page 1 uses the smaller (header-sharing) budget. */
+function paginateTimeline(sections: TimelineSection[]): TimelineSection[][] {
+    const pages: TimelineSection[][] = []
+    let pageSecs: TimelineSection[] = []
+    let used = 0
+    let budget = MATCH_ROWS_FIRST
+    const flush = () => {
+        if (pageSecs.length > 0) {
+            pages.push(pageSecs)
+            pageSecs = []
+            used = 0
+            budget = MATCH_ROWS_REST
+        }
+    }
+    for (const sec of sections) {
+        const headerCost = sec.title ? 1 : 0
+        let rest = sec.events
+        while (rest.length > 0) {
+            const remaining = budget - used
+            // Need room for the header (when titled) + at least one event.
+            if (remaining < headerCost + 1) {
+                flush()
+                continue
+            }
+            const take = Math.min(remaining - headerCost, rest.length)
+            pageSecs.push({ key: sec.key, title: sec.title, events: rest.slice(0, take) })
+            used += headerCost + take
+            rest = rest.slice(take)
+            // Any remainder of this section continues on a fresh page.
+            if (rest.length > 0) flush()
+        }
+    }
+    flush()
+    return pages
+}
+
+/** Build the match poster page bodies: page 1 = match header + timeline start,
+ *  continuation pages = the rest of the timeline. No events → the match header
+ *  plus the app's own empty-state note. */
+function buildMatchPages(match: MatchExportData | undefined, events: MatchEventDto[]): ReactNode[] {
+    if (!match) {
+        return [
+            <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
+                Nema podataka o utakmici.
+            </div>,
+        ]
+    }
+    const { sections, scoreLabels, t1Id } = deriveMatchTimeline(events, match.team1Id, match.team2Id, match.halfLengthMin)
+
+    if (sections.length === 0) {
+        // Same empty-state wording the page's GoalscorersPanel shows.
+        const note =
+            match.status === "FINISHED"
+                ? "Prikazan samo krajnji rezultat bez strijelca."
+                : match.status === "SCHEDULED"
+                    ? "Utakmica još nije počela."
+                    : "Još nema događaja."
+        return [
+            <div>
+                <MatchHeaderBlock match={match} />
+                <TijekHeading />
+                <div style={{ padding: "24px 0", textAlign: "center", color: C.muted, fontSize: "13px" }}>{note}</div>
+            </div>,
+        ]
+    }
+
+    return paginateTimeline(sections).map((secs, i) => (
+        <div>
+            {i === 0 ? <MatchHeaderBlock match={match} /> : null}
+            <TijekHeading continued={i > 0} />
+            <TimelineSpineSections sections={secs} scoreLabels={scoreLabels} t1Id={t1Id} />
+        </div>
+    ))
 }
 
 /* ── capture helpers ───────────────────────────────────────────────────── */
@@ -1633,7 +2491,7 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /* ── Export dialog ─────────────────────────────────────────────────────── */
 
-type ExportKind = "groups" | "schedule" | "bracket"
+type ExportKind = "groups" | "schedule" | "bracket" | "match"
 
 /** Schedule status-filter pills (second pill row). "upcoming" keeps everything
  *  that isn't FINISHED (SCHEDULED / LIVE / no status), "finished" only FINISHED. */
@@ -1642,6 +2500,10 @@ const STATUS_FILTERS: { id: "all" | "upcoming" | "finished"; label: string }[] =
     { id: "upcoming", label: "Nadolazeće" },
     { id: "finished", label: "Završene" },
 ]
+
+/** Groups poster "best-placed table" option (second pill row, all-groups scope
+ *  only): plain groups, groups + the table page, or just the table page. */
+type GroupsTableOption = "grupe" | "grupe-najbolji" | "samo-najbolji"
 
 /** Scaled live preview of the poster + "Preuzmi PDF / JPG" actions. The poster
  *  is rendered once at full A4 size (absolutely positioned inside a scaled
@@ -1653,8 +2515,10 @@ export function ExportDialog({
     kind,
     meta,
     groups,
+    thirdTable,
     matches,
     bracket,
+    match,
     initialScope,
 }: {
     open: boolean
@@ -1663,10 +2527,17 @@ export function ExportDialog({
     meta: ExportMeta
     /** Required for kind="groups". */
     groups?: Group[]
+    /** Optional (kind="groups") - the "best {advancePerGroup+1}. placed"
+     *  cross-group ranking. When present with bestThirdCount > 0 it unlocks the
+     *  table pill row (add it as a trailing page, or export it standalone). */
+    thirdTable?: ThirdPlacedTable | null
     /** Required for kind="schedule". */
     matches?: ScheduledMatch[]
     /** Required for kind="bracket" - the knockout rounds + 3rd-place fixture. */
     bracket?: Bracket
+    /** Required for kind="match" - the single match blown up to a poster. Its
+     *  events are fetched here (same endpoint the page's panel uses). */
+    match?: MatchExportData
     /** Scope to preselect on open (e.g. "g:5" for a single group); resets to
      *  it every time the dialog reopens. Defaults to "all". */
     initialScope?: string
@@ -1684,21 +2555,32 @@ export function ExportDialog({
     // Schedule-only status filter: "all" | "upcoming" (anything not finished) |
     // "finished". Combines with the scope; resets to "all" on open.
     const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "finished">("all")
+    // Groups-only "best {advancePerGroup+1}. placed" table option (all-groups
+    // scope only): "grupe" (current behavior) | "grupe-najbolji" (groups pages +
+    // the table as a trailing page) | "samo-najbolji" (just the table page).
+    // Resets to "grupe" on open.
+    const [tableOption, setTableOption] = useState<GroupsTableOption>("grupe")
     // Branded QR (club-logo PNG from the backend), fetched when the dialog
     // opens; capture is blocked until it settles so the poster is never
     // snapshotted mid-fetch. On failure it stays null and the poster omits it.
     const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
     const [qrLoading, setQrLoading] = useState(false)
+    // Match poster only: the match events, fetched when the dialog opens (same
+    // endpoint GoalscorersPanel uses, so the poster agrees with the page).
+    // Capture is blocked until they settle so no page snapshots mid-fetch.
+    const [matchEvents, setMatchEvents] = useState<MatchEventDto[]>([])
+    const [matchEventsLoading, setMatchEventsLoading] = useState(false)
 
     // Landscape needs a wider preview column; both clip inside the dialog body.
     const PREVIEW_W = orientation === "landscape" ? 500 : 430
     const scale = PREVIEW_W / page.w
 
-    // Reset the scope + status filter whenever the dialog (re)opens.
+    // Reset the scope + status filter + table option whenever the dialog (re)opens.
     useEffect(() => {
         if (open) {
             setScope(initialScope ?? "all")
             setStatusFilter("all")
+            setTableOption("grupe")
         }
     }, [open, initialScope])
 
@@ -1747,11 +2629,46 @@ export function ExportDialog({
         }
     }, [open, meta.tournamentUrl])
 
+    // Match poster: load the event log when the dialog opens. Depends on the
+    // ids (not the `match` object) so a new object identity each render doesn't
+    // refire the fetch.
+    useEffect(() => {
+        if (!open || kind !== "match" || !match) {
+            setMatchEvents([])
+            setMatchEventsLoading(false)
+            return
+        }
+        let cancelled = false
+        setMatchEventsLoading(true)
+        setMatchEvents([])
+        fetchMatchEvents(match.tournamentUuid, match.matchId)
+            .then((evs) => {
+                if (!cancelled) {
+                    setMatchEvents(evs)
+                    setMatchEventsLoading(false)
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setMatchEvents([])
+                    setMatchEventsLoading(false)
+                }
+            })
+        return () => {
+            cancelled = true
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, kind, match?.tournamentUuid, match?.matchId])
+
     // Selectable scopes: all + one per group, plus "Završnica" for a schedule
     // that has any knockout match. The bracket poster has no scopes (one shape).
     const scopeOptions = useMemo<{ id: string; label: string }[]>(() => {
         if (kind === "bracket") {
             return [{ id: "all", label: "Završnica" }]
+        }
+        if (kind === "match") {
+            // Single shape → the scope pill row stays hidden (no scope/status).
+            return [{ id: "all", label: "Utakmica" }]
         }
         if (kind === "groups") {
             return [
@@ -1775,18 +2692,42 @@ export function ExportDialog({
     // Guard against a stale scope (data changed under it) - fall back to "all".
     const activeScope = scopeOptions.some((s) => s.id === scope) ? scope : "all"
 
+    // Groups "best {advancePerGroup+1}. placed" table: available only for the
+    // groups poster when the ranking carries qualifiers. The table pill row (and
+    // its effect on the pages / filename) applies to the all-groups scope only -
+    // a single-group scope ignores it (effTableOption falls back to "grupe").
+    const bestPlace = thirdTable ? thirdTable.advancePerGroup + 1 : 0
+    const tableEligible = kind === "groups" && !!thirdTable && thirdTable.bestThirdCount > 0
+    const effTableOption: GroupsTableOption =
+        tableEligible && activeScope === "all" ? tableOption : "grupe"
+
     // Resolve the active scope + status filter → paginated page bodies + the
     // filename suffixes. Each body renders into its own A4 PosterPage below.
     let pageBodies: ReactNode[]
     let scopeSuffix = ""
     let statusSuffix = ""
+    // Set only for the standalone best-placed export - overrides the whole
+    // baseName (`<slug>-najbolji-{place}`) instead of appending a suffix.
+    let groupsStandaloneBase: string | null = null
     if (kind === "bracket") {
         pageBodies = buildBracketPages(bracket)
+    } else if (kind === "match") {
+        pageBodies = buildMatchPages(match, matchEvents)
     } else if (kind === "groups") {
         const single = activeScope !== "all"
         const shown = single ? (groups ?? []).filter((g) => `g:${g.id}` === activeScope) : groups ?? []
         if (single && shown[0]) scopeSuffix = `-grupa-${slugify(shown[0].name)}`
-        pageBodies = buildGroupsPages(shown, single)
+        if (effTableOption === "samo-najbolji" && thirdTable) {
+            // Standalone: just the best-placed table page (own filename below).
+            pageBodies = [<BestPlacedTablePage table={thirdTable} />]
+            groupsStandaloneBase = `${slugify(meta.tournamentName)}-najbolji-${bestPlace}`
+        } else if (effTableOption === "grupe-najbolji" && thirdTable) {
+            // All-groups pages + the best-placed table as a trailing final page
+            // (the extra page rides along on the "-grupe" filename).
+            pageBodies = [...buildGroupsPages(shown, single), <BestPlacedTablePage table={thirdTable} />]
+        } else {
+            pageBodies = buildGroupsPages(shown, single)
+        }
     } else {
         const all = matches ?? []
         let shown = all
@@ -1812,15 +2753,25 @@ export function ExportDialog({
     const pageCount = pageBodies.length
 
     const suffix = kind === "groups" ? "grupe" : kind === "bracket" ? "zavrsnica-bracket" : "raspored"
-    const baseName = `${slugify(meta.tournamentName)}-${suffix}${scopeSuffix}${statusSuffix}`
-    const title = kind === "groups" ? "Preuzmi grupe" : kind === "bracket" ? "Preuzmi završnicu" : "Preuzmi raspored"
+    const baseName =
+        kind === "match"
+            ? `${slugify(meta.tournamentName)}-utakmica-${slugify(match?.team1Name ?? "")}-${slugify(match?.team2Name ?? "")}`
+            : groupsStandaloneBase ?? `${slugify(meta.tournamentName)}-${suffix}${scopeSuffix}${statusSuffix}`
+    const title =
+        kind === "groups"
+            ? "Preuzmi grupe"
+            : kind === "bracket"
+                ? "Preuzmi završnicu"
+                : kind === "match"
+                    ? "Preuzmi utakmicu"
+                    : "Preuzmi raspored"
 
     async function handleDownload(fmt: "pdf" | "jpg") {
         // The mounted page nodes, in order. Block capture while the QR is still
         // generating so no page is snapshotted without it (once it settles -
         // ready or failed - proceed).
         const nodes = pageRefs.current.slice(0, pageCount).filter((n): n is HTMLDivElement => n != null)
-        if (nodes.length === 0 || busy || qrLoading) return
+        if (nodes.length === 0 || busy || qrLoading || (kind === "match" && matchEventsLoading)) return
         setBusy(fmt)
         try {
             await ensureFonts()
@@ -1913,6 +2864,56 @@ export function ExportDialog({
                                     ))}
                                 </Flex>
                             )}
+                            {/* Best-placed table option (groups only, all-groups
+                                scope) - a second pill row mirroring the schedule's
+                                "Prikaži:" row: a mono label, smaller ghost pills and
+                                a hairline divider. Hidden for a single-group scope
+                                (the table applies to the all-groups context only). */}
+                            {tableEligible && activeScope === "all" && (
+                                <Flex
+                                    align="center"
+                                    justify="center"
+                                    gap="1.5"
+                                    wrap="wrap"
+                                    mb="4"
+                                    pt="3"
+                                    borderTopWidth={scopeOptions.length > 1 ? "1px" : "0"}
+                                    borderColor="border"
+                                >
+                                    <Text
+                                        as="span"
+                                        fontFamily="mono"
+                                        fontSize="10px"
+                                        fontWeight={700}
+                                        letterSpacing="0.12em"
+                                        textTransform="uppercase"
+                                        color="fg.muted"
+                                        mr="1"
+                                    >
+                                        Tablica:
+                                    </Text>
+                                    {([
+                                        { id: "grupe", label: "Grupe" },
+                                        { id: "grupe-najbolji", label: `Grupe + najbolji ${bestPlace}.` },
+                                        { id: "samo-najbolji", label: `Samo najbolji ${bestPlace}.` },
+                                    ] as { id: GroupsTableOption; label: string }[]).map((o) => (
+                                        <Button
+                                            key={o.id}
+                                            size="xs"
+                                            h="6"
+                                            px="2.5"
+                                            fontSize="11px"
+                                            rounded="full"
+                                            variant={o.id === tableOption ? "subtle" : "ghost"}
+                                            colorPalette="brand"
+                                            disabled={!!busy}
+                                            onClick={() => setTableOption(o.id)}
+                                        >
+                                            {o.label}
+                                        </Button>
+                                    ))}
+                                </Flex>
+                            )}
                             {/* Status filter (schedule only) - a second pill row.
                                 Set clearly apart from the scope row above: a mono
                                 "PRIKAŽI:" label, lighter ghost pills (smaller than
@@ -1993,6 +2994,11 @@ export function ExportDialog({
                                                 orientation={orientation}
                                                 pageIndex={i}
                                                 pageCount={pageCount}
+                                                headerExtra={
+                                                    kind === "match" && match ? (
+                                                        <MatchHeaderExtra match={match} />
+                                                    ) : undefined
+                                                }
                                             >
                                                 {body}
                                             </PosterPage>
@@ -2007,7 +3013,7 @@ export function ExportDialog({
                                 variant="solid"
                                 loading={busy === "pdf"}
                                 loadingText="Izrada…"
-                                disabled={!!busy || qrLoading}
+                                disabled={!!busy || qrLoading || (kind === "match" && matchEventsLoading)}
                                 onClick={() => handleDownload("pdf")}
                             >
                                 <FiDownload /> Preuzmi PDF
@@ -2017,7 +3023,7 @@ export function ExportDialog({
                                 variant="outline"
                                 loading={busy === "jpg"}
                                 loadingText="Izrada…"
-                                disabled={!!busy || qrLoading}
+                                disabled={!!busy || qrLoading || (kind === "match" && matchEventsLoading)}
                                 onClick={() => handleDownload("jpg")}
                             >
                                 <FiDownload /> Preuzmi JPG
