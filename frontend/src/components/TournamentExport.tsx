@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode, RefObject } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import type { ReactNode, Ref } from "react"
 import { Box, Button, Dialog, Flex, IconButton, Portal, Text } from "@chakra-ui/react"
 import { FiDownload, FiX } from "react-icons/fi"
 import { toJpeg, toPng } from "html-to-image"
@@ -13,18 +13,25 @@ import { showError, showSuccess } from "../toaster"
    Branded export - "plakat" (poster) generator for the group draw and the
    match schedule (futsal-turniri.com brand).
 
-   Two artifacts:
-     - GroupsPoster   → teams listed per group (Grupa A, B, C… cards).
-     - SchedulePoster → matches grouped by day, each with time / stage tag /
-                        pairing.
+   Two portrait artifacts (plus the landscape bracket):
+     - groups   → teams listed per group (Grupa A, B, C… cards).
+     - schedule → matches grouped by day, each with time / stage tag / pairing.
    Both carry the same page furniture: a large low-opacity watermark mark, the
    tournament name, the organizer, a date • location line and a
    futsal-turniri.com footer.
 
-   The posters render into a fixed-size A4-portrait DOM node which is then
-   snapshotted with html-to-image (mirrors the BracketTab.shareBracket pattern:
-   node → dataUrl → download). PDF embeds the PNG into an A4 jsPDF doc (sliced
-   across pages if the schedule outgrows one page); JPG is a single image.
+   The portrait posters (groups + schedule) are PAGINATED: the content is split
+   up-front into `PageContent` chunks and each chunk renders into its OWN
+   fixed-size A4 DOM node (all pages mounted together in the hidden capture
+   container). Page 1 carries the full header (name + QR); pages 2+ get a compact
+   one-line header with a "Stranica X/Y" indicator. Every page keeps the
+   watermark + centred footer via the shared `PosterPage` shell.
+
+   Each page node is snapshotted with html-to-image (mirrors the
+   BracketTab.shareBracket pattern: node → dataUrl → download). PDF = one jsPDF
+   doc, one A4 page per rendered page node; JPG = one file when there is a single
+   page, otherwise one JPG per page (`-1`, `-2`, … suffixes). The landscape
+   bracket poster stays a single page.
 
    IMPORTANT - hard-coded hex colours (deliberate exception to the design-token
    rule): the poster must look IDENTICAL whether the app is in light or dark
@@ -267,33 +274,46 @@ function WatermarkMark({ size }: { size: number }) {
     )
 }
 
-/* ── poster shell (shared furniture) ───────────────────────────────────── */
+/* ── poster page shell (shared furniture) ──────────────────────────────────
+   ONE rendered A4 page. `pageIndex` / `pageCount` drive the header variant:
+   page 0 gets the full lockup (name 3/4 + QR 1/4 + organizer + date•location),
+   pages 1+ get a compact one-line header (small name + right-aligned
+   "Stranica X/Y" indicator) so the paginated body gets the room. Every page
+   keeps the upright watermark + the centred futsal-turniri.com footer, and is a
+   FIXED-height A4 node (overflow hidden) so each page captures to exactly A4. */
 
-function PosterShell({
+function PosterPage({
     meta,
     qrDataUrl,
-    posterRef,
+    nodeRef,
     orientation = "portrait",
+    pageIndex,
+    pageCount,
     children,
 }: {
     meta: ExportMeta
     /** PNG data-URL of the branded (club-logo) QR; null until fetched. */
     qrDataUrl?: string | null
-    posterRef: RefObject<HTMLDivElement | null>
+    /** Assigned to the page's root node so the dialog can snapshot it. */
+    nodeRef?: Ref<HTMLDivElement>
     /** Page orientation - portrait (groups / schedule) or landscape (bracket). */
     orientation?: Orientation
+    /** 0-based page index (0 → full header) and total page count. */
+    pageIndex: number
+    pageCount: number
     children: ReactNode
 }) {
     const dateStr = formatDateLong(meta.startAt)
     const metaLine = [dateStr, meta.location].filter(Boolean).join("  •  ")
     const page = PAGE_PX[orientation]
+    const first = pageIndex === 0
     return (
         <div
-            ref={posterRef}
+            ref={nodeRef}
             style={{
                 position: "relative",
                 width: `${page.w}px`,
-                minHeight: `${page.h}px`,
+                height: `${page.h}px`,
                 background: C.surface,
                 color: C.ink,
                 fontFamily: F_BODY,
@@ -328,91 +348,131 @@ function PosterShell({
                     display: "flex",
                     flexDirection: "column",
                     flex: 1,
+                    minHeight: 0,
                     padding: "56px 56px 0",
                     boxSizing: "border-box",
                 }}
             >
-                {/* Header - name block (~3/4) left, QR block (~1/4) top-right. */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "28px" }}>
-                    <div style={{ flex: 3, minWidth: 0 }}>
-                        <div
-                            style={{
-                                fontFamily: F_HEAD,
-                                fontSize: "42px",
-                                fontWeight: 800,
-                                letterSpacing: "-0.02em",
-                                lineHeight: 1.04,
-                                color: C.ink,
-                            }}
-                        >
-                            {meta.tournamentName}
+                {first ? (
+                    <>
+                        {/* Full header - name block (~3/4) left, QR block (~1/4) top-right. */}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "28px" }}>
+                            <div style={{ flex: 3, minWidth: 0 }}>
+                                <div
+                                    style={{
+                                        fontFamily: F_HEAD,
+                                        fontSize: "42px",
+                                        fontWeight: 800,
+                                        letterSpacing: "-0.02em",
+                                        lineHeight: 1.04,
+                                        color: C.ink,
+                                    }}
+                                >
+                                    {meta.tournamentName}
+                                </div>
+                                {meta.organizerName ? (
+                                    <div
+                                        style={{
+                                            fontFamily: F_MONO,
+                                            fontSize: "12px",
+                                            fontWeight: 700,
+                                            letterSpacing: "0.12em",
+                                            color: C.inkSoft,
+                                            textTransform: "uppercase",
+                                            marginTop: "16px",
+                                        }}
+                                    >
+                                        ORGANIZATOR: {meta.organizerName}
+                                    </div>
+                                ) : null}
+                                {metaLine ? (
+                                    <div style={{ fontSize: "15px", fontWeight: 600, color: C.inkSoft, marginTop: "6px" }}>
+                                        {metaLine}
+                                    </div>
+                                ) : null}
+                            </div>
+                            {/* Top-right lockup - the branded QR (prominent) once it is
+                                ready, otherwise the plain brand mark as a graceful
+                                fallback so the header stays balanced. */}
+                            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "9px" }}>
+                                {qrDataUrl ? (
+                                    <>
+                                        {/* Branded QR (club logo baked in by the backend) -
+                                            rendered plain (the PNG carries its own light
+                                            backdrop). No page URL is printed (QR only). */}
+                                        <img
+                                            src={qrDataUrl}
+                                            alt=""
+                                            style={{
+                                                display: "block",
+                                                width: "124px",
+                                                height: "124px",
+                                                borderRadius: "14px",
+                                            }}
+                                        />
+                                        <div
+                                            style={{
+                                                fontFamily: F_HEAD,
+                                                fontSize: "12px",
+                                                fontWeight: 800,
+                                                letterSpacing: "0.01em",
+                                                color: C.green,
+                                                textAlign: "center",
+                                                lineHeight: 1.2,
+                                                maxWidth: "128px",
+                                            }}
+                                        >
+                                            Skeniraj i otvori turnir
+                                        </div>
+                                    </>
+                                ) : (
+                                    <BrandMark size={66} />
+                                )}
+                            </div>
                         </div>
-                        {meta.organizerName ? (
+
+                        {/* Green rule */}
+                        <div style={{ height: "3px", background: C.green, borderRadius: "2px", margin: "26px 0 30px" }} />
+                    </>
+                ) : (
+                    <>
+                        {/* Compact continuation header - small name + page indicator. */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "20px" }}>
+                            <div
+                                style={{
+                                    fontFamily: F_HEAD,
+                                    fontSize: "20px",
+                                    fontWeight: 800,
+                                    letterSpacing: "-0.01em",
+                                    color: C.ink,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    minWidth: 0,
+                                }}
+                            >
+                                {meta.tournamentName}
+                            </div>
                             <div
                                 style={{
                                     fontFamily: F_MONO,
                                     fontSize: "12px",
                                     fontWeight: 700,
-                                    letterSpacing: "0.12em",
+                                    letterSpacing: "0.06em",
                                     color: C.inkSoft,
-                                    textTransform: "uppercase",
-                                    marginTop: "16px",
+                                    whiteSpace: "nowrap",
+                                    flexShrink: 0,
                                 }}
                             >
-                                ORGANIZATOR: {meta.organizerName}
+                                Stranica {pageIndex + 1}/{pageCount}
                             </div>
-                        ) : null}
-                        {metaLine ? (
-                            <div style={{ fontSize: "15px", fontWeight: 600, color: C.inkSoft, marginTop: "6px" }}>
-                                {metaLine}
-                            </div>
-                        ) : null}
-                    </div>
-                    {/* Top-right lockup - the branded QR (prominent) once it is
-                        ready, otherwise the plain brand mark as a graceful
-                        fallback so the header stays balanced. */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "9px" }}>
-                        {qrDataUrl ? (
-                            <>
-                                {/* Branded QR (club logo baked in by the backend) -
-                                    rendered plain (the PNG carries its own light
-                                    backdrop). No page URL is printed (QR only). */}
-                                <img
-                                    src={qrDataUrl}
-                                    alt=""
-                                    style={{
-                                        display: "block",
-                                        width: "124px",
-                                        height: "124px",
-                                        borderRadius: "14px",
-                                    }}
-                                />
-                                <div
-                                    style={{
-                                        fontFamily: F_HEAD,
-                                        fontSize: "12px",
-                                        fontWeight: 800,
-                                        letterSpacing: "0.01em",
-                                        color: C.green,
-                                        textAlign: "center",
-                                        lineHeight: 1.2,
-                                        maxWidth: "128px",
-                                    }}
-                                >
-                                    Skeniraj i otvori turnir
-                                </div>
-                            </>
-                        ) : (
-                            <BrandMark size={66} />
-                        )}
-                    </div>
-                </div>
+                        </div>
+                        <div style={{ height: "3px", background: C.green, borderRadius: "2px", margin: "16px 0 24px" }} />
+                    </>
+                )}
 
-                {/* Green rule */}
-                <div style={{ height: "3px", background: C.green, borderRadius: "2px", margin: "26px 0 30px" }} />
-
-                {/* Body */}
-                <div style={{ flex: 1 }}>{children}</div>
+                {/* Body - clips so the footer can never be pushed off the page. */}
+                <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
 
                 {/* Footer - a single centred brand line (QR now lives top-right
                     in the header). Deliberately minimal: no mark, no second row. */}
@@ -473,7 +533,7 @@ function dayDateShort(iso: string): string {
  *  Status-aware leading cell - FINISHED shows the bold result, LIVE shows it in
  *  the live accent, otherwise the kickoff time (or "-" when not yet timed). When
  *  `showDay` is set a timed row prefixes the day+date above the HH:mm. */
-function MatchRowPoster({ row }: { row: PosterMatchRow }) {
+function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boolean }) {
     const live = row.status === "LIVE"
     const finished = row.status === "FINISHED"
     const hasScore = row.score1 != null && row.score2 != null
@@ -486,11 +546,13 @@ function MatchRowPoster({ row }: { row: PosterMatchRow }) {
             style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "16px",
+                gap: compact ? "12px" : "16px",
                 background: live ? C.liveWash : C.white,
                 border: `1px solid ${live ? C.live : C.line}`,
                 borderRadius: "10px",
-                padding: "11px 16px",
+                // Compact rows (single-group combined page) trim the vertical
+                // padding so all six fixtures of a 4-team group fit one page.
+                padding: compact ? "7px 14px" : "11px 16px",
             }}
         >
             <span
@@ -616,6 +678,11 @@ function groupMatchesToRows(matches: GroupMatch[]): PosterMatchRow[] {
  *  plain team list to a compact standings table (see GroupCardBody). */
 function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boolean; standings?: boolean }) {
     const teams = g.standings ?? []
+    // Fixed row rhythm for the plain team list (mirrors StandingsTable): every
+    // row is tall enough for a two-line name so neighbouring cards align.
+    const listNameFont = big ? 20 : 16
+    const listPadV = big ? 11 : 7
+    const listRowMinH = Math.ceil(listNameFont * 1.25 * 2) + listPadV * 2
     return (
         <div
             style={{
@@ -699,6 +766,8 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
                                 display: "flex",
                                 alignItems: "center",
                                 gap: big ? "16px" : "12px",
+                                minHeight: `${listRowMinH}px`,
+                                boxSizing: "border-box",
                                 padding: big ? "11px 12px" : "7px 8px",
                                 borderRadius: big ? "10px" : "8px",
                                 background: i % 2 === 0 ? C.zebra : "transparent",
@@ -724,11 +793,17 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
                             </span>
                             <span
                                 style={{
-                                    fontSize: big ? "20px" : "15px",
+                                    flex: 1,
+                                    minWidth: 0,
+                                    fontSize: `${listNameFont}px`,
                                     fontWeight: 600,
                                     color: C.ink,
-                                    lineHeight: 1.2,
-                                    wordBreak: "break-word",
+                                    lineHeight: 1.25,
+                                    overflowWrap: "break-word",
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
                                 }}
                             >
                                 {t.teamName}
@@ -749,15 +824,20 @@ function GroupCard({ g, big, standings: showStandings }: { g: Group; big?: boole
    widths are fixed per `big` so the header labels and the data rows line up in
    both the multi-column grid and the single big card. */
 function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boolean }) {
-    const rankW = big ? 30 : 15
-    const numW = big ? 32 : 18
-    const grW = big ? 42 : 25
-    const bodW = big ? 46 : 27
-    const nameFont = big ? 18 : 12.5
-    const numFont = big ? 15 : 11
-    const headFont = big ? 11 : 8.5
-    const rowPadV = big ? 9 : 5
-    const rowPadH = big ? 12 : 5
+    const rankW = big ? 30 : 18
+    const numW = big ? 32 : 20
+    const grW = big ? 42 : 28
+    const bodW = big ? 46 : 30
+    const nameFont = big ? 18 : 13.5
+    const numFont = big ? 15 : 12
+    const headFont = big ? 11 : 9.5
+    const rowPadV = big ? 9 : 7
+    const rowPadH = big ? 12 : 8
+    // Fixed row rhythm: size every row for a TWO-line team name so cards
+    // sitting side-by-side share identical row heights regardless of how long
+    // any one name is. Single-line names centre in the same tall row.
+    const nameLineH = 1.25
+    const rowMinH = Math.ceil(nameFont * nameLineH * 2) + rowPadV * 2
 
     // Plain numeric columns (GR + BOD are rendered specially below).
     const numCols: { label: string; get: (r: GroupStandingRow) => number; w: number }[] = [
@@ -810,6 +890,8 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
                         style={{
                             display: "flex",
                             alignItems: "center",
+                            minHeight: `${rowMinH}px`,
+                            boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: big ? "10px" : "8px",
                             background: i % 2 === 0 ? C.zebra : "transparent",
@@ -834,9 +916,13 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
                                 fontSize: `${nameFont}px`,
                                 fontWeight: 600,
                                 color: C.ink,
-                                lineHeight: 1.2,
-                                wordBreak: "break-word",
+                                lineHeight: nameLineH,
+                                overflowWrap: "break-word",
                                 paddingRight: "6px",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
                             }}
                         >
                             {t.teamName}
@@ -855,57 +941,117 @@ function StandingsTable({ teams, big }: { teams: GroupStandingRow[]; big?: boole
     )
 }
 
-function GroupsBody({ groups, single }: { groups: Group[]; single?: boolean }) {
-    // Once ANY group match anywhere in the exported set has started (LIVE) or
-    // finished, EVERY card switches to the standings table (consistency), even
-    // if some groups still show all-zero rows.
-    const showStandings = groups.some((g) =>
-        (g.matches ?? []).some((m) => m.status === "LIVE" || m.status === "FINISHED"),
+/** Split an array into fixed-size chunks (preserves order). */
+function chunk<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = []
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+    return out
+}
+
+/** Single-group scope, page 1: the big group card alone - roomier now that the
+ *  fixtures moved to their own page(s) below instead of crowding under it. */
+function SingleGroupCardPage({ g, showStandings }: { g: Group; showStandings: boolean }) {
+    return (
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: "16px" }}>
+            <div style={{ width: "74%", minWidth: 360, maxWidth: 540 }}>
+                <GroupCard g={g} big standings={showStandings} />
+            </div>
+        </div>
     )
-    // Single-group scope: one larger card in a centred column, and - once the
-    // fixtures exist - that group's matches below it in the schedule row format.
-    if (single && groups.length === 1) {
-        const g = groups[0]
-        const rows = groupMatchesToRows(g.matches)
-        return (
-            <div style={{ display: "flex", justifyContent: "center", paddingTop: "16px" }}>
-                <div style={{ width: "74%", minWidth: 360, maxWidth: 540, display: "flex", flexDirection: "column", gap: "26px" }}>
+}
+
+/** Single-group scope, matches page: a slice of that group's fixtures in the
+ *  shared poster match-row format, under a "Utakmice · Grupa X" heading so the
+ *  page reads unambiguously on its own. The heading repeats on every
+ *  continuation page when the group has more matches than fit on one. */
+function GroupMatchesSection({
+    groupName,
+    rows,
+    compact,
+}: {
+    groupName: string
+    rows: PosterMatchRow[]
+    compact?: boolean
+}) {
+    return (
+        <div>
+            {/* Heading with a hairline rule (mirrors the schedule poster's day
+                headings). */}
+            <div
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: compact ? "8px" : "12px",
+                }}
+            >
+                <span
+                    style={{
+                        fontFamily: F_MONO,
+                        fontSize: "13px",
+                        fontWeight: 800,
+                        letterSpacing: "0.1em",
+                        color: C.green,
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                    }}
+                >
+                    Utakmice · Grupa {groupName}
+                </span>
+                <span style={{ flex: 1, height: "1px", background: C.line }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: compact ? "5px" : "6px" }}>
+                {rows.map((row, i) => (
+                    <MatchRowPoster key={i} row={row} compact={compact} />
+                ))}
+            </div>
+        </div>
+    )
+}
+
+/** Single-group scope, combined ONE-page layout for small groups (≤ 4 teams,
+ *  hence ≤ 6 matches): the big card with the fixtures ("Utakmice · Grupa X")
+ *  directly beneath it - the pre-split layout. Larger groups keep the card and
+ *  their fixtures on separate pages (see buildGroupsPages). */
+function SingleGroupCombinedPage({
+    g,
+    showStandings,
+    rows,
+}: {
+    g: Group
+    showStandings: boolean
+    rows: PosterMatchRow[]
+}) {
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingTop: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+                <div style={{ width: "82%", minWidth: 360, maxWidth: 560 }}>
                     <GroupCard g={g} big standings={showStandings} />
-                    {rows.length > 0 ? (
-                        <div>
-                            {/* "Utakmice" heading with a hairline rule (mirrors the
-                                schedule poster's day headings). */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-                                <span
-                                    style={{
-                                        fontFamily: F_MONO,
-                                        fontSize: "13px",
-                                        fontWeight: 800,
-                                        letterSpacing: "0.1em",
-                                        color: C.green,
-                                        textTransform: "uppercase",
-                                        whiteSpace: "nowrap",
-                                    }}
-                                >
-                                    Utakmice
-                                </span>
-                                <span style={{ flex: 1, height: "1px", background: C.line }} />
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                                {rows.map((row, i) => (
-                                    <MatchRowPoster key={i} row={row} />
-                                ))}
-                            </div>
-                        </div>
-                    ) : null}
+                </div>
+            </div>
+            {rows.length > 0 ? (
+                <GroupMatchesSection groupName={g.name} rows={rows} compact />
+            ) : null}
+        </div>
+    )
+}
+
+/** One page of the all-groups grid - up to 4 groups laid out roomily. A lone
+ *  card (the last chunk of an odd count, or a 1-group tournament) is centred;
+ *  2-4 cards share a 2-column grid (2×2 for 3-4). Cards get real width so team
+ *  names never wrap letter-per-letter. */
+function GroupsGrid({ groups, showStandings }: { groups: Group[]; showStandings: boolean }) {
+    if (groups.length === 1) {
+        return (
+            <div style={{ display: "flex", justifyContent: "center", paddingTop: "8px" }}>
+                <div style={{ width: "64%", minWidth: 340, maxWidth: 520 }}>
+                    <GroupCard g={groups[0]} standings={showStandings} />
                 </div>
             </div>
         )
     }
-    // 2 columns for a compact draw, 3 once there are many groups.
-    const cols = groups.length <= 4 ? 2 : 3
     return (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "18px", alignContent: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "22px", alignContent: "start" }}>
             {groups.map((g) => (
                 <GroupCard key={g.id} g={g} standings={showStandings} />
             ))}
@@ -913,30 +1059,60 @@ function GroupsBody({ groups, single }: { groups: Group[]; single?: boolean }) {
     )
 }
 
-export function GroupsPoster({
-    meta,
-    groups,
-    single,
-    qrDataUrl,
-    posterRef,
-}: {
-    meta: ExportMeta
-    groups: Group[]
-    /** Render just the single supplied group as a larger centred card. */
-    single?: boolean
-    qrDataUrl?: string | null
-    posterRef: RefObject<HTMLDivElement | null>
-}) {
-    return (
-        <PosterShell meta={meta} qrDataUrl={qrDataUrl} posterRef={posterRef}>
-            <GroupsBody groups={groups} single={single} />
-        </PosterShell>
+/** Build the group poster page bodies.
+ *  Single-group scope → page 1 is the big group card alone; when the group has
+ *  fixtures, they follow on their own page(s), paginated under the same
+ *  rows-per-page budget as the schedule poster ("Utakmice · Grupa X" heading
+ *  repeating on every continuation page).
+ *  All-groups scope → chunks of ≤4 groups, one page each (≤4 total stays a
+ *  single page). Empty draw → one placeholder page. */
+function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
+    // Once ANY group match anywhere in the exported set has started (LIVE) or
+    // finished, EVERY card switches to the standings table (consistency), even
+    // if some groups still show all-zero rows.
+    const showStandings = groups.some((g) =>
+        (g.matches ?? []).some((m) => m.status === "LIVE" || m.status === "FINISHED"),
     )
+    if (single && groups.length === 1) {
+        const g = groups[0]
+        const rows = groupMatchesToRows(g.matches)
+        // A small group (≤ 4 teams → ≤ 6 matches) fits its card + fixtures on a
+        // SINGLE page (the pre-split layout); larger groups split the card and
+        // the fixtures onto separate pages so neither crowds the other.
+        const teamCount = (g.standings ?? []).length
+        if (teamCount <= 4) {
+            return [<SingleGroupCombinedPage g={g} showStandings={showStandings} rows={rows} />]
+        }
+        const pages: ReactNode[] = [<SingleGroupCardPage g={g} showStandings={showStandings} />]
+        if (rows.length > 0) {
+            // Same rows-per-page budget as the schedule poster; one row is
+            // reserved for the repeating "Utakmice · Grupa X" heading.
+            const perPage = Math.max(1, SCHEDULE_ROWS_PER_PAGE - 1)
+            for (const pageRows of chunk(rows, perPage)) {
+                pages.push(<GroupMatchesSection groupName={g.name} rows={pageRows} />)
+            }
+        }
+        return pages
+    }
+    if (groups.length === 0) {
+        return [
+            <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
+                Nema grupa za prikaz.
+            </div>,
+        ]
+    }
+    return chunk(groups, 4).map((c) => <GroupsGrid groups={c} showStandings={showStandings} />)
 }
 
 /* ── Schedule poster ───────────────────────────────────────────────────── */
 
-function ScheduleBody({ matches }: { matches: ScheduledMatch[] }) {
+/** One day (or the "no fixed time" bucket) of schedule rows. A `matches` slice
+ *  may be a partial section when a long day is split across pages. */
+type ScheduleSection = { key: string; label: string; matches: ScheduledMatch[] }
+
+/** Bucket the matches into day sections (kickoff order) + a trailing
+ *  "Termin nije određen" section for the unscheduled ones. */
+function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
     const scheduled = matches.filter((m) => m.kickoffAt)
     const unscheduled = matches.filter((m) => !m.kickoffAt)
     scheduled.sort((a, b) => new Date(a.kickoffAt!).getTime() - new Date(b.kickoffAt!).getTime())
@@ -952,7 +1128,7 @@ function ScheduleBody({ matches }: { matches: ScheduledMatch[] }) {
         byDay.get(k)!.push(m)
     }
 
-    const sections: { key: string; label: string; matches: ScheduledMatch[] }[] = dayOrder.map((k) => ({
+    const sections: ScheduleSection[] = dayOrder.map((k) => ({
         key: k,
         label: dayHeaderLabel(k),
         matches: byDay.get(k)!,
@@ -960,11 +1136,59 @@ function ScheduleBody({ matches }: { matches: ScheduledMatch[] }) {
     if (unscheduled.length > 0) {
         sections.push({ key: "none", label: "Termin nije određen", matches: unscheduled })
     }
+    return sections
+}
 
+/* Row budget per A4 page: a match row and a day header each cost one row. Kept
+   conservative so even page 1 (full header) fits without clipping. */
+const SCHEDULE_ROWS_PER_PAGE = 16
+
+/** Split the day sections across pages under a fixed rows-per-page budget. A day
+ *  header costs a row, and a header is never left as the last row of a page: a
+ *  section only lands on a page if the header AND at least one of its matches
+ *  fit, otherwise the whole section starts on the next page. Long days split
+ *  across pages, each continuation repeating the day header. */
+function paginateScheduleSections(
+    sections: ScheduleSection[],
+    budget = SCHEDULE_ROWS_PER_PAGE,
+): ScheduleSection[][] {
+    const pages: ScheduleSection[][] = []
+    let pageSecs: ScheduleSection[] = []
+    let used = 0
+    const flush = () => {
+        if (pageSecs.length > 0) {
+            pages.push(pageSecs)
+            pageSecs = []
+            used = 0
+        }
+    }
+    for (const sec of sections) {
+        let rest = sec.matches
+        while (rest.length > 0) {
+            const remaining = budget - used
+            // Need room for the header (1 row) + at least one match, else break.
+            if (remaining < 2) {
+                flush()
+                continue
+            }
+            const take = Math.min(remaining - 1, rest.length)
+            pageSecs.push({ key: sec.key, label: sec.label, matches: rest.slice(0, take) })
+            used += 1 + take
+            rest = rest.slice(take)
+            // Any remainder of this section continues on a fresh page.
+            if (rest.length > 0) flush()
+        }
+    }
+    flush()
+    return pages
+}
+
+/** Render one page's worth of schedule sections (day heading + match rows). */
+function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            {sections.map((sec) => (
-                <div key={sec.key}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {sections.map((sec, si) => (
+                <div key={`${sec.key}-${si}`}>
                     {/* Day heading with a hairline rule. */}
                     <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
                         <span
@@ -1004,22 +1228,18 @@ function ScheduleBody({ matches }: { matches: ScheduledMatch[] }) {
     )
 }
 
-export function SchedulePoster({
-    meta,
-    matches,
-    qrDataUrl,
-    posterRef,
-}: {
-    meta: ExportMeta
-    matches: ScheduledMatch[]
-    qrDataUrl?: string | null
-    posterRef: RefObject<HTMLDivElement | null>
-}) {
-    return (
-        <PosterShell meta={meta} qrDataUrl={qrDataUrl} posterRef={posterRef}>
-            <ScheduleBody matches={matches} />
-        </PosterShell>
-    )
+/** Build the schedule poster page bodies - day sections paginated under the row
+ *  budget. Empty schedule → one placeholder page. */
+function buildSchedulePages(matches: ScheduledMatch[]): ReactNode[] {
+    const sections = buildScheduleSections(matches)
+    if (sections.length === 0) {
+        return [
+            <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
+                Nema utakmica za prikaz.
+            </div>,
+        ]
+    }
+    return paginateScheduleSections(sections).map((secs) => <ScheduleSections sections={secs} />)
 }
 
 /* ── Bracket poster (landscape "Završnica") ────────────────────────────────
@@ -1029,31 +1249,107 @@ export function SchedulePoster({
    pyramid without the SVG connectors. The 3rd-place fixture is a labelled box
    pinned under the final (right-most) column. Pairing text follows the same
    precedence as the schedule poster (real name → predicted → slot code → TBD);
-   finished matches show the result (penalties in parens), the winner bolded. */
+   finished matches show the result (penalties in parens), the winner bolded.
 
-/** One team line inside a bracket-poster match card. */
+   SIZING: the tallest round (first round - osmina = 8, četvrtfinale = 4)
+   drives one shared per-card height so EVERY column fits the landscape body
+   without clipping. Two size tiers scale font / padding down as the bracket
+   grows (normal ≤ 4 matches, compact 5-8); a šesnaestina/R32 (16 first-round
+   matches) is split across two landscape pages by bracket halves instead. */
+
+/** Per-tier sizing for the bracket-poster cards. */
+type BracketTierStyle = {
+    teamFont: number
+    scoreFont: number
+    penFont: number
+    linePadV: number
+    linePadH: number
+    lineGap: number
+    /** Vertical gap between cards in a column. */
+    cardGap: number
+    /** Horizontal gap between round columns. */
+    colGap: number
+    titleFont: number
+    titleMb: number
+    thirdLabelFont: number
+    cardRadius: number
+    lineH: number
+}
+
+/** Two tiers: `normal` for shallow brackets (≤ 4 first-round matches), `compact`
+ *  for a full osmina (5-8) where 8 cards must share one column. */
+const BRACKET_TIERS: Record<"normal" | "compact", BracketTierStyle> = {
+    normal: {
+        teamFont: 12,
+        scoreFont: 13,
+        penFont: 10,
+        linePadV: 5,
+        linePadH: 11,
+        lineGap: 10,
+        cardGap: 12,
+        colGap: 20,
+        titleFont: 12,
+        titleMb: 12,
+        thirdLabelFont: 9,
+        cardRadius: 11,
+        lineH: 1.2,
+    },
+    compact: {
+        teamFont: 9,
+        scoreFont: 9,
+        penFont: 7,
+        linePadV: 2,
+        linePadH: 7,
+        lineGap: 6,
+        cardGap: 4,
+        colGap: 12,
+        titleFont: 10,
+        titleMb: 8,
+        thirdLabelFont: 8,
+        cardRadius: 9,
+        lineH: 1.14,
+    },
+}
+
+/** Available px height for the BracketBody children on a landscape A4 page:
+ *  page 794 − top pad 56 − first-page header ≈ 168 − green rule 59 − footer
+ *  ≈ 89 ≈ 422. Kept deliberately conservative (400) so nothing clips even if
+ *  the tournament name wraps to a second header line; when the real region is
+ *  taller the fixed-height cards simply get spread out by space-around. */
+const BRACKET_BODY_H = 400
+
+/** One team line inside a bracket-poster match card. Sizing is tier-driven and
+ *  the name clamps to `nameLines` so dense first rounds fit the fixed card. */
 function BracketTeamLine({
     name,
     score,
     pen,
     winner,
+    t,
+    nameLines,
 }: {
     name: string
     score: number | null
     pen: number | null
     winner: boolean
+    t: BracketTierStyle
+    nameLines: number
 }) {
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: `${t.lineGap}px`, padding: `${t.linePadV}px ${t.linePadH}px` }}>
             <span
                 style={{
                     flex: 1,
                     minWidth: 0,
-                    fontSize: "13px",
+                    fontSize: `${t.teamFont}px`,
                     fontWeight: winner ? 800 : 600,
                     color: winner ? C.ink : C.inkSoft,
-                    lineHeight: 1.2,
-                    wordBreak: "break-word",
+                    lineHeight: t.lineH,
+                    overflowWrap: "break-word",
+                    display: "-webkit-box",
+                    WebkitLineClamp: nameLines,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
                 }}
             >
                 {name}
@@ -1063,7 +1359,7 @@ function BracketTeamLine({
                     style={{
                         flexShrink: 0,
                         fontFamily: F_MONO,
-                        fontSize: "14px",
+                        fontSize: `${t.scoreFont}px`,
                         fontWeight: winner ? 800 : 600,
                         color: winner ? C.green : C.ink,
                         fontVariantNumeric: "tabular-nums",
@@ -1072,7 +1368,7 @@ function BracketTeamLine({
                 >
                     {score}
                     {pen != null ? (
-                        <span style={{ fontSize: "11px", color: C.muted, fontWeight: 600 }}> ({pen})</span>
+                        <span style={{ fontSize: `${t.penFont}px`, color: C.muted, fontWeight: 600 }}> ({pen})</span>
                     ) : null}
                 </span>
             ) : null}
@@ -1080,15 +1376,24 @@ function BracketTeamLine({
     )
 }
 
-/** One bracket-poster match card (two team lines + optional kickoff). */
+/** One bracket-poster match card (two team lines). Round cards are pinned to a
+ *  shared `cardH` (derived from the busiest round) so every column fits the
+ *  landscape page; the 3rd-place box grows for its own label. Kickoff times are
+ *  deliberately omitted here - they crowd out the tree and live on the schedule
+ *  poster instead - which keeps the card height predictable for the fit math. */
 function BracketPosterCard({
     m,
-    showDay,
+    t,
+    cardH,
+    nameLines,
     final: isFinal,
     third: isThird,
 }: {
     m: BracketMatch
-    showDay: boolean
+    t: BracketTierStyle
+    /** Fixed card height (px) - omitted for the 3rd-place box (natural height). */
+    cardH: number
+    nameLines: number
     final?: boolean
     third?: boolean
 }) {
@@ -1101,41 +1406,28 @@ function BracketPosterCard({
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
     const s1 = finished && hasScore ? m.score1 : null
     const s2 = finished && hasScore ? m.score2 : null
-    const kick = m.kickoffAt ? kickoffLabel(m.kickoffAt, showDay) : null
     return (
         <div
             style={{
                 background: isFinal ? C.greenWash : C.white,
                 border: `1px solid ${isFinal ? C.green : C.line}`,
-                borderRadius: "12px",
+                borderRadius: `${t.cardRadius}px`,
                 overflow: "hidden",
+                height: isThird ? undefined : `${cardH}px`,
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
             }}
         >
-            {kick ? (
-                <div
-                    style={{
-                        fontFamily: F_MONO,
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        letterSpacing: "0.04em",
-                        color: C.muted,
-                        padding: "6px 12px 0",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                    }}
-                >
-                    {kick}
-                </div>
-            ) : null}
-            <BracketTeamLine name={t1} score={s1} pen={hasPens ? m.penalties1 : null} winner={w1} />
-            <div style={{ height: "1px", background: C.line, margin: "0 12px" }} />
-            <BracketTeamLine name={t2} score={s2} pen={hasPens ? m.penalties2 : null} winner={w2} />
+            <BracketTeamLine name={t1} score={s1} pen={hasPens ? m.penalties1 : null} winner={w1} t={t} nameLines={nameLines} />
+            <div style={{ height: "1px", background: C.line, margin: `0 ${t.linePadH}px` }} />
+            <BracketTeamLine name={t2} score={s2} pen={hasPens ? m.penalties2 : null} winner={w2} t={t} nameLines={nameLines} />
             {isThird ? (
                 <div
                     style={{
                         fontFamily: F_MONO,
-                        fontSize: "9px",
+                        fontSize: `${t.thirdLabelFont}px`,
                         fontWeight: 800,
                         letterSpacing: "0.08em",
                         textTransform: "uppercase",
@@ -1162,11 +1454,6 @@ function BracketBody({
     thirdPlace: BracketMatch | null
 }) {
     const lastIdx = cols.length - 1
-    // Multi-day flag computed once from every kickoff in the bracket.
-    const showDay = isMultiDay([
-        ...cols.flat().map((m) => m.kickoffAt),
-        ...(thirdPlace ? [thirdPlace.kickoffAt] : []),
-    ])
 
     if (cols.length === 0) {
         return (
@@ -1176,22 +1463,43 @@ function BracketBody({
         )
     }
 
+    // The busiest round drives sizing: every card shares one height so the
+    // fullest column (osmina = 8) fits the landscape body without clipping.
+    const maxMatches = Math.max(1, ...cols.map((c) => c.length))
+    const t = maxMatches <= 4 ? BRACKET_TIERS.normal : BRACKET_TIERS.compact
+    // Column heading (title text + 6px gap + 2px rule) + its bottom margin.
+    const titleBlockH = t.titleMb + t.titleFont + 8
+    // Space reserved for the 3rd-place row (a card + its label + the 18px gap).
+    const thirdBlockH = thirdPlace ? (maxMatches <= 4 ? 78 : 50) : 0
+    const colsRowH = BRACKET_BODY_H - (thirdPlace ? thirdBlockH + 18 : 0)
+    const matchesRegionH = colsRowH - titleBlockH
+    // Per-card height = the region split across the busiest round's cards (gaps
+    // taken out first). Floored so n cards + gaps never exceed the region.
+    const cardH = Math.max(
+        28,
+        Math.floor((matchesRegionH - (maxMatches - 1) * t.cardGap) / maxMatches),
+    )
+    // Lines a team name may take inside the fixed card: two team lines + a 1px
+    // divider share cardH, each line minus its own vertical padding.
+    const perTeamH = (cardH - 1) / 2
+    const nameLines = Math.max(1, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH)))
+
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "18px", height: "100%" }}>
             {/* Round columns - distribute matches vertically so later rounds sit
                 centred against their feeders. */}
-            <div style={{ flex: 1, display: "flex", gap: "22px", alignItems: "stretch" }}>
+            <div style={{ flex: 1, display: "flex", gap: `${t.colGap}px`, alignItems: "stretch" }}>
                 {cols.map((matches, ci) => (
                     <div
                         key={ci}
                         style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
                     >
                         {/* Column (round) heading. */}
-                        <div style={{ marginBottom: "14px" }}>
+                        <div style={{ marginBottom: `${t.titleMb}px` }}>
                             <div
                                 style={{
                                     fontFamily: F_MONO,
-                                    fontSize: "12px",
+                                    fontSize: `${t.titleFont}px`,
                                     fontWeight: 800,
                                     letterSpacing: "0.08em",
                                     color: ci === lastIdx ? C.green : C.inkSoft,
@@ -1206,18 +1514,18 @@ function BracketBody({
                             </div>
                             <div style={{ height: "2px", background: C.line, borderRadius: "2px", marginTop: "6px" }} />
                         </div>
-                        {/* Matches - even vertical distribution. */}
+                        {/* Matches - even vertical distribution around fixed cards. */}
                         <div
                             style={{
                                 flex: 1,
                                 display: "flex",
                                 flexDirection: "column",
                                 justifyContent: "space-around",
-                                gap: "12px",
+                                gap: `${t.cardGap}px`,
                             }}
                         >
                             {matches.map((m) => (
-                                <BracketPosterCard key={m.matchId} m={m} showDay={showDay} final={ci === lastIdx} />
+                                <BracketPosterCard key={m.matchId} m={m} t={t} cardH={cardH} nameLines={nameLines} final={ci === lastIdx} />
                             ))}
                         </div>
                     </div>
@@ -1228,11 +1536,11 @@ function BracketBody({
                 A mirroring row (empty cells for the earlier rounds) keeps it
                 aligned beneath the right-most column. */}
             {thirdPlace ? (
-                <div style={{ display: "flex", gap: "22px" }}>
+                <div style={{ display: "flex", gap: `${t.colGap}px` }}>
                     {cols.map((_, ci) => (
                         <div key={ci} style={{ flex: 1, minWidth: 0 }}>
                             {ci === lastIdx ? (
-                                <BracketPosterCard m={thirdPlace} showDay={showDay} third />
+                                <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} third />
                             ) : null}
                         </div>
                     ))}
@@ -1242,32 +1550,51 @@ function BracketBody({
     )
 }
 
-export function BracketPoster({
-    meta,
-    rounds,
-    thirdPlace,
-    qrDataUrl,
-    posterRef,
-}: {
-    meta: ExportMeta
-    /** Bracket rounds in play order (earliest → final). */
-    rounds: { title: string; matches: BracketMatch[] }[]
-    thirdPlace: BracketMatch | null
-    qrDataUrl?: string | null
-    posterRef: RefObject<HTMLDivElement | null>
-}) {
+/** Split a full bracket into upper/lower halves for the two-page R32 layout.
+ *  Each non-final round contributes its first half of matches to the upper page
+ *  and its second half to the lower page; the final (and 3rd-place box) land on
+ *  the lower page so the apex reads on a single sheet. */
+function splitBracketHalves(cols: BracketMatch[][], titles: string[]) {
+    const finalIdx = cols.length - 1
+    const upperCols: BracketMatch[][] = []
+    const upperTitles: string[] = []
+    const lowerCols: BracketMatch[][] = []
+    const lowerTitles: string[] = []
+    cols.forEach((matches, r) => {
+        if (r === finalIdx) {
+            // The final (single apex match) belongs only to the lower page.
+            lowerCols.push(matches)
+            lowerTitles.push(titles[r] ?? "")
+            return
+        }
+        const half = Math.ceil(matches.length / 2)
+        upperCols.push(matches.slice(0, half))
+        upperTitles.push(titles[r] ?? "")
+        lowerCols.push(matches.slice(half))
+        lowerTitles.push(titles[r] ?? "")
+    })
+    return { upperCols, upperTitles, lowerCols, lowerTitles }
+}
+
+/** Build the bracket poster page bodies. A shallow / medium bracket (largest
+ *  round ≤ 8) renders on ONE landscape page; a šesnaestina / R32 (16 first-round
+ *  matches, largest round ≥ 9) splits across TWO landscape pages by bracket
+ *  halves so nothing clips - upper half on page 1, lower half + final +
+ *  3rd-place on page 2, reusing the shared multi-page PosterPage furniture. */
+function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
+    const rounds = bracket?.rounds ?? []
     const cols = rounds.map((r) => r.matches)
     const titles = rounds.map((r) => r.title)
-    return (
-        <PosterShell
-            meta={meta}
-            qrDataUrl={qrDataUrl}
-            posterRef={posterRef}
-            orientation="landscape"
-        >
-            <BracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />
-        </PosterShell>
-    )
+    const thirdPlace = bracket?.thirdPlace ?? null
+    const maxMatches = cols.length ? Math.max(...cols.map((c) => c.length)) : 0
+    if (maxMatches >= 9) {
+        const { upperCols, upperTitles, lowerCols, lowerTitles } = splitBracketHalves(cols, titles)
+        return [
+            <BracketBody cols={upperCols} titles={upperTitles} thirdPlace={null} />,
+            <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />,
+        ]
+    }
+    return [<BracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
 }
 
 /* ── capture helpers ───────────────────────────────────────────────────── */
@@ -1300,9 +1627,21 @@ function triggerDownload(dataUrl: string, filename: string) {
     a.remove()
 }
 
+/** Small pause so the browser doesn't swallow rapid back-to-back downloads
+ *  (used between the per-page JPG saves). */
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 /* ── Export dialog ─────────────────────────────────────────────────────── */
 
 type ExportKind = "groups" | "schedule" | "bracket"
+
+/** Schedule status-filter pills (second pill row). "upcoming" keeps everything
+ *  that isn't FINISHED (SCHEDULED / LIVE / no status), "finished" only FINISHED. */
+const STATUS_FILTERS: { id: "all" | "upcoming" | "finished"; label: string }[] = [
+    { id: "all", label: "Sve" },
+    { id: "upcoming", label: "Nadolazeće" },
+    { id: "finished", label: "Završene" },
+]
 
 /** Scaled live preview of the poster + "Preuzmi PDF / JPG" actions. The poster
  *  is rendered once at full A4 size (absolutely positioned inside a scaled
@@ -1332,16 +1671,19 @@ export function ExportDialog({
      *  it every time the dialog reopens. Defaults to "all". */
     initialScope?: string
 }) {
-    const posterRef = useRef<HTMLDivElement>(null)
+    // Each rendered A4 page mounts its node here (index-aligned to pageBodies);
+    // the download loop snapshots each one in turn.
+    const pageRefs = useRef<(HTMLDivElement | null)[]>([])
     const [busy, setBusy] = useState<null | "pdf" | "jpg">(null)
     // The bracket poster is landscape (wide); groups / schedule stay portrait.
     const orientation: Orientation = kind === "bracket" ? "landscape" : "portrait"
     const page = PAGE_PX[orientation]
-    // Natural poster height (px) × scale - drives the preview viewport height.
-    const [scaledH, setScaledH] = useState<number>(page.h)
     // Export scope: "all" (whole poster) or one group / "ko" (završnica). The
     // selector filters the poster's content; it resets to initialScope on open.
     const [scope, setScope] = useState<string>(initialScope ?? "all")
+    // Schedule-only status filter: "all" | "upcoming" (anything not finished) |
+    // "finished". Combines with the scope; resets to "all" on open.
+    const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "finished">("all")
     // Branded QR (club-logo PNG from the backend), fetched when the dialog
     // opens; capture is blocked until it settles so the poster is never
     // snapshotted mid-fetch. On failure it stays null and the poster omits it.
@@ -1352,9 +1694,12 @@ export function ExportDialog({
     const PREVIEW_W = orientation === "landscape" ? 500 : 430
     const scale = PREVIEW_W / page.w
 
-    // Reset to the requested scope whenever the dialog (re)opens.
+    // Reset the scope + status filter whenever the dialog (re)opens.
     useEffect(() => {
-        if (open) setScope(initialScope ?? "all")
+        if (open) {
+            setScope(initialScope ?? "all")
+            setStatusFilter("all")
+        }
     }, [open, initialScope])
 
     // Fetch the branded QR (club logo baked in) when the dialog opens. The PNG
@@ -1430,24 +1775,18 @@ export function ExportDialog({
     // Guard against a stale scope (data changed under it) - fall back to "all".
     const activeScope = scopeOptions.some((s) => s.id === scope) ? scope : "all"
 
-    // Resolve the active scope → poster node + filename suffix.
-    let poster: ReactNode
+    // Resolve the active scope + status filter → paginated page bodies + the
+    // filename suffixes. Each body renders into its own A4 PosterPage below.
+    let pageBodies: ReactNode[]
     let scopeSuffix = ""
+    let statusSuffix = ""
     if (kind === "bracket") {
-        poster = (
-            <BracketPoster
-                meta={meta}
-                rounds={bracket?.rounds ?? []}
-                thirdPlace={bracket?.thirdPlace ?? null}
-                qrDataUrl={qrDataUrl}
-                posterRef={posterRef}
-            />
-        )
+        pageBodies = buildBracketPages(bracket)
     } else if (kind === "groups") {
         const single = activeScope !== "all"
         const shown = single ? (groups ?? []).filter((g) => `g:${g.id}` === activeScope) : groups ?? []
         if (single && shown[0]) scopeSuffix = `-grupa-${slugify(shown[0].name)}`
-        poster = <GroupsPoster meta={meta} groups={shown} single={single} qrDataUrl={qrDataUrl} posterRef={posterRef} />
+        pageBodies = buildGroupsPages(shown, single)
     } else {
         const all = matches ?? []
         let shown = all
@@ -1459,63 +1798,61 @@ export function ExportDialog({
             shown = all.filter((m) => m.stage !== "GROUP")
             scopeSuffix = "-zavrsnica"
         }
-        poster = <SchedulePoster meta={meta} matches={shown} qrDataUrl={qrDataUrl} posterRef={posterRef} />
+        // Status filter: FINISHED = završene; everything else (SCHEDULED / LIVE /
+        // no status) = nadolazeće. Applied on top of the scope filter.
+        if (statusFilter === "finished") {
+            shown = shown.filter((m) => m.status === "FINISHED")
+            statusSuffix = "-zavrsene"
+        } else if (statusFilter === "upcoming") {
+            shown = shown.filter((m) => m.status !== "FINISHED")
+            statusSuffix = "-nadolazece"
+        }
+        pageBodies = buildSchedulePages(shown)
     }
-
-    // Measure the rendered poster so the preview viewport clips to the right
-    // (scaled) height - a tall schedule then scrolls inside the dialog body.
-    useLayoutEffect(() => {
-        if (!open) return
-        const id = requestAnimationFrame(() => {
-            const el = posterRef.current
-            if (el) setScaledH(el.offsetHeight * scale)
-        })
-        return () => cancelAnimationFrame(id)
-    }, [open, kind, groups, matches, bracket, scale, activeScope, qrDataUrl])
+    const pageCount = pageBodies.length
 
     const suffix = kind === "groups" ? "grupe" : kind === "bracket" ? "zavrsnica-bracket" : "raspored"
-    const baseName = `${slugify(meta.tournamentName)}-${suffix}${scopeSuffix}`
+    const baseName = `${slugify(meta.tournamentName)}-${suffix}${scopeSuffix}${statusSuffix}`
     const title = kind === "groups" ? "Preuzmi grupe" : kind === "bracket" ? "Preuzmi završnicu" : "Preuzmi raspored"
 
     async function handleDownload(fmt: "pdf" | "jpg") {
-        const node = posterRef.current
-        // Block capture while the QR is still generating so the poster is never
-        // snapshotted without it (once it settles - ready or failed - proceed).
-        if (!node || busy || qrLoading) return
+        // The mounted page nodes, in order. Block capture while the QR is still
+        // generating so no page is snapshotted without it (once it settles -
+        // ready or failed - proceed).
+        const nodes = pageRefs.current.slice(0, pageCount).filter((n): n is HTMLDivElement => n != null)
+        if (nodes.length === 0 || busy || qrLoading) return
         setBusy(fmt)
         try {
             await ensureFonts()
             if (fmt === "jpg") {
-                const url = await toJpeg(node, {
-                    pixelRatio: 2,
-                    quality: 0.96,
-                    backgroundColor: C.surface,
-                    cacheBust: true,
-                })
-                triggerDownload(url, `${baseName}.jpg`)
+                // One JPG when single-page, else one file per page (`-1`, `-2`, …)
+                // downloaded sequentially with a small gap between clicks.
+                for (let i = 0; i < nodes.length; i++) {
+                    const url = await toJpeg(nodes[i], {
+                        pixelRatio: 2,
+                        quality: 0.96,
+                        backgroundColor: C.surface,
+                        cacheBust: true,
+                    })
+                    const name = nodes.length === 1 ? `${baseName}.jpg` : `${baseName}-${i + 1}.jpg`
+                    triggerDownload(url, name)
+                    if (i < nodes.length - 1) await delay(300)
+                }
             } else {
-                const url = await toPng(node, {
-                    pixelRatio: 2,
-                    backgroundColor: C.surface,
-                    cacheBust: true,
-                })
-                // A4 in the poster's own orientation. The captured PNG shares
-                // the page aspect for a single page; taller content overflows
-                // and is sliced across pages via successive negative-y
-                // placements of the same image.
+                // One jsPDF doc, one A4 page per rendered page node. Every page
+                // node is a fixed A4-aspect box, so the snapshot fills the page.
                 const pdf = new jsPDF({ orientation, unit: "mm", format: "a4" })
-                const pageW = orientation === "landscape" ? 297 : 210
-                const pageH = orientation === "landscape" ? 210 : 297
-                const imgHmm = pageW * (node.offsetHeight / node.offsetWidth)
-                let position = 0
-                let heightLeft = imgHmm
-                pdf.addImage(url, "PNG", 0, position, pageW, imgHmm, undefined, "FAST")
-                heightLeft -= pageH
-                while (heightLeft > 0.5) {
-                    position -= pageH
-                    pdf.addPage()
-                    pdf.addImage(url, "PNG", 0, position, pageW, imgHmm, undefined, "FAST")
-                    heightLeft -= pageH
+                const pageWmm = orientation === "landscape" ? 297 : 210
+                for (let i = 0; i < nodes.length; i++) {
+                    if (i > 0) pdf.addPage()
+                    const node = nodes[i]
+                    const url = await toPng(node, {
+                        pixelRatio: 2,
+                        backgroundColor: C.surface,
+                        cacheBust: true,
+                    })
+                    const imgHmm = pageWmm * (node.offsetHeight / node.offsetWidth)
+                    pdf.addImage(url, "PNG", 0, 0, pageWmm, imgHmm, undefined, "FAST")
                 }
                 pdf.save(`${baseName}.pdf`)
             }
@@ -1560,7 +1897,7 @@ export function ExportDialog({
                                 all / a single group / završnica. Hidden when there is
                                 only one possible scope. */}
                             {scopeOptions.length > 1 && (
-                                <Flex gap="2" wrap="wrap" justify="center" mb="4">
+                                <Flex gap="2" wrap="wrap" justify="center" mb="3">
                                     {scopeOptions.map((s) => (
                                         <Button
                                             key={s.id}
@@ -1576,31 +1913,93 @@ export function ExportDialog({
                                     ))}
                                 </Flex>
                             )}
-                            {/* Scaled preview - the real full-size poster lives
-                                inside, absolutely positioned so the viewport
-                                clips it to the scaled dimensions. */}
-                            <Box
-                                mx="auto"
-                                position="relative"
-                                width={`${PREVIEW_W}px`}
-                                maxW="100%"
-                                height={`${scaledH}px`}
-                                overflow="hidden"
-                                borderWidth="1px"
-                                borderColor="border"
-                                rounded="lg"
-                                shadow="sm"
-                                css={{ background: C.surface }}
-                            >
-                                <Box
-                                    position="absolute"
-                                    top="0"
-                                    left="0"
-                                    style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+                            {/* Status filter (schedule only) - a second pill row.
+                                Set clearly apart from the scope row above: a mono
+                                "PRIKAŽI:" label, lighter ghost pills (smaller than
+                                the solid scope pills) and a hairline divider so the
+                                two rows never read as one. */}
+                            {kind === "schedule" && (
+                                <Flex
+                                    align="center"
+                                    justify="center"
+                                    gap="1.5"
+                                    wrap="wrap"
+                                    mb="4"
+                                    pt="3"
+                                    borderTopWidth={scopeOptions.length > 1 ? "1px" : "0"}
+                                    borderColor="border"
                                 >
-                                    {poster}
-                                </Box>
-                            </Box>
+                                    <Text
+                                        as="span"
+                                        fontFamily="mono"
+                                        fontSize="10px"
+                                        fontWeight={700}
+                                        letterSpacing="0.12em"
+                                        textTransform="uppercase"
+                                        color="fg.muted"
+                                        mr="1"
+                                    >
+                                        Prikaži:
+                                    </Text>
+                                    {STATUS_FILTERS.map((s) => (
+                                        <Button
+                                            key={s.id}
+                                            size="xs"
+                                            h="6"
+                                            px="2.5"
+                                            fontSize="11px"
+                                            rounded="full"
+                                            variant={s.id === statusFilter ? "subtle" : "ghost"}
+                                            colorPalette="brand"
+                                            disabled={!!busy}
+                                            onClick={() => setStatusFilter(s.id)}
+                                        >
+                                            {s.label}
+                                        </Button>
+                                    ))}
+                                </Flex>
+                            )}
+                            {/* Scaled preview - every page is stacked vertically, each
+                                the real full-size PosterPage node (absolutely
+                                positioned + scaled) so the download captures exactly
+                                what is previewed. */}
+                            <Flex direction="column" align="center" gap="4">
+                                {pageBodies.map((body, i) => (
+                                    <Box
+                                        key={i}
+                                        position="relative"
+                                        width={`${PREVIEW_W}px`}
+                                        maxW="100%"
+                                        height={`${page.h * scale}px`}
+                                        overflow="hidden"
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        rounded="lg"
+                                        shadow="sm"
+                                        css={{ background: C.surface }}
+                                    >
+                                        <Box
+                                            position="absolute"
+                                            top="0"
+                                            left="0"
+                                            style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+                                        >
+                                            <PosterPage
+                                                meta={meta}
+                                                qrDataUrl={qrDataUrl}
+                                                nodeRef={(el) => {
+                                                    pageRefs.current[i] = el
+                                                }}
+                                                orientation={orientation}
+                                                pageIndex={i}
+                                                pageCount={pageCount}
+                                            >
+                                                {body}
+                                            </PosterPage>
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Flex>
                         </Dialog.Body>
                         <Dialog.Footer gap="3">
                             <Button

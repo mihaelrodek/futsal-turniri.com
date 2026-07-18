@@ -62,6 +62,28 @@ public class Matches {
     @Column(name = "next_slot")
     private Integer nextSlot;
 
+    /**
+     * Persisted position-pairing override for a knockout slot - the position-
+     * based manual pairing ("A1 vs B2") an organizer can define at any time after
+     * the groups are drawn, even before the group stage finishes. The value is a
+     * position token: a group placement ("A1", "D2") or a best-third rank ("3-1").
+     * Null = the default computed layout (classic cross / constraint seeding).
+     * Round-one matches carry the real pairs' sources; a round-one bye has no
+     * skeleton match of its own, so its surviving position is parked on the
+     * next-round landing slot it advances onto (that slot is therefore the only
+     * later-round slot that ever carries a source). While the groups are still
+     * being played the token drives the predicted slot labels, and it is resolved
+     * into a real team when the bracket is drawn. Wiped whenever the knockout
+     * matches are cleared (a reset drops the rows, so the sources vanish with them).
+     */
+    @Column(name = "slot1_source", length = 16)
+    private String slot1Source;
+
+    /** Persisted position-pairing override for knockout slot 2.
+     *  See {@link #slot1Source}. */
+    @Column(name = "slot2_source", length = 16)
+    private String slot2Source;
+
     /** Penalty-shootout score - set only when a knockout match is level after regulation. */
     @Column(name = "penalties1")
     private Integer penalties1;

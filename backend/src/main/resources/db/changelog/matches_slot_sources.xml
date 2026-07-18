@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Position-pairing override for round-one knockout slots. Lets a
+        GROUPS_KNOCKOUT organizer define the round-one pairings BY POSITION
+        ("A1 vs B2" instead of the default classic cross A1-D2) at any time
+        after the groups are drawn - even before the group stage finishes.
+
+        Each column holds a position token for one slot: a group placement
+        ("A1", "D2") or a best-third rank ("3-1"). Nullable, no DEFAULT: NULL
+        means "use the default computed layout" (classic cross / constraint
+        seeding), so every existing match keeps its current behaviour. Only
+        round-one matches ever carry a value; later rounds are always NULL.
+        The tokens drive the predicted labels while the groups are still being
+        played and are resolved into real teams when the bracket is drawn.
+    -->
+    <changeSet id="2026-07-18-matches-slot-sources" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="slot1_source" type="varchar(16)"/>
+            <column name="slot2_source" type="varchar(16)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

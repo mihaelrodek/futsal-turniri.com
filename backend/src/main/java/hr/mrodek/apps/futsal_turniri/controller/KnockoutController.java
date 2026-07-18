@@ -158,6 +158,25 @@ public class KnockoutController {
         return dto;
     }
 
+    /** Define the round-one knockout pairings BY POSITION ("A1 vs B2") for a
+     *  GROUPS_KNOCKOUT tournament - allowed any time after the groups are drawn,
+     *  even before the group stage finishes. The template persists on the
+     *  skeleton, drives the predicted labels and resolves into real teams when
+     *  the bracket is drawn. 409 {@code GROUPS_NOT_DRAWN} / {@code
+     *  BRACKET_ALREADY_DRAWN}. Owner/admin. */
+    @POST
+    @Path("/manual-positions")
+    @Authenticated
+    @Transactional
+    public BracketDto manualPositions(
+            @PathParam("uuid") String uuid,
+            hr.mrodek.apps.futsal_turniri.dtos.ManualPositionsRequest body) {
+        Tournaments t = assertCanEdit(uuid);
+        BracketDto dto = knockoutService.setManualPositions(t, body);
+        if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), null);
+        return dto;
+    }
+
     /** Build (or rebuild) the bracket from organizer-supplied first-round
      *  pairings (the manual draw). */
     @POST

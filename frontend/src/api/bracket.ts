@@ -109,6 +109,27 @@ export async function generateBracketManual(
     return data
 }
 
+/** One round-one match in a POSITION draw (GROUPS_KNOCKOUT): each side is a
+ *  position label ("A1", "B2", "3-1") or null for a bye. */
+export type ManualPositionPairing = { slot1: string | null; slot2: string | null }
+
+/** Persist the organizer's position-based first-round pairings. The skeleton is
+ *  re-labelled from these (bracket + schedule + sketch labels update), and the
+ *  positions resolve into real teams at "Potvrdi ždrijeb". Allowed anytime after
+ *  the groups are drawn; the backend answers 409 BRACKET_ALREADY_DRAWN once real
+ *  teams exist (reset the bracket first). */
+export async function setManualBracketPositions(
+    tournamentUuid: string,
+    pairs: ManualPositionPairing[],
+): Promise<Bracket> {
+    const { data } = await http.post<Bracket>(
+        `/tournaments/${tournamentUuid}/bracket/manual-positions`,
+        { pairs },
+        { successMessage: "Parovi završnice su spremljeni." } as any,
+    )
+    return data
+}
+
 /** Record a knockout-match result; the bracket is returned with the winner advanced. */
 export async function recordKnockoutResult(
     tournamentUuid: string,

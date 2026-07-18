@@ -202,6 +202,10 @@ export default function TournamentDetailsPage() {
     })()
     const [section, setSection] = useState<SectionKey>(initialSection)
     const [drawSub, setDrawSub] = useState<DrawSubKey>(initialDrawSub)
+    // Set by the bracket's position-save step: opens the knockout-times dialog
+    // once when the Raspored tab mounts (cleared as soon as ScheduleTab consumes
+    // it) so the organizer confirms only the završnica kickoffs.
+    const [knockoutTimesRequest, setKnockoutTimesRequest] = useState(false)
     // Whether the URL explicitly named a tab at mount. If so we respect it and
     // never auto-switch to the draw below (a shared ?tab= link wins).
     const hadExplicitTabRef = useRef(searchParams.get("tab") != null)
@@ -1180,6 +1184,10 @@ export default function TournamentDetailsPage() {
                                     tournamentStarted={tournamentStarted}
                                     tournamentName={t.name}
                                     format={t.format}
+                                    onGoToSchedule={(openPlanner) => {
+                                        if (openPlanner) setKnockoutTimesRequest(true)
+                                        setSection("raspored")
+                                    }}
                                     exportMeta={{
                                         tournamentName: t.name,
                                         organizerName: t.organizerName ?? t.createdByName ?? null,
@@ -1203,6 +1211,8 @@ export default function TournamentDetailsPage() {
                         focusMatchId={focusMatchId}
                         format={t.format}
                         startAt={t.startAt}
+                        autoOpenKnockoutTimes={knockoutTimesRequest}
+                        onAutoOpenKnockoutTimesConsumed={() => setKnockoutTimesRequest(false)}
                         exportMeta={{
                             tournamentName: t.name,
                             organizerName: t.organizerName ?? t.createdByName ?? null,

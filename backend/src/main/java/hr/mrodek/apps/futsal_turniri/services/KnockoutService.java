@@ -7,6 +7,8 @@ import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupMatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupStandingRowDto;
 import hr.mrodek.apps.futsal_turniri.dtos.KnockoutResultRequest;
+import hr.mrodek.apps.futsal_turniri.dtos.ManualPositionsRequest;
+import hr.mrodek.apps.futsal_turniri.dtos.ThirdPlacedTableDto;
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
@@ -203,6 +205,32 @@ public class KnockoutService {
                 .setParameter(3, MatchStatus.FINISHED)
                 .getResultList();
 
+        // Capture any position-pairing sources the organizer set on the skeleton
+        // BEFORE the bulk-delete below wipes those rows - the same scalar-
+        // projection reasoning as the kickoffs above (loading the soon-to-be-
+        // deleted knockout Matches as managed entities would leave them in the
+        // persistence context and break the next autoflush). Both the round-one
+        // real-pair sources AND the next-round bye-survivor sources are captured;
+        // when present they WIN over the classic/constraint seeding: the bracket
+        // is built from the organizer's exact position pairing (byes included).
+        Map<MatchStage, List<String[]>> srcByStage = sourcesByStage(
+                matchesRepo.getEntityManager()
+                        .createQuery(
+                                "select m.stage, m.slot1Source, m.slot2Source from Matches m "
+                                        + "where m.tournament = ?1 and m.stage <> ?2 order by m.id",
+                                Object[].class)
+                        .setParameter(1, t)
+                        .setParameter(2, MatchStage.GROUP)
+                        .getResultList());
+        List<MatchStage> koStages = koStagesInOrder(srcByStage);
+        List<String[]> roundOneSources = koStages.isEmpty()
+                ? List.of() : srcByStage.get(koStages.get(0));
+        List<String[]> nextRoundSources = koStages.size() >= 2
+                ? srcByStage.get(koStages.get(1)) : List.of();
+        boolean hasSources = java.util.stream.Stream
+                .concat(roundOneSources.stream(), nextRoundSources.stream())
+                .anyMatch(s -> s[0] != null || s[1] != null);
+
         // Wipe any prior knockout matches and their now-empty rounds.
         matchesRepo.delete("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
         matchesRepo.flush();
@@ -254,12 +282,21 @@ public class KnockoutService {
             }
         }
 
-        // Seed round one. GROUPS_KNOCKOUT gets the deterministic group
-        // cross-pairing; KNOCKOUT_ONLY the plain standard seeding (seed s vs
-        // seed n+1-s). Seeds beyond the qualifier count are byes.
-        List<Teams[]> roundOnePairs = t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
-                ? groupRoundOnePairs(t, qs, byeTeamIds, n)
-                : pairsFromSeedOrder(qs, n);
+        // Seed round one. A persisted position pairing (the position-based
+        // manual draw) WINS: build round one from the organizer's exact
+        // sources, honoring their pairing/order and skipping the classic /
+        // constraint algorithms entirely. Otherwise GROUPS_KNOCKOUT gets the
+        // deterministic group cross-pairing and KNOCKOUT_ONLY the plain standard
+        // seeding (seed s vs seed n+1-s). Seeds beyond the qualifier count are
+        // byes.
+        List<Teams[]> roundOnePairs;
+        if (hasSources) {
+            roundOnePairs = pairsFromSources(t, roundOneSources, nextRoundSources, n);
+        } else if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
+            roundOnePairs = groupRoundOnePairs(t, qs, byeTeamIds, n);
+        } else {
+            roundOnePairs = pairsFromSeedOrder(qs, n);
+        }
         List<Matches> round1 = byRound.get(0);
         for (int i = 0; i < round1.size(); i++) {
             round1.get(i).setTeam1(roundOnePairs.get(i)[0]);
@@ -645,6 +682,11 @@ public class KnockoutService {
      * {@link #generateBracket}, but round one is seeded exactly as given
      * instead of auto cross-seeding - no group/qualifier logic, no same-group
      * repair (the organizer drew the pairs deliberately).
+     *
+     * <p>Switching to an explicit team draw discards any position-pairing
+     * override: the wipe below deletes every knockout match (including a
+     * skeleton carrying {@code slot*Source} tokens) and the rebuilt tree starts
+     * with null sources, so the round-one position sources are cleared.
      */
     @Transactional
     public BracketDto generateBracketManual(Tournaments t, ManualBracketRequest req) {
@@ -787,6 +829,445 @@ public class KnockoutService {
                     "Team appears in more than one match: " + tm.getName());
         }
         return tm;
+    }
+
+    /* ─────────────── position-based manual pairing ────────────────── */
+
+    /**
+     * Define the round-one knockout pairings BY POSITION ("A1 vs B2") for a
+     * GROUPS_KNOCKOUT tournament - the position-based manual draw. Persists an
+     * organizer's custom first-round template on the skeleton so it can be set
+     * at ANY time after the groups are drawn, even before the group stage
+     * finishes: the classic default is the mirror cross (A1-D2), but some
+     * organizers pair differently (A1-B2), and this lets them say so up front.
+     *
+     * <p>The request carries the FULL bracket layout: n/2 pairs for a bracket of
+     * size {@code n = nextPowerOfTwo(qualifierCount)}, byes ("slobodan prolaz",
+     * a pair with exactly one null slot) included as their own pairs. Real pairs
+     * (both slots set) are persisted onto the round-one skeleton matches (which
+     * hold only the real matches - byes are dropped from the skeleton); each bye
+     * survivor is persisted onto the next-round landing slot no round-one match
+     * feeds (a bye's winner arrives there), so there is somewhere to keep it even
+     * though no round-one match exists for the bye.
+     *
+     * <p>The template drives every predicted-label display (bracket, schedule,
+     * sketch) via {@link #computeSlotLabels} - the position tokens win over the
+     * computed classic layout on ANY round's slot, so a bye's landing slot shows
+     * its position (e.g. "B2") directly on the quarter-final card - and is
+     * resolved into real teams when the bracket is drawn ({@link #generateBracket}
+     * via {@link #pairsFromSources}). It survives only as long as the skeleton
+     * does: a reset wipes the knockout matches and the sources with them.
+     *
+     * <p>Rejections (409, code in the entity body): {@code GROUPS_NOT_DRAWN}
+     * when no groups exist yet; {@code BRACKET_ALREADY_DRAWN} once the bracket
+     * carries real teams (the organizer must reset first);
+     * {@code SKELETON_SHAPE_MISMATCH} when the persisted skeleton no longer
+     * matches the planned shape (real-pair or bye counts disagree with the
+     * skeleton - a redraw reconciles it). Bad pairing shape / labels are 400s:
+     * wrong pair count, wrong bye count, a both-null pair, an invalid or
+     * duplicated position label, or labels not covering every qualifier.
+     */
+    @Transactional
+    public BracketDto setManualPositions(Tournaments t, ManualPositionsRequest req) {
+        if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
+            throw new BadRequestException(
+                    "Position pairing is only for group + knockout tournaments");
+        }
+        if (req == null || req.pairs() == null || req.pairs().isEmpty()) {
+            throw new BadRequestException("No pairings provided");
+        }
+        // Groups must be drawn (standings exist). The group matches may still be
+        // unplayed - defining the pairing early is the whole point.
+        List<GroupDto> groups = groupStageService.standings(t.getId());
+        if (groups.isEmpty()) {
+            throw conflict("GROUPS_NOT_DRAWN");
+        }
+        // Can't redefine positions once the bracket has been drawn to real
+        // teams - the organizer resets the bracket first.
+        if (bracketHasRealTeams(t)) {
+            throw conflict("BRACKET_ALREADY_DRAWN");
+        }
+
+        // Shape: the FULL bracket layout - one pair per round-one slot pair of a
+        // bracket of size n = nextPowerOfTwo(qualifierCount), i.e. n/2 pairs (the
+        // same n the generator derives). Byes ("slobodan prolaz", exactly one
+        // null slot) are included as their own pairs and must number n - q; a
+        // pair with BOTH slots null is meaningless. The non-null labels must
+        // cover every qualifier position exactly once.
+        int qCount = predictedQualifiers(t);
+        if (qCount < 2) {
+            throw new BadRequestException("Too few qualifiers for a knockout bracket");
+        }
+        int n = nextPowerOfTwo(qCount);
+        int expectedPairs = n / 2;
+        if (req.pairs().size() != expectedPairs) {
+            throw new BadRequestException(
+                    "Expected " + expectedPairs + " pairings, got " + req.pairs().size());
+        }
+        int expectedByes = n - qCount;
+
+        // Validate every non-null label (valid grammar for THIS tournament) and
+        // that no position is used twice; count labels + byes for the totals.
+        Set<String> seen = new LinkedHashSet<>();
+        int labelCount = 0;
+        int byeCount = 0;
+        for (ManualPositionsRequest.Pair p : req.pairs()) {
+            boolean s1Null = p.slot1() == null;
+            boolean s2Null = p.slot2() == null;
+            if (s1Null && s2Null) {
+                throw new BadRequestException("A pairing cannot have two empty slots");
+            }
+            if (s1Null || s2Null) byeCount++; // exactly one null → a bye pair
+            for (String label : new String[]{p.slot1(), p.slot2()}) {
+                if (label == null) continue; // bye slot
+                if (parseSlotSource(t, groups, label) == null) {
+                    throw new BadRequestException("Invalid position label: " + label);
+                }
+                if (!seen.add(label)) {
+                    throw new BadRequestException("Position used more than once: " + label);
+                }
+                labelCount++;
+            }
+        }
+        if (byeCount != expectedByes) {
+            throw new BadRequestException(
+                    "Expected " + expectedByes + " bye pairing(s), got " + byeCount);
+        }
+        if (labelCount != qCount) {
+            throw new BadRequestException(
+                    "Positions must cover every qualifier (" + qCount + "), got " + labelCount);
+        }
+
+        // Hang the template on the skeleton (create it if the multi-day schedule
+        // hasn't already reserved one).
+        if (matchesRepo.count("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP) == 0) {
+            createSkeleton(t);
+            matchesRepo.flush();
+        }
+
+        // Clear stale sources on EVERY knockout match (any round) before writing
+        // - a re-save must not leave an orphaned token on a slot it no longer
+        // uses (bye survivors live on next-round slots, so a shrinking bye set
+        // must vacate them).
+        List<Matches> allKo = matchesRepo.list(
+                "tournament = ?1 and stage <> ?2 order by id", t, MatchStage.GROUP);
+        for (Matches m : allKo) {
+            m.setSlot1Source(null);
+            m.setSlot2Source(null);
+        }
+
+        // Split the submitted layout into REAL pairs (both slots set → a played
+        // round-one match) and BYE survivors (the single non-null side of a bye
+        // pair), each kept in layout order.
+        List<ManualPositionsRequest.Pair> realPairs = new ArrayList<>();
+        List<String> byeSurvivors = new ArrayList<>();
+        for (ManualPositionsRequest.Pair p : req.pairs()) {
+            if (p.slot1() != null && p.slot2() != null) {
+                realPairs.add(p);
+            } else {
+                byeSurvivors.add(p.slot1() != null ? p.slot1() : p.slot2());
+            }
+        }
+
+        // Real pairs → the round-one skeleton matches, id order (the skeleton
+        // holds ONLY the real matches - byes were dropped from it). A count
+        // disagreement means the persisted skeleton no longer matches the
+        // planned shape (e.g. the qualifier count shifted): 409, redraw needed.
+        List<Matches> round1 = roundOneKnockoutMatches(t);
+        if (realPairs.size() != round1.size()) {
+            throw conflict("SKELETON_SHAPE_MISMATCH");
+        }
+        for (int i = 0; i < round1.size(); i++) {
+            round1.get(i).setSlot1Source(realPairs.get(i).slot1());
+            round1.get(i).setSlot2Source(realPairs.get(i).slot2());
+        }
+
+        // Bye survivors → the next-round landing slots that NO round-one match
+        // feeds (a bye's winner arrives on exactly such a feeder-less slot).
+        // Collected in (match id, slot) order and matched to the bye survivors
+        // in layout order; the inverse mapping in pairsFromSources rebuilds each
+        // bye at its layout position from the slot that carries it.
+        List<SlotRef> feederLess = feederlessNextRoundSlots(t, round1);
+        if (feederLess.size() != byeSurvivors.size()) {
+            throw conflict("SKELETON_SHAPE_MISMATCH");
+        }
+        for (int i = 0; i < byeSurvivors.size(); i++) {
+            SlotRef ref = feederLess.get(i);
+            if (ref.slot() == 1) ref.match().setSlot1Source(byeSurvivors.get(i));
+            else ref.match().setSlot2Source(byeSurvivors.get(i));
+        }
+
+        // A changed template invalidates any prior confirmation - the organizer
+        // re-confirms once the (re)drawn bracket materializes.
+        t.setBracketConfirmedAt(null);
+        return bracket(t.getId());
+    }
+
+    /** The tournament's round-one knockout matches, id-ordered. Round one is
+     *  the largest knockout stage present (the entry round) - the same entry
+     *  the label helper picks, so the two agree on which matches are round one. */
+    private List<Matches> roundOneKnockoutMatches(Tournaments t) {
+        List<Matches> ko = matchesRepo.list(
+                "tournament = ?1 and stage <> ?2 order by id", t, MatchStage.GROUP);
+        if (ko.isEmpty()) return List.of();
+        Map<MatchStage, List<Matches>> byStage = new EnumMap<>(MatchStage.class);
+        for (Matches m : ko) byStage.computeIfAbsent(m.getStage(), k -> new ArrayList<>()).add(m);
+        MatchStage[] roundOrder = {
+                MatchStage.ROUND_OF_32, MatchStage.ROUND_OF_16,
+                MatchStage.QUARTERFINAL, MatchStage.SEMIFINAL, MatchStage.FINAL,
+        };
+        for (MatchStage s : roundOrder) {
+            if (byStage.containsKey(s)) return byStage.get(s);
+        }
+        return List.of();
+    }
+
+    /** A concrete knockout match slot: the match plus which side (1 or 2). */
+    private record SlotRef(Matches match, int slot) {}
+
+    /**
+     * The next-round landing slots that NO round-one match feeds, in
+     * {@code (match id, slot)} order - exactly the slots on which a round-one
+     * bye's winner arrives (a bye is dropped from the skeleton, so its next-round
+     * slot has no feeder). Derived from the actual {@code nextMatch}/{@code
+     * nextSlot} graph the skeleton was linked with, NOT arithmetic: the round-one
+     * matches announce which next-round match+slot each feeds, and every other
+     * slot of that same (second-largest) stage is feeder-less. Empty when there
+     * is no next round (a size-2 bracket, where round one IS the final).
+     */
+    private List<SlotRef> feederlessNextRoundSlots(Tournaments t, List<Matches> round1) {
+        Matches anyNext = null;
+        for (Matches m : round1) {
+            if (m.getNextMatch() != null) { anyNext = m.getNextMatch(); break; }
+        }
+        if (anyNext == null) return List.of(); // n == 2: no next round
+        MatchStage nextStage = anyNext.getStage();
+        // Every match of the next-round stage (id order), including ones fed only
+        // by byes - those simply have both slots feeder-less.
+        List<Matches> nextRound = matchesRepo.list(
+                "tournament = ?1 and stage = ?2 order by id", t, nextStage);
+        Set<String> fed = new HashSet<>();
+        for (Matches m : round1) {
+            if (m.getNextMatch() != null && m.getNextSlot() != null) {
+                fed.add(m.getNextMatch().getId() + ":" + m.getNextSlot());
+            }
+        }
+        List<SlotRef> out = new ArrayList<>();
+        for (Matches m : nextRound) {
+            for (int slot = 1; slot <= 2; slot++) {
+                if (!fed.contains(m.getId() + ":" + slot)) out.add(new SlotRef(m, slot));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Bucket a {@code (stage, slot1Source, slot2Source)} scalar projection of a
+     * tournament's knockout matches by stage, each bucket keeping the projection
+     * order (id order) - so the entry round (largest stage) holds the round-one
+     * real-pair sources and the next stage holds the bye-survivor sources on
+     * their landing slots. Both are read back by {@link #pairsFromSources} when
+     * the bracket is drawn.
+     */
+    private static Map<MatchStage, List<String[]>> sourcesByStage(List<Object[]> koStageRows) {
+        Map<MatchStage, List<String[]>> byStage = new EnumMap<>(MatchStage.class);
+        for (Object[] row : koStageRows) {
+            MatchStage st = (MatchStage) row[0];
+            byStage.computeIfAbsent(st, k -> new ArrayList<>())
+                    .add(new String[]{(String) row[1], (String) row[2]});
+        }
+        return byStage;
+    }
+
+    /** The knockout rounds in entry-first order ({@code ROUND_OF_32 …FINAL}),
+     *  filtered to those actually present in {@code byStage}. Index 0 is the
+     *  round-one (entry) stage, index 1 the next round, etc. THIRD_PLACE is not
+     *  a tree round and is excluded. */
+    private static List<MatchStage> koStagesInOrder(Map<MatchStage, List<String[]>> byStage) {
+        MatchStage[] roundOrder = {
+                MatchStage.ROUND_OF_32, MatchStage.ROUND_OF_16,
+                MatchStage.QUARTERFINAL, MatchStage.SEMIFINAL, MatchStage.FINAL,
+        };
+        List<MatchStage> present = new ArrayList<>();
+        for (MatchStage s : roundOrder) if (byStage.containsKey(s)) present.add(s);
+        return present;
+    }
+
+    /** A parsed slot-source token: EITHER a group placement ({@code group} +
+     *  0-based {@code placeIndex}) OR a best-third rank (1-based
+     *  {@code thirdRank}, with {@code group} null). */
+    private record ParsedSource(GroupDto group, int placeIndex, int thirdRank) {
+        boolean isThird() { return group == null; }
+    }
+
+    /**
+     * Parse a slot-source label into its meaning, or null when it is not a
+     * valid position for THIS tournament. The single source of truth for the
+     * position grammar - both the validator ({@link #setManualPositions}) and
+     * the resolvers go through it, so an accepted label is always resolvable:
+     *
+     * <ul>
+     *   <li><b>Group placement</b> ("A1", "D2"): reconstructed by matching the
+     *       label against the very {@link #groupSlotLabel} the classic labels
+     *       emit, for every place up to that group's {@code effectiveAdvance} -
+     *       so a place beyond a group's advance count (e.g. "A3" when 2 advance)
+     *       is rejected.</li>
+     *   <li><b>Best-third token</b> ("3-&lt;rank&gt;"): valid only while
+     *       {@code bestThirdCount > 0} and {@code 1 <= rank <= bestThirdCount}.</li>
+     * </ul>
+     */
+    private ParsedSource parseSlotSource(Tournaments t, List<GroupDto> groups, String label) {
+        if (label == null) return null;
+        // Best-third token "3-<rank>". A group-position label never contains a
+        // hyphen, and a group named "3" would render "31"/"32" (no hyphen), so
+        // the "3-" prefix is unambiguous.
+        if (label.startsWith("3-")) {
+            int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
+            if (bestThird <= 0) return null;
+            int rank;
+            try {
+                rank = Integer.parseInt(label.substring(2));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (rank < 1 || rank > bestThird) return null;
+            return new ParsedSource(null, -1, rank);
+        }
+        // Group placement: match against each group's canonical slot labels.
+        for (GroupDto g : groups) {
+            for (int place = 1; place <= g.effectiveAdvance(); place++) {
+                if (groupSlotLabel(g, place).equals(label)) {
+                    return new ParsedSource(g, place - 1, -1);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Predicted team name for a slot source, or null when it can't be resolved
+     * yet. A group placement resolves once THAT group is finished (early, per
+     * group - the same {@link #groupPredictedName} path the classic labels
+     * use); a best-third token resolves only once EVERY group is finished (the
+     * cross-group third table isn't final until then).
+     */
+    private String resolveSourceName(Tournaments t, List<GroupDto> groups, String label) {
+        ParsedSource ps = parseSlotSource(t, groups, label);
+        if (ps == null) return null;
+        if (ps.isThird()) {
+            for (GroupDto g : groups) if (!groupComplete(g)) return null;
+            for (ThirdPlacedTableDto.Row row : groupStageService.thirdPlacedTable(t).rows()) {
+                if (row.rank() == ps.thirdRank()) return row.standing().teamName();
+            }
+            return null;
+        }
+        return groupPredictedName(ps.group(), ps.placeIndex());
+    }
+
+    /**
+     * Resolve a slot source to a real team using the FINAL group standings /
+     * best-third table (called at draw time, when the group stage is complete).
+     * A group placement reads that group's standings row; a best-third token
+     * reads the ranked third table. Null when the token can't be resolved.
+     */
+    private Teams resolveSourceTeam(
+            Tournaments t, List<GroupDto> groups, ThirdPlacedTableDto thirdTable,
+            Map<Long, Teams> teamById, String label) {
+        ParsedSource ps = parseSlotSource(t, groups, label);
+        if (ps == null) return null;
+        if (ps.isThird()) {
+            for (ThirdPlacedTableDto.Row row : thirdTable.rows()) {
+                if (row.rank() == ps.thirdRank()) return teamById.get(row.standing().teamId());
+            }
+            return null;
+        }
+        if (ps.group().standings().size() <= ps.placeIndex()) return null;
+        return teamById.get(ps.group().standings().get(ps.placeIndex()).teamId());
+    }
+
+    /**
+     * The FULL round-one layout ({@code n/2} pairs) rebuilt from the organizer's
+     * persisted position sources - the inverse of the persistence in
+     * {@link #setManualPositions}. Two source lists feed it, both in id order:
+     *
+     * <ul>
+     *   <li>{@code roundOneSources} - the round-one (entry stage) real-pair
+     *       sources, one {@code {slot1, slot2}} per real match.</li>
+     *   <li>{@code nextRoundSources} - the next stage's slot sources, where a
+     *       bye survivor was parked on the landing slot no round-one match feeds.
+     *       Next-round match {@code j} (id order) maps to full-layout positions
+     *       {@code 2j} (slot 1) and {@code 2j+1} (slot 2) - the exact inverse of
+     *       the {@code nextMatch}/{@code nextSlot} linking the tree is built with
+     *       ({@code round-one position p → nextMatch p/2, nextSlot p%2+1}), so a
+     *       bye placed here auto-advances back onto the very slot that carried
+     *       it.</li>
+     * </ul>
+     *
+     * <p>Each bye becomes a {@code {team, null}} pair at its derived position; the
+     * remaining (non-bye) positions take the round-one real pairs in order. The
+     * caller's existing tree build then auto-advances every single-team pair. A
+     * non-null source that can't be resolved to a team aborts the draw with 409
+     * {@code POSITIONS_UNRESOLVED}.
+     */
+    private List<Teams[]> pairsFromSources(
+            Tournaments t, List<String[]> roundOneSources,
+            List<String[]> nextRoundSources, int n) {
+        List<GroupDto> groups = groupStageService.standings(t.getId());
+        ThirdPlacedTableDto thirdTable = groupStageService.thirdPlacedTable(t);
+        Map<Long, Teams> teamById = teamsRepo.list("tournament.id", t.getId())
+                .stream().collect(Collectors.toMap(Teams::getId, x -> x));
+
+        int half = n / 2;
+        Teams[][] layout = new Teams[half][];
+        // Byes: each next-round slot carrying a source is the landing slot of a
+        // round-one bye; place that bye back at the round-one position feeding it.
+        for (int j = 0; j < nextRoundSources.size(); j++) {
+            String[] slots = nextRoundSources.get(j);
+            for (int k = 1; k <= 2; k++) {
+                String src = slots[k - 1];
+                if (src == null) continue;
+                int pos = 2 * j + (k - 1);
+                if (pos >= half) continue; // defensive: skeleton wider than n
+                Teams tm = resolveSourceOrThrow(t, groups, thirdTable, teamById, src);
+                layout[pos] = new Teams[]{tm, null};
+            }
+        }
+        // Real pairs fill the positions the byes left open, in order.
+        int ri = 0;
+        for (int pos = 0; pos < half; pos++) {
+            if (layout[pos] != null) continue; // a bye already sits here
+            String[] src = ri < roundOneSources.size()
+                    ? roundOneSources.get(ri) : new String[]{null, null};
+            ri++;
+            Teams a = resolveSourceOrThrow(t, groups, thirdTable, teamById, src[0]);
+            Teams b = resolveSourceOrThrow(t, groups, thirdTable, teamById, src[1]);
+            layout[pos] = new Teams[]{a, b};
+        }
+
+        List<Teams[]> pairs = new ArrayList<>(half);
+        for (int i = 0; i < half; i++) {
+            pairs.add(layout[i] != null ? layout[i] : new Teams[]{null, null});
+        }
+        return pairs;
+    }
+
+    /** Resolve one source to a team, or null for a bye slot; a non-null source
+     *  that fails to resolve is a 409 {@code POSITIONS_UNRESOLVED}. */
+    private Teams resolveSourceOrThrow(
+            Tournaments t, List<GroupDto> groups, ThirdPlacedTableDto thirdTable,
+            Map<Long, Teams> teamById, String label) {
+        if (label == null) return null; // bye slot
+        Teams tm = resolveSourceTeam(t, groups, thirdTable, teamById, label);
+        if (tm == null) throw conflict("POSITIONS_UNRESOLVED");
+        return tm;
+    }
+
+    /** A 409 Conflict carrying {@code code} as its plain-text body - the same
+     *  shape the other knockout conflicts ({@code GROUP_STAGE_NOT_COMPLETE},
+     *  {@code BRACKET_NOT_CONFIRMED}) use. */
+    private static WebApplicationException conflict(String code) {
+        return new WebApplicationException(
+                Response.status(Response.Status.CONFLICT).entity(code).build());
     }
 
     /** Whether the group stage is fully played (all group matches FINISHED).
@@ -1142,6 +1623,14 @@ public class KnockoutService {
      * ordered by id). A slot is labeled only while its real team is still null
      * and the match is not a bye:
      *
+     * <p>A persisted position source ({@link #setManualPositions}) WINS on ANY
+     * round's slot: it is emitted verbatim as the label (resolved to a predicted
+     * name once its group / third table settles), and the computed labels below
+     * never overwrite it. Round-one real pairs carry their sources on the
+     * round-one matches; a round-one bye's survivor carries its source on the
+     * next-round landing slot it advances onto, so that card shows the bye's
+     * position (e.g. "B2") directly. Otherwise:
+     *
      * <ul>
      *   <li><b>Round one</b> (the largest stage present) is labeled "A1" / "D2"
      *       style ONLY when the classic mirror-cross shape holds - the exact same
@@ -1149,16 +1638,18 @@ public class KnockoutService {
      *       order is provably identical to the generated pairing order. Its
      *       predicted name is filled once THAT group has finished all its
      *       matches (groups complete per-group, not the whole stage).</li>
-     *   <li><b>Later rounds</b> are always labeled from the {@code nextMatch}
-     *       graph: the feeder match's stage abbreviation + its 1-based index
-     *       among same-stage matches ordered by id, e.g. "Pobj. ČF1".</li>
+     *   <li><b>Later rounds</b> are labeled from the {@code nextMatch} graph: the
+     *       feeder match's stage abbreviation + its 1-based index among same-stage
+     *       matches ordered by id, e.g. "Pobj. ČF1" - but only on a slot with no
+     *       persisted source.</li>
      *   <li><b>Third place</b> is labeled from the two semi-final losers,
      *       "Por. PF1" / "Por. PF2" (lower-id semi-final feeds slot 1).</li>
      * </ul>
      *
      * <p>Non-classic round-one shapes are standings-dependent and therefore not
-     * predictable, so they carry no round-one label. KNOCKOUT_ONLY carries no
-     * label at all. Purely derived - nothing is persisted.
+     * predictable, so a source-less slot there carries no round-one label.
+     * KNOCKOUT_ONLY carries no label at all. Purely derived - nothing is
+     * persisted.
      */
     private Map<Long, SlotLabels> computeSlotLabels(Tournaments t, List<Matches> ko) {
         Map<Long, SlotLabels> out = new HashMap<>();
@@ -1212,20 +1703,38 @@ public class KnockoutService {
             boolean s2Null = m.getTeam2() == null;
             if (!s1Null && !s2Null) continue; // both teams known → nothing to label
 
+            // A persisted position source WINS on ANY round's slot: round-one
+            // real pairs carry their sources on the round-one matches, while a
+            // bye survivor carries its source on the next-round landing slot it
+            // auto-advances onto - so the quarter-final (etc.) card shows the
+            // bye's position ("B2") directly. It also makes a round-one slot
+            // labeled even in a non-classic shape, and the computed labels below
+            // (classic cross, feeder "Pobj."/"Por.") must NOT overwrite it.
+            boolean s1HasSource = m.getSlot1Source() != null;
+            boolean s2HasSource = m.getSlot2Source() != null;
             String l1 = null, l2 = null, p1 = null, p2 = null;
+            if (s1Null && s1HasSource) {
+                l1 = m.getSlot1Source();
+                p1 = resolveSourceName(t, groups, m.getSlot1Source());
+            }
+            if (s2Null && s2HasSource) {
+                l2 = m.getSlot2Source();
+                p2 = resolveSourceName(t, groups, m.getSlot2Source());
+            }
+
             if (m.getStage() == entry) {
-                // Round one: only the classic mirror-cross is predictable.
-                if (crossApplies) {
+                // Classic mirror-cross fills only the slots WITHOUT a source.
+                if (crossApplies && ((s1Null && !s1HasSource) || (s2Null && !s2HasSource))) {
                     int idx = indexInStage.getOrDefault(m.getId(), 0) - 1;
                     if (idx >= 0 && idx < crossLayout.size()) {
                         int[] pair = crossLayout.get(idx);
                         GroupDto winnerGroup = groups.get(pair[0]);
                         GroupDto runnerGroup = groups.get(pair[1]);
-                        if (s1Null) {
+                        if (s1Null && !s1HasSource) {
                             l1 = groupSlotLabel(winnerGroup, 1);
                             p1 = groupPredictedName(winnerGroup, 0);
                         }
-                        if (s2Null) {
+                        if (s2Null && !s2HasSource) {
                             l2 = groupSlotLabel(runnerGroup, 2);
                             p2 = groupPredictedName(runnerGroup, 1);
                         }
@@ -1234,22 +1743,23 @@ public class KnockoutService {
             } else if (m.getStage() == MatchStage.THIRD_PLACE) {
                 // Third place is fed (in recordResult) by the two semi-final
                 // losers: lower-id semi-final → slot 1, the other → slot 2.
-                if (s1Null && semis.size() >= 1) {
+                if (s1Null && !s1HasSource && semis.size() >= 1) {
                     l1 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
                             + indexInStage.get(semis.get(0).getId());
                 }
-                if (s2Null && semis.size() >= 2) {
+                if (s2Null && !s2HasSource && semis.size() >= 2) {
                     l2 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
                             + indexInStage.get(semis.get(1).getId());
                 }
             } else {
-                // Any later round: label each empty slot from its feeder match.
+                // Any later round: label each empty, source-less slot from its
+                // feeder match. A slot carrying a bye source keeps that source.
                 Matches f1 = feederSlot1.get(m.getId());
                 Matches f2 = feederSlot2.get(m.getId());
-                if (s1Null && f1 != null) {
+                if (s1Null && !s1HasSource && f1 != null) {
                     l1 = "Pobj. " + stageAbbrev(f1.getStage()) + indexInStage.get(f1.getId());
                 }
-                if (s2Null && f2 != null) {
+                if (s2Null && !s2HasSource && f2 != null) {
                     l2 = "Pobj. " + stageAbbrev(f2.getStage()) + indexInStage.get(f2.getId());
                 }
             }

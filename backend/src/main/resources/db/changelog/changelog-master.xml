@@ -57,4 +57,5 @@
     <include file="db/changelog/tournament_knockout_format.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_bracket_confirmed_at.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_ko_break.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/matches_slot_sources.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

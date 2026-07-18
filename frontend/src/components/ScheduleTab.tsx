@@ -3,16 +3,18 @@ import {
     Box,
     Button,
     chakra,
+    Dialog,
     Field,
     Flex,
     HStack,
     Input,
     NativeSelect,
+    Portal,
     SimpleGrid,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronsUp, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiList, FiRefreshCw, FiTrash2 } from "react-icons/fi"
+import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiList, FiRefreshCw, FiTrash2, FiX } from "react-icons/fi"
 import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
 import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
@@ -236,6 +238,39 @@ function CfgField({
                 </Box>
             </Box>
         </Field.Root>
+    )
+}
+
+/* -- Read-only format stat ----------------------------------------------- */
+/** Compact read-only tile (uppercase label above a mono "N min" value) used by
+ *  the collapsible format summary box between the filters and the schedule
+ *  list. The read-only sibling of CfgField. */
+function FormatStat({ label, value }: { label: string; value: string }) {
+    return (
+        <Box
+            flex={{ base: "1 1 calc(50% - 0.25rem)", md: "0 0 auto" }}
+            minW="0"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            bg="bg.panel"
+            px="3"
+            py="2"
+        >
+            <Text
+                fontSize="2xs"
+                fontWeight={700}
+                letterSpacing="wide"
+                textTransform="uppercase"
+                color="fg.muted"
+                lineHeight="1.2"
+            >
+                {label}
+            </Text>
+            <Text fontFamily="mono" fontSize="15px" fontWeight={800} color="fg.ink" mt="0.5">
+                {value}
+            </Text>
+        </Box>
     )
 }
 
@@ -677,6 +712,150 @@ function ViewToggleButton({
 const VIEW_KEY = "futsal:schedule-view"
 type ScheduleView = "list" | "grid"
 
+/* -- Knockout times dialog ----------------------------------------------- */
+/** A focused dialog for the završnica (knockout) kickoff times - the lighter
+ *  replacement for the full "Generiranje rasporeda" planner in the
+ *  post-manual-draw flow. Lists ONLY knockout matches (stage !== "GROUP",
+ *  including any still-unscheduled ones); group kickoffs are never touched
+ *  here. Each row = stage label + pairing text + a DateTimeField that edits
+ *  that single match's kickoff. "Popuni automatski" fills every missing
+ *  knockout time after the last already-scheduled match (confirmSchedule). */
+function KnockoutTimesDialog({
+    matches,
+    onChangeTime,
+    onAutoFill,
+    autoFilling,
+    onClose,
+}: {
+    /** Knockout matches (stage !== "GROUP") in play order, scheduled or not. */
+    matches: ScheduledMatch[]
+    /** Persist a single match's kickoff - same (match, local "YYYY-MM-DDTHH:MM")
+     *  contract as the list's inline editor. */
+    onChangeTime: (m: ScheduledMatch, localValue: string) => void
+    /** Fill every missing knockout kickoff after the last scheduled match. */
+    onAutoFill: () => void
+    /** True while the auto-fill request is in flight - locks the controls. */
+    autoFilling: boolean
+    onClose: () => void
+}) {
+    return (
+        <Dialog.Root
+            open
+            onOpenChange={(e) => { if (!e.open && !autoFilling) onClose() }}
+            placement="center"
+            scrollBehavior="inside"
+        >
+            <Portal>
+                <Dialog.Backdrop />
+                <Dialog.Positioner>
+                    <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
+                        <Dialog.Header pb="2">
+                            <Flex align="center" justify="space-between" w="full" gap="2">
+                                <Dialog.Title>Termini završnice</Dialog.Title>
+                                <Button
+                                    aria-label="Zatvori"
+                                    variant="ghost"
+                                    size="xs"
+                                    onClick={onClose}
+                                    disabled={autoFilling}
+                                >
+                                    <FiX size={16} />
+                                </Button>
+                            </Flex>
+                        </Dialog.Header>
+                        <Dialog.Body>
+                            <VStack align="stretch" gap="3">
+                                <Flex align="center" justify="space-between" gap="3" wrap="wrap">
+                                    <Text fontSize="sm" color="fg.muted" flex="1" minW="0">
+                                        Uredi termine utakmica završnice ili ih popuni automatski
+                                        nakon zadnje zakazane utakmice. Termini grupa se ne mijenjaju.
+                                    </Text>
+                                    <GhostButton
+                                        px="3.5"
+                                        py="2"
+                                        fontSize="13px"
+                                        onClick={onAutoFill}
+                                        disabled={autoFilling}
+                                        icon={<LuCalendarClock size={14} />}
+                                    >
+                                        {autoFilling ? "Popunjavanje…" : "Popuni automatski"}
+                                    </GhostButton>
+                                </Flex>
+
+                                {matches.length > 0 ? (
+                                    <VStack align="stretch" gap="2.5">
+                                        {matches.map((m) => {
+                                            const { t1Name, t2Name } = matchDisplay(m)
+                                            return (
+                                                <Flex
+                                                    key={m.matchId}
+                                                    align="center"
+                                                    justify="space-between"
+                                                    gap="3"
+                                                    wrap="wrap"
+                                                    borderWidth="1px"
+                                                    borderColor="border"
+                                                    rounded="lg"
+                                                    px="3"
+                                                    py="2.5"
+                                                >
+                                                    <Box minW="0" flex="1">
+                                                        <Text
+                                                            fontFamily="mono"
+                                                            fontSize="2xs"
+                                                            fontWeight={800}
+                                                            letterSpacing="0.06em"
+                                                            textTransform="uppercase"
+                                                            color="fg.muted"
+                                                        >
+                                                            {STAGE_LABEL[m.stage] ?? m.stage}
+                                                        </Text>
+                                                        <Text
+                                                            fontSize="sm"
+                                                            fontWeight={600}
+                                                            color="fg.ink"
+                                                            lineClamp="1"
+                                                        >
+                                                            {t1Name} - {t2Name}
+                                                        </Text>
+                                                    </Box>
+                                                    <Box w={{ base: "full", sm: "200px" }} maxW="full">
+                                                        <DateTimeField
+                                                            compact
+                                                            value={m.kickoffAt ? new Date(m.kickoffAt) : null}
+                                                            onChange={(d) => {
+                                                                if (!d) return
+                                                                const p = (n: number) => String(n).padStart(2, "0")
+                                                                const local =
+                                                                    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+                                                                    `T${p(d.getHours())}:${p(d.getMinutes())}`
+                                                                onChangeTime(m, local)
+                                                            }}
+                                                        />
+                                                    </Box>
+                                                </Flex>
+                                            )
+                                        })}
+                                    </VStack>
+                                ) : (
+                                    <Text color="fg.muted" fontSize="sm">
+                                        Nema utakmica završnice.
+                                    </Text>
+                                )}
+                            </VStack>
+                        </Dialog.Body>
+                        <Dialog.Footer>
+                            <Button colorPalette="brand" onClick={onClose} disabled={autoFilling}>
+                                Gotovo
+                            </Button>
+                        </Dialog.Footer>
+                    </Dialog.Content>
+                </Dialog.Positioner>
+            </Portal>
+        </Dialog.Root>
+    )
+}
+
 /* -- Main export --------------------------------------------------------- */
 /** `canEdit` - owner/admin gate for the mutating actions: format config
  *  inputs, generate-schedule button, and per-match kickoff edits. When
@@ -691,6 +870,8 @@ export default function ScheduleTab({
     format,
     startAt,
     exportMeta,
+    autoOpenKnockoutTimes = false,
+    onAutoOpenKnockoutTimesConsumed,
 }: {
     uuid: string
     canEdit?: boolean
@@ -713,6 +894,13 @@ export default function ScheduleTab({
     focusMatchId?: number | null
     /** Tournament meta for the branded "Export raspored" poster. */
     exportMeta?: ExportMeta
+    /** True when the tab is entered from the bracket position-save step - opens
+     *  the KnockoutTimesDialog once on mount so the organizer confirms the new
+     *  pairs' times (only the knockout kickoffs, not the group ones). */
+    autoOpenKnockoutTimes?: boolean
+    /** Called right after `autoOpenKnockoutTimes` is consumed so the parent can
+     *  clear the request (a later manual visit won't re-open the dialog). */
+    onAutoOpenKnockoutTimesConsumed?: () => void
 }) {
     const queryClient = useQueryClient()
     // Seed from the shared schedule cache so returning to the Raspored tab (or a
@@ -729,6 +917,10 @@ export default function ScheduleTab({
     const [exportOpen, setExportOpen] = useState(false)
     /** Multi-day generate planner (date range + per-day matches + preview). */
     const [plannerOpen, setPlannerOpen] = useState(false)
+    /** Knockout-only kickoff times dialog - the light replacement for the full
+     *  planner in the post-manual-draw flow, and reopenable any time knockout
+     *  matches exist. */
+    const [koDialogOpen, setKoDialogOpen] = useState(false)
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
@@ -781,6 +973,23 @@ export default function ScheduleTab({
             /* storage unavailable - the view choice just won't persist */
         }
     }, [viewMode])
+    /** Read-only format box (between the filters and the list): a one-line
+     *  summary that expands to the compact stat cards. Default collapsed;
+     *  the expand choice is persisted globally. */
+    const [formatBoxOpen, setFormatBoxOpen] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("futsal:schedule-format-open") === "1"
+        } catch {
+            return false
+        }
+    })
+    useEffect(() => {
+        try {
+            localStorage.setItem("futsal:schedule-format-open", formatBoxOpen ? "1" : "0")
+        } catch {
+            /* storage unavailable - the expand choice just won't persist */
+        }
+    }, [formatBoxOpen])
     /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
     const [dragId, setDragId] = useState<number | null>(null)
     const [overId, setOverId] = useState<number | null>(null)
@@ -872,6 +1081,19 @@ export default function ScheduleTab({
     useEffect(() => {
         if (schedule) queryClient.setQueryData(qk.schedule(uuid), schedule)
     }, [schedule, uuid, queryClient])
+
+    // Arriving from the bracket position-save step: open the knockout-times
+    // dialog once (NOT the full planner - the group schedule is left alone),
+    // then tell the parent to clear the request so a later plain visit to this
+    // tab doesn't re-open it. Runs only on mount (the tab remounts each time the
+    // Raspored section is entered), so it's race-free.
+    useEffect(() => {
+        if (autoOpenKnockoutTimes) {
+            setKoDialogOpen(true)
+            onAutoOpenKnockoutTimesConsumed?.()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // Scroll to + highlight the match the user tapped on /uzivo. Runs once
     // the schedule has loaded so the target row exists in the DOM.
@@ -1280,10 +1502,17 @@ export default function ScheduleTab({
               .map((m) => m.matchId)
         : []
 
-    /* ── Header format pill ────────────────────────────────────────────────
-       Compact "2×6 min · završnica 2×8 min" readout that replaces the old
-       config box. Reads from the stored schedule once generated; before that
-       it mirrors the live `cfg` the organizer is editing. */
+    // Knockout matches (stage !== "GROUP") in play order, scheduled or not -
+    // the KnockoutTimesDialog edits ONLY these; group kickoffs are untouched.
+    const knockoutMatches = byKickoff.filter((m) => m.stage !== "GROUP")
+    const hasKnockout = knockoutMatches.length > 0
+
+    /* ── Format summary (read-only) ────────────────────────────────────────
+       Compact "2×6 min · završnica 2×8 min" readout of the STORED schedule
+       format, shown in the collapsible box between the filters and the list.
+       Reads from the stored schedule once generated (mirrors the live `cfg`
+       only as a harmless fallback before that - the box itself is gated on the
+       schedule being generated). */
     const pillHalfCount = scheduleHasConfig ? (schedule?.halfCount ?? HALF_COUNT) : HALF_COUNT
     const pillGroupLen = scheduleHasConfig ? (schedule?.halfLengthMin ?? 0) : numVal(cfg.halfLengthMin)
     const pillKoOn = scheduleHasConfig ? koFormatOn : cfg.koEnabled
@@ -1291,21 +1520,10 @@ export default function ScheduleTab({
     const pillText =
         `${pillHalfCount}×${pillGroupLen} min` +
         (pillKoOn ? ` · završnica ${pillHalfCount}×${pillKoLen} min` : "")
-    const pillTitle = scheduleHasConfig
-        ? `Poluvrijeme ${pillGroupLen} min · pauza ${schedule?.halftimeBreakMin ?? 0} min · pauza između utakmica ${schedule?.breakBetweenMatchesMin ?? 0} min · termin ${schedule?.slotLengthMin ?? 0} min` +
-          (koFormatOn ? ` · termin završnice ${schedule?.koSlotLengthMin ?? 0} min` : "") +
-          (koFormatOn && schedule?.koBreakBetweenMatchesMin != null
-              ? ` · pauza između utakmica završnice ${schedule.koBreakBetweenMatchesMin} min`
-              : "")
-        : `Poluvrijeme ${pillGroupLen} min · pauza ${numVal(cfg.halftimeBreakMin)} min · pauza između utakmica ${numVal(cfg.breakBetweenMatchesMin)} min · termin ${slot} min` +
-          (cfg.koEnabled ? ` · termin završnice ${koSlot} min` : "") +
-          (cfg.koEnabled && cfg.koBreakBetweenMatchesMin.trim() !== ""
-              ? ` · pauza između utakmica završnice ${numVal(cfg.koBreakBetweenMatchesMin)} min`
-              : "")
-    // The read-only pill is shown whenever there is a format to display
-    // (generated) or an organizer who can still configure one (before the
-    // tournament starts). It is never clickable now - the editor is inline.
-    const showFormatControl = scheduleHasConfig || showEditableConfig
+    // Short pauza readout appended after the format in the collapsed header
+    // (half-time break / between-matches break), e.g. "pauze 5/5 min".
+    const pauzeShort =
+        `pauze ${schedule?.halftimeBreakMin ?? 0}/${schedule?.breakBetweenMatchesMin ?? 0} min`
     // Inline format editor (CfgFields + KO override + generate / regenerate /
     // clear). No popover, no portal:
     //   - forced open before the schedule is laid out, so the organizer has to
@@ -1360,14 +1578,6 @@ export default function ScheduleTab({
             + još {hiddenUpcomingCount} utakmica
         </chakra.button>
     ) : null
-
-    // Shared pill visuals - read-only (span) vs editable trigger (button).
-    const pillFace = (
-        <>
-            <FiClock size={12} />
-            <Box as="span">{pillText}</Box>
-        </>
-    )
 
     /* ── Config editor (moved into the header popover) ─────────────────────
        Same CfgField inputs + "Završnica se igra drugačije" override + the
@@ -1535,35 +1745,23 @@ export default function ScheduleTab({
         </VStack>
     )
 
-    // The format readout is now ALWAYS a plain, non-clickable chip (no popover,
-    // no portal). Hidden while the inline editor is force-open before the
-    // schedule is laid out, since that box already shows the live format.
-    const formatControl = showFormatControl && !configBoxForced ? (
-        <HStack
-            as="span"
-            title={pillTitle}
-            gap="1.5"
-            px="2.5"
-            py="1.5"
-            rounded="lg"
-            bg="bg.surfaceTint"
-            borderWidth="1px"
-            borderColor="border"
-            color="fg.muted"
-            fontFamily="mono"
-            fontSize="12px"
-            fontWeight={600}
-            whiteSpace="nowrap"
-        >
-            {pillFace}
-        </HStack>
-    ) : null
-
     // The compact action cluster shown in the "Raspored" header (or standalone
     // above the list when there is no upcoming section to host it).
     const scheduleControls = (
         <HStack gap="2" wrap="wrap" justify="flex-end">
-            {formatControl}
+            {/* Reopen the knockout-times dialog any time knockout matches exist -
+                so the završnica kickoffs stay editable after the one-shot flow. */}
+            {canEdit && hasKnockout && (
+                <GhostButton
+                    px="3.5"
+                    py="2"
+                    fontSize="13px"
+                    icon={<LuCalendarClock size={14} />}
+                    onClick={() => setKoDialogOpen(true)}
+                >
+                    Termini završnice
+                </GhostButton>
+            )}
             {configBoxToggle && (
                 <GhostButton
                     px="3.5"
@@ -1573,17 +1771,6 @@ export default function ScheduleTab({
                     onClick={() => setFormatEditorOpen((v) => !v)}
                 >
                     {formatEditorOpen ? "Zatvori format" : "Uredi format"}
-                </GhostButton>
-            )}
-            {canCollapse && (
-                <GhostButton
-                    px="3.5"
-                    py="2"
-                    fontSize="13px"
-                    icon={collapsed ? <FiChevronsDown size={14} /> : <FiChevronsUp size={14} />}
-                    onClick={() => setCollapsed((v) => !v)}
-                >
-                    {collapsed ? "Prikaži sve" : "Sažmi"}
                 </GhostButton>
             )}
             {canEdit && tournamentStarted && (
@@ -1644,10 +1831,11 @@ export default function ScheduleTab({
 
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Schedule controls (format pill · Sažmi · Uredi · Export). When
-                there is an upcoming list they live in its "Raspored" header;
-                otherwise they sit here so generate / export stay reachable. */}
-            {!controlsInHeader && ((showFormatControl && !configBoxForced) || rawMatches.length > 0) && (
+            {/* Schedule controls (Termini završnice · Uredi format · Uredi
+                raspored · Preuzmi · view toggle). When there is an upcoming
+                list they live in its "Raspored" header; otherwise they sit here
+                so generate / export stay reachable. */}
+            {!controlsInHeader && rawMatches.length > 0 && (
                 <Flex justify="flex-end">{scheduleControls}</Flex>
             )}
 
@@ -1701,15 +1889,14 @@ export default function ScheduleTab({
                             {unscheduledCount === 1
                                 ? "1 utakmica nema raspored"
                                 : `${unscheduledCount} utakmica nema raspored`}{" "}
-                            (npr. eliminacija). Potvrdi raspored da im se dodijeli termin.
+                            (npr. eliminacija). Uredi termine ili ih popuni automatski.
                         </Text>
                     </HStack>
                     <PrimaryButton
-                        onClick={runConfirm}
-                        disabled={confirming}
+                        onClick={() => setKoDialogOpen(true)}
                         icon={<LuCalendarClock size={14} />}
                     >
-                        {confirming ? "Potvrđivanje…" : "Potvrdi raspored"}
+                        Uredi termine
                     </PrimaryButton>
                 </Flex>
             )}
@@ -1812,6 +1999,125 @@ export default function ScheduleTab({
                         </Button>
                     </Flex>
                 </Flex>
+            )}
+
+            {/* Read-only format summary - a one-line header (format + short
+                pauza) that expands to the compact stat cards. Sits between the
+                filters and the list; shown once the schedule has a stored
+                format. Replaces the old header pill (no duplication). */}
+            {scheduleHasConfig && schedule && (
+                <Box
+                    borderWidth="1px"
+                    borderColor="border"
+                    bg="bg.surfaceTint"
+                    rounded="xl"
+                    overflow="hidden"
+                >
+                    <chakra.button
+                        type="button"
+                        onClick={() => setFormatBoxOpen((v) => !v)}
+                        aria-expanded={formatBoxOpen}
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        gap="3"
+                        w="full"
+                        px="4"
+                        py="2.5"
+                        bg="transparent"
+                        border="none"
+                        cursor="pointer"
+                        textAlign="left"
+                        _hover={{ bg: "bg.panel" }}
+                    >
+                        <Flex align="center" gap="2" minW="0" wrap="wrap" color="fg.muted">
+                            <FiClock size={13} />
+                            <Box
+                                as="span"
+                                fontFamily="mono"
+                                fontSize="12px"
+                                fontWeight={700}
+                                color="fg.ink"
+                                whiteSpace="nowrap"
+                            >
+                                {pillText}
+                            </Box>
+                            <Box
+                                as="span"
+                                fontFamily="mono"
+                                fontSize="11px"
+                                color="fg.muted"
+                                whiteSpace="nowrap"
+                            >
+                                · {pauzeShort}
+                            </Box>
+                        </Flex>
+                        <Box color="fg.muted" flexShrink={0} display="inline-flex">
+                            {formatBoxOpen ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
+                        </Box>
+                    </chakra.button>
+
+                    {formatBoxOpen && (
+                        <Box px="4" pt="1" pb="3.5" borderTopWidth="1px" borderColor="border">
+                            <VStack align="stretch" gap="3" pt="2.5">
+                                {koFormatOn && (
+                                    <Text
+                                        fontSize="2xs"
+                                        fontWeight={700}
+                                        letterSpacing="wide"
+                                        textTransform="uppercase"
+                                        color="fg.muted"
+                                    >
+                                        Grupe
+                                    </Text>
+                                )}
+                                <Flex gap="2" wrap="wrap">
+                                    <FormatStat
+                                        label="Trajanje poluvrijeme"
+                                        value={`${schedule.halfLengthMin ?? 0} min`}
+                                    />
+                                    <FormatStat
+                                        label="Pauza poluvrijeme"
+                                        value={`${schedule.halftimeBreakMin ?? 0} min`}
+                                    />
+                                    <FormatStat
+                                        label="Pauza između utakmica"
+                                        value={`${schedule.breakBetweenMatchesMin ?? 0} min`}
+                                    />
+                                </Flex>
+                                {koFormatOn && (
+                                    <>
+                                        <Text
+                                            fontSize="2xs"
+                                            fontWeight={700}
+                                            letterSpacing="wide"
+                                            textTransform="uppercase"
+                                            color="fg.muted"
+                                        >
+                                            Završnica
+                                        </Text>
+                                        <Flex gap="2" wrap="wrap">
+                                            <FormatStat
+                                                label="Poluvrijeme"
+                                                value={`${schedule.koHalfLengthMin ?? 0} min`}
+                                            />
+                                            <FormatStat
+                                                label="Pauza poluvrijeme"
+                                                value={`${schedule.koHalftimeBreakMin ?? 0} min`}
+                                            />
+                                            {schedule.koBreakBetweenMatchesMin != null && (
+                                                <FormatStat
+                                                    label="Pauza između utakmica"
+                                                    value={`${schedule.koBreakBetweenMatchesMin} min`}
+                                                />
+                                            )}
+                                        </Flex>
+                                    </>
+                                )}
+                            </VStack>
+                        </Box>
+                    )}
+                </Box>
             )}
 
             {/* Match list - upcoming (the schedule) first, finished at the bottom. */}
@@ -2018,6 +2324,20 @@ export default function ScheduleTab({
                     }}
                     onClose={() => setPlannerOpen(false)}
                     onGenerated={(s) => { setSchedule(s); refreshLinkedTabs() }}
+                />
+            )}
+
+            {/* Knockout-only kickoff times: the light post-manual-draw flow and
+                the reopenable "Termini završnice" dialog. Group kickoffs are
+                never touched here - "Popuni automatski" fills only the missing
+                knockout times after the last scheduled match. */}
+            {koDialogOpen && (
+                <KnockoutTimesDialog
+                    matches={knockoutMatches}
+                    onChangeTime={onTimeChange}
+                    onAutoFill={runConfirm}
+                    autoFilling={confirming}
+                    onClose={() => setKoDialogOpen(false)}
                 />
             )}
         </VStack>

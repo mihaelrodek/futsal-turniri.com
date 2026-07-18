@@ -1952,6 +1952,7 @@ export default function GroupsTab({
                                         }}
                                         gap="1.5"
                                         alignItems="center"
+                                        minH="56px"
                                         px={{base: "3", md: "4"}}
                                         py="2.5"
                                         bg={advances ? "rgba(58,165,107,0.08)" : undefined}
@@ -1970,8 +1971,11 @@ export default function GroupsTab({
                                         >
                                             {idx + 1}
                                         </Text>
-                                        {/* Team name only - stats live in their own columns now */}
-                                        <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
+                                        {/* Team name only - stats live in their own columns
+                                        now. Clamped to 2 lines with a fixed row min-height
+                                        (above) so single- and two-line groups render the
+                                        same height and side-by-side cards stay aligned. */}
+                                        <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" lineHeight="1.25" minW="0">
                                             {row.teamName}
                                         </Text>
                                         {/* UT (odigrano) */}

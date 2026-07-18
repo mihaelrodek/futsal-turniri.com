@@ -25,10 +25,14 @@ import {
     generateBracketManual,
     resetBracket,
     recordKnockoutResult,
+    setManualBracketPositions,
     type BracketCandidate,
     type ManualBracketPairing,
+    type ManualPositionPairing,
 } from "../api/bracket"
 import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
+import { fetchGroups, fetchThirdPlaced } from "../api/groups"
+import type { Group, ThirdPlacedTable } from "../types/groups"
 import { showError, toaster } from "../toaster"
 import {
     endFirstHalf,
@@ -278,6 +282,7 @@ function useDragPan() {
  *  team name. Pointer-drag (works on touch/iPad), matching the group board. */
 function BracketChip({
     name,
+    sub,
     dragging,
     onPointerDown,
     onPointerMove,
@@ -285,6 +290,9 @@ function BracketChip({
     onPointerCancel,
 }: {
     name: string | null
+    /** Secured-position subtitle (the resolved team name) shown muted under the
+     *  label in position mode; null/undefined in team mode. */
+    sub?: string | null
     dragging: boolean
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void
     onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void
@@ -314,7 +322,12 @@ function BracketChip({
             transition="border-color 120ms"
         >
             <Text as="span" color="fg.subtle" fontSize="md" flexShrink={0} lineHeight="1" css={{ letterSpacing: "-2px" }}>⠿</Text>
-            <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+            <Box minW="0" flex="1">
+                <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+                {sub ? (
+                    <Text fontSize="2xs" color="fg.muted" fontWeight={500} truncate>{sub}</Text>
+                ) : null}
+            </Box>
         </Flex>
     )
 }
@@ -377,6 +390,16 @@ function standardSeedSlots(orderedIds: number[], n: number): (number | null)[] {
     }
     return out
 }
+
+/** One draggable/placeable item on the manual board. Both modes expose
+ *  `{ id, name }` so the shared board machinery (drag/drop, slots, sketch)
+ *  treats them uniformly:
+ *   - team mode (KNOCKOUT_ONLY): a real team; `name` is the team name.
+ *   - position mode (GROUPS_KNOCKOUT): a group / best-third placeholder; `name`
+ *     is the visible label ("A1", "Najbolji 3. (1)"), `submitLabel` is what the
+ *     backend expects ("A1", "3-1"), and `teamName` is the resolved team once
+ *     that position is secured (its group's matches are all finished). */
+type BoardItem = { id: number; name: string; submitLabel?: string; teamName?: string | null }
 
 /** One slot in the bracket sketch: a placed team, the winner of an earlier
  *  match (placeholder), or an empty slot (a bye's free side). */
@@ -461,7 +484,9 @@ export default function BracketTab({
     uuid,
     canEdit = false,
     tournamentName,
+    format,
     exportMeta,
+    onGoToSchedule,
 }: {
     uuid: string
     canEdit?: boolean
@@ -470,11 +495,15 @@ export default function BracketTab({
     tournamentStarted?: boolean
     /** Used for the shared bracket image's filename + share title. */
     tournamentName?: string
-    /** Accepted for API compatibility (was used for the removed seed UI). */
+    /** Tournament format. GROUPS_KNOCKOUT uses the position-based manual board
+     *  (drag group/best-third placeholders); KNOCKOUT_ONLY keeps the team board. */
     format?: string | null
     /** Tournament meta for the branded "Završnica" bracket poster. Optional -
      *  falls back to a name + URL built from `tournamentName` / `uuid`. */
     exportMeta?: ExportMeta
+    /** After a position save, jump to the Raspored section (and optionally
+     *  auto-open the schedule planner) so the organizer confirms the new times. */
+    onGoToSchedule?: (openPlanner: boolean) => void
 }) {
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Eliminacija tab (or a
@@ -508,9 +537,9 @@ export default function BracketTab({
     // Manual draw drag & drop: a team dragged from the pool into a first-round
     // slot (same proven pointer-drag as the group draw board, incl. iPad
     // auto-scroll). `dragOver` is the hovered slot index (as a string) or "pool".
-    const [dragTeam, setDragTeam] = useState<BracketCandidate | null>(null)
+    const [dragTeam, setDragTeam] = useState<BoardItem | null>(null)
     const [dragOver, setDragOver] = useState<string | null>(null)
-    const dragRef = useRef<BracketCandidate | null>(null)
+    const dragRef = useRef<BoardItem | null>(null)
     const dragOverRef = useRef<string | null>(null)
     const dragPosRef = useRef({ x: 0, y: 0 })
     const ghostRef = useRef<HTMLDivElement | null>(null)
@@ -528,6 +557,14 @@ export default function BracketTab({
     // the group stage is finished - both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
     const [groupStageComplete, setGroupStageComplete] = useState(true)
+    // Position mode (GROUPS_KNOCKOUT): the group tables + best-third ranking feed
+    // the placeholder pool ("A1", "B2", "3-1"…). Fetched on mount so the board is
+    // ready even before the group stage finishes.
+    const positionMode = format === "GROUPS_KNOCKOUT"
+    const [groups, setGroups] = useState<Group[]>([])
+    const [thirdPlaced, setThirdPlaced] = useState<ThirdPlacedTable | null>(null)
+    // After a position save: prompt the organizer to confirm the schedule times.
+    const [positionsSavedOpen, setPositionsSavedOpen] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -554,7 +591,19 @@ export default function BracketTab({
                 setGroupStageComplete(q.groupStageComplete)
             })
             .catch(() => { /* leave defaults - manual draw stays gated */ })
+        // Position mode: pull the group tables + best-third ranking so the
+        // placeholder pool ("A1", "3-1"…) can be built and secured positions can
+        // show the resolved team name.
+        if (format === "GROUPS_KNOCKOUT") {
+            fetchGroups(uuid, { silent: true })
+                .then((gs) => { if (!cancelled) setGroups(gs) })
+                .catch(() => { /* leave empty - board just has no positions yet */ })
+            fetchThirdPlaced(uuid)
+                .then((tp) => { if (!cancelled) setThirdPlaced(tp) })
+                .catch(() => { /* best-third stays off */ })
+        }
         return () => { cancelled = true }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [uuid])
 
     // Mirror the bracket into the cache so a tab-switch / reopen reflects the
@@ -860,18 +909,75 @@ export default function BracketTab({
         return p
     }
     // Pool = group qualifiers (or all teams for KNOCKOUT_ONLY) from the backend.
+    // Drives the automatic + bye flows (always team-based).
     const pool = qualifiers
     const bracketN = pool.length >= 2 ? nextPow2(pool.length) : 2
-    const matchCount = bracketN / 2
     // How many teams get a round-one bye (direct advance) - only when the
     // qualifier count isn't already a power of two.
     const byesNeeded = pool.length >= 2 ? bracketN - pool.length : 0
 
+    // ─── Position pool (GROUPS_KNOCKOUT manual board) ───────────────────────
+    // Ranked names of the best-third teams that qualify (only settled once every
+    // group is finished - the ranking can still change while games remain).
+    const thirdRankedNames = useMemo(
+        () =>
+            (thirdPlaced?.rows ?? [])
+                .filter((r) => r.qualifies)
+                .sort((a, b) => a.rank - b.rank)
+                .map((r) => r.standing.teamName),
+        [thirdPlaced],
+    )
+    // True once every group's matches are FINISHED → the third-place ranking is
+    // final, so the "3-<rank>" slots can show their secured team.
+    const allGroupsFinished = useMemo(
+        () =>
+            groups.length > 0 &&
+            groups.every((g) => g.matches.length > 0 && g.matches.every((m) => m.status === "FINISHED")),
+        [groups],
+    )
+    // Placeholder items: each group's places (A1..A<adv>, B1..) then the best-third
+    // slots (3-1..3-k). A group whose matches are all finished shows the secured
+    // team under its label; best-third names appear once every group is finished.
+    const positionItems = useMemo<BoardItem[]>(() => {
+        const items: BoardItem[] = []
+        let idx = 0
+        const sorted = [...groups].sort((a, b) => a.ordinal - b.ordinal)
+        for (const g of sorted) {
+            const finished = g.matches.length > 0 && g.matches.every((m) => m.status === "FINISHED")
+            for (let p = 1; p <= g.effectiveAdvance; p++) {
+                const label = `${g.name}${p}`
+                items.push({
+                    id: idx++,
+                    name: label,
+                    submitLabel: label,
+                    teamName: finished ? (g.standings[p - 1]?.teamName ?? null) : null,
+                })
+            }
+        }
+        const bestThirdCount = thirdPlaced?.bestThirdCount ?? 0
+        for (let r = 1; r <= bestThirdCount; r++) {
+            items.push({
+                id: idx++,
+                name: `Najbolji 3. (${r})`,
+                submitLabel: `3-${r}`,
+                teamName: allGroupsFinished ? (thirdRankedNames[r - 1] ?? null) : null,
+            })
+        }
+        return items
+    }, [groups, thirdPlaced, allGroupsFinished, thirdRankedNames])
+
+    // Items + size for the manual board. Position placeholders for
+    // GROUPS_KNOCKOUT, real teams for KNOCKOUT_ONLY (then equal to pool/bracketN).
+    const boardItems: BoardItem[] = positionMode ? positionItems : qualifiers
+    const boardN = boardItems.length >= 2 ? nextPow2(boardItems.length) : 2
+    const boardMatchCount = boardN / 2
+
     function openManualBracket() {
-        // Standard bracket seeding of the qualifiers (already ranked): top seed
-        // vs bottom seed, so the byes land distributed across the bracket
-        // instead of stacking the free slots at the top.
-        setSlots(standardSeedSlots(pool.map((t) => t.id), bracketN))
+        // Standard bracket seeding of the board items (qualifiers, or the group /
+        // best-third positions in position mode): top seed vs bottom seed, so the
+        // byes land distributed across the bracket instead of stacking the free
+        // slots at the top.
+        setSlots(standardSeedSlots(boardItems.map((t) => t.id), boardN))
         setSketchOpen(false)
         setManualOpen(true)
     }
@@ -887,26 +993,44 @@ export default function BracketTab({
     async function submitManualBracket() {
         const chosen = slots.filter((s): s is number => s != null)
         if (new Set(chosen).size !== chosen.length) {
-            showError("Greška", "Ista ekipa je odabrana u više utakmica.")
+            showError("Greška", positionMode ? "Ista pozicija je odabrana u više utakmica." : "Ista ekipa je odabrana u više utakmica.")
             return
         }
         if (chosen.length < 2) {
-            showError("Greška", "Potrebne su barem 2 ekipe za ljestvicu.")
+            showError("Greška", positionMode ? "Potrebne su barem 2 pozicije za ljestvicu." : "Potrebne su barem 2 ekipe za ljestvicu.")
             return
-        }
-        const pairs: ManualBracketPairing[] = []
-        for (let i = 0; i < matchCount; i++) {
-            pairs.push({ team1Id: slots[2 * i] ?? null, team2Id: slots[2 * i + 1] ?? null })
         }
         try {
             setGeneratingManual(true)
-            setBracket(await generateBracketManual(uuid, pairs))
-            refreshLinkedTabs()
-            setManualOpen(false)
-            setSketchOpen(false)
-            setEditingId(null)
+            if (positionMode) {
+                // Map each placed slot back to its backend label ("A1", "3-1"); an
+                // empty slot stays null (a bye).
+                const labelOf = (id: number | null) =>
+                    id != null ? (boardItems.find((it) => it.id === id)?.submitLabel ?? null) : null
+                const pairs: ManualPositionPairing[] = []
+                for (let i = 0; i < boardMatchCount; i++) {
+                    pairs.push({ slot1: labelOf(slots[2 * i] ?? null), slot2: labelOf(slots[2 * i + 1] ?? null) })
+                }
+                setBracket(await setManualBracketPositions(uuid, pairs))
+                refreshLinkedTabs()
+                setManualOpen(false)
+                setSketchOpen(false)
+                setEditingId(null)
+                // Positions saved → nudge the organizer to confirm the schedule.
+                setPositionsSavedOpen(true)
+            } else {
+                const pairs: ManualBracketPairing[] = []
+                for (let i = 0; i < boardMatchCount; i++) {
+                    pairs.push({ team1Id: slots[2 * i] ?? null, team2Id: slots[2 * i + 1] ?? null })
+                }
+                setBracket(await generateBracketManual(uuid, pairs))
+                refreshLinkedTabs()
+                setManualOpen(false)
+                setSketchOpen(false)
+                setEditingId(null)
+            }
         } catch {
-            /* error toast surfaced by the http interceptor */
+            /* error toast surfaced by the http interceptor (incl. 409 BRACKET_ALREADY_DRAWN) */
         } finally {
             setGeneratingManual(false)
         }
@@ -940,7 +1064,7 @@ export default function BracketTab({
     function stopAutoScroll() {
         if (scrollRafRef.current != null) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null }
     }
-    function startDrag(e: ReactPointerEvent<HTMLElement>, tm: BracketCandidate) {
+    function startDrag(e: ReactPointerEvent<HTMLElement>, tm: BoardItem) {
         if (generatingManual) return
         e.preventDefault()
         e.currentTarget.setPointerCapture(e.pointerId)
@@ -966,7 +1090,7 @@ export default function BracketTab({
         const from = slots.findIndex((s) => s === tm.id)
         if (z === "pool") { if (from >= 0) setSlot(from, null); return }
         const idx = parseInt(z, 10)
-        if (!Number.isFinite(idx) || idx < 0 || idx >= bracketN || from === idx) return
+        if (!Number.isFinite(idx) || idx < 0 || idx >= boardN || from === idx) return
         // Drop into the target slot; a team already there swaps back to the
         // dragged team's old slot (or the pool, if it came from the pool).
         setSlots((s) => {
@@ -987,24 +1111,24 @@ export default function BracketTab({
      *  them out by standard bracket seeding - so the byes stay distributed
      *  across the bracket (Challonge-style) rather than stacked at the top. */
     function fillBracketRandom() {
-        const ids = qualifiers.map((t) => t.id)
+        const ids = boardItems.map((t) => t.id)
         for (let i = ids.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
             ;[ids[i], ids[j]] = [ids[j], ids[i]]
         }
-        setSlots(standardSeedSlots(ids, bracketN))
+        setSlots(standardSeedSlots(ids, boardN))
     }
-    function clearSlots() { setSlots(new Array(bracketN).fill(null)) }
+    function clearSlots() { setSlots(new Array(boardN).fill(null)) }
 
     // Subtle green-tinted surfaces (adapt to light/dark) matching the group board.
     const bPoolTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 3%, var(--chakra-colors-bg-panel))"
     const bGroupTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 6%, var(--chakra-colors-bg-panel))"
-    const manualPool = qualifiers.filter((q) => !slots.includes(q.id))
-    const manualAssigned = qualifiers.length - manualPool.length
+    const manualPool = boardItems.filter((q) => !slots.includes(q.id))
+    const manualAssigned = boardItems.length - manualPool.length
 
     const renderSlot = (idx: number) => {
         const teamId = slots[idx]
-        const tm = teamId != null ? qualifiers.find((q) => q.id === teamId) ?? null : null
+        const tm = teamId != null ? boardItems.find((q) => q.id === teamId) ?? null : null
         const hovered = dragOver === String(idx)
         return (
             <Box position="relative">
@@ -1023,6 +1147,7 @@ export default function BracketTab({
                     {tm ? (
                         <BracketChip
                             name={tm.name}
+                            sub={tm.teamName ?? null}
                             dragging={dragTeam?.id === tm.id}
                             onPointerDown={(e) => startDrag(e, tm)}
                             onPointerMove={dragMove}
@@ -1031,7 +1156,7 @@ export default function BracketTab({
                         />
                     ) : (
                         <Text fontSize="xs" color="fg.subtle" fontWeight={500} px="2">
-                            Povuci ekipu · prazno = prolaz
+                            {positionMode ? "Povuci poziciju · prazno = prolaz" : "Povuci ekipu · prazno = prolaz"}
                         </Text>
                     )}
                 </Flex>
@@ -1050,7 +1175,9 @@ export default function BracketTab({
                 <Box>
                     <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>Ručni ždrijeb</Text>
                     <Text fontSize="sm" color="fg.muted" fontWeight={500}>
-                        Povuci ekipe u parove 1. kola. Prazan slot = slobodan prolaz (bye) u sljedeće kolo.
+                        {positionMode
+                            ? "Povuci pozicije (npr. A1, B2) u parove 1. kola. Kad grupe završe, pozicije postaju ekipe. Prazan slot = slobodan prolaz (bye)."
+                            : "Povuci ekipe u parove 1. kola. Prazan slot = slobodan prolaz (bye) u sljedeće kolo."}
                     </Text>
                 </Box>
 
@@ -1058,10 +1185,10 @@ export default function BracketTab({
                 <Flex align="center" gap="3" wrap="wrap" py="3.5" borderTopWidth="1px" borderBottomWidth="1px" borderColor="border">
                     <Text fontSize="sm" fontWeight={700} color="fg.muted" flex="1" minW="180px">
                         {manualPool.length > 0
-                            ? `Raspoređeno ${manualAssigned}/${qualifiers.length}.`
-                            : "Sve ekipe su raspoređene."}
+                            ? `Raspoređeno ${manualAssigned}/${boardItems.length}.`
+                            : positionMode ? "Sve pozicije su raspoređene." : "Sve ekipe su raspoređene."}
                     </Text>
-                    <Button size="sm" colorPalette="brand" onClick={fillBracketRandom} disabled={qualifiers.length < 2}>
+                    <Button size="sm" colorPalette="brand" onClick={fillBracketRandom} disabled={boardItems.length < 2}>
                         <LuShuffle size={15} /> Nasumično rasporedi
                     </Button>
                     <Button size="sm" variant="outline" colorPalette="brand" onClick={clearSlots} disabled={manualAssigned === 0}>
@@ -1089,14 +1216,16 @@ export default function BracketTab({
                             css={{ background: bPoolTintBg }}
                         >
                             <Flex align="center" justify="space-between" mb="3">
-                                <Text fontWeight={800} fontSize="md">Ekipe</Text>
+                                <Text fontWeight={800} fontSize="md">{positionMode ? "Pozicije" : "Ekipe"}</Text>
                                 <Box as="span" bg="pitch.500" color="white" fontSize="xs" fontWeight={800} px="2.5" py="1" rounded="full" fontVariantNumeric="tabular-nums">
                                     {manualPool.length}
                                 </Box>
                             </Flex>
                             {manualPool.length === 0 && (
                                 <Text fontSize="sm" color="fg.muted" fontWeight={500} py="8" textAlign="center">
-                                    Sve raspoređeno — povuci ekipu ovamo da je vratiš.
+                                    {positionMode
+                                        ? "Sve raspoređeno — povuci poziciju ovamo da je vratiš."
+                                        : "Sve raspoređeno — povuci ekipu ovamo da je vratiš."}
                                 </Text>
                             )}
                             <VStack align="stretch" gap="2">
@@ -1104,6 +1233,7 @@ export default function BracketTab({
                                     <BracketChip
                                         key={tm.id}
                                         name={tm.name}
+                                        sub={tm.teamName ?? null}
                                         dragging={dragTeam?.id === tm.id}
                                         onPointerDown={(e) => startDrag(e, tm)}
                                         onPointerMove={dragMove}
@@ -1122,9 +1252,9 @@ export default function BracketTab({
 
                     <VStack align="stretch" gap="3">
                         <Text fontSize="xs" fontWeight={800} letterSpacing="0.08em" textTransform="uppercase" color="fg.muted">
-                            {koStageName(matchCount)} · parovi 1. kola
+                            {koStageName(boardMatchCount)} · parovi 1. kola
                         </Text>
-                        {Array.from({ length: matchCount }, (_, i) => (
+                        {Array.from({ length: boardMatchCount }, (_, i) => (
                             <Flex
                                 key={i}
                                 direction={{ base: "column", sm: "row" }}
@@ -1177,9 +1307,13 @@ export default function BracketTab({
     // ─── "Skiciraj završnicu" - preview the full bracket before generating ──
     const sketchRounds = buildBracketSketch(
         slots,
-        matchCount,
-        bracketN,
-        (id) => qualifiers.find((q) => q.id === id)?.name?.trim() || "Bez imena",
+        boardMatchCount,
+        boardN,
+        (id) => {
+            const it = boardItems.find((q) => q.id === id)
+            // Position mode: prefer the secured team name, else the label ("A1").
+            return (it?.teamName?.trim() || it?.name?.trim()) || "Bez imena"
+        },
     )
     const sketchPanel = (
         <Panel p={{ base: "4", md: "6" }}>
@@ -1352,21 +1486,24 @@ export default function BracketTab({
                     description={
                         !canEdit
                             ? "Organizator još nije generirao eliminacijsku ljestvicu."
-                            : !groupStageComplete
-                                ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
-                                : "Ručno složi parove povlačenjem ekipa, ili generiraj automatski (nasumično)."
+                            : positionMode
+                                ? "Složi parove završnice po pozicijama iz grupa (npr. A1, B2). Kad grupna faza završi, pozicije postaju ekipe."
+                                : !groupStageComplete
+                                    ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
+                                    : "Ručno složi parove povlačenjem ekipa, ili generiraj automatski (nasumično)."
                     }
                     action={
                         canEdit ? (
                             <HStack gap="2" wrap="wrap" justify="center">
-                                {/* Two modes only: manual (drag the pairs
-                                    yourself) is the default; automatic is the
-                                    opt-in beside it. */}
+                                {/* Manual (drag the pairs yourself) is the default.
+                                    In position mode it works at all times (even
+                                    before the group stage finishes); the automatic
+                                    team draw stays gated on a finished group stage. */}
                                 <Button
                                     colorPalette="brand"
                                     size="sm"
                                     onClick={openManualBracket}
-                                    disabled={!groupStageComplete || pool.length < 2}
+                                    disabled={positionMode ? boardItems.length < 2 : (!groupStageComplete || pool.length < 2)}
                                 >
                                     Ručni ždrijeb
                                 </Button>
@@ -1618,8 +1755,10 @@ export default function BracketTab({
                 }}
             />
 
-            {/* Manual draw editor - shown above the bracket when opened. */}
-            {canEdit && !started && manualOpen && manualBracketPanel}
+            {/* Manual draw editor - shown above the bracket when opened. The
+                "Skiciraj završnicu" step swaps the board for the sketch preview
+                (same as the pre-draw path), so it works for re-draws too. */}
+            {canEdit && !started && manualOpen && (sketchOpen ? sketchPanel : manualBracketPanel)}
 
             {/* ── Bracket - driven by @g-loot/react-tournament-brackets.
                  The library renders the SVG layout + connectors; our
@@ -1861,6 +2000,21 @@ export default function BracketTab({
                     }}
                 />
             )}
+
+            {/* Position save → schedule mockup step: the saved pairs re-label the
+                skeleton (bracket + schedule + sketch), so send the organizer to
+                the Raspored planner to confirm/adjust the times. */}
+            <ConfirmDialog
+                open={positionsSavedOpen}
+                title="Parovi su spremljeni"
+                description="Parovi su spremljeni - potvrdi termine u rasporedu."
+                confirmLabel="Otvori raspored"
+                onClose={() => setPositionsSavedOpen(false)}
+                onConfirm={() => {
+                    setPositionsSavedOpen(false)
+                    onGoToSchedule?.(true)
+                }}
+            />
 
         </VStack>
     )
