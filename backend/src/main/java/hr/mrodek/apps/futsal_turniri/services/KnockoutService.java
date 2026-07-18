@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.BracketDto;
 import hr.mrodek.apps.futsal_turniri.dtos.BracketMatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.BracketRoundDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupDto;
+import hr.mrodek.apps.futsal_turniri.dtos.GroupMatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupStandingRowDto;
 import hr.mrodek.apps.futsal_turniri.dtos.KnockoutResultRequest;
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
@@ -17,16 +18,20 @@ import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.repository.RoundsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -61,8 +66,23 @@ public class KnockoutService {
     @Inject TeamsRepository teamsRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject RoundsRepository roundsRepo;
+    @Inject TournamentsRepository tournamentsRepo;
     @Inject GroupStageService groupStageService;
     @Inject PushService pushService;
+
+    /**
+     * Computed predicted-pairing labels (and, for a finished group, resolved
+     * team names) for the two slots of one knockout match. A null field means
+     * the slot has no label / no predicted name - the real team is already
+     * known, the match is a bye, or the pairing isn't predictable. Purely
+     * derived: never persisted, always recomputed from the bracket + standings
+     * so it can't diverge from the generator.
+     */
+    public record SlotLabels(
+            String slot1Label,
+            String slot2Label,
+            String slot1PredictedName,
+            String slot2PredictedName) {}
 
     /** Group-standings ranking used to seed qualifiers within a placement tier. */
     private static final Comparator<GroupStandingRowDto> STANDING_RANK =
@@ -189,6 +209,9 @@ public class KnockoutService {
         for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
             if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
         }
+        // A fresh draw invalidates any prior confirmation - the organizer must
+        // re-confirm the new bracket before its matches can start / record.
+        t.setBracketConfirmedAt(null);
 
         int q = qs.size();
         int n = nextPowerOfTwo(q); // bracket size
@@ -312,6 +335,47 @@ public class KnockoutService {
         for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
             if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
         }
+        // Clearing the bracket also clears its confirmation - a redrawn bracket
+        // must be confirmed again.
+        t.setBracketConfirmedAt(null);
+    }
+
+    /**
+     * Confirm the drawn knockout bracket so its matches can be started and
+     * their results recorded. Idempotent: a second call is a no-op success that
+     * keeps the original confirmation time.
+     *
+     * <p>Rejects with 409 {@code GROUP_STAGE_NOT_COMPLETE} while the group stage
+     * still has unplayed matches. When the bracket hasn't been drawn yet - only
+     * the multi-day skeleton (teamless placeholders) exists, or nothing at all -
+     * it is generated first via the automatic draw, so confirm always operates
+     * on a materialized bracket. Returns the fresh bracket.
+     */
+    @Transactional
+    public BracketDto confirmBracket(Tournaments t) {
+        if (!isGroupStageComplete(t)) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT)
+                            .entity("GROUP_STAGE_NOT_COMPLETE").build());
+        }
+        // Round one has no real teams yet (skeleton-only or empty) → draw now.
+        // generateBracket clears bracketConfirmedAt, which we then set below.
+        if (!bracketHasRealTeams(t)) {
+            generateBracket(t);
+        }
+        if (t.getBracketConfirmedAt() == null) {
+            t.setBracketConfirmedAt(java.time.OffsetDateTime.now());
+        }
+        return bracket(t.getId());
+    }
+
+    /** Whether any knockout match already carries a real team - i.e. the bracket
+     *  has been drawn, as opposed to only the teamless multi-day skeleton (or no
+     *  knockout matches at all). */
+    private boolean bracketHasRealTeams(Tournaments t) {
+        return matchesRepo.count(
+                "tournament = ?1 and stage <> ?2 and (team1 is not null or team2 is not null)",
+                t, MatchStage.GROUP) > 0;
     }
 
     /* ──────────────── multi-day schedule support ───────────────── */
@@ -372,6 +436,139 @@ public class KnockoutService {
         if (hasThirdPlace(q)) stages.add(MatchStage.THIRD_PLACE);
         stages.sort(Comparator.comparingInt(KnockoutService::knockoutStageRank));
         return stages;
+    }
+
+    /**
+     * Predicted-pairing labels for the schedule SKETCH, before any knockout
+     * match is persisted - the combinatorial counterpart of the persisted
+     * {@link #knockoutSlotLabels}. The returned list is aligned 1:1 (same size
+     * and order) with {@link #plannedKnockoutStages}, so caller {@code i} maps a
+     * planned stage entry to its labels. Empty for KNOCKOUT_ONLY or when fewer
+     * than two teams will qualify (mirrors {@code plannedKnockoutStages}).
+     *
+     * <p>Built to reproduce EXACTLY what {@link #computeSlotLabels} would emit
+     * for the {@link #createSkeleton} tree, so the "no bracket yet" sketch and
+     * the "skeleton exists" preview show identical labels:
+     * <ul>
+     *   <li><b>Round one</b> is labeled "A1" / "D2" only when the classic
+     *       mirror-cross shape holds - reusing the same {@link #classicCrossLayout}
+     *       the generator seeds from, indexed 0..k in creation order exactly as
+     *       computeSlotLabels maps it onto the persisted round-one matches.</li>
+     *   <li><b>Later rounds</b> are labeled from the reconstructed feeder graph
+     *       (the same {@code i/2} linking createSkeleton uses, byes omitted from
+     *       round one), e.g. "Pobj. ČF1".</li>
+     *   <li><b>Third place</b> is labeled from the two semi-finals ("Por. PF1" /
+     *       "Por. PF2").</li>
+     * </ul>
+     * A slot with no predictable feeder (e.g. the semi-final fed only by
+     * first-round byes) carries a null label, just as the skeleton would.
+     */
+    public List<SlotLabels> plannedSlotLabels(Tournaments t) {
+        List<MatchStage> stages = plannedKnockoutStages(t);
+        if (stages.isEmpty()) return List.of();
+
+        int q = predictedQualifiers(t);
+        int n = nextPowerOfTwo(q);
+        int byes = n - q;
+
+        // Round-one classic-cross layout (null unless the shape qualifies) - the
+        // SAME source of truth the generator seeds from and computeSlotLabels
+        // reads, so a labeled round-one sketch matches the eventual bracket.
+        List<GroupDto> groups = groupStageService.standings(t.getId());
+        List<int[]> crossLayout = classicCrossLayout(t, groups, n, null, q);
+
+        // Rebuild the createSkeleton match tree in memory (identical per-round
+        // counts and i/2 feeder linking, byes dropped from round one) so the
+        // "Pobj." feeder labels derive from the very graph the persisted
+        // skeleton would carry.
+        final class Node {
+            MatchStage stage;
+            int indexInStage; // 1-based, like computeSlotLabels
+            boolean roundOne;
+            Node feeder1;     // feeds slot 1 (null when none, e.g. a bye slot)
+            Node feeder2;     // feeds slot 2
+        }
+        int totalRounds = Integer.numberOfTrailingZeros(n); // log2(n)
+        List<List<Node>> byRound = new ArrayList<>();
+        int inRound = n / 2;
+        for (int r = 0; r < totalRounds; r++) {
+            MatchStage stage = stageFor(inRound);
+            int cnt = r == 0 ? inRound - byes : inRound;
+            List<Node> rm = new ArrayList<>();
+            for (int i = 0; i < cnt; i++) {
+                Node node = new Node();
+                node.stage = stage;
+                node.indexInStage = i + 1;
+                node.roundOne = r == 0;
+                rm.add(node);
+            }
+            byRound.add(rm);
+            inRound /= 2;
+        }
+        for (int r = 0; r < totalRounds - 1; r++) {
+            List<Node> cur = byRound.get(r);
+            List<Node> next = byRound.get(r + 1);
+            for (int i = 0; i < cur.size(); i++) {
+                Node nx = next.get(i / 2);
+                if (i % 2 == 0) nx.feeder1 = cur.get(i);
+                else nx.feeder2 = cur.get(i);
+            }
+        }
+
+        List<Node> semis = List.of();
+        for (List<Node> rd : byRound) {
+            if (!rd.isEmpty() && rd.get(0).stage == MatchStage.SEMIFINAL) { semis = rd; break; }
+        }
+
+        // Flat list in plannedKnockoutStages insertion order (every round in
+        // build order, then the third-place playoff), then the SAME stable sort
+        // by stage rank - so this lines up 1:1 with plannedKnockoutStages.
+        List<Node> flat = new ArrayList<>();
+        for (List<Node> rd : byRound) flat.addAll(rd);
+        if (hasThirdPlace(q)) {
+            Node third = new Node();
+            third.stage = MatchStage.THIRD_PLACE;
+            flat.add(third);
+        }
+        flat.sort(Comparator.comparingInt((Node node) -> knockoutStageRank(node.stage)));
+
+        // Only the classic mirror-cross is predictable for round one; mirror
+        // computeSlotLabels' guard exactly (with byes = 0 the counts always
+        // match, so this is defensive).
+        boolean crossApplies = crossLayout != null
+                && !byRound.isEmpty() && byRound.get(0).size() == crossLayout.size();
+
+        List<SlotLabels> out = new ArrayList<>(flat.size());
+        for (Node node : flat) {
+            String l1 = null, l2 = null, p1 = null, p2 = null;
+            if (node.stage == MatchStage.THIRD_PLACE) {
+                if (semis.size() >= 1) {
+                    l1 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(0).indexInStage;
+                }
+                if (semis.size() >= 2) {
+                    l2 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(1).indexInStage;
+                }
+            } else if (node.roundOne) {
+                if (crossApplies) {
+                    int[] pair = crossLayout.get(node.indexInStage - 1);
+                    GroupDto winnerGroup = groups.get(pair[0]);
+                    GroupDto runnerGroup = groups.get(pair[1]);
+                    l1 = groupSlotLabel(winnerGroup, 1);
+                    p1 = groupPredictedName(winnerGroup, 0);
+                    l2 = groupSlotLabel(runnerGroup, 2);
+                    p2 = groupPredictedName(runnerGroup, 1);
+                }
+            } else {
+                if (node.feeder1 != null) {
+                    l1 = "Pobj. " + stageAbbrev(node.feeder1.stage) + node.feeder1.indexInStage;
+                }
+                if (node.feeder2 != null) {
+                    l2 = "Pobj. " + stageAbbrev(node.feeder2.stage) + node.feeder2.indexInStage;
+                }
+            }
+            out.add(new SlotLabels(l1, l2, p1, p2));
+        }
+        return out;
     }
 
     /**
@@ -506,6 +703,9 @@ public class KnockoutService {
         for (Rounds r : roundsRepo.findByTournament_Id(t.getId())) {
             if (matchesRepo.count("round", r) == 0) roundsRepo.delete(r);
         }
+        // A fresh draw invalidates any prior confirmation - the organizer must
+        // re-confirm the new bracket before its matches can start / record.
+        t.setBracketConfirmedAt(null);
 
         // One Round carries the whole knockout; stage distinguishes the rounds.
         int baseNum = roundsRepo.findTopByTournamentOrderByNumberDesc(t)
@@ -749,6 +949,15 @@ public class KnockoutService {
         if (m.getStage() == MatchStage.GROUP) {
             throw new BadRequestException("Not a knockout match");
         }
+        // The bracket must be confirmed before any knockout result is recorded
+        // (GROUPS_KNOCKOUT only; KNOCKOUT_ONLY has no confirmation step).
+        Tournaments gate = m.getTournament();
+        if (gate != null && gate.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
+                && gate.getBracketConfirmedAt() == null) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT)
+                            .entity("BRACKET_NOT_CONFIRMED").build());
+        }
         if (m.getTeam1() == null || m.getTeam2() == null) {
             throw new BadRequestException("Both teams of this match are not decided yet");
         }
@@ -846,6 +1055,11 @@ public class KnockoutService {
         List<Matches> ko = matchesRepo.list(
                 "tournament.id = ?1 and stage <> ?2 order by id",
                 tournamentId, MatchStage.GROUP);
+        Tournaments t = tournamentsRepo.findById(tournamentId);
+
+        // Predicted-pairing labels + per-group resolved names, keyed by match id.
+        // Empty for KNOCKOUT_ONLY (never labeled) or a missing tournament.
+        Map<Long, SlotLabels> labels = t != null ? computeSlotLabels(t, ko) : Map.of();
 
         Map<MatchStage, List<Matches>> byStage = new LinkedHashMap<>();
         Matches third = null;
@@ -865,13 +1079,22 @@ public class KnockoutService {
         for (MatchStage s : order) {
             List<Matches> ms = byStage.get(s);
             if (ms == null || ms.isEmpty()) continue;
-            List<BracketMatchDto> dtos = ms.stream().map(this::toDto).toList();
+            List<BracketMatchDto> dtos = ms.stream().map(m -> toDto(m, labels)).toList();
             rounds.add(new BracketRoundDto(s.name(), stageTitle(s), dtos));
         }
-        return new BracketDto(rounds, third == null ? null : toDto(third));
+        // Only GROUPS_KNOCKOUT gates its knockout behind a confirmation.
+        boolean confirmationRequired =
+                t != null && t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT;
+        java.time.OffsetDateTime confirmedAt = t != null ? t.getBracketConfirmedAt() : null;
+        return new BracketDto(
+                rounds,
+                third == null ? null : toDto(third, labels),
+                confirmedAt,
+                confirmationRequired);
     }
 
-    private BracketMatchDto toDto(Matches m) {
+    private BracketMatchDto toDto(Matches m, Map<Long, SlotLabels> labels) {
+        SlotLabels sl = labels.get(m.getId());
         return new BracketMatchDto(
                 m.getId(),
                 m.getStage().name(),
@@ -892,7 +1115,194 @@ public class KnockoutService {
                 m.getFouls1First(),
                 m.getFouls1Second(),
                 m.getFouls2First(),
-                m.getFouls2Second());
+                m.getFouls2Second(),
+                sl != null ? sl.slot1Label() : null,
+                sl != null ? sl.slot2Label() : null,
+                sl != null ? sl.slot1PredictedName() : null,
+                sl != null ? sl.slot2PredictedName() : null);
+    }
+
+    /* ─────────────────────── predicted-pairing labels ─────────────────── */
+
+    /**
+     * Predicted-pairing labels (and, for a finished group, resolved team names)
+     * for every knockout slot of the tournament, keyed by match id. Loads the
+     * tournament's knockout matches itself; use the same query as
+     * {@link #bracket} so the two produce identical labels. Empty map for
+     * KNOCKOUT_ONLY - that format is never labeled.
+     */
+    public Map<Long, SlotLabels> knockoutSlotLabels(Tournaments t) {
+        List<Matches> ko = matchesRepo.list(
+                "tournament.id = ?1 and stage <> ?2 order by id", t.getId(), MatchStage.GROUP);
+        return computeSlotLabels(t, ko);
+    }
+
+    /**
+     * Compute the slot labels for {@code ko} (a tournament's knockout matches,
+     * ordered by id). A slot is labeled only while its real team is still null
+     * and the match is not a bye:
+     *
+     * <ul>
+     *   <li><b>Round one</b> (the largest stage present) is labeled "A1" / "D2"
+     *       style ONLY when the classic mirror-cross shape holds - the exact same
+     *       {@link #classicCrossLayout} the generator seeds from, so the label
+     *       order is provably identical to the generated pairing order. Its
+     *       predicted name is filled once THAT group has finished all its
+     *       matches (groups complete per-group, not the whole stage).</li>
+     *   <li><b>Later rounds</b> are always labeled from the {@code nextMatch}
+     *       graph: the feeder match's stage abbreviation + its 1-based index
+     *       among same-stage matches ordered by id, e.g. "Pobj. ČF1".</li>
+     *   <li><b>Third place</b> is labeled from the two semi-final losers,
+     *       "Por. PF1" / "Por. PF2" (lower-id semi-final feeds slot 1).</li>
+     * </ul>
+     *
+     * <p>Non-classic round-one shapes are standings-dependent and therefore not
+     * predictable, so they carry no round-one label. KNOCKOUT_ONLY carries no
+     * label at all. Purely derived - nothing is persisted.
+     */
+    private Map<Long, SlotLabels> computeSlotLabels(Tournaments t, List<Matches> ko) {
+        Map<Long, SlotLabels> out = new HashMap<>();
+        if (ko.isEmpty() || t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return out;
+
+        // Bucket by stage (each bucket stays id-ordered, since ko is id-ordered)
+        // and pick the entry round = the largest stage present.
+        Map<MatchStage, List<Matches>> byStage = new EnumMap<>(MatchStage.class);
+        for (Matches m : ko) byStage.computeIfAbsent(m.getStage(), k -> new ArrayList<>()).add(m);
+        MatchStage[] roundOrder = {
+                MatchStage.ROUND_OF_32, MatchStage.ROUND_OF_16,
+                MatchStage.QUARTERFINAL, MatchStage.SEMIFINAL, MatchStage.FINAL,
+        };
+        MatchStage entry = null;
+        for (MatchStage s : roundOrder) {
+            if (byStage.containsKey(s)) { entry = s; break; }
+        }
+
+        // 1-based index of every match within its own stage (byes included, so
+        // the index is a stable "ČF1/ČF2/…" ordinal regardless of who plays).
+        Map<Long, Integer> indexInStage = new HashMap<>();
+        for (List<Matches> bucket : byStage.values()) {
+            for (int i = 0; i < bucket.size(); i++) indexInStage.put(bucket.get(i).getId(), i + 1);
+        }
+
+        // Feeder lookup: which match feeds slot 1 / slot 2 of a given next match.
+        Map<Long, Matches> feederSlot1 = new HashMap<>();
+        Map<Long, Matches> feederSlot2 = new HashMap<>();
+        for (Matches m : ko) {
+            if (m.getNextMatch() == null || m.getNextSlot() == null) continue;
+            Long nid = m.getNextMatch().getId();
+            if (Integer.valueOf(1).equals(m.getNextSlot())) feederSlot1.put(nid, m);
+            else feederSlot2.put(nid, m);
+        }
+
+        // Round-one classic-cross layout (null unless the shape qualifies).
+        List<GroupDto> groups = groupStageService.standings(t.getId());
+        int q = predictedQualifiers(t);
+        int n = q >= 2 ? nextPowerOfTwo(q) : 0;
+        List<int[]> crossLayout = (entry != null && n >= 2)
+                ? classicCrossLayout(t, groups, n, null, q) : null;
+        List<Matches> entryMatches = entry != null ? byStage.get(entry) : null;
+        boolean crossApplies = crossLayout != null && entryMatches != null
+                && entryMatches.size() == crossLayout.size();
+
+        List<Matches> semis = byStage.getOrDefault(MatchStage.SEMIFINAL, List.of());
+
+        for (Matches m : ko) {
+            if (m.isKnockoutBye()) continue; // byes are never labeled
+            boolean s1Null = m.getTeam1() == null;
+            boolean s2Null = m.getTeam2() == null;
+            if (!s1Null && !s2Null) continue; // both teams known → nothing to label
+
+            String l1 = null, l2 = null, p1 = null, p2 = null;
+            if (m.getStage() == entry) {
+                // Round one: only the classic mirror-cross is predictable.
+                if (crossApplies) {
+                    int idx = indexInStage.getOrDefault(m.getId(), 0) - 1;
+                    if (idx >= 0 && idx < crossLayout.size()) {
+                        int[] pair = crossLayout.get(idx);
+                        GroupDto winnerGroup = groups.get(pair[0]);
+                        GroupDto runnerGroup = groups.get(pair[1]);
+                        if (s1Null) {
+                            l1 = groupSlotLabel(winnerGroup, 1);
+                            p1 = groupPredictedName(winnerGroup, 0);
+                        }
+                        if (s2Null) {
+                            l2 = groupSlotLabel(runnerGroup, 2);
+                            p2 = groupPredictedName(runnerGroup, 1);
+                        }
+                    }
+                }
+            } else if (m.getStage() == MatchStage.THIRD_PLACE) {
+                // Third place is fed (in recordResult) by the two semi-final
+                // losers: lower-id semi-final → slot 1, the other → slot 2.
+                if (s1Null && semis.size() >= 1) {
+                    l1 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
+                            + indexInStage.get(semis.get(0).getId());
+                }
+                if (s2Null && semis.size() >= 2) {
+                    l2 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
+                            + indexInStage.get(semis.get(1).getId());
+                }
+            } else {
+                // Any later round: label each empty slot from its feeder match.
+                Matches f1 = feederSlot1.get(m.getId());
+                Matches f2 = feederSlot2.get(m.getId());
+                if (s1Null && f1 != null) {
+                    l1 = "Pobj. " + stageAbbrev(f1.getStage()) + indexInStage.get(f1.getId());
+                }
+                if (s2Null && f2 != null) {
+                    l2 = "Pobj. " + stageAbbrev(f2.getStage()) + indexInStage.get(f2.getId());
+                }
+            }
+            if (l1 != null || l2 != null || p1 != null || p2 != null) {
+                out.put(m.getId(), new SlotLabels(l1, l2, p1, p2));
+            }
+        }
+        return out;
+    }
+
+    /** Round-one slot label for a group + placement: the group's own name when
+     *  it is short (&lt;= 3 chars), else its letter by ordinal (A=0, B=1, …),
+     *  suffixed with the 1-based place (winner "A1", runner-up "D2"). */
+    private static String groupSlotLabel(GroupDto g, int place) {
+        String base = (g.name() != null && g.name().length() <= 3)
+                ? g.name()
+                : String.valueOf((char) ('A' + g.ordinal()));
+        return base + place;
+    }
+
+    /** Predicted team name for a group's placement (0-based standings index)
+     *  once that group has finished all its matches, else null. Shared by the
+     *  bracket labels ({@link #computeSlotLabels}) and the schedule sketch
+     *  ({@link #plannedSlotLabels}) so both resolve round-one qualifiers the
+     *  same way. */
+    private static String groupPredictedName(GroupDto g, int placeIndex) {
+        if (!groupComplete(g) || g.standings().size() <= placeIndex) return null;
+        return g.standings().get(placeIndex).teamName();
+    }
+
+    /** Whether every one of a group's matches has finished - a group completes
+     *  on its own, before the whole group stage does, so its round-one
+     *  qualifiers can be resolved early. */
+    private static boolean groupComplete(GroupDto g) {
+        if (g.matches() == null || g.matches().isEmpty()) return false;
+        for (GroupMatchDto gm : g.matches()) {
+            if (!MatchStatus.FINISHED.name().equals(gm.status())) return false;
+        }
+        return true;
+    }
+
+    /** Short Croatian abbreviation for a knockout stage, used in feeder labels
+     *  ("Pobj. ČF1", "Por. PF2"). */
+    private static String stageAbbrev(MatchStage s) {
+        return switch (s) {
+            case ROUND_OF_32 -> "1/16";
+            case ROUND_OF_16 -> "OF";
+            case QUARTERFINAL -> "ČF";
+            case SEMIFINAL -> "PF";
+            case FINAL -> "F";
+            // GROUP / THIRD_PLACE never feed another slot.
+            default -> "";
+        };
     }
 
     /* ──────────────────────────── helpers ────────────────────────────── */
@@ -1037,15 +1447,51 @@ public class KnockoutService {
     }
 
     /**
-     * The classic mirror cross-pairing, or null when this bracket shape
-     * doesn't qualify for it (see {@link #groupRoundOnePairs}). Match i pairs
-     * the winner of group i with the runner-up of group (G-1-i); matches are
-     * laid out so that each pair of mirror matches (which share two groups)
-     * ends up in opposite bracket halves.
+     * The classic mirror cross-pairing resolved to teams, or null when this
+     * bracket shape doesn't qualify for it (see {@link #groupRoundOnePairs}).
+     * Delegates the shape check and slot ordering to {@link #classicCrossLayout}
+     * - the same layout the predicted-pairing labels read - then fills each slot
+     * with the group's winner / runner-up, so the generated pairing order and
+     * the "A1 / D2" label order can never diverge.
      */
     private List<Teams[]> classicCrossPairs(
             Tournaments t, List<Teams> qs, List<Long> byeTeamIds,
             List<GroupDto> groups, int n) {
+        List<int[]> layout = classicCrossLayout(t, groups, n, byeTeamIds, qs.size());
+        if (layout == null) return null;
+
+        Map<Long, Teams> byId = qs.stream()
+                .collect(Collectors.toMap(Teams::getId, x -> x));
+        List<Teams[]> ordered = new ArrayList<>();
+        for (int[] pair : layout) {
+            // pair = {winnerGroupIndex, runnerUpGroupIndex}.
+            Teams winner = byId.get(groups.get(pair[0]).standings().get(0).teamId());
+            Teams second = byId.get(groups.get(pair[1]).standings().get(1).teamId());
+            if (winner == null || second == null) return null;
+            ordered.add(new Teams[]{winner, second});
+        }
+        return ordered;
+    }
+
+    /**
+     * The classic mirror-cross layout as ordered slot pairs, or null when the
+     * bracket shape doesn't qualify for it. Each entry is
+     * {@code {winnerGroupIndex, runnerUpGroupIndex}} into {@code groups}: match i
+     * pairs the winner of group i with the runner-up of group (G-1-i), then the
+     * matches are laid out via {@link #interleaveOrder} so each pair of mirror
+     * matches (which share two groups) lands in opposite bracket halves. Four
+     * groups → order [0, 2, 1, 3]: [A1-D2, C1-B2 | B1-C2, D1-A2].
+     *
+     * <p>The single source of truth for the classic shape: the generator
+     * ({@link #classicCrossPairs}) seeds teams from it AND the label helper
+     * ({@link #computeSlotLabels}) reads labels from it, so pairing order and
+     * label order are provably identical. Only holds when exactly two advance
+     * per group, no best-thirds and no manual byes, group count a power of two,
+     * and {@code qualifierCount == 2 * groupCount == n}.
+     */
+    private List<int[]> classicCrossLayout(
+            Tournaments t, List<GroupDto> groups, int n,
+            List<Long> byeTeamIds, int qualifierCount) {
         int adv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
         int bestThird = t.getBestThirdCount() == null ? 0 : t.getBestThirdCount();
         if (adv != 2 || bestThird != 0) return null;
@@ -1053,30 +1499,19 @@ public class KnockoutService {
         int g = groups.size();
         // Needs exactly 2 qualifiers from each of the G groups filling the
         // whole bracket (2G a power of two → G = 2, 4, 8, …).
-        if (g < 2 || qs.size() != 2 * g || n != qs.size()) return null;
+        if (g < 2 || qualifierCount != 2 * g || n != qualifierCount) return null;
         for (GroupDto grp : groups) {
-            if (grp.standings().size() < 2) return null;
+            // Every group must advance EXACTLY two (its effective count, so a
+            // per-group override that makes the field uneven - e.g. one group of
+            // three - falls through to constraint seeding). Without this the
+            // label helper would predict a cross that the generator never draws.
+            if (grp.effectiveAdvance() != 2 || grp.standings().size() < 2) return null;
         }
-
-        Map<Long, Teams> byId = qs.stream()
-                .collect(Collectors.toMap(Teams::getId, x -> x));
-        Teams[] winner = new Teams[g];
-        Teams[] second = new Teams[g];
+        List<int[]> matches = new ArrayList<>();
         for (int i = 0; i < g; i++) {
-            winner[i] = byId.get(groups.get(i).standings().get(0).teamId());
-            second[i] = byId.get(groups.get(i).standings().get(1).teamId());
-            if (winner[i] == null || second[i] == null) return null;
+            matches.add(new int[]{i, g - 1 - i});
         }
-        List<Teams[]> matches = new ArrayList<>();
-        for (int i = 0; i < g; i++) {
-            matches.add(new Teams[]{winner[i], second[g - 1 - i]});
-        }
-        // Interleaved order: even-indexed matches fill the first half of the
-        // bracket, odd the second (recursively), so match i and its mirror
-        // match G-1-i - the only two carrying the same groups - are always in
-        // opposite halves. Four groups → order [0, 2, 1, 3]:
-        // [A1-D2, C1-B2 | B1-C2, D1-A2].
-        List<Teams[]> ordered = new ArrayList<>();
+        List<int[]> ordered = new ArrayList<>();
         for (int idx : interleaveOrder(g)) ordered.add(matches.get(idx));
         return ordered;
     }

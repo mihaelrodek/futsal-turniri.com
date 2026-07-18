@@ -45,6 +45,10 @@ type PreviewRow = {
     groupName?: string | null
     team1Name?: string | null
     team2Name?: string | null
+    slot1Label?: string | null
+    slot2Label?: string | null
+    slot1PredictedName?: string | null
+    slot2PredictedName?: string | null
     teamsKnown: boolean
 }
 
@@ -486,6 +490,10 @@ export default function MultiDaySchedulePlanner({
                     groupName: m.groupName,
                     team1Name: m.team1Name,
                     team2Name: m.team2Name,
+                    slot1Label: m.slot1Label,
+                    slot2Label: m.slot2Label,
+                    slot1PredictedName: m.slot1PredictedName,
+                    slot2PredictedName: m.slot2PredictedName,
                     teamsKnown: m.teamsKnown,
                 })
             }
@@ -590,6 +598,15 @@ export default function MultiDaySchedulePlanner({
                                                     const canDragRow =
                                                         sketchRows != null &&
                                                         (stageCounts.get(stageRank(r.stage)) ?? 0) > 1
+                                                    // Per-side pairing text: real name → predicted name →
+                                                    // slot label. Both sides resolved → "X - Y" (muted
+                                                    // unless both are real team names, mirroring the
+                                                    // Raspored tab's t1Muted approach); neither → the
+                                                    // existing stage fallback string.
+                                                    const t1 = r.team1Name ?? r.slot1PredictedName ?? r.slot1Label
+                                                    const t2 = r.team2Name ?? r.slot2PredictedName ?? r.slot2Label
+                                                    const pairingResolved = t1 != null && t2 != null
+                                                    const pairingMuted = r.team1Name == null || r.team2Name == null
                                                     return (
                                                     <HStack
                                                         key={gi}
@@ -659,10 +676,10 @@ export default function MultiDaySchedulePlanner({
                                                             fontSize="13.5px"
                                                             fontWeight={600}
                                                             truncate
-                                                            color={r.teamsKnown ? undefined : "fg.muted"}
+                                                            color={pairingMuted ? "fg.muted" : undefined}
                                                         >
-                                                            {r.teamsKnown
-                                                                ? `${r.team1Name ?? "?"} - ${r.team2Name ?? "?"}`
+                                                            {pairingResolved
+                                                                ? `${t1} - ${t2}`
                                                                 : preview.groupMatches > 0 && stageRank(r.stage) === firstKoRank
                                                                     ? "Odlučuje se nakon grupne faze"
                                                                     : "TBD"}

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Organizer confirmation gate for the GROUPS_KNOCKOUT knockout bracket.
+        The bracket now exposes PREDICTED pairings ("A1 vs D2") up front and
+        resolves them to real teams as groups finish, but no knockout match may
+        be started or record a result until the organizer explicitly confirms
+        the drawn bracket.
+
+        Nullable, no DEFAULT: NULL means "not yet confirmed" (also the permanent
+        state for KNOCKOUT_ONLY, which has no confirmation step). Set to NOW() on
+        confirm; cleared whenever the bracket is (re)generated or reset, so a
+        redraw always forces a re-confirm. Every existing tournament keeps NULL.
+    -->
+    <changeSet id="2026-07-17-tournament-bracket-confirmed-at" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="bracket_confirmed_at" type="timestamptz"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

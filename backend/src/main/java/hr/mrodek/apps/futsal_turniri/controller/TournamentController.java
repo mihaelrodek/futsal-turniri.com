@@ -8,6 +8,7 @@ import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
+import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.MatchEventMapper;
 import hr.mrodek.apps.futsal_turniri.mappers.PlayerMapper;
@@ -1979,6 +1980,19 @@ public class TournamentController {
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
+
+        // Knockout matches are gated until the bracket is confirmed (GROUPS_KNOCKOUT
+        // only) and both teams are decided. Group-stage matches are unaffected.
+        if (match.getStage() != null && match.getStage() != MatchStage.GROUP) {
+            Tournaments tour = match.getTournament();
+            if (tour != null && tour.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
+                    && tour.getBracketConfirmedAt() == null) {
+                return Response.status(Response.Status.CONFLICT).entity("BRACKET_NOT_CONFIRMED").build();
+            }
+            if (match.getTeam1() == null || match.getTeam2() == null) {
+                return Response.status(Response.Status.CONFLICT).entity("MATCH_TEAMS_UNKNOWN").build();
+            }
+        }
 
         MatchLiveMode mode = MatchLiveMode.SIMPLE;
         if (body != null && body.mode() != null && !body.mode().isBlank()) {

@@ -23,5 +23,15 @@ public record ScheduledMatchDto(
         /** Penalty-shootout score, set only for a knockout match level after
          *  regulation. */
         Integer penalties1,
-        Integer penalties2
+        Integer penalties2,
+        /** Predicted-pairing label for the slot while its team is still undecided,
+         *  so the Raspored can show "A1 – D2" (or "Pobj. ČF1" / "Por. PF2") instead
+         *  of TBD. Null once the real team is known, for a bye, and always for
+         *  KNOCKOUT_ONLY / group matches. */
+        String slot1Label,
+        String slot2Label,
+        /** Team name resolved from the standings for a round-one group-label slot
+         *  once THAT group is finished (per-group). Null otherwise. */
+        String slot1PredictedName,
+        String slot2PredictedName
 ) {}

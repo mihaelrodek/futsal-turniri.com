@@ -1165,6 +1165,13 @@ export default function TournamentDetailsPage() {
                                     canEdit={canEdit}
                                     tournamentStarted={tournamentStarted}
                                     onGoToSchedule={() => setSection("raspored")}
+                                    exportMeta={{
+                                        tournamentName: t.name,
+                                        organizerName: t.organizerName ?? t.createdByName ?? null,
+                                        location: t.location,
+                                        startAt: t.startAt,
+                                        tournamentUrl: `${window.location.origin}/turniri/${t.slug ?? t.uuid}`,
+                                    }}
                                 />
                             ) : (
                                 <BracketTab
@@ -1173,6 +1180,13 @@ export default function TournamentDetailsPage() {
                                     tournamentStarted={tournamentStarted}
                                     tournamentName={t.name}
                                     format={t.format}
+                                    exportMeta={{
+                                        tournamentName: t.name,
+                                        organizerName: t.organizerName ?? t.createdByName ?? null,
+                                        location: t.location,
+                                        startAt: t.startAt,
+                                        tournamentUrl: `${window.location.origin}/turniri/${t.slug ?? t.uuid}`,
+                                    }}
                                 />
                             )
                         })()}
@@ -1189,6 +1203,13 @@ export default function TournamentDetailsPage() {
                         focusMatchId={focusMatchId}
                         format={t.format}
                         startAt={t.startAt}
+                        exportMeta={{
+                            tournamentName: t.name,
+                            organizerName: t.organizerName ?? t.createdByName ?? null,
+                            location: t.location,
+                            startAt: t.startAt,
+                            tournamentUrl: `${window.location.origin}/turniri/${t.slug ?? t.uuid}`,
+                        }}
                     />
                 )}
 

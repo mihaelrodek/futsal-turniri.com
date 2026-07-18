@@ -8,10 +8,11 @@ import {
     HStack,
     Input,
     NativeSelect,
+    SimpleGrid,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronUp, FiClock, FiEdit2, FiFilter, FiRefreshCw, FiTrash2 } from "react-icons/fi"
+import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronsUp, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiList, FiRefreshCw, FiTrash2 } from "react-icons/fi"
 import { LuCalendarClock, LuCalendarX2, LuGripVertical } from "react-icons/lu"
 import { clearSchedule, confirmSchedule, fetchSchedule, generateSchedule, reorderSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
@@ -24,6 +25,7 @@ import { GoalscorersPanel } from "./liveMatch"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
+import { ExportDialog, type ExportMeta } from "./TournamentExport"
 
 /* ────────────────────────────────────────────────────────────────────────────
    Schedule tab - match scheduling.
@@ -31,7 +33,8 @@ import { buildMatchIcs, downloadIcs } from "../utils/ics"
    Behaviour:
      a) Matches sorted: LIVE first, SCHEDULED second, FINISHED last.
         Within each group the original kickoff order is preserved.
-     b) LIVE matches rendered with a red border + "UZIVO" badge.
+     b) LIVE matches rendered with a red border (no text badge - the border
+        plus the red score box carry the live signal on this screen).
      c) FINISHED and LIVE matches get a centered expand toggle that reveals
         the shared GoalscorersPanel (SofaScore-style event timeline).
         SCHEDULED matches get no expand toggle.
@@ -67,15 +70,25 @@ type Cfg = {
     koEnabled: boolean
     koHalfLengthMin: string
     koHalftimeBreakMin: string
+    /** Knockout break between matches. Empty = inherit the group break. */
+    koBreakBetweenMatchesMin: string
 }
 
 /** The knockout format the config currently describes, in the shape the API
- *  wants: nulls when the override is off (backend then clears both fields). */
-function koPayload(c: Cfg): { koHalfLengthMin: number | null; koHalftimeBreakMin: number | null } {
-    if (!c.koEnabled) return { koHalfLengthMin: null, koHalftimeBreakMin: null }
+ *  wants: nulls when the override is off (backend then clears the fields).
+ *  koBreakBetweenMatchesMin stays null when left empty so the backend falls
+ *  back to the group break between matches. */
+function koPayload(c: Cfg): {
+    koHalfLengthMin: number | null
+    koHalftimeBreakMin: number | null
+    koBreakBetweenMatchesMin: number | null
+} {
+    if (!c.koEnabled)
+        return { koHalfLengthMin: null, koHalftimeBreakMin: null, koBreakBetweenMatchesMin: null }
     return {
         koHalfLengthMin: numVal(c.koHalfLengthMin),
         koHalftimeBreakMin: numVal(c.koHalftimeBreakMin),
+        koBreakBetweenMatchesMin: numValOrNull(c.koBreakBetweenMatchesMin),
     }
 }
 
@@ -92,6 +105,14 @@ function isoToLocal(iso: string | null): string {
 function numVal(v: string): number {
     const n = parseInt(v, 10)
     return Number.isFinite(n) ? n : 0
+}
+
+/** Like numVal but keeps an empty/invalid entry as null (rather than 0) - used
+ *  by the optional knockout "pauza između utakmica" field where empty means
+ *  "inherit the group value" instead of "zero minutes". */
+function numValOrNull(v: string): number | null {
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) ? n : null
 }
 
 /* -- Stage badge --------------------------------------------------------- */
@@ -124,28 +145,6 @@ function StageBadge({ stage, groupName }: { stage: string; groupName?: string | 
     )
 }
 
-/* -- Live badge ---------------------------------------------------------- */
-function LiveBadge() {
-    return (
-        <Box
-            as="span"
-            px="2"
-            py="0.5"
-            rounded="full"
-            fontSize="2xs"
-            fontWeight="bold"
-            letterSpacing="wide"
-            textTransform="uppercase"
-            bg="red.subtle"
-            color="red.fg"
-            flexShrink={0}
-            whiteSpace="nowrap"
-        >
-            &#x25CF; Uživo
-        </Box>
-    )
-}
-
 /* -- Day divider --------------------------------------------------------- */
 /** Thin labelled separator inserted before the first match of each day, so a
  *  multi-day schedule reads as distinct days. Purely visual - carries no
@@ -173,30 +172,39 @@ function DayDivider({ label, first }: { label: string; first?: boolean }) {
 }
 
 /* -- Config field -------------------------------------------------------- */
+/** Compact numeric field (uppercase label above a small "min"-suffixed input).
+ *  Sized to pack three-across on one desktop row; on mobile it flexes to a
+ *  tight two-column grid. The label reserves two lines so single- and
+ *  two-line labels bottom-align and every input in the row lines up. */
 function CfgField({
     label,
     value,
     onChange,
-    align = "center",
+    placeholder,
 }: {
     label: string
     value: string
     onChange: (v: string) => void
-    /** Where the (fixed-width) field sits in its grid cell: start / center / end. */
-    align?: React.ComponentProps<typeof Field.Root>["justifySelf"]
+    /** Shown when empty - used by the knockout "pauza između utakmica" field to
+     *  hint the inherited group value. */
+    placeholder?: string
 }) {
     return (
-        <Field.Root justifySelf={align} w="170px" maxW="full">
+        <Field.Root
+            flex={{ base: "1 1 calc(50% - 0.25rem)", md: "0 0 auto" }}
+            w={{ base: "auto", md: "128px" }}
+            minW="0"
+        >
             <Field.Label
                 fontSize="2xs"
                 fontWeight="semibold"
-                letterSpacing="wider"
+                letterSpacing="wide"
                 textTransform="uppercase"
                 color="fg.muted"
-                mb="1"
-                w="full"
-                justifyContent="center"
-                textAlign="center"
+                mb="0.5"
+                lineHeight="1.15"
+                minH="2.2em"
+                alignItems="flex-end"
             >
                 {label}
             </Field.Label>
@@ -205,21 +213,22 @@ function CfgField({
                     size="sm"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    rounded="xl"
+                    rounded="lg"
                     textAlign="center"
                     fontWeight="semibold"
                     px="7"
                     value={value}
+                    placeholder={placeholder}
                     // Digits only - strips any sign / letter so negatives and the
                     // "-" / "e" characters can never be entered.
                     onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ""))}
                 />
                 <Box
                     position="absolute"
-                    right="2.5"
+                    right="2"
                     top="50%"
                     transform="translateY(-50%)"
-                    fontSize="xs"
+                    fontSize="2xs"
                     color="fg.muted"
                     pointerEvents="none"
                 >
@@ -230,35 +239,31 @@ function CfgField({
     )
 }
 
-/* -- Read-only format-setting tile (label + value) ----------------------- */
-function SettingStat({ label, value }: { label: string; value: string }) {
-    return (
-        <Box bg="bg.surfaceTint" rounded="md" px="3" py="2.5" textAlign="center">
-            <Text
-                fontFamily="mono"
-                fontSize="9px"
-                fontWeight={800}
-                letterSpacing="0.1em"
-                color="fg.muted"
-                textTransform="uppercase"
-                mb="1"
-            >
-                {label}
-            </Text>
-            <Text
-                fontFamily="heading"
-                fontSize="18px"
-                fontWeight={800}
-                color="fg.ink"
-                letterSpacing="-0.02em"
-            >
-                {value}
-            </Text>
-        </Box>
-    )
-}
-
 const RowButton = chakra("button")
+
+/* -- Shared match display state ------------------------------------------ */
+/** Derived render state shared by the list row (MatchRow) and the grid card
+ *  (MatchCard) so the two layouts can't drift apart: status flags, resolved
+ *  team names (with the predicted-pairing / slot-label fallbacks rendered
+ *  muted) and the centre score/vs text. */
+function matchDisplay(match: ScheduledMatch) {
+    const hasScore = match.score1 != null && match.score2 != null
+    const isLive = match.status === "LIVE"
+    const isFinished = match.status === "FINISHED"
+    // Scoreboard layout (team-left / score / team-right) for both LIVE and
+    // FINISHED - mirrors the LivePage card design so the user has one
+    // consistent mental model across the two screens.
+    const scoreboard = isLive || isFinished
+    // Undecided knockout slots fall back to the predicted pairing (real name once
+    // the group finishes) → the slot label ("A1", "Pobj. ČF1") → "TBD" / "-".
+    // A predicted/label placeholder renders muted; a real team name stays normal.
+    const t1Name = match.team1Name ?? match.slot1PredictedName ?? match.slot1Label ?? (isFinished ? "-" : "TBD")
+    const t2Name = match.team2Name ?? match.slot2PredictedName ?? match.slot2Label ?? (isFinished ? "-" : "TBD")
+    const t1Muted = match.team1Name == null && (match.slot1PredictedName != null || match.slot1Label != null)
+    const t2Muted = match.team2Name == null && (match.slot2PredictedName != null || match.slot2Label != null)
+    const scoreText = hasScore ? `${match.score1}:${match.score2}` : scoreboard ? "-" : "vs"
+    return { hasScore, isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText }
+}
 
 /* -- Match row ----------------------------------------------------------- */
 function MatchRow({
@@ -296,16 +301,11 @@ function MatchRow({
     isNext?: boolean
 }) {
     const [expanded, setExpanded] = useState(false)
-    const hasScore = match.score1 != null && match.score2 != null
-    const isLive = match.status === "LIVE"
-    const isFinished = match.status === "FINISHED"
+    const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
+        matchDisplay(match)
     // Only a started match (LIVE or FINISHED) has a timeline to expand; a match
     // that hasn't kicked off yet can't be expanded.
-    const canExpand = isLive || isFinished
-    // Scoreboard layout (team-left / score / team-right) for both LIVE
-    // and FINISHED - mirrors the LivePage card design so the user has
-    // one consistent mental model across the two screens.
-    const scoreboard = isLive || isFinished
+    const canExpand = scoreboard
 
     // Long club names shrink a touch and wrap (up to three lines) so they stay
     // readable in the schedule row instead of truncating with an ellipsis.
@@ -411,13 +411,13 @@ function MatchRow({
         >
             <VStack align="stretch" gap="1">
                 {scoreboard ? (
-                    /* LIVE / FINISHED header - unchanged: stage badge on the
-                       left, kickoff time centred between two equal-flex clusters
-                       (dead-centre above the score). */
+                    /* LIVE / FINISHED header - stage badge on the left, kickoff
+                       time centred between two equal-flex clusters (dead-centre
+                       above the score). A LIVE match is signalled by the red
+                       border + red score box alone - no "UŽIVO" text badge. */
                     <Flex align="center" gap="2" wrap="wrap">
                         <HStack gap="2" flex="1" minW="fit-content" wrap="wrap">
                             <StageBadge stage={match.stage} groupName={match.groupName} />
-                            {isLive && <LiveBadge />}
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
@@ -456,11 +456,11 @@ function MatchRow({
                     <Text
                         fontSize={nameFont}
                         fontWeight={700}
-                        color="fg.ink"
+                        color={t1Muted ? "fg.muted" : "fg.ink"}
                         textAlign="right"
                         lineClamp="3"
                     >
-                        {match.team1Name ?? (isFinished ? "-" : "TBD")}
+                        {t1Name}
                     </Text>
                     <Box
                         fontFamily="mono"
@@ -476,20 +476,16 @@ function MatchRow({
                         textAlign="center"
                         fontVariantNumeric="tabular-nums"
                     >
-                        {hasScore
-                            ? `${match.score1}:${match.score2}`
-                            : scoreboard
-                                ? "-"
-                                : "vs"}
+                        {scoreText}
                     </Box>
                     <Text
                         fontSize={nameFont}
                         fontWeight={700}
-                        color="fg.ink"
+                        color={t2Muted ? "fg.muted" : "fg.ink"}
                         textAlign="left"
                         lineClamp="3"
                     >
-                        {match.team2Name ?? (isFinished ? "-" : "TBD")}
+                        {t2Name}
                     </Text>
                 </Box>
             </VStack>
@@ -538,6 +534,149 @@ function MatchRow({
     )
 }
 
+/* -- Match card (grid view) ---------------------------------------------- */
+/** Compact, view-only card for the grid layout: stage/group badge + kickoff
+ *  on top, then the same team / score / team scoreboard as MatchRow (shared
+ *  via matchDisplay). No inline kickoff editing, no drag handle, no expand -
+ *  the grid is a viewing layout; editing stays in the list view. */
+function MatchCard({
+    match,
+    multiDay,
+    isNext = false,
+}: {
+    match: ScheduledMatch
+    /** Multi-day tournament - the kickoff stamp adds the date ("DD.MM. HH:MM"),
+     *  matching the list's day-aware time display; single-day shows just HH:MM. */
+    multiDay: boolean
+    /** True for the single next-to-start match - same red-border emphasis as
+     *  the list row (already suppressed upstream while any match is LIVE). */
+    isNext?: boolean
+}) {
+    const { isLive, t1Name, t2Name, t1Muted, t2Muted, scoreText } = matchDisplay(match)
+
+    // "HH:MM" for a single-day tournament; "DD.MM. HH:MM" across several days.
+    const kickoffLabel = (() => {
+        const v = isoToLocal(match.kickoffAt)
+        if (!v) return null
+        const [d, t] = v.split("T")
+        const [, mo, day] = d.split("-")
+        return multiDay ? `${day}.${mo}. ${t}` : t
+    })()
+
+    return (
+        <Panel
+            px="3"
+            py="2.5"
+            h="full"
+            borderColor={isLive || isNext ? "red.emphasized" : "border"}
+            borderWidth={isLive || isNext ? "2px" : "1px"}
+        >
+            <VStack align="stretch" gap="2" h="full" justify="space-between">
+                <Flex align="center" justify="space-between" gap="2">
+                    <StageBadge stage={match.stage} groupName={match.groupName} />
+                    {kickoffLabel ? (
+                        <HStack gap="1" fontSize="xs" fontWeight={600} color="fg.muted" fontFamily="mono" flexShrink={0}>
+                            <FiClock size={11} />
+                            <Box as="span">{kickoffLabel}</Box>
+                        </HStack>
+                    ) : (
+                        <Text fontSize="2xs" color="fg.subtle" flexShrink={0}>
+                            Termin nije određen
+                        </Text>
+                    )}
+                </Flex>
+
+                {/* Same 3-column scoreboard grid as the list row, sized down. */}
+                <Box
+                    display="grid"
+                    gridTemplateColumns="1fr auto 1fr"
+                    alignItems="center"
+                    gap="2"
+                >
+                    <Text
+                        fontSize="13px"
+                        fontWeight={700}
+                        color={t1Muted ? "fg.muted" : "fg.ink"}
+                        textAlign="right"
+                        lineClamp="2"
+                    >
+                        {t1Name}
+                    </Text>
+                    <Box
+                        fontFamily="mono"
+                        fontSize="sm"
+                        fontWeight={isLive ? 800 : 600}
+                        letterSpacing="-0.02em"
+                        color={isLive ? "red.fg" : match.status === "FINISHED" ? "fg.ink" : "fg.muted"}
+                        bg={isLive ? "red.subtle" : match.status === "FINISHED" ? "bg.surfaceTint" : "transparent"}
+                        px="2.5"
+                        py="0.5"
+                        rounded="lg"
+                        minW="56px"
+                        textAlign="center"
+                        fontVariantNumeric="tabular-nums"
+                    >
+                        {scoreText}
+                    </Box>
+                    <Text
+                        fontSize="13px"
+                        fontWeight={700}
+                        color={t2Muted ? "fg.muted" : "fg.ink"}
+                        textAlign="left"
+                        lineClamp="2"
+                    >
+                        {t2Name}
+                    </Text>
+                </Box>
+            </VStack>
+        </Panel>
+    )
+}
+
+/* -- View toggle --------------------------------------------------------- */
+/** Segmented-control button for the list/grid view switcher - same pattern as
+ *  the tournaments page "prikaz" toggle, sized to the schedule header. */
+function ViewToggleButton({
+    active,
+    onClick,
+    icon,
+    label,
+}: {
+    active: boolean
+    onClick: () => void
+    icon: React.ReactNode
+    label: string
+}) {
+    return (
+        <Box
+            as="button"
+            onClick={onClick}
+            // Icon-only control - the aria-label IS the accessible name.
+            aria-label={label}
+            title={label}
+            aria-pressed={active}
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            px="2.5"
+            py="1.5"
+            rounded="full"
+            cursor="pointer"
+            bg={active ? "pitch.500" : "transparent"}
+            color={active ? "white" : "fg.muted"}
+            transition="background 150ms"
+            _hover={active ? undefined : { color: "fg.ink" }}
+        >
+            {icon}
+        </Box>
+    )
+}
+
+/** localStorage key for the list/grid choice - global (not per tournament) so
+ *  the preferred prikaz follows the user across tournaments. */
+const VIEW_KEY = "futsal:schedule-view"
+type ScheduleView = "list" | "grid"
+
 /* -- Main export --------------------------------------------------------- */
 /** `canEdit` - owner/admin gate for the mutating actions: format config
  *  inputs, generate-schedule button, and per-match kickoff edits. When
@@ -551,6 +690,7 @@ export default function ScheduleTab({
     focusMatchId = null,
     format,
     startAt,
+    exportMeta,
 }: {
     uuid: string
     canEdit?: boolean
@@ -571,6 +711,8 @@ export default function ScheduleTab({
     /** When set (arriving from a /uzivo upcoming-match click), that match's
      *  row is scrolled into view + briefly highlighted. */
     focusMatchId?: number | null
+    /** Tournament meta for the branded "Export raspored" poster. */
+    exportMeta?: ExportMeta
 }) {
     const queryClient = useQueryClient()
     // Seed from the shared schedule cache so returning to the Raspored tab (or a
@@ -583,6 +725,8 @@ export default function ScheduleTab({
     const [clearing, setClearing] = useState(false)
     /** Which destructive schedule action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
+    /** Branded "Export raspored" poster dialog. */
+    const [exportOpen, setExportOpen] = useState(false)
     /** Multi-day generate planner (date range + per-day matches + preview). */
     const [plannerOpen, setPlannerOpen] = useState(false)
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
@@ -591,9 +735,52 @@ export default function ScheduleTab({
     /** "Uredi raspored" - after the tournament starts, lets the organizer edit
      *  times + reorder matches that haven't started yet. */
     const [editScheduleMode, setEditScheduleMode] = useState(false)
-    /** Read-only schedule-settings panel - collapsed by default so the filters
-     *  and the match list are the first thing the viewer sees. */
-    const [settingsOpen, setSettingsOpen] = useState(false)
+    /** "Uredi format" - once the schedule is laid out, the inline format editor
+     *  is hidden behind this toggle (before it's laid out the editor is always
+     *  open, so the organizer can't miss it). No portal / popover involved. */
+    const [formatEditorOpen, setFormatEditorOpen] = useState(false)
+    /** "Sažmi" - collapse the upcoming list to just the next few matches.
+     *  Persisted per tournament so the choice survives a reload. Default
+     *  expanded (false). */
+    const collapseKey = `futsal:schedule-collapsed:${uuid}`
+    const [collapsed, setCollapsed] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(`futsal:schedule-collapsed:${uuid}`) === "1"
+        } catch {
+            return false
+        }
+    })
+    // Re-read when switching between tournaments (uuid change without remount).
+    useEffect(() => {
+        try {
+            setCollapsed(localStorage.getItem(`futsal:schedule-collapsed:${uuid}`) === "1")
+        } catch {
+            setCollapsed(false)
+        }
+    }, [uuid])
+    useEffect(() => {
+        try {
+            localStorage.setItem(collapseKey, collapsed ? "1" : "0")
+        } catch {
+            /* storage unavailable - collapse just won't persist */
+        }
+    }, [collapseKey, collapsed])
+    /** List (rows, default) vs grid (compact cards) prikaz. Persisted globally
+     *  under one key - the choice is a viewing preference, not per tournament. */
+    const [viewMode, setViewMode] = useState<ScheduleView>(() => {
+        try {
+            return localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list"
+        } catch {
+            return "list"
+        }
+    })
+    useEffect(() => {
+        try {
+            localStorage.setItem(VIEW_KEY, viewMode)
+        } catch {
+            /* storage unavailable - the view choice just won't persist */
+        }
+    }, [viewMode])
     /** Drag-and-drop reorder state: the match being dragged + the row hovered. */
     const [dragId, setDragId] = useState<number | null>(null)
     const [overId, setOverId] = useState<number | null>(null)
@@ -616,6 +803,8 @@ export default function ScheduleTab({
         koEnabled: false,
         koHalfLengthMin: "10",
         koHalftimeBreakMin: "5",
+        // Empty = the knockout inherits the group break between matches.
+        koBreakBetweenMatchesMin: "",
     })
 
     useEffect(() => {
@@ -647,6 +836,12 @@ export default function ScheduleTab({
                         koOn && s.koHalftimeBreakMin != null
                             ? String(s.koHalftimeBreakMin)
                             : groupBreak,
+                    // Empty stays empty (inherit the group break); only a stored
+                    // explicit knockout break seeds the field.
+                    koBreakBetweenMatchesMin:
+                        koOn && s.koBreakBetweenMatchesMin != null
+                            ? String(s.koBreakBetweenMatchesMin)
+                            : "",
                 })
             })
             .catch(() => {
@@ -728,10 +923,14 @@ export default function ScheduleTab({
 
     const fixedBreaks = numVal(cfg.breakBetweenMatchesMin) + numVal(cfg.bufferMin)
     const slot = HALF_COUNT * numVal(cfg.halfLengthMin) + numVal(cfg.halftimeBreakMin) + fixedBreaks
+    // The knockout break between matches falls back to the group break when the
+    // field is left empty (inherit), mirroring the backend.
+    const koBreakBetween = numValOrNull(cfg.koBreakBetweenMatchesMin) ?? numVal(cfg.breakBetweenMatchesMin)
+    const koFixedBreaks = koBreakBetween + numVal(cfg.bufferMin)
     // The knockout slot only differs while the override is on; mirrors the
     // backend's slotFor(stage) so the footer never disagrees with the layout.
     const koSlot = cfg.koEnabled
-        ? HALF_COUNT * numVal(cfg.koHalfLengthMin) + numVal(cfg.koHalftimeBreakMin) + fixedBreaks
+        ? HALF_COUNT * numVal(cfg.koHalfLengthMin) + numVal(cfg.koHalftimeBreakMin) + koFixedBreaks
         : slot
     // The override is only meaningful when there IS a knockout to differ from
     // the groups - KNOCKOUT_ONLY has no group stage, GROUPS_ONLY no knockout.
@@ -941,10 +1140,17 @@ export default function ScheduleTab({
     const upcomingMatches = visibleMatches.filter((m) => m.status !== "FINISHED")
     const finishedMatches = visibleMatches.filter((m) => m.status === "FINISHED")
 
+    // True while any match is being played (unfiltered list - a filter must not
+    // resurrect the "next up" emphasis while a game is running off-screen).
+    const anyLive = rawMatches.some((m) => m.status === "LIVE")
     // The next match to start: the earliest-kickoff SCHEDULED match (computed
     // from the full list so the highlight is the globally-next game). Gets a red
-    // border so the organizer immediately sees which game is on deck.
-    const nextMatchId = byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
+    // border so the organizer immediately sees which game is on deck - but ONLY
+    // while no match is LIVE: during a live game the red border belongs to the
+    // live row alone, and upcoming rows render plain.
+    const nextMatchId = anyLive
+        ? null
+        : byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
 
     const renderRow = (
         m: ScheduledMatch,
@@ -998,6 +1204,37 @@ export default function ScheduleTab({
         )
     }
 
+    // Grid-view card - view-only (no kickoff editing, no drag), but it keeps
+    // the sched-match id + focus outline so the /uzivo deep-link scroll works
+    // in both views.
+    const renderCard = (m: ScheduledMatch) => (
+        <Box
+            key={m.matchId}
+            id={`sched-match-${m.matchId}`}
+            rounded="2xl"
+            css={
+                focusMatchId === m.matchId
+                    ? { outline: "2px solid var(--chakra-colors-brand-solid)", outlineOffset: "2px" }
+                    : undefined
+            }
+        >
+            <MatchCard match={m} multiDay={multiDay} isNext={m.matchId === nextMatchId} />
+        </Box>
+    )
+
+    // Split a (kickoff-sorted) match list into per-day runs so the grid can
+    // render the same DayDivider above each day's card group.
+    const dayGroups = (ms: ScheduledMatch[]) => {
+        const out: { key: string; items: ScheduledMatch[] }[] = []
+        for (const m of ms) {
+            const k = dateKey(m.kickoffAt)
+            const last = out[out.length - 1]
+            if (last && last.key === k) last.items.push(m)
+            else out.push({ key: k, items: [m] })
+        }
+        return out
+    }
+
     // Tournament has started once a REAL match is played. A knockout bye is
     // auto-FINISHED on generation (one team, no game) and must NOT count -
     // otherwise drawing an elimination with byes would hide the schedule
@@ -1010,17 +1247,9 @@ export default function ScheduleTab({
 
     // The schedule has a stored format once it's been generated.
     const scheduleHasConfig = schedule != null && schedule.halfLengthMin != null
-    // One-line summary shown in the collapsed settings header, e.g.
-    // "2x12min - pauze 1min/5min - ukupno termin 30min".
-    // When the knockout has its own format, the summary leads with the group
-    // format and appends the knockout one, e.g. "2x6min … / ZAVRŠNICA 2x8min".
+    // The stored knockout format differs from the groups (only meaningful once
+    // the schedule is generated).
     const koFormatOn = schedule != null && schedule.koHalfLengthMin != null && schedule.koHalfLengthMin > 0
-    const settingsSummary = schedule
-        ? `${schedule.halfCount ?? 2}x${schedule.halfLengthMin ?? 0}min - PAUZE ${schedule.halftimeBreakMin ?? 0}min/${schedule.breakBetweenMatchesMin ?? 0}min - UKUPNO ${schedule.slotLengthMin}min`
-          + (koFormatOn
-              ? ` / ZAVRŠNICA ${schedule.halfCount ?? 2}x${schedule.koHalfLengthMin}min - UKUPNO ${schedule.koSlotLengthMin}min`
-              : "")
-        : ""
     // Matches without a kickoff (e.g. knockout drawn after the group schedule).
     const unscheduledCount = rawMatches.filter((m) => !m.kickoffAt).length
     // The organizer sees the editable config card (only before the start); the
@@ -1040,9 +1269,10 @@ export default function ScheduleTab({
     // which re-enables editing kickoff times + reorder for matches that haven't
     // started yet (SCHEDULED only).
     const scheduleEditable = canEdit && (!tournamentStarted || editScheduleMode)
-    // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, and not
-    // while any filter is active (the visible subset isn't the real order).
-    const reorderEnabled = scheduleEditable && scheduleLaidOut && !anyFilter
+    // Drag-and-drop reorder - only SCHEDULED (not-yet-played) matches, not
+    // while any filter is active (the visible subset isn't the real order),
+    // and only in the list view (the grid is a view-only layout).
+    const reorderEnabled = scheduleEditable && scheduleLaidOut && !anyFilter && viewMode === "list"
     // Keep the current draggable order in a ref the pointer listeners can read.
     orderRef.current = reorderEnabled
         ? upcomingMatches
@@ -1050,93 +1280,404 @@ export default function ScheduleTab({
               .map((m) => m.matchId)
         : []
 
+    /* ── Header format pill ────────────────────────────────────────────────
+       Compact "2×6 min · završnica 2×8 min" readout that replaces the old
+       config box. Reads from the stored schedule once generated; before that
+       it mirrors the live `cfg` the organizer is editing. */
+    const pillHalfCount = scheduleHasConfig ? (schedule?.halfCount ?? HALF_COUNT) : HALF_COUNT
+    const pillGroupLen = scheduleHasConfig ? (schedule?.halfLengthMin ?? 0) : numVal(cfg.halfLengthMin)
+    const pillKoOn = scheduleHasConfig ? koFormatOn : cfg.koEnabled
+    const pillKoLen = scheduleHasConfig ? (schedule?.koHalfLengthMin ?? 0) : numVal(cfg.koHalfLengthMin)
+    const pillText =
+        `${pillHalfCount}×${pillGroupLen} min` +
+        (pillKoOn ? ` · završnica ${pillHalfCount}×${pillKoLen} min` : "")
+    const pillTitle = scheduleHasConfig
+        ? `Poluvrijeme ${pillGroupLen} min · pauza ${schedule?.halftimeBreakMin ?? 0} min · pauza između utakmica ${schedule?.breakBetweenMatchesMin ?? 0} min · termin ${schedule?.slotLengthMin ?? 0} min` +
+          (koFormatOn ? ` · termin završnice ${schedule?.koSlotLengthMin ?? 0} min` : "") +
+          (koFormatOn && schedule?.koBreakBetweenMatchesMin != null
+              ? ` · pauza između utakmica završnice ${schedule.koBreakBetweenMatchesMin} min`
+              : "")
+        : `Poluvrijeme ${pillGroupLen} min · pauza ${numVal(cfg.halftimeBreakMin)} min · pauza između utakmica ${numVal(cfg.breakBetweenMatchesMin)} min · termin ${slot} min` +
+          (cfg.koEnabled ? ` · termin završnice ${koSlot} min` : "") +
+          (cfg.koEnabled && cfg.koBreakBetweenMatchesMin.trim() !== ""
+              ? ` · pauza između utakmica završnice ${numVal(cfg.koBreakBetweenMatchesMin)} min`
+              : "")
+    // The read-only pill is shown whenever there is a format to display
+    // (generated) or an organizer who can still configure one (before the
+    // tournament starts). It is never clickable now - the editor is inline.
+    const showFormatControl = scheduleHasConfig || showEditableConfig
+    // Inline format editor (CfgFields + KO override + generate / regenerate /
+    // clear). No popover, no portal:
+    //   - forced open before the schedule is laid out, so the organizer has to
+    //     set the format before they can generate (no toggle);
+    //   - after it's laid out, revealed on demand via the "Uredi format" button.
+    const configBoxForced = showEditableConfig && !scheduleLaidOut
+    const configBoxToggle = showEditableConfig && scheduleLaidOut
+    const showConfigBox = configBoxForced || (configBoxToggle && formatEditorOpen)
+
+    /* ── Collapse ("Sažmi") ────────────────────────────────────────────────
+       When collapsed, keep every LIVE row + only the next few SCHEDULED rows,
+       then a single "+ još N utakmica" summary row expands the list again. */
+    const COLLAPSE_LIMIT = 3
+    const scheduledUpcomingCount = upcomingMatches.filter((m) => m.status === "SCHEDULED").length
+    const canCollapse = scheduledUpcomingCount > COLLAPSE_LIMIT
+    const hiddenUpcomingCount = canCollapse && collapsed ? scheduledUpcomingCount - COLLAPSE_LIMIT : 0
+    let shownScheduled = 0
+    const displayedUpcoming = canCollapse && collapsed
+        ? upcomingMatches.filter((m) => {
+              if (m.status !== "SCHEDULED") return true
+              if (shownScheduled < COLLAPSE_LIMIT) {
+                  shownScheduled++
+                  return true
+              }
+              return false
+          })
+        : upcomingMatches
+    // Collapsed - one subtle row folds the rest of the upcoming matches; click
+    // (or "Prikaži sve") reopens. Shared by the list and grid prikaz.
+    const showMoreButton = hiddenUpcomingCount > 0 ? (
+        <chakra.button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            gap="2"
+            w="full"
+            py="2.5"
+            rounded="lg"
+            borderWidth="1px"
+            borderStyle="dashed"
+            borderColor="border.emphasized"
+            bg="bg.surfaceTint"
+            color="fg.muted"
+            fontSize="sm"
+            fontWeight={600}
+            cursor="pointer"
+            _hover={{ bg: "bg.panel", color: "fg.ink" }}
+        >
+            <FiChevronsDown size={14} />
+            + još {hiddenUpcomingCount} utakmica
+        </chakra.button>
+    ) : null
+
+    // Shared pill visuals - read-only (span) vs editable trigger (button).
+    const pillFace = (
+        <>
+            <FiClock size={12} />
+            <Box as="span">{pillText}</Box>
+        </>
+    )
+
+    /* ── Config editor (moved into the header popover) ─────────────────────
+       Same CfgField inputs + "Završnica se igra drugačije" override + the
+       generate / re-generate / clear actions that used to live in the box
+       above the list. Values still feed MultiDaySchedulePlanner via koPayload. */
+    const configEditor = (
+        <VStack align="stretch" gap="3">
+            <Text fontSize="13px" fontWeight={800} color="fg.ink" letterSpacing="-0.01em">
+                Format utakmice
+            </Text>
+
+            {/* Two columns: the normal (group) format on the left, the knockout
+                format on the right. Side by side on desktop, stacked on mobile.
+                Both column headers share the same height so the field rows below
+                line up. */}
+            <Flex gap={{ base: "3", md: "6" }} wrap="wrap" align="flex-start">
+                {/* Left - group format */}
+                <Box flex={{ base: "1 1 100%", md: "0 1 auto" }} minW="0">
+                    {canSplitFormat && (
+                        <Text
+                            fontSize="2xs"
+                            fontWeight={700}
+                            letterSpacing="wide"
+                            textTransform="uppercase"
+                            color="fg.muted"
+                            minH="20px"
+                            mb="1.5"
+                            display="flex"
+                            alignItems="center"
+                        >
+                            Grupe
+                        </Text>
+                    )}
+                    <Flex gap={{ base: "2", md: "3" }} wrap="wrap" align="flex-end">
+                        <CfgField
+                            label="Trajanje poluvrijeme"
+                            value={cfg.halfLengthMin}
+                            onChange={(v) => setCfg((c) => ({ ...c, halfLengthMin: v }))}
+                        />
+                        <CfgField
+                            label="Pauza poluvrijeme"
+                            value={cfg.halftimeBreakMin}
+                            onChange={(v) => setCfg((c) => ({ ...c, halftimeBreakMin: v }))}
+                        />
+                        <CfgField
+                            label="Pauza između utakmica"
+                            value={cfg.breakBetweenMatchesMin}
+                            onChange={(v) => setCfg((c) => ({ ...c, breakBetweenMatchesMin: v }))}
+                        />
+                    </Flex>
+                </Box>
+
+                {/* Right - knockout format (only for GROUPS_KNOCKOUT). The
+                    "Završnica se igra drugačije" checkbox is this column's header;
+                    the fields appear below it only when the override is on
+                    (e.g. groups 2x6, završnica 2x8). The break field is optional -
+                    empty inherits the group break. */}
+                {canSplitFormat && (
+                    <Box
+                        flex={{ base: "1 1 100%", md: "0 1 auto" }}
+                        minW="0"
+                        borderTopWidth={{ base: "1px", md: "0" }}
+                        borderLeftWidth={{ base: "0", md: "1px" }}
+                        borderColor="border"
+                        pt={{ base: "3", md: "0" }}
+                        pl={{ base: "0", md: "6" }}
+                    >
+                        <Flex
+                            as="label"
+                            align="center"
+                            gap="2"
+                            cursor="pointer"
+                            userSelect="none"
+                            minH="20px"
+                            mb="1.5"
+                        >
+                            <chakra.input
+                                type="checkbox"
+                                checked={cfg.koEnabled}
+                                // Read the value synchronously: the updater below
+                                // runs in React's reducer phase, by which time the
+                                // synthetic event's currentTarget is already null.
+                                onChange={(e) => {
+                                    const checked = e.target.checked
+                                    setCfg((c) => ({ ...c, koEnabled: checked }))
+                                }}
+                                w="16px"
+                                h="16px"
+                                accentColor="pitch.500"
+                                cursor="pointer"
+                                flexShrink={0}
+                            />
+                            <Text fontSize="12px" fontWeight={700} color="fg.ink" lineHeight="1.2">
+                                Završnica se igra drugačije
+                            </Text>
+                        </Flex>
+                        {cfg.koEnabled && (
+                            <Flex gap={{ base: "2", md: "3" }} wrap="wrap" align="flex-end">
+                                <CfgField
+                                    label="Završnica - poluvrijeme"
+                                    value={cfg.koHalfLengthMin}
+                                    onChange={(v) => setCfg((c) => ({ ...c, koHalfLengthMin: v }))}
+                                />
+                                <CfgField
+                                    label="Završnica - pauza poluvrijeme"
+                                    value={cfg.koHalftimeBreakMin}
+                                    onChange={(v) => setCfg((c) => ({ ...c, koHalftimeBreakMin: v }))}
+                                />
+                                <CfgField
+                                    label="Završnica - pauza između utakmica"
+                                    placeholder={cfg.breakBetweenMatchesMin || "5"}
+                                    value={cfg.koBreakBetweenMatchesMin}
+                                    onChange={(v) => setCfg((c) => ({ ...c, koBreakBetweenMatchesMin: v }))}
+                                />
+                            </Flex>
+                        )}
+                    </Box>
+                )}
+            </Flex>
+
+            {/* Unified termin readout - one compact mono line for both slots
+                (završnica only when the override is on). */}
+            <Text fontFamily="mono" fontSize="12px" color="fg.muted" fontWeight={600}>
+                Termin grupe: {slot} min
+                {cfg.koEnabled ? ` · Termin završnice: ${koSlot} min` : ""}
+            </Text>
+
+            {/* Actions - a tight button row (no big padded panel). */}
+            <VStack align="stretch" gap="2">
+                {!drawGenerated && (
+                    <Text fontSize="12px" color="fg.muted">
+                        Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored.
+                    </Text>
+                )}
+                <Flex gap="2" wrap="wrap" align="center">
+                    {scheduleLaidOut ? (
+                        <>
+                            <PrimaryButton
+                                onClick={() => setPlannerOpen(true)}
+                                disabled={generating || clearing}
+                                icon={<FiRefreshCw size={14} />}
+                            >
+                                Ponovno postavi
+                            </PrimaryButton>
+                            <GhostButton
+                                danger
+                                onClick={() => setConfirmAction("clear")}
+                                disabled={generating || clearing}
+                                icon={<FiTrash2 size={14} />}
+                            >
+                                Očisti raspored
+                            </GhostButton>
+                        </>
+                    ) : (
+                        <PrimaryButton
+                            onClick={() => setPlannerOpen(true)}
+                            disabled={generating || !drawGenerated}
+                            icon={<LuCalendarClock size={14} />}
+                        >
+                            {generating ? "Generiranje…" : "Generiraj raspored"}
+                        </PrimaryButton>
+                    )}
+                </Flex>
+            </VStack>
+        </VStack>
+    )
+
+    // The format readout is now ALWAYS a plain, non-clickable chip (no popover,
+    // no portal). Hidden while the inline editor is force-open before the
+    // schedule is laid out, since that box already shows the live format.
+    const formatControl = showFormatControl && !configBoxForced ? (
+        <HStack
+            as="span"
+            title={pillTitle}
+            gap="1.5"
+            px="2.5"
+            py="1.5"
+            rounded="lg"
+            bg="bg.surfaceTint"
+            borderWidth="1px"
+            borderColor="border"
+            color="fg.muted"
+            fontFamily="mono"
+            fontSize="12px"
+            fontWeight={600}
+            whiteSpace="nowrap"
+        >
+            {pillFace}
+        </HStack>
+    ) : null
+
+    // The compact action cluster shown in the "Raspored" header (or standalone
+    // above the list when there is no upcoming section to host it).
+    const scheduleControls = (
+        <HStack gap="2" wrap="wrap" justify="flex-end">
+            {formatControl}
+            {configBoxToggle && (
+                <GhostButton
+                    px="3.5"
+                    py="2"
+                    fontSize="13px"
+                    icon={<FiEdit2 size={14} />}
+                    onClick={() => setFormatEditorOpen((v) => !v)}
+                >
+                    {formatEditorOpen ? "Zatvori format" : "Uredi format"}
+                </GhostButton>
+            )}
+            {canCollapse && (
+                <GhostButton
+                    px="3.5"
+                    py="2"
+                    fontSize="13px"
+                    icon={collapsed ? <FiChevronsDown size={14} /> : <FiChevronsUp size={14} />}
+                    onClick={() => setCollapsed((v) => !v)}
+                >
+                    {collapsed ? "Prikaži sve" : "Sažmi"}
+                </GhostButton>
+            )}
+            {canEdit && tournamentStarted && (
+                <PrimaryButton
+                    px="3.5"
+                    py="2"
+                    fontSize="13px"
+                    icon={<FiEdit2 size={14} />}
+                    onClick={() => setEditScheduleMode((v) => !v)}
+                >
+                    {editScheduleMode ? "Gotovo" : "Uredi raspored"}
+                </PrimaryButton>
+            )}
+            {rawMatches.length > 0 && (
+                <GhostButton
+                    px="3.5"
+                    py="2"
+                    fontSize="13px"
+                    icon={<FiDownload size={14} />}
+                    onClick={() => setExportOpen(true)}
+                >
+                    Preuzmi
+                </GhostButton>
+            )}
+            {/* List / grid prikaz switcher - same segmented pattern as the
+                tournaments page toggle, compacted to icon-only buttons. */}
+            {rawMatches.length > 0 && (
+                <HStack
+                    gap="0.5"
+                    px="0.5"
+                    py="0.5"
+                    bg="bg.panel"
+                    borderWidth="1px"
+                    borderColor="border"
+                    rounded="lg"
+                    flexShrink={0}
+                >
+                    <ViewToggleButton
+                        active={viewMode === "list"}
+                        onClick={() => setViewMode("list")}
+                        icon={<FiList size={14} />}
+                        label="Popis"
+                    />
+                    <ViewToggleButton
+                        active={viewMode === "grid"}
+                        onClick={() => setViewMode("grid")}
+                        icon={<FiGrid size={14} />}
+                        label="Mreža"
+                    />
+                </HStack>
+            )}
+        </HStack>
+    )
+    // The "Raspored" section header hosts the controls whenever it renders;
+    // otherwise (empty list, filtered-out, or finished-only) they sit in a
+    // standalone row above the list so generate / export stay reachable.
+    const controlsInHeader = upcomingMatches.length > 0
+
     return (
         <VStack align="stretch" gap="5" py="2">
-            {/* Read-only format summary - COLLAPSED by default so the filters and
-                the match list are the first thing on screen (especially on
-                mobile, where the five stat cards used to fill the whole first
-                view). A slim header shows a one-line summary; tapping it reveals
-                the full stat cards (+ "Uredi raspored" for the organizer). */}
-            {scheduleHasConfig && !showEditableConfig && (
-                <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" overflow="hidden">
-                    <Flex
-                        role="button"
-                        tabIndex={0}
-                        w="full"
-                        align="center"
-                        gap="2"
-                        px={{ base: "3.5", md: "5" }}
-                        py="2"
-                        cursor="pointer"
-                        onClick={() => setSettingsOpen((v) => !v)}
-                        _hover={{ bg: "bg.surfaceTint" }}
-                        transition="background-color 0.15s"
-                    >
-                        <Box color="fg.muted" flexShrink={0} display="inline-flex">
-                            {settingsOpen || editScheduleMode ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
-                        </Box>
-                        {!settingsOpen && !editScheduleMode && (
-                            <Text
-                                minW="0"
-                                fontSize="xs"
-                                color="fg.muted"
-                                fontWeight={600}
-                                fontFamily="mono"
-                                lineClamp={1}
-                            >
-                                {settingsSummary}
-                            </Text>
-                        )}
-                    </Flex>
-                    {(settingsOpen || editScheduleMode) && (
-                        <Box px={{ base: "4", md: "6" }} pt="1" pb="5">
-                            <Box
-                                display="grid"
-                                gridTemplateColumns={{ base: "1fr 1fr", md: "repeat(5, 1fr)" }}
-                                gap="3"
-                            >
-                                <SettingStat label="Broj poluvremena" value={`${schedule.halfCount ?? 2}`} />
-                                <SettingStat
-                                    label={koFormatOn ? "Grupe - poluvrijeme" : "Trajanje poluvrijeme"}
-                                    value={`${schedule.halfLengthMin ?? 0} min`}
-                                />
-                                <SettingStat label="Pauza poluvrijeme" value={`${schedule.halftimeBreakMin ?? 0} min`} />
-                                <SettingStat label="Pauza između utakmica" value={`${schedule.breakBetweenMatchesMin ?? 0} min`} />
-                                <SettingStat
-                                    label={koFormatOn ? "Termin grupe" : "Trajanje termina"}
-                                    value={`${schedule.slotLengthMin} min`}
-                                />
-                                {koFormatOn && (
-                                    <>
-                                        <SettingStat
-                                            label="Završnica - poluvrijeme"
-                                            value={`${schedule.koHalfLengthMin} min`}
-                                        />
-                                        <SettingStat
-                                            label="Završnica - pauza"
-                                            value={`${schedule.koHalftimeBreakMin ?? schedule.halftimeBreakMin ?? 0} min`}
-                                        />
-                                        <SettingStat
-                                            label="Termin završnice"
-                                            value={`${schedule.koSlotLengthMin} min`}
-                                        />
-                                    </>
-                                )}
-                            </Box>
-                            {canEdit && tournamentStarted && (
-                                <Flex justify="center" mt="4">
-                                    <PrimaryButton
-                                        onClick={() => setEditScheduleMode((v) => !v)}
-                                        icon={<FiEdit2 size={14} />}
-                                    >
-                                        {editScheduleMode ? "Gotovo" : "Uredi raspored"}
-                                    </PrimaryButton>
-                                </Flex>
-                            )}
-                        </Box>
-                    )}
+            {/* Schedule controls (format pill · Sažmi · Uredi · Export). When
+                there is an upcoming list they live in its "Raspored" header;
+                otherwise they sit here so generate / export stay reachable. */}
+            {!controlsInHeader && ((showFormatControl && !configBoxForced) || rawMatches.length > 0) && (
+                <Flex justify="flex-end">{scheduleControls}</Flex>
+            )}
+
+            {/* Inline format editor - an always-open, prominent box for the
+                organizer before the schedule is laid out (they must set the
+                match format here), then toggled via "Uredi format" afterwards.
+                Rendered inline (never a portal) so it can't float over other
+                dialogs the way the old popover did. */}
+            {showConfigBox && (
+                <Box
+                    bg="bg.panel"
+                    borderWidth="1px"
+                    borderColor="border"
+                    rounded="xl"
+                    p={{ base: "4", md: "5" }}
+                >
+                    {configEditor}
                 </Box>
             )}
+
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="schedule"
+                meta={exportMeta ?? {
+                    tournamentName: tournamentName ?? "Turnir",
+                    tournamentUrl: `${window.location.origin}/turniri/${tournamentSlug ?? uuid}`,
+                }}
+                matches={rawMatches}
+            />
 
             {/* Some matches have no kickoff (typically the knockout drawn after
                 the group schedule). Let the organizer re-confirm so they get a
@@ -1171,191 +1712,6 @@ export default function ScheduleTab({
                         {confirming ? "Potvrđivanje…" : "Potvrdi raspored"}
                     </PrimaryButton>
                 </Flex>
-            )}
-
-            {/* ── Format utakmice - Pitch SectionCard ─────────────────────
-                 5-col grid of mini-stat inputs + computed slot footer +
-                 Generiraj raspored CTA in the card header. Hidden once
-                 the tournament has started (any match LIVE/FINISHED), and
-                 also hidden for non-organizers - schedule generation is a
-                 destructive owner-only action. */}
-            {showEditableConfig && (
-                <SectionCard>
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
-                        gap="3"
-                        alignItems="end"
-                    >
-                        <CfgField
-                            label="Trajanje poluvrijeme"
-                            align={{ base: "center", md: "start" }}
-                            value={cfg.halfLengthMin}
-                            onChange={(v) => setCfg((c) => ({ ...c, halfLengthMin: v }))}
-                        />
-                        <CfgField
-                            label="Pauza poluvrijeme"
-                            align="center"
-                            value={cfg.halftimeBreakMin}
-                            onChange={(v) => setCfg((c) => ({ ...c, halftimeBreakMin: v }))}
-                        />
-                        <CfgField
-                            label="Pauza između utakmica"
-                            align={{ base: "center", md: "end" }}
-                            value={cfg.breakBetweenMatchesMin}
-                            onChange={(v) => setCfg((c) => ({ ...c, breakBetweenMatchesMin: v }))}
-                        />
-                    </Box>
-
-                    {/* ── Završnica igra drugačije ───────────────────────────
-                         Optional knockout format override (e.g. groups 2x6,
-                         knockout 2x8). Only offered when the tournament has
-                         both phases; off → the knockout inherits the format
-                         above and the ko* fields go to the API as null. */}
-                    {canSplitFormat && (
-                        <Box
-                            mt="4"
-                            pt="4"
-                            borderTopWidth="1px"
-                            borderColor="border.subtle"
-                        >
-                            <Flex
-                                as="label"
-                                align="center"
-                                gap="2.5"
-                                cursor="pointer"
-                                userSelect="none"
-                            >
-                                <chakra.input
-                                    type="checkbox"
-                                    checked={cfg.koEnabled}
-                                    // Read the value synchronously: the updater below
-                                    // runs in React's reducer phase, by which time the
-                                    // synthetic event's currentTarget is already null.
-                                    onChange={(e) => {
-                                        const checked = e.target.checked
-                                        setCfg((c) => ({ ...c, koEnabled: checked }))
-                                    }}
-                                    w="16px"
-                                    h="16px"
-                                    accentColor="pitch.500"
-                                    cursor="pointer"
-                                />
-                                <Box>
-                                    <Text fontSize="13px" fontWeight={700} color="fg.ink">
-                                        Završnica se igra drugačije
-                                    </Text>
-                                    <Text fontSize="11px" color="fg.muted">
-                                        Npr. grupe 2x6 min, završnica 2x8 min
-                                    </Text>
-                                </Box>
-                            </Flex>
-
-                            {cfg.koEnabled && (
-                                <Box
-                                    mt="3"
-                                    display="grid"
-                                    gridTemplateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
-                                    gap="3"
-                                    alignItems="end"
-                                >
-                                    <CfgField
-                                        label="Završnica - poluvrijeme"
-                                        align={{ base: "center", md: "start" }}
-                                        value={cfg.koHalfLengthMin}
-                                        onChange={(v) => setCfg((c) => ({ ...c, koHalfLengthMin: v }))}
-                                    />
-                                    <CfgField
-                                        label="Završnica - pauza poluvrijeme"
-                                        align="center"
-                                        value={cfg.koHalftimeBreakMin}
-                                        onChange={(v) => setCfg((c) => ({ ...c, koHalftimeBreakMin: v }))}
-                                    />
-                                    <HStack
-                                        justify={{ base: "center", md: "flex-end" }}
-                                        gap="1.5"
-                                        pb="1"
-                                    >
-                                        <FiClock size={13} />
-                                        <Text fontSize="12px" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
-                                            Termin završnice:
-                                        </Text>
-                                        <Box fontFamily="mono" fontSize="15px" color="pitch.500" fontWeight={800}>
-                                            {koSlot} min
-                                        </Box>
-                                    </HStack>
-                                </Box>
-                            )}
-                        </Box>
-                    )}
-
-                    {/* Green action bar: format description (left) · generate
-                        action (centre) · computed slot duration (right). */}
-                    <Flex
-                        mt="4"
-                        align="center"
-                        gap="3"
-                        wrap="wrap"
-                        bg="brand.subtle"
-                        borderWidth="1px"
-                        borderColor="brand.emphasized"
-                        rounded="lg"
-                        px="4"
-                        py="3"
-                    >
-                        <Text
-                            flex={{ base: "1 1 100%", md: "1" }}
-                            minW="0"
-                            fontSize="13px"
-                            color="fg.ink"
-                            fontWeight={600}
-                        >
-                            {drawGenerated
-                                ? "Raspored turnira - trajanje, poluvrijeme, pauze"
-                                : "Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored"}
-                        </Text>
-
-                        <Flex flex={{ base: "1 1 100%", md: "1" }} justify="center" gap="2" wrap="wrap">
-                            {scheduleLaidOut ? (
-                                <>
-                                    <PrimaryButton
-                                        onClick={() => setPlannerOpen(true)}
-                                        disabled={generating || clearing}
-                                        icon={<FiRefreshCw size={14} />}
-                                    >
-                                        Ponovno postavi
-                                    </PrimaryButton>
-                                    <GhostButton
-                                        danger
-                                        onClick={() => setConfirmAction("clear")}
-                                        disabled={generating || clearing}
-                                        icon={<FiTrash2 size={14} />}
-                                    >
-                                        Očisti raspored
-                                    </GhostButton>
-                                </>
-                            ) : (
-                                <PrimaryButton
-                                    onClick={() => setPlannerOpen(true)}
-                                    disabled={generating || !drawGenerated}
-                                    icon={<LuCalendarClock size={14} />}
-                                >
-                                    {generating ? "Generiranje…" : "Generiraj raspored"}
-                                </PrimaryButton>
-                            )}
-                        </Flex>
-
-                        <HStack flex={{ base: "1 1 100%", md: "1" }} justify={{ base: "flex-start", md: "flex-end" }} gap="1.5">
-                            <FiClock size={13} />
-                            <Text fontSize="12px" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
-                                {cfg.koEnabled ? "Termin grupe:" : "Trajanje termina:"}
-                            </Text>
-                            <Box fontFamily="mono" fontSize="15px" color="pitch.500" fontWeight={800}>
-                                {slot} min
-                            </Box>
-                        </HStack>
-                    </Flex>
-                </SectionCard>
             )}
 
             {/* Filter the schedule - by team, by group, and (multi-day only) by
@@ -1506,14 +1862,33 @@ export default function ScheduleTab({
                                 ) : undefined
                             }
                             padding="4"
+                            action={scheduleControls}
                         >
+                            {viewMode === "grid" ? (
+                                /* Grid prikaz - view-only cards, day dividers
+                                   above each day's card group (multi-day only),
+                                   collapse shares the same "+ još N" row. */
+                                <VStack align="stretch" gap="2">
+                                    {dayGroups(displayedUpcoming).map((g, gi) => (
+                                        <Fragment key={g.key || "bez-termina"}>
+                                            {multiDay && (
+                                                <DayDivider label={dividerLabel(g.key)} first={gi === 0} />
+                                            )}
+                                            <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
+                                                {g.items.map((m) => renderCard(m))}
+                                            </SimpleGrid>
+                                        </Fragment>
+                                    ))}
+                                    {showMoreButton}
+                                </VStack>
+                            ) : (
                             <VStack align="stretch" gap="2">
-                                {upcomingMatches.map((m, idx) => {
+                                {displayedUpcoming.map((m, idx) => {
                                     // Day separator before the first match of each
                                     // day (multi-day tournaments only). Doesn't touch
                                     // the drag order - it's not a [data-sched-row].
                                     const curKey = dateKey(m.kickoffAt)
-                                    const prevKey = idx > 0 ? dateKey(upcomingMatches[idx - 1].kickoffAt) : null
+                                    const prevKey = idx > 0 ? dateKey(displayedUpcoming[idx - 1].kickoffAt) : null
                                     const dayNode = multiDay && curKey !== prevKey
                                         ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
                                         : null
@@ -1561,7 +1936,9 @@ export default function ScheduleTab({
                                         </Fragment>
                                     )
                                 })}
+                                {showMoreButton}
                             </VStack>
+                            )}
                         </SectionCard>
                     )}
                     {finishedMatches.length > 0 && (
@@ -1570,6 +1947,20 @@ export default function ScheduleTab({
                             title="Završene utakmice"
                             padding="4"
                         >
+                            {viewMode === "grid" ? (
+                                <VStack align="stretch" gap="2">
+                                    {dayGroups(finishedMatches).map((g, gi) => (
+                                        <Fragment key={g.key || "bez-termina"}>
+                                            {multiDay && (
+                                                <DayDivider label={dividerLabel(g.key)} first={gi === 0} />
+                                            )}
+                                            <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
+                                                {g.items.map((m) => renderCard(m))}
+                                            </SimpleGrid>
+                                        </Fragment>
+                                    ))}
+                                </VStack>
+                            ) : (
                             <VStack align="stretch" gap="2">
                                 {finishedMatches.map((m, idx) => {
                                     const curKey = dateKey(m.kickoffAt)
@@ -1585,6 +1976,7 @@ export default function ScheduleTab({
                                     )
                                 })}
                             </VStack>
+                            )}
                         </SectionCard>
                     )}
                 </>

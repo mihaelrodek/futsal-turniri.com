@@ -88,7 +88,7 @@ public class SchedulingService {
         t.setHalftimeBreakMin(cfg.halftimeBreakMin());
         t.setBreakBetweenMatchesMin(cfg.breakBetweenMatchesMin());
         t.setBufferMin(cfg.bufferMin());
-        applyKnockoutFormat(t, cfg.koHalfLengthMin(), cfg.koHalftimeBreakMin());
+        applyKnockoutFormat(t, cfg.koHalfLengthMin(), cfg.koHalftimeBreakMin(), cfg.koBreakBetweenMatchesMin());
 
         int slot = slotLength(t);
         if (slot <= 0) {
@@ -108,16 +108,20 @@ public class SchedulingService {
 
     /**
      * Store the knockout format override. An absent/non-positive half length
-     * means "the knockout plays like the groups" and clears BOTH fields, so
-     * turning the override off never leaves a stale halftime break behind.
+     * means "the knockout plays like the groups" and clears ALL THREE fields,
+     * so turning the override off never leaves a stale halftime break or
+     * break-between-matches behind.
      */
-    private static void applyKnockoutFormat(Tournaments t, Integer koHalfLength, Integer koHalftimeBreak) {
+    private static void applyKnockoutFormat(Tournaments t, Integer koHalfLength, Integer koHalftimeBreak,
+                                             Integer koBreakBetweenMatches) {
         if (koHalfLength != null && koHalfLength > 0) {
             t.setKoHalfLengthMin(koHalfLength);
             t.setKoHalftimeBreakMin(koHalftimeBreak);
+            t.setKoBreakBetweenMatchesMin(koBreakBetweenMatches);
         } else {
             t.setKoHalfLengthMin(null);
             t.setKoHalftimeBreakMin(null);
+            t.setKoBreakBetweenMatchesMin(null);
         }
     }
 
@@ -153,7 +157,9 @@ public class SchedulingService {
         }
 
         record Plan(String stage, String group, String t1, String t2, boolean known,
-                    Long id1, Long id2) {}
+                    Long id1, Long id2,
+                    String slot1Label, String slot2Label,
+                    String slot1PredictedName, String slot2PredictedName) {}
         List<Plan> plan = new ArrayList<>();
 
         int groupMatches = 0;
@@ -171,14 +177,15 @@ public class SchedulingService {
                             m.getTeam2() != null ? m.getTeam2().getName() : null,
                             m.getTeam1() != null && m.getTeam2() != null,
                             m.getTeam1() != null ? m.getTeam1().getId() : null,
-                            m.getTeam2() != null ? m.getTeam2().getId() : null));
+                            m.getTeam2() != null ? m.getTeam2().getId() : null,
+                            null, null, null, null)); // group rows are never labeled
                     groupMatches++;
                 }
             } else {
                 for (Teams[] pair : groupStageService.plannedGroupFixtures(t)) {
                     String gn = pair[0].getGroup() != null ? pair[0].getGroup().getName() : null;
                     plan.add(new Plan("GROUP", gn, pair[0].getName(), pair[1].getName(), true,
-                            pair[0].getId(), pair[1].getId()));
+                            pair[0].getId(), pair[1].getId(), null, null, null, null));
                     groupMatches++;
                 }
             }
@@ -191,22 +198,42 @@ public class SchedulingService {
         // BYEs are never played - they don't belong in the schedule at all.
         existingKo.removeIf(Matches::isKnockoutBye);
         if (bracketExists) {
+            // Predicted-pairing labels for the persisted bracket/skeleton, keyed
+            // by match id (labels only where a team is still null; empty for
+            // KNOCKOUT_ONLY). Same source of truth as the bracket/schedule DTOs.
+            Map<Long, KnockoutService.SlotLabels> koLabels = knockoutService.knockoutSlotLabels(t);
             existingKo.sort(Comparator
                     .comparingInt((Matches m) -> stageRank(m.getStage()))
                     .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
             for (Matches m : existingKo) {
                 boolean known = m.getTeam1() != null && m.getTeam2() != null;
+                KnockoutService.SlotLabels sl = koLabels.get(m.getId());
                 plan.add(new Plan(
                         m.getStage() != null ? m.getStage().name() : null, null,
                         m.getTeam1() != null ? m.getTeam1().getName() : null,
                         m.getTeam2() != null ? m.getTeam2().getName() : null, known,
                         m.getTeam1() != null ? m.getTeam1().getId() : null,
-                        m.getTeam2() != null ? m.getTeam2().getId() : null));
+                        m.getTeam2() != null ? m.getTeam2().getId() : null,
+                        sl != null ? sl.slot1Label() : null,
+                        sl != null ? sl.slot2Label() : null,
+                        sl != null ? sl.slot1PredictedName() : null,
+                        sl != null ? sl.slot2PredictedName() : null));
             }
             knockoutMatches = existingKo.size();
         } else {
+            // No bracket yet: placeholder rows, plus their COMBINATORIAL labels
+            // (aligned 1:1 with plannedKnockoutStages) so the first sketch also
+            // shows "A1 – H2" / "Pobj. ČF1". Teams stay unknown (known = false).
             List<MatchStage> stages = knockoutService.plannedKnockoutStages(t);
-            for (MatchStage st : stages) plan.add(new Plan(st.name(), null, null, null, false, null, null));
+            List<KnockoutService.SlotLabels> plannedLabels = knockoutService.plannedSlotLabels(t);
+            for (int si = 0; si < stages.size(); si++) {
+                KnockoutService.SlotLabels sl = si < plannedLabels.size() ? plannedLabels.get(si) : null;
+                plan.add(new Plan(stages.get(si).name(), null, null, null, false, null, null,
+                        sl != null ? sl.slot1Label() : null,
+                        sl != null ? sl.slot2Label() : null,
+                        sl != null ? sl.slot1PredictedName() : null,
+                        sl != null ? sl.slot2PredictedName() : null));
+            }
             knockoutMatches = stages.size();
         }
 
@@ -230,7 +257,9 @@ public class SchedulingService {
             scheduled++;
             Plan p = plan.get(i);
             byDay.computeIfAbsent(k.toLocalDate().toString(), d -> new ArrayList<>())
-                    .add(new SchedulePreviewDto.Match(k, p.stage(), p.group(), p.t1(), p.t2(), p.known(), i));
+                    .add(new SchedulePreviewDto.Match(k, p.stage(), p.group(), p.t1(), p.t2(),
+                            p.known(), p.slot1Label(), p.slot2Label(),
+                            p.slot1PredictedName(), p.slot2PredictedName(), i));
         }
         List<SchedulePreviewDto.Day> days = new ArrayList<>();
         for (Map.Entry<String, List<SchedulePreviewDto.Match>> e : byDay.entrySet()) {
@@ -259,7 +288,7 @@ public class SchedulingService {
         t.setHalftimeBreakMin(req.halftimeBreakMin());
         t.setBreakBetweenMatchesMin(req.breakBetweenMatchesMin());
         t.setBufferMin(req.bufferMin());
-        applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin());
+        applyKnockoutFormat(t, req.koHalfLengthMin(), req.koHalftimeBreakMin(), req.koBreakBetweenMatchesMin());
 
         if (slotLength(t) <= 0 || slotFor(t, MatchStage.FINAL) <= 0) {
             throw new BadRequestException("The match format must total more than 0 minutes");
@@ -382,7 +411,9 @@ public class SchedulingService {
         int ht = koOverride && req.koHalftimeBreakMin() != null
                 ? req.koHalftimeBreakMin()
                 : nz(req.halftimeBreakMin());
-        int pb = nz(req.breakBetweenMatchesMin());
+        int pb = koOverride && req.koBreakBetweenMatchesMin() != null
+                ? req.koBreakBetweenMatchesMin()
+                : nz(req.breakBetweenMatchesMin());
         int bf = nz(req.bufferMin());
         return hc * hl + ht + pb + bf;
     }
@@ -604,8 +635,12 @@ public class SchedulingService {
         // BYEs are never played - they don't belong in the raspored at all.
         all.removeIf(Matches::isKnockoutBye);
         all.sort(MATCH_ORDER);
+        // Predicted-pairing labels so a knockout match still to be decided shows
+        // "A1 – D2" (or "Pobj. ČF1") instead of TBD. Keyed by match id; group
+        // matches simply aren't in the map. Empty for KNOCKOUT_ONLY.
+        Map<Long, KnockoutService.SlotLabels> labels = knockoutService.knockoutSlotLabels(t);
         List<ScheduledMatchDto> dtos = new ArrayList<>();
-        for (Matches m : all) dtos.add(toDto(m));
+        for (Matches m : all) dtos.add(toDto(m, labels));
         return new ScheduleDto(
                 t.getHalfCount(),
                 t.getHalfLengthMin(),
@@ -614,6 +649,7 @@ public class SchedulingService {
                 t.getBufferMin(),
                 t.getKoHalfLengthMin(),
                 t.getKoHalftimeBreakMin(),
+                t.getKoBreakBetweenMatchesMin(),
                 slotLength(t),
                 slotFor(t, MatchStage.FINAL),
                 dtos);
@@ -629,7 +665,7 @@ public class SchedulingService {
         int hc = t.getHalfCount() != null ? t.getHalfCount() : 2;
         int hl = nz(t.halfLengthForStage(stage));
         int ht = nz(t.halftimeBreakForStage(stage));
-        int pb = nz(t.getBreakBetweenMatchesMin());
+        int pb = nz(t.breakBetweenMatchesForStage(stage));
         int bf = nz(t.getBufferMin());
         return hc * hl + ht + pb + bf;
     }
@@ -655,7 +691,8 @@ public class SchedulingService {
         return v == null ? 0 : v;
     }
 
-    private ScheduledMatchDto toDto(Matches m) {
+    private ScheduledMatchDto toDto(Matches m, Map<Long, KnockoutService.SlotLabels> labels) {
+        KnockoutService.SlotLabels sl = labels.get(m.getId());
         return new ScheduledMatchDto(
                 m.getId(),
                 m.getStage() != null ? m.getStage().name() : null,
@@ -669,6 +706,10 @@ public class SchedulingService {
                 m.getKickoffAt(),
                 m.getStatus() != null ? m.getStatus().name() : null,
                 m.getWinnerTeam() != null ? m.getWinnerTeam().getId() : null,
-                m.getPenalties1(), m.getPenalties2());
+                m.getPenalties1(), m.getPenalties2(),
+                sl != null ? sl.slot1Label() : null,
+                sl != null ? sl.slot2Label() : null,
+                sl != null ? sl.slot1PredictedName() : null,
+                sl != null ? sl.slot2PredictedName() : null);
     }
 }

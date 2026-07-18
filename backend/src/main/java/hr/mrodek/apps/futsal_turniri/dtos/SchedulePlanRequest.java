@@ -17,6 +17,8 @@ public record SchedulePlanRequest(
         Integer koHalfLengthMin,
         /** Knockout halftime-break override; only read when koHalfLengthMin is set. */
         Integer koHalftimeBreakMin,
+        /** Knockout break-between-matches override; only read when koHalfLengthMin is set. */
+        Integer koBreakBetweenMatchesMin,
         List<DaySchedule> days,
         /**
          * Optional custom play order from the preview's drag-and-drop: the

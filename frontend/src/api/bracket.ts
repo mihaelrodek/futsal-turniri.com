@@ -45,6 +45,18 @@ export async function resetBracket(tournamentUuid: string): Promise<Bracket> {
     return data
 }
 
+/** Confirm the knockout draw once the group stage is over - unlocks starting
+ *  the knockout matches / recording their results. Returns the (now confirmed)
+ *  bracket. */
+export async function confirmBracket(tournamentUuid: string): Promise<Bracket> {
+    const { data } = await http.post<Bracket>(
+        `/tournaments/${tournamentUuid}/bracket/confirm`,
+        undefined,
+        { successMessage: "Ždrijeb završnice je potvrđen." } as any,
+    )
+    return data
+}
+
 /** A team eligible for the bracket (qualifier / all-teams picker). */
 export type BracketCandidate = { id: number; name: string }
 

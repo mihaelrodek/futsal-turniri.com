@@ -11,6 +11,9 @@ export type ScheduleConfig = {
     koHalfLengthMin?: number | null
     /** Knockout halftime break. Only read when koHalfLengthMin is set. */
     koHalftimeBreakMin?: number | null
+    /** Knockout break between matches. Only read when koHalfLengthMin is set;
+     *  null = the knockout inherits the group break between matches. */
+    koBreakBetweenMatchesMin?: number | null
 }
 
 export type ScheduledMatch = {
@@ -23,6 +26,12 @@ export type ScheduledMatch = {
     team1Name: string | null
     team2Id: number | null
     team2Name: string | null
+    /** Predicted knockout pairing labels/names shown before a slot's team is
+     *  decided (mirrors BracketMatch). Null for group matches + KNOCKOUT_ONLY. */
+    slot1Label: string | null
+    slot2Label: string | null
+    slot1PredictedName: string | null
+    slot2PredictedName: string | null
     score1: number | null
     score2: number | null
     kickoffAt: string | null
@@ -79,6 +88,12 @@ export type SchedulePreviewMatch = {
     groupName?: string | null
     team1Name?: string | null
     team2Name?: string | null
+    /** Predicted knockout pairing labels/names shown before a slot's team is
+     *  decided (mirrors ScheduledMatch). Null for group matches. */
+    slot1Label: string | null
+    slot2Label: string | null
+    slot1PredictedName: string | null
+    slot2PredictedName: string | null
     /** False for knockout placeholders (teams decided after the group stage). */
     teamsKnown: boolean
     /** 0-based index in the single-court plan order - the identity a

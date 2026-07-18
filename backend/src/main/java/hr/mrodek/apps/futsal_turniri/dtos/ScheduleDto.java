@@ -18,6 +18,7 @@ public record ScheduleDto(
         Integer bufferMin,
         Integer koHalfLengthMin,
         Integer koHalftimeBreakMin,
+        Integer koBreakBetweenMatchesMin,
         int slotLengthMin,
         int koSlotLengthMin,
         List<ScheduledMatchDto> matches

@@ -34,5 +34,16 @@ public record BracketMatchDto(
         Integer fouls1First,
         Integer fouls1Second,
         Integer fouls2First,
-        Integer fouls2Second
+        Integer fouls2Second,
+        /** Predicted-pairing label for the slot while its team is still undecided
+         *  - e.g. "A1" / "D2" for a round-one group cross, or "Pobj. ČF1" /
+         *  "Por. PF2" for a later round or the third-place playoff. Null once the
+         *  real team is known, for a bye, and always for KNOCKOUT_ONLY. */
+        String slot1Label,
+        String slot2Label,
+        /** Team name resolved from the standings for a round-one group-label slot
+         *  once THAT group has finished all its matches (per-group, not the whole
+         *  stage). Null otherwise. */
+        String slot1PredictedName,
+        String slot2PredictedName
 ) {}

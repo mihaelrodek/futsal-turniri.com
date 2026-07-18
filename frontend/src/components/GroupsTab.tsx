@@ -55,7 +55,8 @@ import {
 import {LiveSyncIndicator} from "./LiveSyncIndicator"
 import {ConfirmDialog, EmptyState, Loader, Panel} from "../ui/primitives"
 import {GhostButton} from "../ui/pitch"
-import {FiRefreshCw, FiTrash2} from "react-icons/fi"
+import {FiDownload, FiRefreshCw, FiTrash2} from "react-icons/fi"
+import {ExportDialog, isMultiDay, kickoffLabel, type ExportMeta} from "./TournamentExport"
 import {
     DirectScoreEditor,
     FoulControls,
@@ -307,6 +308,7 @@ export default function GroupsTab({
                                       canEdit = false,
                                       tournamentStarted = false,
                                       onGoToSchedule,
+                                      exportMeta,
                                   }: {
     uuid: string
     advancePerGroup?: number | null
@@ -328,6 +330,8 @@ export default function GroupsTab({
     /** Switch the tournament page to the Raspored tab (for the "Idi na
      *  raspored" shortcut shown once groups are drawn). */
     onGoToSchedule?: () => void
+    /** Tournament meta for the branded "Export grupe" poster. */
+    exportMeta?: ExportMeta
 }) {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -391,6 +395,11 @@ export default function GroupsTab({
             return next
         })
     const [resetting, setResetting] = useState(false)
+    /** Branded "Export grupe" poster dialog. */
+    const [exportOpen, setExportOpen] = useState(false)
+    /** Scope to preselect when the export dialog opens - undefined = all groups
+     *  (the toolbar Export button); "g:{id}" from a per-group quick download. */
+    const [exportScope, setExportScope] = useState<string | undefined>(undefined)
 
     // Manual-draw drag & drop ("kuglice" board). In MANUAL mode a team with no
     // `assign` entry sits in the left-hand pool; dragging a chip onto a group
@@ -483,6 +492,13 @@ export default function GroupsTab({
         )
         return scheduled[0].matchId
     }, [groups])
+
+    // True when the group fixtures span >1 local date - then every kickoff line
+    // shows the short day+date, not just HH:mm. Computed once per render.
+    const multiDay = useMemo(
+        () => isMultiDay((groups ?? []).flatMap((g) => g.matches).map((m) => m.kickoffAt)),
+        [groups],
+    )
 
     // Live standings overlay - the backend rows count FINISHED matches only,
     // so LIVE scores are folded in client-side (provisional points / GD /
@@ -1547,11 +1563,7 @@ export default function GroupsTab({
                                 >
                                     <FiClock size={11}/>
                                     <Box>
-                                        {(() => {
-                                            const d = new Date(m.kickoffAt)
-                                            const p = (n: number) => String(n).padStart(2, "0")
-                                            return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-                                        })()}
+                                        {kickoffLabel(m.kickoffAt, multiDay)}
                                     </Box>
                                 </HStack>
                             )}
@@ -1633,26 +1645,50 @@ export default function GroupsTab({
                  right-aligned row above the cards; hidden once any
                  match has been played because re-drawing would wipe
                  real results. */}
-            {canEdit && !started && (
-                <Flex justify="flex-end" gap="2" wrap="wrap">
-                    <GhostButton
-                        danger
-                        icon={<FiRefreshCw size={14}/>}
-                        onClick={openDraw}
-                        disabled={drawing}
-                    >
-                        {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
-                    </GhostButton>
-                    <GhostButton
-                        danger
-                        icon={<FiTrash2 size={14}/>}
-                        onClick={confirmResetGroups}
-                        disabled={drawing || resetting}
-                    >
-                        {resetting ? "Resetiranje…" : "Resetiraj"}
-                    </GhostButton>
-                </Flex>
-            )}
+            {/* Actions row - the branded Export is always available (viewers
+                too); the destructive draw actions stay organizer-only and
+                hidden once a match has been played. */}
+            <Flex justify="flex-end" gap="2" wrap="wrap">
+                <GhostButton
+                    icon={<FiDownload size={14}/>}
+                    onClick={() => {
+                        setExportScope(undefined)
+                        setExportOpen(true)
+                    }}
+                >
+                    Preuzmi
+                </GhostButton>
+                {canEdit && !started && (
+                    <>
+                        <GhostButton
+                            danger
+                            icon={<FiRefreshCw size={14}/>}
+                            onClick={openDraw}
+                            disabled={drawing}
+                        >
+                            {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
+                        </GhostButton>
+                        <GhostButton
+                            danger
+                            icon={<FiTrash2 size={14}/>}
+                            onClick={confirmResetGroups}
+                            disabled={drawing || resetting}
+                        >
+                            {resetting ? "Resetiranje…" : "Resetiraj"}
+                        </GhostButton>
+                    </>
+                )}
+            </Flex>
+
+            {/* Branded groups poster (PDF / JPG). */}
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="groups"
+                meta={exportMeta ?? { tournamentName: "Turnir", tournamentUrl: `${window.location.origin}/turniri/${uuid}` }}
+                groups={groups ?? []}
+                initialScope={exportScope}
+            />
 
             {/* Manual re-draw editor (shown above the groups when opened). */}
             {canEdit && !started && drawOpen && drawPanel}
@@ -1839,6 +1875,20 @@ export default function GroupsTab({
                                             <FiEdit2/>
                                         </IconButton>
                                     )}
+                                {/* Per-group quick export (everyone) - opens the poster
+                                    dialog with this group's scope preselected. */}
+                                <IconButton
+                                    aria-label={`Izvezi grupu ${g.name}`}
+                                    size="sm"
+                                    variant="ghost"
+                                    colorPalette="brand"
+                                    onClick={() => {
+                                        setExportScope(`g:${g.id}`)
+                                        setExportOpen(true)
+                                    }}
+                                >
+                                    <FiDownload size={15}/>
+                                </IconButton>
                             </HStack>
                         </Flex>
 

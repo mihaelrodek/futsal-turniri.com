@@ -18,6 +18,7 @@ import {
     type MatchType,
 } from "@g-loot/react-tournament-brackets"
 import {
+    confirmBracket,
     fetchBracket,
     fetchBracketQualifiers,
     generateBracket,
@@ -37,20 +38,22 @@ import {
     startSecondHalf,
 } from "../api/matchEvents"
 import type { MatchEventDto } from "../types/matchEvents"
-import { fetchSchedule } from "../api/schedule"
+import { fetchSchedule, updateKickoff } from "../api/schedule"
+import type { ScheduledMatch } from "../types/schedule"
 import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
 import { LiveSyncIndicator } from "./LiveSyncIndicator"
+import { DateTimeField } from "./DateTimeField"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, matchPhase } from "./liveMatch"
 import { useTeamColors, teamKit } from "./jersey"
 import type { TeamKit } from "../api/tournaments"
-import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiEdit2, FiRefreshCw, FiShare2, FiTrash2 } from "react-icons/fi"
+import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiDownload, FiEdit2, FiRefreshCw, FiShare2, FiTrash2, FiX } from "react-icons/fi"
 import { LuRotateCcw, LuShuffle } from "react-icons/lu"
 import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
-import { toPng } from "html-to-image"
+import { ExportDialog, isMultiDay, kickoffLabel, type ExportMeta } from "./TournamentExport"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Library data-shape adapter.
@@ -179,19 +182,6 @@ function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
  * recompute the score, so the bracket is re-fetched after live actions.
  */
 type EditForm = { s1: string; s2: string; p1: string; p2: string }
-
-/** First opaque background colour walking up from a node - used as the
- *  backdrop for the shared bracket image so card gaps aren't transparent
- *  (and it matches the current light/dark theme). */
-function resolveBackdrop(el: HTMLElement | null): string {
-    let node = el
-    while (node) {
-        const c = getComputedStyle(node).backgroundColor
-        if (c && c !== "transparent" && !c.startsWith("rgba(0, 0, 0, 0")) return c
-        node = node.parentElement
-    }
-    return "#ffffff"
-}
 
 /**
  * Drag-to-pan for the bracket. Grab with the mouse (or pen) and drag to scroll
@@ -471,6 +461,7 @@ export default function BracketTab({
     uuid,
     canEdit = false,
     tournamentName,
+    exportMeta,
 }: {
     uuid: string
     canEdit?: boolean
@@ -481,6 +472,9 @@ export default function BracketTab({
     tournamentName?: string
     /** Accepted for API compatibility (was used for the removed seed UI). */
     format?: string | null
+    /** Tournament meta for the branded "Završnica" bracket poster. Optional -
+     *  falls back to a name + URL built from `tournamentName` / `uuid`. */
+    exportMeta?: ExportMeta
 }) {
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Eliminacija tab (or a
@@ -497,6 +491,8 @@ export default function BracketTab({
     const [liveMatch, setLiveMatch] = useState<BracketMatch | null>(null)
     /** Match whose read-only timeline modal is open (any viewer can open it). */
     const [timelineMatch, setTimelineMatch] = useState<BracketMatch | null>(null)
+    /** Branded "Završnica" bracket poster dialog. */
+    const [exportOpen, setExportOpen] = useState(false)
     // Half config (schedule) so inline row clocks count UP + freeze at each
     // half boundary, like the dialog clock - not a free-running timer.
     const [halfLengthMin, setHalfLengthMin] = useState<number | null>(null)
@@ -525,6 +521,9 @@ export default function BracketTab({
     const [byeIds, setByeIds] = useState<Set<number>>(new Set())
     /** Which destructive bracket action awaits confirmation in the popup. */
     const [confirmAction, setConfirmAction] = useState<null | "reset">(null)
+    /** Bracket-confirmation flow (only for brackets with confirmationRequired):
+     *  the "Potvrdi ždrijeb" dialog (offer to edit knockout times, then confirm). */
+    const [confirmBracketOpen, setConfirmBracketOpen] = useState(false)
     // Eligible teams for the bracket (group qualifiers / all teams) + whether
     // the group stage is finished - both come from the qualifiers endpoint.
     const [qualifiers, setQualifiers] = useState<BracketCandidate[]>([])
@@ -734,6 +733,18 @@ export default function BracketTab({
         return next?.matchId ?? null
     }, [safeRounds, bracket?.thirdPlace])
 
+    // True when the bracket's matches span >1 local date - then every kickoff
+    // display carries the short day+date, not just HH:mm. Computed once here
+    // (above the early returns) so the hook order stays stable.
+    const bracketMultiDay = useMemo(
+        () =>
+            isMultiDay([
+                ...safeRounds.flatMap((r) => r.matches).map((m) => m.kickoffAt),
+                ...(bracket?.thirdPlace ? [bracket.thirdPlace.kickoffAt] : []),
+            ]),
+        [safeRounds, bracket?.thirdPlace],
+    )
+
     const liveRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
     /** Scroll the LIVE / next match into the centre of the bracket viewport. */
@@ -767,52 +778,33 @@ export default function BracketTab({
     // Kit (dres + hlače) colours → the initials tile on every team row.
     const kitColors = useTeamColors(uuid)
 
-    // Share the bracket as a PNG image (native share sheet → WhatsApp etc. on
-    // mobile; download fallback on desktop browsers without file sharing).
+    // Share the public tournament page URL: native share sheet on mobile
+    // (WhatsApp etc.), clipboard-copy fallback on desktop browsers without the
+    // Web Share API.
     const [sharing, setSharing] = useState(false)
     async function shareBracket() {
-        const node = contentRef.current
-        if (!node || sharing) return
+        if (sharing) return
+        const url = exportMeta?.tournamentUrl ?? `${window.location.origin}/turniri/${uuid}`
+        const title = tournamentName ?? "Eliminacijska ljestvica"
         setSharing(true)
         try {
-            // Theme-aware backdrop so the gaps between cards aren't transparent.
-            const bg = resolveBackdrop(node.parentElement)
-            const dataUrl = await toPng(node, {
-                backgroundColor: bg,
-                pixelRatio: 2,
-                cacheBust: true,
-                // Drop interactive buttons (Start / edit) from the snapshot.
-                filter: (el) =>
-                    !(el instanceof HTMLElement && el.tagName === "BUTTON"),
-            })
-            const fileName = `bracket-${tournamentName ? tournamentName.replace(/\s+/g, "-").toLowerCase() : uuid}.png`
-            const blob = await (await fetch(dataUrl)).blob()
-            const file = new File([blob], fileName, { type: "image/png" })
             const nav = navigator as any
-            if (nav.canShare && nav.canShare({ files: [file] })) {
+            if (nav.share) {
                 try {
-                    await nav.share({
-                        files: [file],
-                        title: tournamentName ?? "Eliminacijska ljestvica",
-                    })
+                    await nav.share({ title, url })
                 } catch {
                     /* user cancelled the share sheet - no-op */
                 }
             } else {
-                // No file-share support (most desktops) → download the image.
-                const a = document.createElement("a")
-                a.href = dataUrl
-                a.download = fileName
-                a.click()
+                await navigator.clipboard.writeText(url)
                 toaster.create({
                     type: "success",
-                    title: "Slika spremljena",
-                    description: "Bracket je spremljen kao slika koju možeš podijeliti.",
+                    title: "Link kopiran.",
                     duration: 4000,
                 })
             }
         } catch {
-            showError("Nije moguće izraditi sliku ljestvice.")
+            showError("Nije moguće podijeliti poveznicu.")
         } finally {
             setSharing(false)
         }
@@ -1331,16 +1323,22 @@ export default function BracketTab({
         return <Loader label="Učitavanje ljestvice…" />
     }
 
-    // A bracket counts as "drawn" only once teams are actually placed in it.
-    // Generating the schedule ahead of time creates an empty knockout SKELETON
-    // (rounds of null-team matches with reserved kickoff slots) - that must
-    // still show the draw buttons so the organizer can auto-generate the
-    // seeding (A1-D2, …) into it. So a team-less skeleton is treated as
-    // not-yet-drawn, not as an existing bracket.
+    // A bracket is worth rendering once teams are placed OR the predicted
+    // pairing labels exist - the whole point of predictions is that everyone
+    // sees the pairings ("A1", "Pobj. ČF1", …) in advance, before the group
+    // stage decides the real teams. A truly empty skeleton (no teams, no
+    // labels - e.g. a KNOCKOUT_ONLY schedule generated ahead of the draw)
+    // still counts as not-yet-drawn and shows the draw buttons.
     const hasBracket =
         bracket != null &&
         bracket.rounds.some((r) =>
-            r.matches.some((m) => m.team1Id != null || m.team2Id != null),
+            r.matches.some(
+                (m) =>
+                    m.team1Id != null ||
+                    m.team2Id != null ||
+                    m.slot1Label != null ||
+                    m.slot2Label != null,
+            ),
         )
 
     if (!hasBracket) {
@@ -1422,6 +1420,25 @@ export default function BracketTab({
     // satisfy React's hook-order rule (see comment up there).
     const finalStage = bracket.rounds[roundCount - 1]?.stage ?? null
 
+    // The knockout draw still needs the organizer's confirmation before matches
+    // can be started / results entered (KNOCKOUT_ONLY never requires it).
+    const needsConfirm = bracket.confirmationRequired && bracket.confirmedAt == null
+
+    /** Block the start-live / result-entry paths until the draw is confirmed. */
+    function guardConfirmed(): boolean {
+        if (needsConfirm) {
+            toaster.create({
+                type: "info",
+                title: "Prvo potvrdi ždrijeb završnice.",
+                duration: 3000,
+            })
+            return false
+        }
+        return true
+    }
+    const handleEdit = (m: BracketMatch) => { if (guardConfirmed()) startEdit(m) }
+    const handleOpenLive = (m: BracketMatch) => { if (guardConfirmed()) setLiveMatch(m) }
+
     const renderLibraryMatch = (props: MatchComponentProps) => {
         const original = matchById.get(props.match.id)
         if (!original) return null
@@ -1467,20 +1484,21 @@ export default function BracketTab({
                         match={original}
                         canEdit={canEdit}
                         isFinal={isFinalCard}
+                        multiDay={bracketMultiDay}
                         editing={editingId === original.matchId}
                         form={form}
                         showPenaltyRow={showPenaltyRow}
                         saving={saving}
                         halfLengthMin={halfLengthMin}
                         halfCount={halfCount}
-                        onEdit={startEdit}
+                        onEdit={handleEdit}
                         uuid={uuid}
                         colors={kitColors}
                         onSave={saveResult}
                         onSavePenalties={saveResultWithPenalties}
                         onCancel={() => setEditingId(null)}
                         onFormChange={setForm}
-                        onOpenLive={setLiveMatch}
+                        onOpenLive={handleOpenLive}
                         onOpenTimeline={setTimelineMatch}
                     />
                 </Box>
@@ -1511,6 +1529,78 @@ export default function BracketTab({
                         {resetting ? "Resetiranje…" : "Resetiraj"}
                     </GhostButton>
                 </Flex>
+            )}
+
+            {/* Bracket-confirmation state - only for brackets that require it
+                (a group stage feeds the knockout). Three shapes: a subtle green
+                "confirmed" chip once done; a prominent CTA bar once the group
+                stage is over and the organizer can confirm; else a small neutral
+                "not confirmed yet" chip (viewers, or the organizer pre-finish). */}
+            {bracket.confirmationRequired && (
+                bracket.confirmedAt != null ? (
+                    <Flex justify="flex-end">
+                        <Flex
+                            as="span"
+                            display="inline-flex"
+                            align="center"
+                            gap="1.5"
+                            bg="green.subtle"
+                            color="green.fg"
+                            rounded="full"
+                            px="3"
+                            py="1"
+                            fontSize="xs"
+                            fontWeight={700}
+                        >
+                            <FiCheck size={12} /> Ždrijeb potvrđen
+                        </Flex>
+                    </Flex>
+                ) : groupStageComplete && canEdit ? (
+                    <Flex
+                        align="center"
+                        justify="space-between"
+                        gap="3"
+                        wrap="wrap"
+                        bg="brand.subtle"
+                        borderWidth="1px"
+                        borderColor="brand.emphasized"
+                        rounded="xl"
+                        px="4"
+                        py="3"
+                    >
+                        <HStack gap="2" minW="0">
+                            <Box color="brand.fg" flexShrink={0} display="inline-flex">
+                                <FiCheck size={16} />
+                            </Box>
+                            <Text fontSize="sm" color="fg.ink" fontWeight={500}>
+                                Grupna faza je gotova - potvrdi ždrijeb završnice da krenu utakmice.
+                            </Text>
+                        </HStack>
+                        <Button colorPalette="brand" onClick={() => setConfirmBracketOpen(true)}>
+                            <FiCheck /> Potvrdi ždrijeb
+                        </Button>
+                    </Flex>
+                ) : (
+                    <Flex justify="flex-end">
+                        <Flex
+                            as="span"
+                            display="inline-flex"
+                            align="center"
+                            gap="1.5"
+                            bg="bg.surfaceTint"
+                            color="fg.muted"
+                            borderWidth="1px"
+                            borderColor="border"
+                            rounded="full"
+                            px="3"
+                            py="1"
+                            fontSize="xs"
+                            fontWeight={700}
+                        >
+                            Ždrijeb nije potvrđen
+                        </Flex>
+                    </Flex>
+                )
             )}
 
             {/* Confirm popup for resetting (wiping) the elimination bracket. */}
@@ -1642,20 +1732,21 @@ export default function BracketTab({
                                     match={bracket.thirdPlace}
                                     canEdit={canEdit}
                                     isThirdPlace
+                                    multiDay={bracketMultiDay}
                                     editing={editingId === bracket.thirdPlace.matchId}
                                     form={form}
                                     showPenaltyRow={showPenaltyRow}
                                     saving={saving}
                                     halfLengthMin={halfLengthMin}
                                     halfCount={halfCount}
-                                    onEdit={startEdit}
+                                    onEdit={handleEdit}
                                     uuid={uuid}
                                     colors={kitColors}
                                     onSave={saveResult}
                                     onSavePenalties={saveResultWithPenalties}
                                     onCancel={() => setEditingId(null)}
                                     onFormChange={setForm}
-                                    onOpenLive={setLiveMatch}
+                                    onOpenLive={handleOpenLive}
                                     onOpenTimeline={setTimelineMatch}
                                 />
                             </Box>
@@ -1667,7 +1758,7 @@ export default function BracketTab({
                 {/* Floating action bar - anchored to the bottom-centre of the
                     bracket panel itself (not the viewport), floating over the
                     bracket. "Na redu" jumps to the LIVE (or next scheduled)
-                    match; "Podijeli" shares the bracket image. */}
+                    match; "Podijeli" shares the tournament page link. */}
                 <Flex
                     position="absolute"
                     bottom={{ base: "3", md: "4" }}
@@ -1705,13 +1796,37 @@ export default function BracketTab({
                         variant="ghost"
                         onClick={shareBracket}
                         disabled={sharing}
-                        title="Podijeli sliku ljestvice"
+                        title="Podijeli poveznicu na turnir"
                     >
                         <FiShare2 size={15} />
                         {sharing ? "Pripremam…" : "Podijeli"}
                     </Button>
+                    <Box w="1px" alignSelf="stretch" my="1" bg="border" />
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setExportOpen(true)}
+                        title="Preuzmi završnicu kao plakat (PDF / JPG)"
+                    >
+                        <FiDownload size={15} />
+                        Preuzmi
+                    </Button>
                 </Flex>
             </Panel>
+
+            {/* Branded "Završnica" bracket poster (landscape PDF / JPG). */}
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="bracket"
+                meta={
+                    exportMeta ?? {
+                        tournamentName: tournamentName ?? "Turnir",
+                        tournamentUrl: `${window.location.origin}/turniri/${uuid}`,
+                    }
+                }
+                bracket={bracket ?? undefined}
+            />
 
             {/* ── Live-match dialog - goals, cards, finish. ──────────────── */}
             {liveMatch && (
@@ -1733,7 +1848,211 @@ export default function BracketTab({
                 />
             )}
 
+            {/* Confirm-draw dialog: offers to edit knockout times first, then
+                confirms the draw so the knockout can start. */}
+            {confirmBracketOpen && (
+                <ConfirmBracketDialog
+                    uuid={uuid}
+                    onClose={() => setConfirmBracketOpen(false)}
+                    onConfirmed={(b) => {
+                        setBracket(b)
+                        refreshLinkedTabs()
+                        setConfirmBracketOpen(false)
+                    }}
+                />
+            )}
+
         </VStack>
+    )
+}
+
+/** Knockout stage → readable Croatian label for the confirm-draw time editor. */
+const KO_STAGE_LABEL: Record<string, string> = {
+    ROUND_OF_32: "1/16 finala",
+    ROUND_OF_16: "Osmina finala",
+    QUARTERFINAL: "Četvrtfinale",
+    SEMIFINAL: "Polufinale",
+    FINAL: "Finale",
+    THIRD_PLACE: "Za 3. mjesto",
+}
+
+/** Pairing text for a knockout match in the confirm-draw list: real names when
+ *  known, otherwise the predicted names / slot codes ("A1", "Pobj. ČF1"). */
+function koPairingText(m: ScheduledMatch): string {
+    const side = (name: string | null, pred?: string | null, label?: string | null) =>
+        name ?? pred ?? label ?? "?"
+    return (
+        `${side(m.team1Name, m.slot1PredictedName, m.slot1Label)}` +
+        ` - ${side(m.team2Name, m.slot2PredictedName, m.slot2Label)}`
+    )
+}
+
+/* ── ConfirmBracketDialog ────────────────────────────────────────────────────
+   Two-step "Potvrda ždrijeba" flow. Step 1 asks whether to adjust the knockout
+   kickoff times first; step 2 lists the knockout matches, each with a
+   DateTimeField (same single-match kickoff edit as the Raspored tab). Either
+   step confirms the draw (confirmBracket), which unlocks the knockout.
+   ────────────────────────────────────────────────────────────────────────── */
+function ConfirmBracketDialog({
+    uuid,
+    onClose,
+    onConfirmed,
+}: {
+    uuid: string
+    onClose: () => void
+    onConfirmed: (b: Bracket) => void
+}) {
+    const [step, setStep] = useState<"ask" | "times">("ask")
+    const [matches, setMatches] = useState<ScheduledMatch[] | null>(null)
+    const [loadingTimes, setLoadingTimes] = useState(false)
+    const [confirming, setConfirming] = useState(false)
+
+    // Knockout matches still to play (drop GROUP + already-finished byes).
+    const koPending = (list: ScheduledMatch[]) =>
+        list.filter((m) => m.stage !== "GROUP" && m.status !== "FINISHED")
+
+    async function openTimes() {
+        setStep("times")
+        if (matches != null) return
+        setLoadingTimes(true)
+        try {
+            const s = await fetchSchedule(uuid)
+            setMatches(koPending(s.matches))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setLoadingTimes(false)
+        }
+    }
+
+    /** Mirror ScheduleTab's single-match kickoff edit: local string → ISO. */
+    async function changeTime(m: ScheduledMatch, d: Date) {
+        const p = (n: number) => String(n).padStart(2, "0")
+        const local =
+            `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+            `T${p(d.getHours())}:${p(d.getMinutes())}`
+        try {
+            const s = await updateKickoff(uuid, m.matchId, new Date(local).toISOString())
+            setMatches(koPending(s.matches))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        }
+    }
+
+    async function confirm() {
+        setConfirming(true)
+        try {
+            onConfirmed(await confirmBracket(uuid))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setConfirming(false)
+        }
+    }
+
+    return (
+        <Dialog.Root
+            open
+            onOpenChange={(e) => { if (!e.open && !confirming) onClose() }}
+            placement="center"
+            scrollBehavior="inside"
+        >
+            <Portal>
+                <Dialog.Backdrop />
+                <Dialog.Positioner>
+                    <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
+                        <Dialog.Header pb="2">
+                            <Flex align="center" justify="space-between" w="full" gap="2">
+                                <Dialog.Title>Potvrda ždrijeba</Dialog.Title>
+                                <Button
+                                    aria-label="Zatvori"
+                                    variant="ghost"
+                                    size="xs"
+                                    onClick={onClose}
+                                    disabled={confirming}
+                                >
+                                    <FiX size={16} />
+                                </Button>
+                            </Flex>
+                        </Dialog.Header>
+                        <Dialog.Body>
+                            {step === "ask" ? (
+                                <Text color="fg.muted">
+                                    Želiš li prije potvrde urediti termine utakmica završnice?
+                                </Text>
+                            ) : loadingTimes ? (
+                                <Loader label="Učitavanje termina…" />
+                            ) : matches && matches.length > 0 ? (
+                                <VStack align="stretch" gap="2.5">
+                                    {matches.map((m) => (
+                                        <Flex
+                                            key={m.matchId}
+                                            align="center"
+                                            justify="space-between"
+                                            gap="3"
+                                            wrap="wrap"
+                                            borderWidth="1px"
+                                            borderColor="border"
+                                            rounded="lg"
+                                            px="3"
+                                            py="2.5"
+                                        >
+                                            <Box minW="0" flex="1">
+                                                <Text
+                                                    fontFamily="mono"
+                                                    fontSize="2xs"
+                                                    fontWeight={800}
+                                                    letterSpacing="0.06em"
+                                                    textTransform="uppercase"
+                                                    color="fg.muted"
+                                                >
+                                                    {KO_STAGE_LABEL[m.stage] ?? m.stage}
+                                                </Text>
+                                                <Text fontSize="sm" fontWeight={600} color="fg.ink" lineClamp="1">
+                                                    {koPairingText(m)}
+                                                </Text>
+                                            </Box>
+                                            <Box w={{ base: "full", sm: "200px" }} maxW="full">
+                                                <DateTimeField
+                                                    compact
+                                                    value={m.kickoffAt ? new Date(m.kickoffAt) : null}
+                                                    onChange={(d) => { if (d) void changeTime(m, d) }}
+                                                />
+                                            </Box>
+                                        </Flex>
+                                    ))}
+                                </VStack>
+                            ) : (
+                                <Text color="fg.muted" fontSize="sm">
+                                    Nema utakmica završnice za uređivanje termina.
+                                </Text>
+                            )}
+                        </Dialog.Body>
+                        <Dialog.Footer>
+                            {step === "ask" ? (
+                                <>
+                                    <Button variant="outline" onClick={openTimes} disabled={confirming}>
+                                        Uredi termine
+                                    </Button>
+                                    <Button colorPalette="brand" loading={confirming} onClick={confirm}>
+                                        Potvrdi ždrijeb
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button variant="ghost" onClick={() => setStep("ask")} disabled={confirming}>
+                                        Natrag
+                                    </Button>
+                                    <Button colorPalette="brand" loading={confirming} onClick={confirm}>
+                                        Potvrdi ždrijeb
+                                    </Button>
+                                </>
+                            )}
+                        </Dialog.Footer>
+                    </Dialog.Content>
+                </Dialog.Positioner>
+            </Portal>
+        </Dialog.Root>
     )
 }
 
@@ -1753,6 +2072,9 @@ type MatchCardProps = {
     saving: boolean
     isFinal?: boolean
     isThirdPlace?: boolean
+    /** True when the bracket's matches span >1 local date - the kickoff line
+     *  then shows the short day+date, not just HH:mm. */
+    multiDay?: boolean
     /** Tournament half config - drives the inline TIMER clock countdown. */
     halfLengthMin?: number | null
     halfCount?: number | null
@@ -1779,6 +2101,7 @@ function MatchCard({
     saving,
     isFinal = false,
     isThirdPlace = false,
+    multiDay = false,
     halfLengthMin = null,
     halfCount = null,
     uuid,
@@ -1806,8 +2129,9 @@ function MatchCard({
             : "border"
 
     // SafeFlow-style "mlabel": FINALE / ZA 3. MJESTO tag + kickoff, falling
-    // back to the round name when no kickoff is set yet.
-    const kick = m.kickoffAt ? fmtKick(m.kickoffAt) : null
+    // back to the round name when no kickoff is set yet. On a multi-day
+    // tournament the kickoff carries the short day+date, else just HH:mm.
+    const kick = m.kickoffAt ? (multiDay ? kickoffLabel(m.kickoffAt, true) : fmtKick(m.kickoffAt)) : null
     const headerLabel =
         [isFinal ? "FINALE" : isThirdPlace ? "ZA 3. MJESTO" : null, kick]
             .filter(Boolean)
@@ -1908,6 +2232,8 @@ function MatchCard({
                 <Box>
                     <TeamRow
                         name={m.team1Name}
+                        slotLabel={m.slot1Label}
+                        slotPredictedName={m.slot1PredictedName}
                         score={m.score1}
                         pen={m.penalties1}
                         winner={w1}
@@ -1921,6 +2247,8 @@ function MatchCard({
                     <Box h="1px" bg="border" my="1.5" />
                     <TeamRow
                         name={m.team2Name}
+                        slotLabel={m.slot2Label}
+                        slotPredictedName={m.slot2PredictedName}
                         score={m.score2}
                         pen={m.penalties2}
                         winner={w2}
@@ -2105,8 +2433,35 @@ function TeamTile({ name, kit }: { name: string | null; kit?: TeamKit }) {
     )
 }
 
+/** Tiny mono chip of a slot's predicted code ("A1", "Pobj. ČF1") shown next to
+ *  a predicted team name in a bracket team row. */
+function SlotChip({ label }: { label: string }) {
+    return (
+        <Box
+            as="span"
+            flexShrink={0}
+            fontFamily="mono"
+            fontSize="9px"
+            fontWeight={800}
+            letterSpacing="0.04em"
+            color="fg.muted"
+            bg="bg.surfaceTint"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="sm"
+            px="1"
+            py="0.5"
+            lineHeight="1.1"
+        >
+            {label}
+        </Box>
+    )
+}
+
 function TeamRow({
     name,
+    slotLabel,
+    slotPredictedName,
     score,
     pen,
     winner,
@@ -2116,6 +2471,11 @@ function TeamRow({
     edit,
 }: {
     name: string | null
+    /** Predicted-pairing code for an undecided slot ("A1", "Pobj. ČF1"). */
+    slotLabel?: string | null
+    /** Predicted team name for an undecided slot (real name once its group is
+     *  done, before the backend places it as a real team). */
+    slotPredictedName?: string | null
     score: number | null
     pen: number | null
     winner: boolean
@@ -2139,17 +2499,50 @@ function TeamRow({
             bg={winner ? "green.subtle" : "transparent"}
         >
             <HStack gap="2" minW="0" flex="1">
-                <TeamTile name={name} kit={kit} />
-                <Text
-                    fontSize="13px"
-                    fontWeight={winner ? 800 : 600}
-                    color={!name ? "fg.muted" : loser ? "fg.muted" : "fg.ink"}
-                    fontStyle={name ? undefined : "italic"}
-                    lineClamp="2"
-                    minW="0"
-                >
-                    {name ?? "TBD"}
-                </Text>
+                <TeamTile name={name ?? slotPredictedName ?? null} kit={kit} />
+                {name != null ? (
+                    <Text
+                        fontSize="13px"
+                        fontWeight={winner ? 800 : 600}
+                        color={loser ? "fg.muted" : "fg.ink"}
+                        lineClamp="2"
+                        minW="0"
+                    >
+                        {name}
+                    </Text>
+                ) : slotPredictedName != null ? (
+                    // The slot's group has finished (real name known) but it isn't
+                    // placed as a real team yet - muted name + tiny slot-code chip.
+                    <HStack gap="1.5" minW="0" flex="1">
+                        <Text fontSize="13px" fontWeight={600} color="fg.muted" lineClamp="2" minW="0">
+                            {slotPredictedName}
+                        </Text>
+                        {slotLabel != null && <SlotChip label={slotLabel} />}
+                    </HStack>
+                ) : slotLabel != null ? (
+                    // Nothing decided yet - the predicted pairing code ("A1", "Pobj. ČF1").
+                    <Text
+                        fontFamily="mono"
+                        fontSize="12px"
+                        fontWeight={700}
+                        color="fg.muted"
+                        lineClamp="2"
+                        minW="0"
+                    >
+                        {slotLabel}
+                    </Text>
+                ) : (
+                    <Text
+                        fontSize="13px"
+                        fontWeight={600}
+                        color="fg.muted"
+                        fontStyle="italic"
+                        lineClamp="2"
+                        minW="0"
+                    >
+                        TBD
+                    </Text>
+                )}
             </HStack>
             {edit ? (
                 <Input

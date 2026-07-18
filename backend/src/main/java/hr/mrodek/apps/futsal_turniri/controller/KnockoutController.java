@@ -143,6 +143,21 @@ public class KnockoutController {
         return knockoutService.bracket(t.getId());
     }
 
+    /** Confirm the drawn knockout bracket, unlocking its matches so they can be
+     *  started and take results. Draws the bracket first if only the multi-day
+     *  skeleton exists. 409 {@code GROUP_STAGE_NOT_COMPLETE} while the group
+     *  stage is unfinished. Idempotent. Owner/admin. */
+    @POST
+    @Path("/confirm")
+    @Authenticated
+    @Transactional
+    public BracketDto confirm(@PathParam("uuid") String uuid) {
+        Tournaments t = assertCanEdit(uuid);
+        BracketDto dto = knockoutService.confirmBracket(t);
+        if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), null);
+        return dto;
+    }
+
     /** Build (or rebuild) the bracket from organizer-supplied first-round
      *  pairings (the manual draw). */
     @POST

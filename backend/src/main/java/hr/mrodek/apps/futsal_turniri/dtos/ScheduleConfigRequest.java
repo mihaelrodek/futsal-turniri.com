@@ -17,5 +17,6 @@ public record ScheduleConfigRequest(
         Integer breakBetweenMatchesMin,
         Integer bufferMin,
         Integer koHalfLengthMin,
-        Integer koHalftimeBreakMin
+        Integer koHalftimeBreakMin,
+        Integer koBreakBetweenMatchesMin
 ) {}

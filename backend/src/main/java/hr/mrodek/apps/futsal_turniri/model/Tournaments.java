@@ -101,6 +101,17 @@ public class Tournaments {
     @Column(name = "bracket_fill", length = 20)
     private BracketFill bracketFill;
 
+    /**
+     * Instant the organizer CONFIRMED the knockout bracket. Until this is set,
+     * a GROUPS_KNOCKOUT bracket is still provisional: it shows the predicted
+     * "A1 vs D2" pairings but none of its matches may be started or take a
+     * result. Cleared whenever the bracket is (re)generated or reset, so a
+     * redraw forces a re-confirm. Always null for KNOCKOUT_ONLY, which needs no
+     * confirmation step.
+     */
+    @Column(name = "bracket_confirmed_at")
+    private OffsetDateTime bracketConfirmedAt;
+
     // --- Scheduling / match format (Phase E4) ---
     /** Number of halves per match (futsal is normally 2). */
     @Column(name = "half_count")
@@ -136,6 +147,15 @@ public class Tournaments {
     /** "Pauza između utakmica" - break between consecutive matches, in minutes. */
     @Column(name = "break_between_matches_min")
     private Integer breakBetweenMatchesMin;
+
+    /**
+     * Knockout-phase "break between matches" override, in minutes. Null means
+     * "same as the group stage". Only meaningful together with
+     * {@link #koHalfLengthMin} - the organizer toggles the whole knockout
+     * override on or off as one unit.
+     */
+    @Column(name = "ko_break_between_matches_min")
+    private Integer koBreakBetweenMatchesMin;
 
     /** Extra buffer added to each match slot, in minutes. */
     @Column(name = "buffer_min")
@@ -347,6 +367,14 @@ public class Tournaments {
             return koHalftimeBreakMin;
         }
         return halftimeBreakMin;
+    }
+
+    /** Break between matches, in minutes, for a match in {@code stage}. */
+    public Integer breakBetweenMatchesForStage(MatchStage stage) {
+        if (isKnockoutStage(stage) && hasKnockoutFormatOverride() && koBreakBetweenMatchesMin != null) {
+            return koBreakBetweenMatchesMin;
+        }
+        return breakBetweenMatchesMin;
     }
 
     /** Everything that isn't the round-robin group phase is a knockout match. */

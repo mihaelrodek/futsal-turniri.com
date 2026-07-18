@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Knockout-phase "break between matches" override, alongside the
+        existing ko_half_length_min / ko_halftime_break_min pair. Tournaments
+        commonly want a longer breather before the final rounds even when the
+        group stage runs back-to-back.
+
+        Nullable, no DEFAULT: NULL means "the knockout uses the same
+        break_between_matches_min as the group stage" - every existing
+        tournament keeps its current schedule untouched. Only meaningful
+        together with ko_half_length_min - the organizer toggles the whole
+        knockout override on or off as one unit.
+    -->
+    <changeSet id="2026-07-18-tournament-ko-break" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="ko_break_between_matches_min" type="INT"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>
