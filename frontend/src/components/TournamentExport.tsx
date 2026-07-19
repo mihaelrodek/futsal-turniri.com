@@ -596,17 +596,23 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                     fontVariantNumeric: "tabular-nums",
                     display: stackDay || showPens ? "flex" : undefined,
                     flexDirection: stackDay || showPens ? "column" : undefined,
+                    // flex-start keeps the inner pens column at its natural
+                    // width (default stretch would widen it to the full cell
+                    // and break the centred-under-the-score alignment).
+                    alignItems: stackDay || showPens ? "flex-start" : undefined,
                     lineHeight: stackDay || showPens ? 1.15 : undefined,
                 }}
             >
                 {showResult ? (
                     showPens ? (
-                        <>
+                        /* Score + shootout in a natural-width column so the
+                           "(4:5)" line centres exactly under the score above. */
+                        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
                             <span>{`${row.score1} : ${row.score2}`}</span>
                             <span style={{ fontSize: "10px", fontWeight: 700, color: C.muted }}>
-                                {`${row.penalties1}:${row.penalties2}`}
+                                {`(${row.penalties1}:${row.penalties2})`}
                             </span>
-                        </>
+                        </span>
                     ) : (
                         `${row.score1} : ${row.score2}`
                     )

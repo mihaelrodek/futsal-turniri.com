@@ -19,6 +19,8 @@ export type AdminTournamentDto = {
     createdByUid: string | null
     /** Display name snapshot copied at create/transfer time. */
     createdByName: string | null
+    /** True when the tournament is hidden from all public reads (lists, details, sitemap, live). */
+    hidden: boolean
 }
 
 /** Unclaimed team row in a tournament's team list. */
@@ -241,4 +243,12 @@ export async function adminUnfeatureTournament(uuid: string): Promise<void> {
         `/admin/tournaments/${uuid}/feature`,
         { successMessage: "Istaknuto uklonjeno." } as any,
     )
+}
+
+/** Full JSON dump of one tournament - details, editors, groups, teams with
+ *  rosters + kit colours, rounds, matches with live state and the complete
+ *  event timeline. The dashboard turns the response into a .json download. */
+export async function adminExportTournament(uuid: string): Promise<unknown> {
+    const { data } = await http.get<unknown>(`/admin/tournaments/${uuid}/export`)
+    return data
 }

@@ -1,4 +1,5 @@
 import type React from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import {
     Badge,
     Box,
@@ -19,6 +20,8 @@ import {
 import DatePicker from "react-datepicker"
 import {
     FiCalendar,
+    FiChevronDown,
+    FiChevronUp,
     FiClock,
     FiDollarSign,
     FiDownload,
@@ -29,10 +32,6 @@ import {
     FiInfo,
     FiMapPin,
     FiPhone,
-    FiEye,
-    FiEyeOff,
-    FiStar,
-    FiTrash2,
     FiUser,
     FiUsers,
     FiX,
@@ -46,7 +45,6 @@ import { FormatSketch } from "../components/FormatSketch"
 import { FormSectionCard } from "../ui/primitives"
 import {
     AccentStat,
-    GhostButton,
     MonoLabel,
     SectionCard,
     TournamentPoster,
@@ -69,7 +67,9 @@ import type { EditForm } from "./parts"
    Read mode is ONE card holding everything about the tournament: the
    poster, name + status, the key meta row (datum/vrijeme, lokacija,
    maks. ekipa, kotizacija), detalji text, nagrade, kontakt, dodatne
-   opcije, plus the Podijeli / Uredi / Obriši toolbar.
+   opcije. The Podijeli / Uredi actions live in the page header; the
+   admin-only Istakni / Sakrij / Obriši controls live on the admin
+   dashboard, not here.
 
    Edit mode is the owner/admin-only inline form (basic info, kotizacija,
    nagrade, kontakt) with poster pick/replace/remove and a sticky save
@@ -83,7 +83,6 @@ export const POSTER_ACCEPT = ["image/jpeg", "image/png", "image/webp"] as const
 type OverviewSectionProps = {
     t: TournamentDetails
     canEdit: boolean
-    isAdmin: boolean
     shareUrl: string
     /** Total registered teams - shown in the "Ekipe" meta tile. */
     teamCount: number
@@ -99,13 +98,6 @@ type OverviewSectionProps = {
     savingDetails: boolean
     patchEdit: <K extends keyof EditForm>(key: K, value: EditForm[K]) => void
     editMissingRequired: string[]
-    onDeleteTournament: () => void
-    /** Admin-only: flip the tournament's "featured for the day" highlight.
-     *  Visible in the read view as the "Istakni za dan" / "Ukloni
-     *  istaknuto" GhostButton next to Uredi / Obriši. */
-    onToggleFeature: () => void
-    /** Admin-only: flip the tournament's "not publicly visible" flag. */
-    onToggleHidden: () => void
     // poster state + handlers
     posterFile: File | null
     posterPreviewUrl: string | null
@@ -126,7 +118,6 @@ export default function OverviewSection(props: OverviewSectionProps) {
         // contract (passed by the parent) but the share/edit affordances
         // they powered moved to the page header, so they're intentionally
         // not consumed here anymore.
-        isAdmin,
         teamCount,
         tournamentStarted,
         editingDetails,
@@ -136,9 +127,6 @@ export default function OverviewSection(props: OverviewSectionProps) {
         savingDetails,
         patchEdit,
         editMissingRequired,
-        onDeleteTournament,
-        onToggleFeature,
-        onToggleHidden,
         posterFile,
         posterPreviewUrl,
         posterRemove,
@@ -685,35 +673,74 @@ export default function OverviewSection(props: OverviewSectionProps) {
     }
 
     /* ===== READ MODE - Pitch theme 2-column layout ===== */
-    return <DetailsReadView
-        t={t}
-        isAdmin={isAdmin}
-        teamCount={teamCount}
-        onDeleteTournament={onDeleteTournament}
-        onToggleFeature={onToggleFeature}
-        onToggleHidden={onToggleHidden}
-    />
+    return <DetailsReadView t={t} teamCount={teamCount} />
+}
+
+/** Collapsible "detalji" description text for the read-mode DETALJI I
+ *  FORMAT card. A long, freely-typed description used to render at full
+ *  height next to the compact Lokacija card - since that row uses
+ *  alignItems="stretch", the Lokacija side just got stretched into a mostly
+ *  empty box. Clamping to ~12 lines and only offering a toggle when the text
+ *  genuinely overflows keeps short texts looking exactly as before. */
+function DetailsText({ text }: { text: string }) {
+    const textRef = useRef<HTMLParagraphElement>(null)
+    const [expanded, setExpanded] = useState(false)
+    const [overflowing, setOverflowing] = useState(false)
+
+    // Measured while the text is clamped (lineClamp only kicks in when
+    // collapsed) - real overflow, not a character-count guess, so the toggle
+    // only appears when the clamp actually cut something off.
+    useLayoutEffect(() => {
+        const el = textRef.current
+        if (!el) return
+        setOverflowing(el.scrollHeight > el.clientHeight + 1)
+    }, [text])
+
+    return (
+        <Box mb="3">
+            <Text
+                ref={textRef}
+                fontSize="14px"
+                color="fg.soft"
+                lineHeight={1.6}
+                whiteSpace="pre-wrap"
+                lineClamp={expanded ? undefined : 12}
+            >
+                {text}
+            </Text>
+            {overflowing && (
+                <chakra.button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    display="inline-flex"
+                    alignItems="center"
+                    gap="1"
+                    mt="2"
+                    color="pitch.500"
+                    fontSize="13px"
+                    fontWeight={600}
+                    _hover={{ textDecoration: "underline" }}
+                >
+                    {expanded ? "Prikaži manje" : "Prikaži više"}
+                    {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                </chakra.button>
+            )}
+        </Box>
+    )
 }
 
 /** Read-mode view extracted into its own component so the edit-mode return
  *  above stays focused on form rendering. Mirrors the layout from
  *  design-reference/page-detail.jsx - poster column on the left,
  *  info cards on the right. Share / embed / edit / fullscreen actions now
- *  live in the page header; only admin controls render in the poster column. */
+ *  live in the page header; the admin-only Istakni / Sakrij / Obriši
+ *  controls moved to the admin dashboard's tournament actions card. */
 function DetailsReadView({
     t,
-    isAdmin,
     teamCount,
-    onDeleteTournament,
-    onToggleFeature,
-    onToggleHidden,
 }: {
     t: TournamentDetails
-    isAdmin: boolean
     teamCount: number
-    onDeleteTournament: () => void
-    onToggleFeature: () => void
-    onToggleHidden: () => void
 }) {
     // Prize fund - up to 4 places, each an amount + optional note ("Ostalo").
     // A place is shown only if it has an amount or a note. Medal-tint for the
@@ -885,38 +912,6 @@ function DetailsReadView({
                         </chakra.a>
                     </VStack>
                 </SectionCard>
-
-                {/* The Podijeli / Ugradi / Uredi / Fullscreen actions moved
-                    up to the page header (top-right). Only the admin-only
-                    controls remain here - they're rarer and don't belong in
-                    the always-visible header for non-admins. */}
-                {isAdmin && (
-                    <HStack gap="2" wrap="wrap">
-                        {/* Daily highlight toggle. Label flips between
-                             "Istakni za dan" and "Ukloni istaknuto". */}
-                        <GhostButton
-                            icon={<FiStar size={14} />}
-                            onClick={onToggleFeature}
-                        >
-                            {t.featuredAt ? "Ukloni istaknuto" : "Istakni"}
-                        </GhostButton>
-                        {/* Visibility toggle - hides the tournament from the
-                            public (only creator + admins keep access). */}
-                        <GhostButton
-                            icon={t.hidden ? <FiEye size={14} /> : <FiEyeOff size={14} />}
-                            onClick={onToggleHidden}
-                        >
-                            {t.hidden ? "Javno" : "Sakrij"}
-                        </GhostButton>
-                        <GhostButton
-                            danger
-                            icon={<FiTrash2 size={14} />}
-                            onClick={onDeleteTournament}
-                        >
-                            Obriši
-                        </GhostButton>
-                    </HStack>
-                )}
             </VStack>
 
             {/* ── Right column: ekipe/kotizacija/detalji + lokacija + nagrade ── */}
@@ -1043,11 +1038,7 @@ function DetailsReadView({
                                 <FiInfo size={13} />
                                 <MonoLabel>DETALJI I FORMAT</MonoLabel>
                             </HStack>
-                            {t.details && (
-                                <Text fontSize="14px" color="fg.soft" lineHeight={1.6} whiteSpace="pre-wrap" mb="3">
-                                    {t.details}
-                                </Text>
-                            )}
+                            {t.details && <DetailsText text={t.details} />}
                             {t.format && <FormatSketch format={t.format} />}
                             {t.additionalOptions && t.additionalOptions.length > 0 && (
                                 <HStack wrap="wrap" gap="1.5" mt="3">

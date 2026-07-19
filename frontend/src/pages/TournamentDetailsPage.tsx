@@ -36,13 +36,8 @@ import {
     deleteTournamentPoster,
     approveTeam,
     deleteTeam,
-    deleteTournament,
     finishTournament,
     selfRegisterTeam,
-    featureTournament,
-    unfeatureTournament,
-    hideTournament,
-    unhideTournament,
 } from "../api/tournaments"
 import NotFoundView from "../components/NotFoundView"
 import { fetchSchedule } from "../api/schedule"
@@ -74,7 +69,6 @@ import LiveControlTab from "../components/LiveControlTab"
 import StatsSection from "../tournament/StatsSection"
 import {
     DeleteTeamDialog,
-    DeleteTournamentDialog,
     SelfRegisterDialog,
     TeamInfoDialog,
 } from "../tournament/dialogs"
@@ -281,8 +275,6 @@ export default function TournamentDetailsPage() {
     /* ---------- Dialog / confirm state ---------- */
     const [pendingDeleteTeam, setPendingDeleteTeam] = useState<TeamShort | null>(null)
     const [deletingTeam, setDeletingTeam] = useState(false)
-    const [deleteTournamentOpen, setDeleteTournamentOpen] = useState(false)
-    const [deletingTournament, setDeletingTournament] = useState(false)
     const [infoTeamId, setInfoTeamId] = useState<number | null>(null)
     /** All tournament matches (group + knockout), loaded for the team-info
      *  history dialog. Fetched lazily when a team's info is opened. */
@@ -1011,7 +1003,6 @@ export default function TournamentDetailsPage() {
                     <OverviewSection
                         t={t}
                         canEdit={canEdit}
-                        isAdmin={isAdmin}
                         shareUrl={shareUrl}
                         teamCount={teams.length}
                         tournamentStarted={
@@ -1027,40 +1018,6 @@ export default function TournamentDetailsPage() {
                         savingDetails={savingDetails}
                         patchEdit={patchEdit}
                         editMissingRequired={editMissingRequired}
-                        onDeleteTournament={() => setDeleteTournamentOpen(true)}
-                        onToggleFeature={async () => {
-                            // Admin-only feature toggle. Backend roundtrip
-                            // either sets or clears `featured_at`; on success
-                            // we re-fetch the details so `t.featuredAt`
-                            // reflects the new state and the button label
-                            // flips on the next render.
-                            if (!uuid) return
-                            try {
-                                if (t.featuredAt) {
-                                    await unfeatureTournament(uuid)
-                                } else {
-                                    await featureTournament(uuid)
-                                }
-                                setT(await fetchTournamentDetails(uuid))
-                            } catch {
-                                // Error toasted by the http interceptor.
-                            }
-                        }}
-                        onToggleHidden={async () => {
-                            // Admin-only visibility toggle - same refetch
-                            // pattern as the feature toggle above.
-                            if (!uuid) return
-                            try {
-                                if (t.hidden) {
-                                    await unhideTournament(uuid)
-                                } else {
-                                    await hideTournament(uuid)
-                                }
-                                setT(await fetchTournamentDetails(uuid))
-                            } catch {
-                                // Error toasted by the http interceptor.
-                            }
-                        }}
                         posterFile={posterFile}
                         posterPreviewUrl={posterPreviewUrl}
                         posterRemove={posterRemove}
@@ -1279,28 +1236,6 @@ export default function TournamentDetailsPage() {
                 />
             )}
 
-            <DeleteTournamentDialog
-                open={deleteTournamentOpen}
-                tournamentName={t.name}
-                deleting={deletingTournament}
-                onClose={() => setDeleteTournamentOpen(false)}
-                onConfirm={async () => {
-                    if (!uuid) return
-                    try {
-                        setDeletingTournament(true)
-                        await deleteTournament(uuid)
-                        navigate("/turniri", { replace: true })
-                    } catch (err: any) {
-                        showError(
-                            "Greška pri brisanju",
-                            String(err?.response?.data ?? err?.message ?? "Turnir nije obrisan."),
-                        )
-                    } finally {
-                        setDeletingTournament(false)
-                        setDeleteTournamentOpen(false)
-                    }
-                }}
-            />
 
             <DeleteTeamDialog
                 team={pendingDeleteTeam}
