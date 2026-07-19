@@ -136,6 +136,25 @@ function HeaderAction({
     )
 }
 
+/** The "on deck" match: the LIVE one if any, else the earliest-kickoff
+ *  SCHEDULED one. A match whose kickoff time has already passed but hasn't
+ *  been recorded yet still counts as on deck (it stays the earliest SCHEDULED),
+ *  so a late 13:00 game is preferred over a 14:00 one. Mirrors the schedule /
+ *  bracket "na redu" logic. */
+function pickOnDeckMatch(matches: ScheduledMatch[]): ScheduledMatch | null {
+    const live = matches.find((m) => m.status === "LIVE")
+    if (live) return live
+    return (
+        matches
+            .filter((m) => m.status === "SCHEDULED")
+            .sort((a, b) => {
+                const ka = a.kickoffAt ? new Date(a.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+                const kb = b.kickoffAt ? new Date(b.kickoffAt).getTime() : Number.POSITIVE_INFINITY
+                return ka - kb
+            })[0] ?? null
+    )
+}
+
 export default function TournamentDetailsPage() {
     const { uuid } = useParams<{ uuid: string }>()
     const navigate = useNavigate()
@@ -234,9 +253,23 @@ export default function TournamentDetailsPage() {
     useEffect(() => {
         if (!t || defaultedTabRef.current) return
         defaultedTabRef.current = true
-        if (!hadExplicitTabRef.current && (t.status === "STARTED" || t.status === "FINISHED")) {
-            setSection("bracket")
-        }
+        if (hadExplicitTabRef.current) return
+        if (t.status !== "STARTED" && t.status !== "FINISHED") return
+        setSection("bracket")
+        // For a GROUPS_KNOCKOUT tournament, also pick the draw sub-tab that
+        // matches what's being played right now: if the on-deck match (the LIVE
+        // one, else the earliest-kickoff SCHEDULED one) is a knockout match,
+        // open Eliminacija; otherwise keep the default Grupe. KNOCKOUT_ONLY is
+        // already pinned to Eliminacija by the format effect below. Uses the
+        // cached schedule so it's cheap.
+        if (!uuid || t.format !== "GROUPS_KNOCKOUT") return
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
+            .then((s) => {
+                const onDeck = pickOnDeckMatch(s.matches)
+                if (onDeck && onDeck.stage !== "GROUP") setDrawSub("eliminacija")
+            })
+            .catch(() => { /* leave the default Grupe sub-tab on a fetch failure */ })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [t])
 

@@ -786,6 +786,26 @@ export default function BracketTab({
         return next?.matchId ?? null
     }, [safeRounds, bracket?.thirdPlace])
 
+    /* The match that wears the reddish "on deck" border in the bracket - the
+       next SCHEDULED match, but ONLY while nothing is live (during a live game
+       that match owns the red styling instead). `focusTargetId` already
+       resolves to the next scheduled match when there's no live one.
+       Additionally gated on the target's teams being KNOWN: a knockout match
+       whose slots are still TBD (the group stage hasn't produced its qualifiers
+       yet) must NOT be flagged as "on deck" - while the groups are still being
+       played the real next match is a group game, which lives on the Grupe tab,
+       not in the bracket. */
+    const onDeckId = useMemo(() => {
+        if (liveMatchId != null || focusTargetId == null) return null
+        const all = [
+            ...safeRounds.flatMap((r) => r.matches),
+            ...(bracket?.thirdPlace ? [bracket.thirdPlace] : []),
+        ]
+        const target = all.find((m) => m.matchId === focusTargetId)
+        if (!target || target.team1Id == null || target.team2Id == null) return null
+        return focusTargetId
+    }, [liveMatchId, focusTargetId, safeRounds, bracket?.thirdPlace])
+
     // True when the bracket's matches span >1 local date - then every kickoff
     // display carries the short day+date, not just HH:mm. Computed once here
     // (above the early returns) so the hook order stays stable.
@@ -824,6 +844,24 @@ export default function BracketTab({
         }, 80)
         return () => clearTimeout(t)
     }, [liveMatchId])
+
+    // On open, auto-centre the on-deck match once - the same jump the "Na redu"
+    // button does, run automatically so landing on the Eliminacija tab focuses
+    // the match being played (or next up) without a manual click. Fires once per
+    // mount; BracketTab remounts each time the tab is opened, so every open
+    // re-centres. Waits for the target ref to resolve (bracket rendered).
+    const autoFocusedRef = useRef(false)
+    useEffect(() => {
+        if (autoFocusedRef.current || focusTargetId == null) return
+        autoFocusedRef.current = true
+        const timer = setTimeout(() => {
+            const el = liveRefs.current.get(focusTargetId)
+            if (el && typeof el.scrollIntoView === "function") {
+                el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+            }
+        }, 120)
+        return () => clearTimeout(timer)
+    }, [focusTargetId])
 
     // Grab-to-pan the bracket viewport (mouse/pen; touch scrolls natively).
     const pan = useDragPan()
@@ -1641,6 +1679,7 @@ export default function BracketTab({
                         match={original}
                         canEdit={canEdit}
                         isFinal={isFinalCard}
+                        isOnDeck={original.matchId === onDeckId}
                         multiDay={bracketMultiDay}
                         editing={editingId === original.matchId}
                         form={form}
@@ -1890,6 +1929,7 @@ export default function BracketTab({
                                     match={bracket.thirdPlace}
                                     canEdit={canEdit}
                                     isThirdPlace
+                                    isOnDeck={bracket.thirdPlace.matchId === onDeckId}
                                     multiDay={bracketMultiDay}
                                     editing={editingId === bracket.thirdPlace.matchId}
                                     form={form}
@@ -2268,6 +2308,10 @@ type MatchCardProps = {
     saving: boolean
     isFinal?: boolean
     isThirdPlace?: boolean
+    /** True for the "on deck" match (the next one to be played) - draws the same
+     *  reddish border the schedule tab uses, so it's obvious which match is up
+     *  next. Never set together with a LIVE match (live owns the red styling). */
+    isOnDeck?: boolean
     /** True when the bracket's matches span >1 local date - the kickoff line
      *  then shows the short day+date, not just HH:mm. */
     multiDay?: boolean
@@ -2296,6 +2340,7 @@ function MatchCard({
     saving,
     isFinal = false,
     isThirdPlace = false,
+    isOnDeck = false,
     multiDay = false,
     halfLengthMin = null,
     halfCount = null,
@@ -2316,7 +2361,9 @@ function MatchCard({
     const isLive = m.status === "LIVE"
     const isScheduled = m.status === "SCHEDULED"
 
-    const accentBorder = isLive
+    // Live and on-deck both wear the red border; only the live card gets the
+    // extra halo + red header strip below, so the two stay visually distinct.
+    const accentBorder = isLive || isOnDeck
         ? "red.emphasized"
         : isFinal
             ? "yellow.emphasized"
@@ -2334,7 +2381,7 @@ function MatchCard({
     return (
         <Box
             bg="bg.panel"
-            borderWidth={isLive ? "2px" : isFinal ? "1.5px" : "1px"}
+            borderWidth={isLive || isOnDeck ? "2px" : isFinal ? "1.5px" : "1px"}
             borderColor={accentBorder}
             rounded="xl"
             shadow={isFinal ? "md" : "xs"}
