@@ -82,12 +82,19 @@ const F_BODY = "'Inter', system-ui, -apple-system, sans-serif"
    (brackets are wide), so the page dimensions are orientation-driven. */
 const A4_W = 794
 const A4_H = 1123
+// A3 is √2× A4 in each dimension. The bracket poster uses A3 PORTRAIT so a full
+// R32 two-sided draw gets far wider columns (the fixed-px header / footer /
+// padding become a smaller fraction of the bigger sheet, so more of it is body).
+const A3_W = 1123
+const A3_H = 1587
 
-type Orientation = "portrait" | "landscape"
-/** Page css px per orientation - landscape simply swaps width/height. */
+type Orientation = "portrait" | "landscape" | "a3portrait"
+/** Page css px per page size. Landscape swaps A4's w/h; a3portrait is the big
+ *  bracket sheet. All are printed portrait except `landscape` (unused now). */
 const PAGE_PX: Record<Orientation, { w: number; h: number }> = {
     portrait: { w: A4_W, h: A4_H },
     landscape: { w: A4_H, h: A4_W },
+    a3portrait: { w: A3_W, h: A3_H },
 }
 
 /* -- Stage labels (mirrors ScheduleTab.STAGE_LABEL) ---------------------- */
@@ -1643,20 +1650,21 @@ function buildSchedulePages(matches: ScheduledMatch[]): ReactNode[] {
     return paginateScheduleSections(sections).map((secs) => <ScheduleSections sections={secs} />)
 }
 
-/* ── Bracket poster (landscape "Završnica") ────────────────────────────────
-   Rounds laid out as columns (Četvrtfinale → Polufinale → Finale …); each
-   column distributes its match cards vertically (space-around) so the later,
-   fewer matches read as centred against their feeders - a static bracket
-   pyramid without the SVG connectors. The 3rd-place fixture is a labelled box
-   pinned under the final (right-most) column. Pairing text follows the same
-   precedence as the schedule poster (real name → predicted → slot code → TBD);
-   finished matches show the result (penalties in parens), the winner bolded.
+/* ── Bracket poster (two-sided vertical "Završnica") ────────────────────────
+   The classic wall-poster layout on a PORTRAIT A3 sheet. Up to 16 teams: the
+   left half of the draw flows inward from the far-left column, the right half
+   flows inward from the far-right column (mirrored), and the FINALE (+ the
+   3rd-place box) sits in the centre - all on one page. A bigger draw (R32) is
+   split across TWO pages, one per bracket half (a full-width one-sided funnel),
+   so the boxes stay large. Each round is one column that spreads its cards with
+   space-around, so it reads centred against its feeders - a static pyramid
+   without SVG connectors. Pairing text follows the schedule poster's precedence
+   (real name → predicted → slot code → TBD); finished matches show the result
+   (penalties in parens), the winner bolded.
 
-   SIZING: the tallest round (first round - osmina = 8, četvrtfinale = 4)
-   drives one shared per-card height so EVERY column fits the landscape body
-   without clipping. Two size tiers scale font / padding down as the bracket
-   grows (normal ≤ 4 matches, compact 5-8); a šesnaestina/R32 (16 first-round
-   matches) is split across two landscape pages by bracket halves instead. */
+   SIZING: the total column count picks a width tier (font shrinks as the bracket
+   deepens); the busiest side column drives one shared card height so every
+   column aligns. */
 
 /** Per-tier sizing for the bracket-poster cards. */
 type BracketTierStyle = {
@@ -1677,47 +1685,35 @@ type BracketTierStyle = {
     lineH: number
 }
 
-/** Two tiers: `normal` for shallow brackets (≤ 4 first-round matches), `compact`
- *  for a full osmina (5-8) where 8 cards must share one column. */
-const BRACKET_TIERS: Record<"normal" | "compact", BracketTierStyle> = {
-    normal: {
-        teamFont: 12,
-        scoreFont: 13,
-        penFont: 10,
-        linePadV: 5,
-        linePadH: 11,
-        lineGap: 10,
-        cardGap: 12,
-        colGap: 20,
-        titleFont: 12,
-        titleMb: 12,
-        thirdLabelFont: 9,
-        cardRadius: 11,
-        lineH: 1.2,
-    },
-    compact: {
-        teamFont: 9,
-        scoreFont: 9,
-        penFont: 7,
-        linePadV: 2,
-        linePadH: 7,
-        lineGap: 6,
-        cardGap: 4,
-        colGap: 12,
-        titleFont: 10,
-        titleMb: 8,
-        thirdLabelFont: 8,
-        cardRadius: 9,
-        lineH: 1.14,
-    },
+/** Sizing for the two-sided vertical bracket, keyed on the TOTAL number of
+ *  column slots on the page (left rounds + centre + right rounds). More columns
+ *  → narrower columns → smaller font; the generous A3 height lets names wrap to
+ *  2-3 lines regardless, so width is the binding constraint. Tuned for the A3
+ *  sheet (≈1011px of content width), so even a 9-slot R32 keeps ~105px columns. */
+function twoSidedTier(slots: number): BracketTierStyle {
+    if (slots <= 3) {
+        // 2-4 teams: one round per side (or final only) - very roomy.
+        return { teamFont: 19, scoreFont: 20, penFont: 14, linePadV: 8, linePadH: 16, lineGap: 12, cardGap: 20, colGap: 20, titleFont: 14, titleMb: 12, thirdLabelFont: 12, cardRadius: 14, lineH: 1.22 }
+    }
+    if (slots <= 5) {
+        // ~8 teams (QF + SF per side): comfortable.
+        return { teamFont: 17, scoreFont: 18, penFont: 12, linePadV: 7, linePadH: 14, lineGap: 11, cardGap: 16, colGap: 16, titleFont: 13, titleMb: 11, thirdLabelFont: 12, cardRadius: 13, lineH: 1.2 }
+    }
+    if (slots <= 7) {
+        // ~16 teams (R16 → osmina/ČF/PF per side): medium.
+        return { teamFont: 14, scoreFont: 15, penFont: 10, linePadV: 6, linePadH: 11, lineGap: 9, cardGap: 12, colGap: 11, titleFont: 12, titleMb: 9, thirdLabelFont: 11, cardRadius: 12, lineH: 1.18 }
+    }
+    // ~32 teams (R32, 9 slots): dense but the A3 width keeps it legible.
+    return { teamFont: 12, scoreFont: 12, penFont: 9, linePadV: 4, linePadH: 8, lineGap: 6, cardGap: 8, colGap: 7, titleFont: 11, titleMb: 7, thirdLabelFont: 10, cardRadius: 10, lineH: 1.16 }
 }
 
-/** Available px height for the BracketBody children on a landscape A4 page:
- *  page 794 − top pad 56 − first-page header ≈ 168 − green rule 59 − footer
- *  ≈ 89 ≈ 422. Kept deliberately conservative (400) so nothing clips even if
- *  the tournament name wraps to a second header line; when the real region is
- *  taller the fixed-height cards simply get spread out by space-around. */
-const BRACKET_BODY_H = 400
+/** Available px height for the two-sided bracket body on the A3 PORTRAIT sheet:
+ *  page 1587 − top pad 56 − first-page header ≈ 210 (fixed px: name up to 2
+ *  lines + organizer + meta + optional podium line) − green rule ≈ 43 − footer
+ *  ≈ 89 ≈ 1189. Kept conservative (1150) so the busiest side column never clips
+ *  against the footer even when a finished bracket adds the podium header line;
+ *  extra slack just spreads the fixed-height cards out via space-around. */
+const BRACKET_BODY_H = 1150
 
 /** One team line inside a bracket-poster match card. Sizing is tier-driven and
  *  the name clamps to `nameLines` so dense first rounds fit the fixed card. */
@@ -1728,6 +1724,7 @@ function BracketTeamLine({
     winner,
     t,
     nameLines,
+    mirror = false,
 }: {
     name: string
     score: number | null
@@ -1735,9 +1732,12 @@ function BracketTeamLine({
     winner: boolean
     t: BracketTierStyle
     nameLines: number
+    /** Right-side column: put the score on the LEFT and right-align the name,
+     *  so the two halves of the bracket read as mirror images toward the centre. */
+    mirror?: boolean
 }) {
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: `${t.lineGap}px`, padding: `${t.linePadV}px ${t.linePadH}px` }}>
+        <div style={{ display: "flex", flexDirection: mirror ? "row-reverse" : "row", alignItems: "center", gap: `${t.lineGap}px`, padding: `${t.linePadV}px ${t.linePadH}px` }}>
             <span
                 style={{
                     flex: 1,
@@ -1746,6 +1746,7 @@ function BracketTeamLine({
                     fontWeight: winner ? 800 : 600,
                     color: winner ? C.ink : C.inkSoft,
                     lineHeight: t.lineH,
+                    textAlign: mirror ? "right" : "left",
                     overflowWrap: "break-word",
                     display: "-webkit-box",
                     WebkitLineClamp: nameLines,
@@ -1789,6 +1790,7 @@ function BracketPosterCard({
     nameLines,
     final: isFinal,
     third: isThird,
+    mirror = false,
 }: {
     m: BracketMatch
     t: BracketTierStyle
@@ -1797,6 +1799,8 @@ function BracketPosterCard({
     nameLines: number
     final?: boolean
     third?: boolean
+    /** Right-side column of the two-sided layout - mirrors each team line. */
+    mirror?: boolean
 }) {
     const finished = m.status === "FINISHED"
     const hasScore = m.score1 != null && m.score2 != null
@@ -1821,9 +1825,9 @@ function BracketPosterCard({
                 justifyContent: "center",
             }}
         >
-            <BracketTeamLine name={t1} score={s1} pen={hasPens ? m.penalties1 : null} winner={w1} t={t} nameLines={nameLines} />
+            <BracketTeamLine name={t1} score={s1} pen={hasPens ? m.penalties1 : null} winner={w1} t={t} nameLines={nameLines} mirror={mirror} />
             <div style={{ height: "1px", background: C.line, margin: `0 ${t.linePadH}px` }} />
-            <BracketTeamLine name={t2} score={s2} pen={hasPens ? m.penalties2 : null} winner={w2} t={t} nameLines={nameLines} />
+            <BracketTeamLine name={t2} score={s2} pen={hasPens ? m.penalties2 : null} winner={w2} t={t} nameLines={nameLines} mirror={mirror} />
             {isThird ? (
                 <div
                     style={{
@@ -1845,7 +1849,87 @@ function BracketPosterCard({
     )
 }
 
-function BracketBody({
+/** Column heading (round name + hairline rule) shared by every bracket column.
+ *  `accent` greens it for the central FINALE column. */
+function BracketColumnTitle({ title, t, accent }: { title: string; t: BracketTierStyle; accent: boolean }) {
+    return (
+        <div style={{ marginBottom: `${t.titleMb}px` }}>
+            <div
+                style={{
+                    fontFamily: F_MONO,
+                    fontSize: `${t.titleFont}px`,
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    color: accent ? C.green : C.inkSoft,
+                    textTransform: "uppercase",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                }}
+            >
+                {title}
+            </div>
+            <div style={{ height: "2px", background: accent ? C.green : C.line, borderRadius: "2px", marginTop: "6px" }} />
+        </div>
+    )
+}
+
+/** One vertical round column (title + evenly-spread match cards). `mirror`
+ *  right-aligns the cards for the right half of the two-sided layout. */
+function BracketSideColumn({
+    title,
+    matches,
+    t,
+    cardH,
+    nameLines,
+    mirror,
+}: {
+    title: string
+    matches: BracketMatch[]
+    t: BracketTierStyle
+    cardH: number
+    nameLines: number
+    mirror: boolean
+}) {
+    return (
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <BracketColumnTitle title={title} t={t} accent={false} />
+            <div
+                style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-around",
+                    gap: `${t.cardGap}px`,
+                }}
+            >
+                {matches.map((m) => (
+                    <BracketPosterCard key={m.matchId} m={m} t={t} cardH={cardH} nameLines={nameLines} mirror={mirror} />
+                ))}
+            </div>
+        </div>
+    )
+}
+
+/** Split a round's matches into the LEFT (first) and RIGHT (second) halves of
+ *  the two-sided bracket. */
+function splitSides(matches: BracketMatch[]): { left: BracketMatch[]; right: BracketMatch[] } {
+    const half = Math.ceil(matches.length / 2)
+    return { left: matches.slice(0, half), right: matches.slice(half) }
+}
+
+/** Upper bound on a single card's height - keeps a sparse bracket (few matches
+ *  per column) from blowing each card up to an absurd size on the tall A3 page. */
+const BRACKET_MAX_CARD_H = 230
+
+/** Two-sided vertical bracket - the "classic" wall-poster layout. The left half
+ *  of the draw flows inward from the far left, the right half flows inward from
+ *  the far right, and the final (+ the 3rd-place box) sits in the centre column.
+ *  No SVG connectors: each column spreads its cards with space-around so a round
+ *  reads centred against its feeders. Portrait A3; font/width scale with the
+ *  total column count, card height with the busiest side column. */
+function TwoSidedBracketBody({
     cols,
     titles,
     thirdPlace,
@@ -1854,12 +1938,8 @@ function BracketBody({
     cols: BracketMatch[][]
     titles: string[]
     thirdPlace: BracketMatch | null
-    /** Vertical budget for the whole bracket block - reduced when the podium
-     *  strip sits above it so the busiest column still fits without clipping. */
     bodyH?: number
 }) {
-    const lastIdx = cols.length - 1
-
     if (cols.length === 0) {
         return (
             <div style={{ padding: "40px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
@@ -1868,67 +1948,113 @@ function BracketBody({
         )
     }
 
-    // The busiest round drives sizing: every card shares one height so the
-    // fullest column (osmina = 8) fits the landscape body without clipping.
-    const maxMatches = Math.max(1, ...cols.map((c) => c.length))
-    const t = maxMatches <= 4 ? BRACKET_TIERS.normal : BRACKET_TIERS.compact
-    // Column heading (title text + 6px gap + 2px rule) + its bottom margin.
+    const finalIdx = cols.length - 1
+    const finalMatch = cols[finalIdx]?.[0] ?? null
+    const nonFinal = finalIdx // rounds rendered on each side (final excluded)
+
+    // Left/right descriptors for every non-final round (outermost round first).
+    const leftCols: { title: string; matches: BracketMatch[] }[] = []
+    const rightCols: { title: string; matches: BracketMatch[] }[] = []
+    for (let r = 0; r < nonFinal; r++) {
+        const { left, right } = splitSides(cols[r])
+        leftCols.push({ title: titles[r] ?? "", matches: left })
+        rightCols.push({ title: titles[r] ?? "", matches: right })
+    }
+    // The right side paints centre→outer, so reverse it for left-to-right flow.
+    const rightRender = [...rightCols].reverse()
+
+    // Total column slots (left rounds + centre + right rounds) → width tier.
+    const totalSlots = 2 * nonFinal + 1
+    const t = twoSidedTier(totalSlots)
+
+    // The busiest side column (the outermost round's half) drives a shared card
+    // height so every column aligns; the centre final reuses it too.
+    const maxSide = nonFinal >= 1 ? Math.max(1, ...leftCols.map((c) => c.matches.length)) : 1
     const titleBlockH = t.titleMb + t.titleFont + 8
-    // Space reserved for the 3rd-place row (a card + its label + the 18px gap).
-    const thirdBlockH = thirdPlace ? (maxMatches <= 4 ? 78 : 50) : 0
-    const colsRowH = bodyH - (thirdPlace ? thirdBlockH + 18 : 0)
-    const matchesRegionH = colsRowH - titleBlockH
-    // Per-card height = the region split across the busiest round's cards (gaps
-    // taken out first). Floored so n cards + gaps never exceed the region.
+    const matchesRegionH = bodyH - titleBlockH
     const cardH = Math.max(
-        28,
-        Math.floor((matchesRegionH - (maxMatches - 1) * t.cardGap) / maxMatches),
+        30,
+        Math.min(
+            BRACKET_MAX_CARD_H,
+            Math.floor((matchesRegionH - (maxSide - 1) * t.cardGap) / maxSide),
+        ),
     )
-    // Lines a team name may take inside the fixed card: two team lines + a 1px
-    // divider share cardH, each line minus its own vertical padding.
+    // Two team lines + a 1px divider share cardH; each line clamps to nameLines.
     const perTeamH = (cardH - 1) / 2
-    const nameLines = Math.max(1, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH)))
+    const nameLines = Math.max(1, Math.min(3, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH))))
 
     return (
+        <div style={{ display: "flex", gap: `${t.colGap}px`, alignItems: "stretch", height: "100%" }}>
+            {leftCols.map((c, i) => (
+                <BracketSideColumn key={`l${i}`} title={c.title} matches={c.matches} t={t} cardH={cardH} nameLines={nameLines} mirror={false} />
+            ))}
+
+            {/* Centre column: FINALE, with the 3rd-place box under it. Vertically
+                centred so it lines up with the two innermost (polufinale) columns. */}
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                <BracketColumnTitle title={titles[finalIdx] ?? "Finale"} t={t} accent />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: `${t.cardGap + 10}px` }}>
+                    {finalMatch ? (
+                        <BracketPosterCard m={finalMatch} t={t} cardH={cardH} nameLines={nameLines} final />
+                    ) : null}
+                    {thirdPlace ? (
+                        <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} third />
+                    ) : null}
+                </div>
+            </div>
+
+            {rightRender.map((c, i) => (
+                <BracketSideColumn key={`r${i}`} title={c.title} matches={c.matches} t={t} cardH={cardH} nameLines={nameLines} mirror />
+            ))}
+        </div>
+    )
+}
+
+/** One-sided bracket funnel: rounds as columns left→right, the final green in
+ *  the right-most column, an optional 3rd-place box under it. Used for the
+ *  two-page split of a big draw - each page carries ONE half of the bracket at
+ *  full page width, so the boxes stay large. Sizing keys the width tier on the
+ *  column count but tightens the vertical gap for a dense first round. */
+function ColumnsBracketBody({
+    cols,
+    titles,
+    thirdPlace,
+    bodyH = BRACKET_BODY_H,
+}: {
+    cols: BracketMatch[][]
+    titles: string[]
+    thirdPlace: BracketMatch | null
+    bodyH?: number
+}) {
+    if (cols.length === 0) {
+        return (
+            <div style={{ padding: "40px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
+                Ljestvica još nije generirana.
+            </div>
+        )
+    }
+    const lastIdx = cols.length - 1
+    const t = twoSidedTier(cols.length)
+    const maxMatches = Math.max(1, ...cols.map((c) => c.length))
+    // A dense first column (many first-round matches) needs a tighter vertical
+    // gap than the wide-column tier default (tuned for sparse columns).
+    const cardGap = maxMatches >= 6 ? Math.min(t.cardGap, 8) : t.cardGap
+    const titleBlockH = t.titleMb + t.titleFont + 8
+    const thirdBlockH = thirdPlace ? 130 : 0
+    const matchesRegionH = bodyH - titleBlockH - thirdBlockH
+    const cardH = Math.max(
+        30,
+        Math.min(BRACKET_MAX_CARD_H, Math.floor((matchesRegionH - (maxMatches - 1) * cardGap) / maxMatches)),
+    )
+    const perTeamH = (cardH - 1) / 2
+    const nameLines = Math.max(1, Math.min(3, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH))))
+    return (
         <div style={{ display: "flex", flexDirection: "column", gap: "18px", height: "100%" }}>
-            {/* Round columns - distribute matches vertically so later rounds sit
-                centred against their feeders. */}
             <div style={{ flex: 1, display: "flex", gap: `${t.colGap}px`, alignItems: "stretch" }}>
                 {cols.map((matches, ci) => (
-                    <div
-                        key={ci}
-                        style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
-                    >
-                        {/* Column (round) heading. */}
-                        <div style={{ marginBottom: `${t.titleMb}px` }}>
-                            <div
-                                style={{
-                                    fontFamily: F_MONO,
-                                    fontSize: `${t.titleFont}px`,
-                                    fontWeight: 800,
-                                    letterSpacing: "0.08em",
-                                    color: ci === lastIdx ? C.green : C.inkSoft,
-                                    textTransform: "uppercase",
-                                    textAlign: "center",
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                }}
-                            >
-                                {titles[ci] ?? ""}
-                            </div>
-                            <div style={{ height: "2px", background: C.line, borderRadius: "2px", marginTop: "6px" }} />
-                        </div>
-                        {/* Matches - even vertical distribution around fixed cards. */}
-                        <div
-                            style={{
-                                flex: 1,
-                                display: "flex",
-                                flexDirection: "column",
-                                justifyContent: "space-around",
-                                gap: `${t.cardGap}px`,
-                            }}
-                        >
+                    <div key={ci} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <BracketColumnTitle title={titles[ci] ?? ""} t={t} accent={ci === lastIdx} />
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-around", gap: `${cardGap}px` }}>
                             {matches.map((m) => (
                                 <BracketPosterCard key={m.matchId} m={m} t={t} cardH={cardH} nameLines={nameLines} final={ci === lastIdx} />
                             ))}
@@ -1936,10 +2062,6 @@ function BracketBody({
                     </div>
                 ))}
             </div>
-
-            {/* 3rd-place playoff - a labelled box under the final (last) column.
-                A mirroring row (empty cells for the earlier rounds) keeps it
-                aligned beneath the right-most column. */}
             {thirdPlace ? (
                 <div style={{ display: "flex", gap: `${t.colGap}px` }}>
                     {cols.map((_, ci) => (
@@ -1955,37 +2077,6 @@ function BracketBody({
     )
 }
 
-/** Split a full bracket into upper/lower halves for the two-page R32 layout.
- *  Each non-final round contributes its first half of matches to the upper page
- *  and its second half to the lower page; the final (and 3rd-place box) land on
- *  the lower page so the apex reads on a single sheet. */
-function splitBracketHalves(cols: BracketMatch[][], titles: string[]) {
-    const finalIdx = cols.length - 1
-    const upperCols: BracketMatch[][] = []
-    const upperTitles: string[] = []
-    const lowerCols: BracketMatch[][] = []
-    const lowerTitles: string[] = []
-    cols.forEach((matches, r) => {
-        if (r === finalIdx) {
-            // The final (single apex match) belongs only to the lower page.
-            lowerCols.push(matches)
-            lowerTitles.push(titles[r] ?? "")
-            return
-        }
-        const half = Math.ceil(matches.length / 2)
-        upperCols.push(matches.slice(0, half))
-        upperTitles.push(titles[r] ?? "")
-        lowerCols.push(matches.slice(half))
-        lowerTitles.push(titles[r] ?? "")
-    })
-    return { upperCols, upperTitles, lowerCols, lowerTitles }
-}
-
-/** Build the bracket poster page bodies. A shallow / medium bracket (largest
- *  round ≤ 8) renders on ONE landscape page; a šesnaestina / R32 (16 first-round
- *  matches, largest round ≥ 9) splits across TWO landscape pages by bracket
- *  halves so nothing clips - upper half on page 1, lower half + final +
- *  3rd-place on page 2, reusing the shared multi-page PosterPage furniture. */
 /** Final standings derived straight from the bracket - non-null only once the
  *  final is FINISHED with a winner. Third place comes from the 3rd-place match
  *  when that is decided too. */
@@ -2094,20 +2185,41 @@ function bracketPodium(bracket: Bracket | undefined) {
     )
 }
 
+/** Bracket poster pages. A draw up to 16 teams (≤ 8 first-round matches) fits
+ *  ONE two-sided vertical sheet. A bigger draw (R32: 16 first-round matches) is
+ *  split across TWO pages - one per bracket half, each a full-width one-sided
+ *  funnel ending in the final - so the boxes stay large instead of being crushed
+ *  into 9 narrow columns. The final is shown on both halves; the 3rd-place box
+ *  rides on the second page. */
 function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
     const rounds = bracket?.rounds ?? []
     const cols = rounds.map((r) => r.matches)
     const titles = rounds.map((r) => r.title)
     const thirdPlace = bracket?.thirdPlace ?? null
-    const maxMatches = cols.length ? Math.max(...cols.map((c) => c.length)) : 0
-    if (maxMatches >= 9) {
-        const { upperCols, upperTitles, lowerCols, lowerTitles } = splitBracketHalves(cols, titles)
-        return [
-            <BracketBody cols={upperCols} titles={upperTitles} thirdPlace={null} />,
-            <BracketBody cols={lowerCols} titles={lowerTitles} thirdPlace={thirdPlace} />,
-        ]
+    const firstRound = cols[0]?.length ?? 0
+
+    if (cols.length < 2 || firstRound <= 8) {
+        return [<TwoSidedBracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
     }
-    return [<BracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
+
+    const finalIdx = cols.length - 1
+    const finalCol = cols[finalIdx]
+    const finalTitle = titles[finalIdx] ?? "Finale"
+    const leftCols: BracketMatch[][] = []
+    const leftTitles: string[] = []
+    const rightCols: BracketMatch[][] = []
+    const rightTitles: string[] = []
+    for (let r = 0; r < finalIdx; r++) {
+        const { left, right } = splitSides(cols[r])
+        leftCols.push(left)
+        leftTitles.push(titles[r] ?? "")
+        rightCols.push(right)
+        rightTitles.push(titles[r] ?? "")
+    }
+    return [
+        <ColumnsBracketBody cols={[...leftCols, finalCol]} titles={[...leftTitles, finalTitle]} thirdPlace={null} />,
+        <ColumnsBracketBody cols={[...rightCols, finalCol]} titles={[...rightTitles, finalTitle]} thirdPlace={thirdPlace} />,
+    ]
 }
 
 /* ── Match poster (portrait "Utakmica") ─────────────────────────────────────
@@ -2713,8 +2825,9 @@ export function ExportDialog({
     // the download loop snapshots each one in turn.
     const pageRefs = useRef<(HTMLDivElement | null)[]>([])
     const [busy, setBusy] = useState<null | "pdf" | "jpg">(null)
-    // The bracket poster is landscape (wide); groups / schedule stay portrait.
-    const orientation: Orientation = kind === "bracket" ? "landscape" : "portrait"
+    // Groups / schedule / match stay A4 portrait; the bracket uses the bigger A3
+    // portrait sheet so its two-sided vertical layout gets roomy columns.
+    const orientation: Orientation = kind === "bracket" ? "a3portrait" : "portrait"
     const page = PAGE_PX[orientation]
     // Export scope: "all" (whole poster) or one group / "ko" (završnica). The
     // selector filters the poster's content; it resets to initialScope on open.
@@ -2738,8 +2851,8 @@ export function ExportDialog({
     const [matchEvents, setMatchEvents] = useState<MatchEventDto[]>([])
     const [matchEventsLoading, setMatchEventsLoading] = useState(false)
 
-    // Landscape needs a wider preview column; both clip inside the dialog body.
-    const PREVIEW_W = orientation === "landscape" ? 500 : 430
+    // Preview column width - all posters are portrait, clipped inside the dialog.
+    const PREVIEW_W = 430
     const scale = PREVIEW_W / page.w
 
     // Reset the scope + status filter + table option whenever the dialog (re)opens.
@@ -2970,8 +3083,11 @@ export function ExportDialog({
             } else {
                 // One jsPDF doc, one A4 page per rendered page node. Every page
                 // node is a fixed A4-aspect box, so the snapshot fills the page.
-                const pdf = new jsPDF({ orientation, unit: "mm", format: "a4" })
-                const pageWmm = orientation === "landscape" ? 297 : 210
+                // The bracket prints on A3 portrait (297mm wide); everything else
+                // on A4 portrait (210mm). All are portrait-oriented sheets.
+                const isA3 = orientation === "a3portrait"
+                const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: isA3 ? "a3" : "a4" })
+                const pageWmm = isA3 ? 297 : 210
                 for (let i = 0; i < nodes.length; i++) {
                     if (i > 0) pdf.addPage()
                     const node = nodes[i]

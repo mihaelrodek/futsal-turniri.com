@@ -2550,7 +2550,13 @@ function MatchCard({
                 // get a read-only scoreboard - no "Unesi rezultat",
                 // "Pokreni" or live-management controls leak through.
                 canEdit && (isLive || isFinished || (isScheduled && editable)) && (
-                    <VStack align="stretch" gap="1.5" mt="2">
+                    // Hidden on mobile: the library renders this card in a
+                    // fixed-size SVG foreignObject, so on a narrow viewport the
+                    // action buttons overflow and overlap the team divider (the
+                    // same clipping that killed the old live-start popover). On
+                    // phones the result is entered / edited from the Zapisnik /
+                    // Raspored instead; the buttons return on md+.
+                    <VStack align="stretch" gap="1.5" mt="2" display={{ base: "none", md: "flex" }}>
                         {/* Knockout matches are STARTED from the Zapisnik - the
                             bracket's live-start popover was removed (it broke the
                             iOS layout and made accidental live-starts too easy).
