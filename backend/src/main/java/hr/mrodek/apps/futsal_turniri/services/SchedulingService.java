@@ -868,6 +868,8 @@ public class SchedulingService {
                 m.getStatus() != null ? m.getStatus().name() : null,
                 m.getWinnerTeam() != null ? m.getWinnerTeam().getId() : null,
                 m.getPenalties1(), m.getPenalties2(),
+                m.getFouls1First(), m.getFouls1Second(),
+                m.getFouls2First(), m.getFouls2Second(),
                 sl != null ? sl.slot1Label() : null,
                 sl != null ? sl.slot2Label() : null,
                 sl != null ? sl.slot1PredictedName() : null,

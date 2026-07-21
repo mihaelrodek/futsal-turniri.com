@@ -437,16 +437,16 @@ function FullscreenShell({ children }: { children: React.ReactNode }) {
             color="var(--fs-fg)"
             bg={
                 dark
-                    ? "linear-gradient(135deg, #232722 0%, #181b18 100%)"
-                    : "linear-gradient(135deg, #eef1ec 0%, #e2e6e0 100%)"
+                    ? "linear-gradient(135deg, #1B2A38 0%, #0B1522 100%)"
+                    : "linear-gradient(135deg, #EEFAF8 0%, #E3F7F5 100%)"
             }
             css={{
                 "--fs-fg": dark ? "#ffffff" : "#14181a",
                 "--fs-fg-muted": dark ? "rgba(255,255,255,0.68)" : "rgba(20,24,26,0.62)",
                 "--fs-fg-subtle": dark ? "rgba(255,255,255,0.40)" : "rgba(20,24,26,0.38)",
-                "--fs-panel": dark ? "rgba(255,255,255,0.05)" : "rgba(14,31,21,0.045)",
-                "--fs-border": dark ? "rgba(255,255,255,0.14)" : "rgba(14,31,21,0.12)",
-                "--fs-accent": dark ? "#4cb87e" : "#0b6b3a",
+                "--fs-panel": dark ? "rgba(255,255,255,0.05)" : "rgba(11,21,34,0.045)",
+                "--fs-border": dark ? "rgba(255,255,255,0.14)" : "rgba(11,21,34,0.12)",
+                "--fs-accent": dark ? "#2AD4C8" : "#0E8A81",
             }}
         >
             <Box position="relative" zIndex={1} h="100%">

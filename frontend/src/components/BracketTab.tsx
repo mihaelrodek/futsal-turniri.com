@@ -90,37 +90,37 @@ import { ExportDialog, isMultiDay, kickoffLabel, type ExportMeta } from "./Tourn
    no `s`). The cast to `any` here lets us pass the real schema. */
 const bracketTheme = createTheme({
     textColor: {
-        main: "#0e1f15",       // fg.ink
-        highlighted: "#0b6b3a", // pitch.500
+        main: "#0B1522",       // fg.ink → Specto navy ink
+        highlighted: "#0E8A81", // Specto cyan text (readable on light)
         dark: "#3a4046",
         disabled: "#9ca3af",
     } as any,
     matchBackground: {
-        wonColor: "#f0faf4",   // very subtle pitch tint
+        wonColor: "#E3F7F5",   // very subtle cyan tint
         lostColor: "#ffffff",
     },
     score: {
         background: {
-            wonColor: "#e9f7ee",
+            wonColor: "#E3F7F5",
             lostColor: "#f3f4f6",
         },
         text: {
-            highlightedWonColor: "#0b6b3a",
+            highlightedWonColor: "#0E8A81",
             highlightedLostColor: "#6b7280",
         },
     },
     border: {
         color: "#e5e7eb",          // border
-        highlightedColor: "#0b6b3a", // pitch.500
+        highlightedColor: "#2AD4C8", // Specto cyan accent line
     },
     // The lib reads `roundHeader.backgroundColor` (singular). Light
     // pitch-tinted pill on a clean cream label.
     roundHeader: {
-        backgroundColor: "#e9f7ee", // pitch.50
-        fontColor: "#0b6b3a",        // pitch.500
+        backgroundColor: "#E3F7F5", // subtle cyan tint
+        fontColor: "#0E8A81",        // Specto cyan text
     },
-    connectorColor: "#c7d4c9",       // muted sage so connectors sit in the pitch palette
-    connectorColorHighlight: "#0b6b3a",
+    connectorColor: "#C2D9D6",       // muted cyan-grey so connectors sit in the Specto palette
+    connectorColorHighlight: "#2AD4C8",
     svgBackground: "transparent",
     fontFamily: "'Inter', system-ui, sans-serif",
     transitionTimingFunction: "ease-out",

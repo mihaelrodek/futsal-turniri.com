@@ -532,7 +532,7 @@ export default function StreamPlayer({
                         px="2"
                         py="0.5"
                         rounded="full"
-                        bg="rgba(0,0,0,0.62)"
+                        bg="rgba(11,21,34,0.62)"
                         color="white"
                         fontFamily="mono"
                         fontSize="9px"

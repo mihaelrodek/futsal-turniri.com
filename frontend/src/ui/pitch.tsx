@@ -63,12 +63,15 @@ export function PitchBackdrop({
     const gritId = `pitch-grit-${variant}`
     const stops =
         tone === "pitch"
-            ? { from: "#3aa56b", to: "#0b6b3a" }
+            ? // SPECTO navy hero wash - no turf fill. A subtle two-tone navy
+              // gradient anchored on the brand navy (#0B1522); the court
+              // markings below are cyan line-art rather than white-on-green.
+              { from: "#132A3E", to: "#0B1522" }
             : // Polished-concrete mid-grey - light enough to feel friendly
               // and modern, dark enough that white-cream futsal markings
               // still read clearly. Lighter than the original #2f353d.
               { from: "#9aa3ad", to: "#5d6671" }
-    const line = tone === "pitch" ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.78)"
+    const line = tone === "pitch" ? "rgba(42,212,200,0.55)" : "rgba(255,255,255,0.78)"
     return (
         <Box
             as="svg"
@@ -451,7 +454,8 @@ export function FilterChip({
 
 /** Pill-style tab bar used on the tournament detail screens (`Detalji`,
  *  `Ekipe`, `Ždrijeb`, `Raspored`, `Statistika`). Active tab fills with
- *  pitch green; the rest sit on the white pill background. */
+ *  brand cyan (navy text - white fails contrast on cyan); the rest sit on
+ *  the panel background. */
 export function PillTabBar<T extends string>({
     tabs,
     active,
@@ -487,8 +491,8 @@ export function PillTabBar<T extends string>({
                         py="2.5"
                         rounded="full"
                         border="none"
-                        bg={isActive ? "pitch.500" : "transparent"}
-                        color={isActive ? "white" : "fg.ink"}
+                        bg={isActive ? "pitch.solid" : "transparent"}
+                        color={isActive ? "pitch.contrast" : "fg.ink"}
                         fontSize="14px"
                         fontWeight={600}
                         cursor="pointer"

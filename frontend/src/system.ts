@@ -3,18 +3,22 @@ import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react"
 /**
  * ─── "Pitch" design system - Nogometni-turniri.com ─────────────────────────
  *
- * The visual language leans into football vocabulary: pitch green primary,
- * scoreboard mono numerics, jersey-number type, off-white canvas. Replaces
- * the previous emerald `brand` palette with a confident "pitch" green plus a
- * small accent stack (amber / red / goal yellow) for status and live signals.
+ * The SPECTO brand: deep navy (#0B1522) paired with bright cyan (#2AD4C8),
+ * with lime (#C9F24B) reserved as a data/highlight accent. The `pitch` ramp
+ * NAME is kept for call-site compatibility but now carries the cyan family,
+ * not the old football greens. A small accent stack (amber / red / lime goal)
+ * drives status and live signals; LIVE stays RED.
+ *
+ * Cyan is a LIGHT hue, so white-on-cyan fails contrast: CTAs use NAVY text on
+ * cyan (`pitch.contrast` = #0B1522), matching the spec's "Watch live" button.
  *
  * Tokens map 1:1 to the design handoff doc:
- *   pitch.500          primary brand green   - buttons, links, headings
- *   pitch.400 / .700   gradient ramp
+ *   pitch.400          primary brand cyan    - buttons, links, accents
+ *   pitch.600 / fg     readable teal on white (text/icons)
  *   accent.amber       "Za 6 dana", warnings
- *   accent.red         LIVE / destructive
- *   accent.goal        goals, trophies
- *   bg.canvas          page background (pale green-tinted off-white)
+ *   accent.red         LIVE / destructive    - UNCHANGED (stays red)
+ *   accent.goal        goals, trophies       - lime highlight
+ *   bg.canvas          page background (white light / navy dark)
  *   bg.surfaceTint     active pill / hover / soft fills
  *   bg.surfaceTint2    subtle inner panels
  *   fg.ink / inkSoft / inkMute   text ladder
@@ -23,7 +27,7 @@ import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react"
  * `colorPalette="pitch"` resolves through the standard solid/contrast/fg/
  * muted/subtle/focusRing semantic tokens so existing Chakra primitives just
  * work. `brand` is kept as an alias for the same ramp so any straggling
- * `colorPalette="brand"` reference keeps rendering in the new green instead
+ * `colorPalette="brand"` reference keeps rendering in the new cyan instead
  * of falling back to gray.
  */
 const config = defineConfig({
@@ -60,43 +64,43 @@ const config = defineConfig({
         tokens: {
             fonts: {
                 heading: {
-                    value: "'Bricolage Grotesque', 'Inter', system-ui, -apple-system, sans-serif",
+                    value: "'Outfit', 'Inter', system-ui, -apple-system, sans-serif",
                 },
                 body: {
-                    value: "'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+                    value: "'Outfit', 'Inter', system-ui, -apple-system, sans-serif",
                 },
                 mono: {
-                    value: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+                    value: "'Geist Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace",
                 },
             },
             colors: {
-                // Pitch green - primary brand ramp tuned to #0b6b3a.
+                // SPECTO cyan - primary brand ramp centred on #2AD4C8 (pitch.400).
                 pitch: {
-                    50: { value: "#eaf1e7" },
-                    100: { value: "#cde0c4" },
-                    200: { value: "#a4cf94" },
-                    300: { value: "#6bbd84" },
-                    400: { value: "#3aa56b" },
-                    500: { value: "#0b6b3a" },
-                    600: { value: "#0a5e34" },
-                    700: { value: "#084a28" },
-                    800: { value: "#053a1f" },
-                    900: { value: "#032513" },
-                    950: { value: "#021609" },
+                    50: { value: "#E6FAF8" },
+                    100: { value: "#C3F2EE" },
+                    200: { value: "#8FE6DF" },
+                    300: { value: "#5CDAD1" },
+                    400: { value: "#2AD4C8" },
+                    500: { value: "#17A79D" },
+                    600: { value: "#0E8A81" },
+                    700: { value: "#0B6D66" },
+                    800: { value: "#08514C" },
+                    900: { value: "#053633" },
+                    950: { value: "#032220" },
                 },
-                // Alias kept so legacy `colorPalette="brand"` keeps rendering green.
+                // Alias kept so legacy `colorPalette="brand"` keeps rendering cyan.
                 brand: {
-                    50: { value: "#eaf1e7" },
-                    100: { value: "#cde0c4" },
-                    200: { value: "#a4cf94" },
-                    300: { value: "#6bbd84" },
-                    400: { value: "#3aa56b" },
-                    500: { value: "#0b6b3a" },
-                    600: { value: "#0a5e34" },
-                    700: { value: "#084a28" },
-                    800: { value: "#053a1f" },
-                    900: { value: "#032513" },
-                    950: { value: "#021609" },
+                    50: { value: "#E6FAF8" },
+                    100: { value: "#C3F2EE" },
+                    200: { value: "#8FE6DF" },
+                    300: { value: "#5CDAD1" },
+                    400: { value: "#2AD4C8" },
+                    500: { value: "#17A79D" },
+                    600: { value: "#0E8A81" },
+                    700: { value: "#0B6D66" },
+                    800: { value: "#08514C" },
+                    900: { value: "#053633" },
+                    950: { value: "#032220" },
                 },
                 // NB: `accent` lives in semanticTokens (light + dark pair)
                 // rather than here - a plain token and a semantic token can't
@@ -106,19 +110,19 @@ const config = defineConfig({
                     purple: { value: "#7c3aed" },
                 },
                 ink: {
-                    DEFAULT: { value: "#0e1f15" },
-                    soft: { value: "#3d4a42" },
-                    mute: { value: "#728176" },
+                    DEFAULT: { value: "#1B2836" },
+                    soft: { value: "#3A4B5E" },
+                    mute: { value: "#5F7080" },
                 },
                 surface: {
-                    canvas: { value: "#f3f6f1" },
-                    base: { value: "#ffffff" },
-                    tint: { value: "#eaf1e7" },
-                    tint2: { value: "#f7faf5" },
+                    canvas: { value: "#FFFFFF" },
+                    base: { value: "#FFFFFF" },
+                    tint: { value: "#EDF1F5" },
+                    tint2: { value: "#F4F7FA" },
                 },
                 line: {
-                    DEFAULT: { value: "#dde5d8" },
-                    strong: { value: "#c9d4c2" },
+                    DEFAULT: { value: "#DCE3EA" },
+                    strong: { value: "#C4D0DC" },
                 },
             },
             radii: {
@@ -129,12 +133,12 @@ const config = defineConfig({
                 "2xl": { value: "20px" },
             },
             shadows: {
-                xs: { value: "0 1px 2px rgba(14,31,21,0.04)" },
-                sm: { value: "0 1px 2px rgba(14,31,21,0.04), 0 1px 3px rgba(14,31,21,0.06)" },
-                md: { value: "0 4px 12px rgba(14,31,21,0.06)" },
-                lg: { value: "0 10px 28px rgba(14,31,21,0.12)" },
-                xl: { value: "0 8px 24px rgba(14,31,21,0.16)" },
-                sticky: { value: "0 -4px 20px rgba(14,31,21,0.04)" },
+                xs: { value: "0 1px 2px rgba(11,21,34,0.04)" },
+                sm: { value: "0 1px 2px rgba(11,21,34,0.04), 0 1px 3px rgba(11,21,34,0.06)" },
+                md: { value: "0 4px 12px rgba(11,21,34,0.06)" },
+                lg: { value: "0 10px 28px rgba(11,21,34,0.12)" },
+                xl: { value: "0 8px 24px rgba(11,21,34,0.16)" },
+                sticky: { value: "0 -4px 20px rgba(11,21,34,0.04)" },
             },
         },
         textStyles: {
@@ -212,12 +216,12 @@ const config = defineConfig({
             colors: {
                 // Canvas/surfaces - let `bg="bg.canvas"` / `bg="bg.panel"` keep
                 // working on existing components without touching call sites.
-                // Every token carries a `_dark` twin: a deep green-tinted dark
-                // ("night pitch") rather than neutral gray, so the brand hue
-                // survives the flip. Toggle lives in the navbar; next-themes
-                // sets the `dark` class that Chakra's `_dark` condition reads.
-                // Dark surfaces are neutral GRAY (near-slate, no green cast) -
-                // the brand green stays reserved for accents/CTAs so it pops.
+                // Every token carries a `_dark` twin: SPECTO navy surfaces
+                // (#0B1522 canvas / #111F31 panels) rather than neutral gray,
+                // so the brand identity survives the flip. Toggle lives in the
+                // navbar; next-themes sets the `dark` class that Chakra's
+                // `_dark` condition reads. The brand cyan stays reserved for
+                // accents/CTAs so it pops against the navy.
                 //
                 // ── Why `_light` is spelled out next to `base` ────────────────
                 // Chakra's own defaults key their light value under `_light`,
@@ -236,51 +240,53 @@ const config = defineConfig({
                 // (bg.canvas, fg.ink, accent.*, pitch.*) have no `_light`
                 // sibling and work with `base` alone - they're left as-is.
                 bg: {
-                    DEFAULT: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#232629" } },
-                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#191b1d" } },
-                    panel: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#232629" } },
-                    subtle: { value: { base: "{colors.surface.tint2}", _light: "{colors.surface.tint2}", _dark: "#282b2e" } },
-                    muted: { value: { base: "{colors.surface.tint}", _light: "{colors.surface.tint}", _dark: "#303437" } },
-                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#303437" } },
-                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#282b2e" } },
+                    DEFAULT: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#111F31" } },
+                    canvas: { value: { base: "{colors.surface.canvas}", _dark: "#0B1522" } },
+                    panel: { value: { base: "{colors.surface.base}", _light: "{colors.surface.base}", _dark: "#111F31" } },
+                    subtle: { value: { base: "{colors.surface.tint2}", _light: "{colors.surface.tint2}", _dark: "#152539" } },
+                    muted: { value: { base: "{colors.surface.tint}", _light: "{colors.surface.tint}", _dark: "#1B2C42" } },
+                    surfaceTint: { value: { base: "{colors.surface.tint}", _dark: "#1B2C42" } },
+                    surfaceTint2: { value: { base: "{colors.surface.tint2}", _dark: "#152539" } },
                 },
                 fg: {
-                    DEFAULT: { value: { base: "{colors.ink}", _light: "{colors.ink}", _dark: "#edeeef" } },
-                    ink: { value: { base: "{colors.ink}", _dark: "#edeeef" } },
-                    soft: { value: { base: "{colors.ink.soft}", _dark: "#c3c7ca" } },
-                    muted: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#9aa0a5" } },
-                    subtle: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#878d92" } },
+                    DEFAULT: { value: { base: "{colors.ink}", _light: "{colors.ink}", _dark: "#F5F7FA" } },
+                    ink: { value: { base: "{colors.ink}", _dark: "#F5F7FA" } },
+                    soft: { value: { base: "{colors.ink.soft}", _dark: "#C7D0DA" } },
+                    muted: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#8B97A5" } },
+                    subtle: { value: { base: "{colors.ink.mute}", _light: "{colors.ink.mute}", _dark: "#7A8794" } },
                 },
                 border: {
-                    DEFAULT: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#3b4045" } },
-                    emphasized: { value: { base: "{colors.line.strong}", _light: "{colors.line.strong}", _dark: "#4c5257" } },
-                    subtle: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#33383c" } },
-                    strong: { value: { base: "{colors.line.strong}", _dark: "#4c5257" } },
+                    DEFAULT: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#243650" } },
+                    emphasized: { value: { base: "{colors.line.strong}", _light: "{colors.line.strong}", _dark: "#314766" } },
+                    subtle: { value: { base: "{colors.line}", _light: "{colors.line}", _dark: "#1E2F47" } },
+                    strong: { value: { base: "{colors.line.strong}", _dark: "#314766" } },
                 },
-                // Make `colorPalette="pitch"` fully wired. Dark: solid pops a
-                // step brighter, fg goes light-green for text/links, subtle/
-                // muted become deep green fills instead of near-white ones.
+                // Make `colorPalette="pitch"` fully wired. Cyan is a LIGHT hue,
+                // so `contrast` is NAVY (#0B1522) - navy text on cyan CTAs, per
+                // the spec's "Watch live" button. `fg` uses the darker pitch.600
+                // teal so brand-coloured text/links stay readable on white; in
+                // dark mode fg/emphasized brighten to cyan-leaning tints.
                 pitch: {
-                    solid: { value: { base: "{colors.pitch.500}", _dark: "#17a05a" } },
-                    contrast: { value: "#ffffff" },
-                    fg: { value: { base: "{colors.pitch.500}", _dark: "#58cb93" } },
-                    muted: { value: { base: "{colors.pitch.200}", _dark: "#265238" } },
-                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#1b3527" } },
-                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#38784f" } },
-                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#4cb37e" } },
+                    solid: { value: { base: "#2AD4C8", _dark: "#2AD4C8" } },
+                    contrast: { value: "#0B1522" },
+                    fg: { value: { base: "{colors.pitch.600}", _dark: "#5CDAD1" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#123A42" } },
+                    subtle: { value: { base: "#E3F7F5", _dark: "#0F2E35" } },
+                    emphasized: { value: { base: "{colors.pitch.300}", _dark: "#1C5F62" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#2AD4C8" } },
                 },
                 // Alias.
                 brand: {
-                    solid: { value: { base: "{colors.pitch.500}", _dark: "#17a05a" } },
-                    contrast: { value: "#ffffff" },
-                    fg: { value: { base: "{colors.pitch.500}", _dark: "#58cb93" } },
-                    muted: { value: { base: "{colors.pitch.200}", _dark: "#265238" } },
-                    subtle: { value: { base: "{colors.pitch.50}", _dark: "#1b3527" } },
-                    emphasized: { value: { base: "{colors.pitch.400}", _dark: "#38784f" } },
-                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#4cb37e" } },
+                    solid: { value: { base: "#2AD4C8", _dark: "#2AD4C8" } },
+                    contrast: { value: "#0B1522" },
+                    fg: { value: { base: "{colors.pitch.600}", _dark: "#5CDAD1" } },
+                    muted: { value: { base: "{colors.pitch.200}", _dark: "#123A42" } },
+                    subtle: { value: { base: "#E3F7F5", _dark: "#0F2E35" } },
+                    emphasized: { value: { base: "{colors.pitch.300}", _dark: "#1C5F62" } },
+                    focusRing: { value: { base: "{colors.pitch.500}", _dark: "#2AD4C8" } },
                 },
                 // Status accents - slightly brighter in dark so they keep
-                // their pop on the deep-green surfaces. Referenced directly
+                // their pop on the deep navy surfaces. Referenced directly
                 // as `accent.*` across the app.
                 // NB: raw values (not {colors.accent.*} references) - a semantic
                 // token that references a plain token at the SAME path would
@@ -292,7 +298,10 @@ const config = defineConfig({
                     // reads amber. Dark-mode value unchanged.
                     amber: { value: { base: "#b45309", _dark: "#f59e0b" } },
                     red: { value: { base: "#dc2626", _dark: "#f05252" } },
-                    goal: { value: { base: "#f5b921", _dark: "#fbc934" } },
+                    // SPECTO lime highlight. Base darkened to #93B512 so it
+                    // clears 4.5:1 on white for text/icons; dark mode uses the
+                    // full spec lime #C9F24B.
+                    goal: { value: { base: "#93B512", _dark: "#C9F24B" } },
                 },
             },
         },

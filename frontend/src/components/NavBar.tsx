@@ -112,7 +112,7 @@ function UserAvatar({
             letterSpacing="0.02em"
             // Gradient is intentionally hard-coded because the inline
             // gradient string can't reference Chakra tokens via theme keys.
-            bgImage="linear-gradient(135deg, #3aa56b, #0b6b3a)"
+            bgImage="linear-gradient(135deg, #2AD4C8, #0B1522)"
             flexShrink={0}
         >
             {avatarUrl ? (

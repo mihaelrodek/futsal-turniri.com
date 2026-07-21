@@ -34,6 +34,50 @@ import { ExportDialog, type ExportMeta } from "../components/TournamentExport"
    underlying group-standings endpoint isn't wired here yet.
    ────────────────────────────────────────────────────────────────────── */
 
+/** Slim mobile stat chip - the phone-width stand-in for a full AccentStat
+ *  card. Three of these share one row (~56px total) where the stacked cards
+ *  used to eat ~350px before the search + scorer list became visible. */
+function StatChip({
+    accent,
+    label,
+    value,
+}: {
+    accent: string
+    label: string
+    value: string | number
+}) {
+    return (
+        <Box
+            position="relative"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            pl="2.5"
+            pr="2"
+            py="1.5"
+            overflow="hidden"
+            minW="0"
+        >
+            <Box position="absolute" top="0" left="0" w="3px" h="100%" bg={accent} />
+            <Text
+                fontFamily="mono"
+                fontSize="9px"
+                fontWeight={700}
+                letterSpacing="0.08em"
+                textTransform="uppercase"
+                color="fg.muted"
+                truncate
+            >
+                {label}
+            </Text>
+            <Text fontSize="15px" fontWeight={800} color="fg.ink" letterSpacing="-0.01em" truncate>
+                {value}
+            </Text>
+        </Box>
+    )
+}
+
 /** Deterministic jersey number 1–99 from a player id. Visual cue only - the
  *  backend's `ScorerDto` doesn't expose a jersey number today. */
 function jerseyNumber(seed: number): string {
@@ -350,8 +394,27 @@ export default function StatsSection({
     /* ── Populated ────────────────────────────────────────────────────── */
     return (
         <VStack align="stretch" gap="5">
-            {/* 3-tile headline strip */}
-            <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap="3">
+            {/* Headline stats. Phone: one slim row of three compact chips so
+                the search box and the scorer list surface without scrolling;
+                sm+: the familiar 3-tile AccentStat strip. */}
+            <Grid templateColumns="repeat(3, 1fr)" gap="2" display={{ base: "grid", sm: "none" }}>
+                <StatChip
+                    accent="var(--chakra-colors-pitch-500)"
+                    label="Strijelci"
+                    value={scorers.length}
+                />
+                <StatChip
+                    accent="var(--chakra-colors-accent-goal)"
+                    label="Golovi"
+                    value={totalGoals}
+                />
+                <StatChip
+                    accent="var(--chakra-colors-accent-amber)"
+                    label="Top ekipa"
+                    value={topTeam?.name ?? "-"}
+                />
+            </Grid>
+            <Grid templateColumns="repeat(3, 1fr)" gap="3" display={{ base: "none", sm: "grid" }}>
                 <AccentStat
                     accent="var(--chakra-colors-pitch-500)"
                     icon={<FiTarget size={12} />}

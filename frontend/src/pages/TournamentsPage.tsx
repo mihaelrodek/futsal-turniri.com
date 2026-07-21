@@ -234,7 +234,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
             flex="1 0 auto"
             display="flex"
             flexDirection="column"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
         >
             <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
             <Box
@@ -503,7 +503,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
    sit on a white surface. The cards are desktop-only (hidden on mobile). */
 const MOCK_SHELL = {
     bg: "rgba(255,255,255,0.97)",
-    color: "#0e1f15",
+    color: "#0B1522",
     rounded: "xl",
     overflow: "hidden",
     boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
@@ -562,7 +562,7 @@ function PromoMockLive() {
                 <Flex align="center" gap="2" px="3" py="1.5">
                     <Box fontSize="11px">⚽</Box>
                     <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
-                        <Box as="span" fontWeight={700} color="#0e1f15">12'</Box> Marko Horvat
+                        <Box as="span" fontWeight={700} color="#0B1522">12'</Box> Marko Horvat
                     </Box>
                 </Flex>
                 <Flex
@@ -575,7 +575,7 @@ function PromoMockLive() {
                 >
                     <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
                     <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
-                        <Box as="span" fontWeight={700} color="#0e1f15">18'</Box> Ivan Kovač
+                        <Box as="span" fontWeight={700} color="#0B1522">18'</Box> Ivan Kovač
                     </Box>
                 </Flex>
             </VStack>
@@ -594,8 +594,8 @@ function PromoMockNotif() {
                     w="26px"
                     h="26px"
                     rounded="lg"
-                    bg="#0b6b3a"
-                    color="white"
+                    bg="#2AD4C8"
+                    color="#0B1522"
                     flexShrink={0}
                 >
                     <FiBell size={13} />
@@ -640,7 +640,7 @@ function PromoMockFollower() {
 function PromoMockZapisnik() {
     return (
         <Box {...MOCK_SHELL} w="205px">
-            <Flex align="center" justify="space-between" px="3" py="1.5" bg="#0b6b3a" color="white">
+            <Flex align="center" justify="space-between" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <HStack gap="1.5">
                     <FiEdit3 size={11} />
                     <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
@@ -652,7 +652,7 @@ function PromoMockZapisnik() {
             <VStack align="stretch" gap="0" px="3" pt="1.5" pb="1">
                 <Flex align="center" gap="2" py="1">
                     <Box fontSize="11px">⚽</Box>
-                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0E8A81" w="18px">
                         12'
                     </Box>
                     <Box
@@ -674,7 +674,7 @@ function PromoMockZapisnik() {
                     borderColor="rgba(0,0,0,0.06)"
                 >
                     <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
-                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0E8A81" w="18px">
                         18'
                     </Box>
                     <Box fontSize="10.5px" fontWeight={600} flex="1">Ivan Kovač</Box>
@@ -686,8 +686,8 @@ function PromoMockZapisnik() {
                     textAlign="center"
                     fontSize="9.5px"
                     fontWeight={700}
-                    color="white"
-                    bg="#0b6b3a"
+                    color="#0B1522"
+                    bg="#2AD4C8"
                     rounded="md"
                     py="1"
                 >
@@ -698,7 +698,7 @@ function PromoMockZapisnik() {
                     textAlign="center"
                     fontSize="9.5px"
                     fontWeight={700}
-                    color="#0e1f15"
+                    color="#0B1522"
                     bg="rgba(0,0,0,0.06)"
                     rounded="md"
                     py="1"
@@ -717,7 +717,7 @@ function PromoMockBracket() {
             <Box
                 fontSize="9px"
                 fontWeight={aWins ? 800 : 600}
-                color={aWins ? "#0b6b3a" : "#0e1f15"}
+                color={aWins ? "#0E8A81" : "#0B1522"}
                 px="1.5"
                 py="0.5"
                 whiteSpace="nowrap"
@@ -730,7 +730,7 @@ function PromoMockBracket() {
             <Box
                 fontSize="9px"
                 fontWeight={aWins ? 600 : 800}
-                color={aWins ? "#0e1f15" : "#0b6b3a"}
+                color={aWins ? "#0B1522" : "#0E8A81"}
                 px="1.5"
                 py="0.5"
                 whiteSpace="nowrap"
@@ -743,7 +743,7 @@ function PromoMockBracket() {
     )
     return (
         <Box {...MOCK_SHELL} w="200px">
-            <Flex align="center" gap="1.5" px="3" py="1.5" bg="#0b6b3a" color="white">
+            <Flex align="center" gap="1.5" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <FiGrid size={11} />
                 <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
                     ELIMINACIJA
@@ -760,7 +760,7 @@ function PromoMockBracket() {
                     <Box
                         fontSize="7.5px"
                         fontWeight={700}
-                        color="#0b6b3a"
+                        color="#0E8A81"
                         letterSpacing="0.12em"
                         textAlign="center"
                         mt="1"
@@ -826,7 +826,7 @@ function PromoHero({ data }: { data: PromoSlide }) {
             flex="1 0 auto"
             display="flex"
             flexDirection="column"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
         >
             <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
             <Box
@@ -845,7 +845,7 @@ function PromoHero({ data }: { data: PromoSlide }) {
                 py="2.5"
                 borderBottomWidth="1px"
                 borderColor="rgba(255,255,255,0.12)"
-                bg="rgba(11, 107, 58, 0.32)"
+                bg="rgba(42, 212, 200, 0.32)"
                 gap="3"
             >
                 <HStack gap="2.5">

@@ -29,7 +29,7 @@ export default function Footer() {
             // Sit above page content / Leaflet panes but below the top nav
             // (1000) so it never covers it.
             zIndex={900}
-            bg="#0e1f15"
+            bg="#0B1522"
             borderTopWidth="1px"
             borderColor="rgba(255,255,255,0.08)"
         >

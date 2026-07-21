@@ -12,15 +12,20 @@
          clip the suits when it rounds the corners on the home screen. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b6b3a" />
+    <meta name="theme-color" content="#0B1522" />
 
-    <!-- Pitch theme typography triad:
-           • Inter      - body/UI text
-           • Bricolage  - display headings, team names, big numerics
-           • JetBrains  - mono labels, scoreboards, clocks
-         All loaded from Google Fonts with display=swap so first paint
-         never blocks on the font; the theme falls back to the system
-         stack while it loads (and permanently, offline). -->
+    <!-- SPECTO typography:
+           • Outfit      - headings, UI, team names, numerics
+           • Geist Mono  - mono labels, scoreboards, clocks
+         Loaded from Google Fonts with display=swap so first paint never
+         blocks on the font; the theme falls back to the system stack while
+         it loads (and permanently, offline).
+
+         The legacy Inter / Bricolage Grotesque / JetBrains Mono triad is
+         STILL loaded below: the poster/canvas export (TournamentExport.tsx,
+         via document.fonts.load) plus BracketTab / MapPage hardcode those
+         families, so retiring the link would silently break their rendering.
+         Retire once those call sites move to Outfit / Geist Mono. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Warm up the connections the app reaches for early: CARTO map tiles
@@ -44,6 +49,23 @@
          flips it to `all` and the fonts swap in. Saves ~1s of mobile
          render-block vs a plain stylesheet link; display=swap keeps text
          visible on the system stack meanwhile. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap"
+      />
+    </noscript>
+    <!-- Legacy triad (Inter / Bricolage Grotesque / JetBrains Mono) retained:
+         the poster/canvas export (TournamentExport.tsx, document.fonts.load)
+         and components (BracketTab, MapPage) still hardcode these families.
+         Removing this link would silently break their rendering - retire it
+         once those call sites migrate to Outfit / Geist Mono. -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"

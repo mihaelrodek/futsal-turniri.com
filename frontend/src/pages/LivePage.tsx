@@ -15,6 +15,7 @@ import { fetchSchedule } from "../api/schedule"
 import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
 import type { TournamentCard } from "../types/tournaments"
 import {
+    FilterChip,
     MonoLabel,
     PitchBackdrop,
     PrimaryButton,
@@ -118,7 +119,7 @@ function FeaturedTournamentHero({
             rounded="2xl"
             overflow="hidden"
             color="white"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
             cursor="pointer"
             onClick={onOpen}
             transition="transform .15s, box-shadow .15s"
@@ -474,6 +475,12 @@ function LiveMatchCard({
                         halfLengthMin={match.halfLengthMin}
                         pollMs={8000}
                         refreshSignal={refreshSignal}
+                        fouls={{
+                            t1First: match.fouls1First ?? 0,
+                            t1Second: match.fouls1Second ?? 0,
+                            t2First: match.fouls2First ?? 0,
+                            t2Second: match.fouls2Second ?? 0,
+                        }}
                     />
                 </Box>
             )}
@@ -528,6 +535,50 @@ function LiveMatchCard({
 }
 
 type MatchDayGroup = { key: string; date: Date; matches: UpcomingMatch[] }
+
+/* ── Upcoming-matches horizon filter ───────────────────────────────────────
+   The list spans every tournament, so it gets long fast. These chips narrow
+   it to a time horizon; "sve" is the default so nothing is hidden until the
+   user asks for it. */
+type UpcomingRange = "today" | "tomorrow" | "week" | "month" | "all"
+
+const UPCOMING_RANGES: { key: UpcomingRange; label: string }[] = [
+    { key: "today", label: "Danas" },
+    { key: "tomorrow", label: "Sutra" },
+    { key: "week", label: "Ovaj tjedan" },
+    { key: "month", label: "Ovaj mjesec" },
+    { key: "all", label: "Sve" },
+]
+
+/** Last instant of the Croatian week (Mon-Sun) that `from` falls in. */
+function endOfWeek(from: Date): Date {
+    const day = from.getDay() // 0 = Sunday … 6 = Saturday
+    const daysLeft = day === 0 ? 0 : 7 - day
+    const d = new Date(from)
+    d.setDate(d.getDate() + daysLeft)
+    d.setHours(23, 59, 59, 999)
+    return d
+}
+
+/** Last instant of `from`'s calendar month. */
+function endOfMonth(from: Date): Date {
+    return new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999)
+}
+
+/** Does a kickoff fall inside the selected horizon? "today"/"tomorrow" match
+ *  the calendar day exactly; "week"/"month" are open-ended up to the end of
+ *  the current week/month (the list only ever holds future matches anyway). */
+function withinRange(d: Date, range: UpcomingRange, today: Date): boolean {
+    if (range === "all") return true
+    if (range === "today") return dateKey(d) === dateKey(today)
+    if (range === "tomorrow") {
+        const t = new Date(today)
+        t.setDate(t.getDate() + 1)
+        return dateKey(d) === dateKey(t)
+    }
+    if (range === "week") return d.getTime() <= endOfWeek(today).getTime()
+    return d.getTime() <= endOfMonth(today).getTime()
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    Live-matches VIEW toggle.
@@ -836,6 +887,9 @@ export default function LivePage() {
     const [matchesLoading, setMatchesLoading] = useState(!cachedLive)
     const [upcomingMatches, setUpcomingMatches] = useState<UpcomingMatch[]>([])
     const [upcomingLoading, setUpcomingLoading] = useState(true)
+    // Horizon filter for the upcoming list. Defaults to "all" so the section
+    // keeps showing everything until the user narrows it themselves.
+    const [upcomingRange, setUpcomingRange] = useState<UpcomingRange>("all")
     const [featured, setFeatured] = useState<TournamentCard | null>(null)
     // Bumped on every WebSocket live-update so expanded event timelines refetch
     // instantly (see GoalscorersPanel refreshSignal).
@@ -998,12 +1052,15 @@ export default function LivePage() {
     }, [matches])
 
     // Upcoming matches grouped by day, soonest first. Each day's matches
-    // are already kickoff-sorted by the backend; we keep that order.
+    // are already kickoff-sorted by the backend; we keep that order. The
+    // horizon filter (danas / sutra / tjedan / mjesec / sve) is applied
+    // BEFORE grouping so empty days never render a stray header.
     const matchDayGroups = useMemo<MatchDayGroup[]>(() => {
         const map = new Map<string, MatchDayGroup>()
         for (const m of upcomingMatches) {
             if (!m.kickoffAt) continue
             const d = new Date(m.kickoffAt)
+            if (!withinRange(d, upcomingRange, today)) continue
             const k = dateKey(d)
             const existing = map.get(k)
             if (existing) existing.matches.push(m)
@@ -1016,7 +1073,21 @@ export default function LivePage() {
             )
         }
         return groups
-    }, [upcomingMatches])
+    }, [upcomingMatches, upcomingRange, today])
+
+    // Per-range counts for the filter chips, so the user sees what each
+    // horizon holds before switching to it. Derived from the UNFILTERED list.
+    const upcomingCounts = useMemo(() => {
+        const out = { today: 0, tomorrow: 0, week: 0, month: 0, all: 0 } as Record<UpcomingRange, number>
+        for (const m of upcomingMatches) {
+            if (!m.kickoffAt) continue
+            const d = new Date(m.kickoffAt)
+            for (const r of UPCOMING_RANGES) {
+                if (withinRange(d, r.key, today)) out[r.key] += 1
+            }
+        }
+        return out
+    }, [upcomingMatches, today])
 
     return (
         <VStack align="stretch" gap="7">
@@ -1220,7 +1291,7 @@ export default function LivePage() {
                                         // grid cards so the featured slot
                                         // reads as the page's primary subject.
                                         boxShadow: isAdminFeatured
-                                            ? "0 0 0 3px rgba(11,107,58,0.16)"
+                                            ? "0 0 0 3px rgba(42,212,200,0.16)"
                                             : undefined,
                                         borderRadius: 12,
                                     }}
@@ -1269,24 +1340,61 @@ export default function LivePage() {
                  Matches scheduled to start soon across ALL tournaments,
                  grouped by day. Replaces the old by-month tournament
                  calendar (that moved to the home page list view). */}
-            <SectionCard
-                icon={FiClock}
-                title="Nadolazeće utakmice"
-                subtitle={
-                    upcomingLoading
-                        ? "Učitavanje…"
-                        : upcomingMatches.length > 0
-                            ? "Utakmice koje uskoro počinju kroz sve turnire"
-                            : "Trenutno nema zakazanih utakmica"
-                }
-            >
+            {/* Slim header instead of SectionCard's tall icon+title+subtitle
+                band: one row with a small clock + title on the left and the
+                horizon chips on the right (they wrap under it on narrow
+                screens). The match rows below are unchanged. */}
+            <SectionCard padding="4">
+                {/* Base: title row, then the chips on their own FULL-WIDTH row
+                    so every wrapped line right-aligns to the card edge (as a
+                    fit-content flex item the second line only aligned to the
+                    first line's box, which floated mid-card). md+: single row,
+                    chips pushed right. */}
+                <Flex
+                    direction={{ base: "column", md: "row" }}
+                    align={{ base: "stretch", md: "center" }}
+                    gap={{ base: "2", md: "3" }}
+                    mb="3"
+                >
+                    <HStack gap="2" minW="0">
+                        <Box color="pitch.fg" display="inline-flex" flexShrink={0}>
+                            <FiClock size={15} />
+                        </Box>
+                        <Text fontSize="15px" fontWeight={800} color="fg.ink" whiteSpace="nowrap">
+                            Nadolazeće utakmice
+                        </Text>
+                    </HStack>
+                    <HStack
+                        gap="1.5"
+                        ml={{ md: "auto" }}
+                        w={{ base: "full", md: "auto" }}
+                        wrap="wrap"
+                        justify="flex-end"
+                    >
+                        {UPCOMING_RANGES.map((r) => (
+                            <FilterChip
+                                key={r.key}
+                                label={r.label}
+                                count={upcomingCounts[r.key]}
+                                active={upcomingRange === r.key}
+                                onClick={() => setUpcomingRange(r.key)}
+                            />
+                        ))}
+                    </HStack>
+                </Flex>
                 {upcomingLoading ? (
                     <Text color="fg.muted">Učitavanje utakmica…</Text>
                 ) : matchDayGroups.length === 0 ? (
-                    <Flex direction="column" align="center" py="8" px="4" gap="2" textAlign="center">
-                        <Heading size="sm">Nema nadolazećih utakmica</Heading>
+                    <Flex direction="column" align="center" py="6" px="4" gap="1.5" textAlign="center">
+                        <Heading size="sm">
+                            {upcomingRange === "all"
+                                ? "Nema nadolazećih utakmica"
+                                : "Nema utakmica u ovom razdoblju"}
+                        </Heading>
                         <Text fontSize="sm" color="fg.muted" maxW="md">
-                            Kad organizatori zakažu termine utakmica, pojavit će se ovdje.
+                            {upcomingRange === "all"
+                                ? "Kad organizatori zakažu termine utakmica, pojavit će se ovdje."
+                                : "Odaberi šire razdoblje da vidiš više utakmica."}
                         </Text>
                     </Flex>
                 ) : (

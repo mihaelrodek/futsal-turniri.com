@@ -24,6 +24,13 @@ public record ScheduledMatchDto(
          *  regulation. */
         Integer penalties1,
         Integer penalties2,
+        /** Accumulated team fouls per half - counters, not timestamped events,
+         *  so they surface as a per-half tally on the match timeline (and stay
+         *  readable once the match is FINISHED and the live overlay is gone). */
+        Integer fouls1First,
+        Integer fouls1Second,
+        Integer fouls2First,
+        Integer fouls2Second,
         /** Predicted-pairing label for the slot while its team is still undecided,
          *  so the Raspored can show "A1 – D2" (or "Pobj. ČF1" / "Por. PF2") instead
          *  of TBD. Null once the real team is known, for a bye, and always for

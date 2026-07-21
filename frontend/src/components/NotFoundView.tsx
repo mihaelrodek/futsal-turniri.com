@@ -30,7 +30,7 @@ export default function NotFoundView({
                 maxW="560px"
                 w="full"
                 color="white"
-                bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+                bgImage="linear-gradient(135deg, #0B1522, #0F2E35)"
                 textAlign="center"
                 px={{ base: "6", md: "10" }}
                 py={{ base: "10", md: "12" }}
@@ -77,7 +77,7 @@ export default function NotFoundView({
                         <PrimaryButton
                             icon={<FiArrowLeft size={15} />}
                             onClick={() => navigate("/turniri")}
-                            css={{ background: "#fff", color: "#0b6b3a" }}
+                            css={{ background: "#fff", color: "#0E8A81" }}
                             _hover={{ background: "rgba(255,255,255,0.9)" }}
                         >
                             Natrag na turnire

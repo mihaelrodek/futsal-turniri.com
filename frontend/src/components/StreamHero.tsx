@@ -81,7 +81,7 @@ export function buildScoreBug(
                     px="2"
                     py="0.5"
                     rounded="full"
-                    bg="rgba(15,15,17,0.86)"
+                    bg="rgba(11,21,34,0.86)"
                     borderWidth="1px"
                     borderColor="whiteAlpha.200"
                     css={{ backdropFilter: "blur(6px)" }}
@@ -167,7 +167,7 @@ function ScorerColumn({ goals, align }: { goals: MatchEventDto[]; align: "left" 
         <VStack
             align={align === "left" ? "flex-start" : "flex-end"}
             gap="0"
-            bg="rgba(15,15,17,0.72)"
+            bg="rgba(11,21,34,0.72)"
             css={{ backdropFilter: "blur(6px)" }}
             borderWidth="1px"
             borderColor="whiteAlpha.200"

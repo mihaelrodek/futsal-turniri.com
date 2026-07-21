@@ -2079,20 +2079,27 @@ export default function ScheduleTab({
                             Wraps cleanly on narrow screens (the actions drop under
                             the filters). Replaces the old icon + "Raspored" title. */}
                         <Flex
-                            align="center"
+                            // Mobile: two tidy stacked rows (filters row, then
+                            // toggle+actions row) instead of free-form wrapping,
+                            // which let the right cluster land between / over
+                            // the wrapped selects. lg+: everything on one row.
+                            direction={{ base: "column", lg: "row" }}
+                            align={{ base: "stretch", lg: "center" }}
                             gap="2"
-                            wrap={{ base: "wrap", lg: "nowrap" }}
                             pb="3"
                             borderBottomWidth="1px"
                             borderColor="border"
                         >
                             {/* Filters - only the dropdowns worth showing, same
                                 conditions + handlers as before, now inline in the
-                                header (the old standalone tinted box is gone). */}
+                                header (the old standalone tinted box is gone). On
+                                base the selects split the row into equal thirds
+                                (native selects ellipsise their label) so all
+                                three + the broom stay on ONE line. */}
                             {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
-                                <Flex align="center" gap="2" wrap={{ base: "wrap", lg: "nowrap" }} minW="0" flex="1">
+                                <Flex align="center" gap="2" minW="0" flex="1">
                                     {allTeamCount > 1 && (
-                                        <NativeSelect.Root size="sm" flex="1 1 150px" minW="110px" maxW="220px">
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "220px" }}>
                                             <NativeSelect.Field
                                                 value={teamFilter}
                                                 onChange={(e) => setTeamFilter(e.target.value)}
@@ -2111,7 +2118,7 @@ export default function ScheduleTab({
                                     )}
 
                                     {allGroupCount > 1 && (
-                                        <NativeSelect.Root size="sm" flex="1 1 120px" minW="100px" maxW="170px">
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "170px" }}>
                                             <NativeSelect.Field
                                                 value={groupFilter}
                                                 onChange={(e) => setGroupFilter(e.target.value)}
@@ -2130,7 +2137,7 @@ export default function ScheduleTab({
                                     )}
 
                                     {multiDay && (
-                                        <NativeSelect.Root size="sm" flex="1 1 130px" minW="100px" maxW="200px">
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "200px" }}>
                                             <NativeSelect.Field
                                                 value={dayFilter}
                                                 onChange={(e) => setDayFilter(e.target.value)}
@@ -2172,9 +2179,17 @@ export default function ScheduleTab({
 
                             {/* Right cluster - prikaz toggle then the schedule
                                 actions (Termini završnice · Uredi format · Uredi
-                                raspored · Preuzmi); pushed to the row's right edge,
-                                wraps to its own line on narrow screens. */}
-                            <Flex align="center" gap="2" wrap={{ base: "wrap", lg: "nowrap" }} ml="auto" flexShrink={0}>
+                                raspored · Preuzmi). Base: its own row under the
+                                filters, toggle left / actions right. lg+: pushed
+                                to the right edge of the single header row. */}
+                            <Flex
+                                align="center"
+                                gap="2"
+                                wrap={{ base: "wrap", lg: "nowrap" }}
+                                justify={{ base: "space-between", lg: "flex-end" }}
+                                ml={{ lg: "auto" }}
+                                flexShrink={0}
+                            >
                                 {viewToggle}
                                 {scheduleControls}
                             </Flex>

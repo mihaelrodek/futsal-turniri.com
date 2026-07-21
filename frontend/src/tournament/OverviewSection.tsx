@@ -641,7 +641,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                         rounded="2xl"
                         p="3"
                         maxW="320px"
-                        css={{ boxShadow: "0 8px 28px rgba(14,31,21,0.16)" }}
+                        css={{ boxShadow: "0 8px 28px rgba(11,21,34,0.16)" }}
                     >
                         {/* Only the blocking states get a line; the "ready"
                             message was removed on request. */}
@@ -779,8 +779,8 @@ function DetailsReadView({
                                 w="28px"
                                 h="28px"
                                 rounded="full"
-                                bgImage="linear-gradient(135deg, #3aa56b, #0b6b3a)"
-                                color="white"
+                                bg="#2AD4C8"
+                                color="#0B1522"
                                 align="center"
                                 justify="center"
                                 fontSize="11px"

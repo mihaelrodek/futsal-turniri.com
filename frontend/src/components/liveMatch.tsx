@@ -821,6 +821,49 @@ const EVENT_ICON: Record<string, string> = {
     RED_CARD: "1F7E5",
 }
 
+/** Per-half accumulated team fouls handed to a timeline. Fouls are counters,
+ *  NOT timestamped events - they never appear as rows on the timeline, only as
+ *  this per-half summary. t1/t2 follow the caller's team1/team2 ordering. */
+export type TimelineFouls = {
+    t1First: number
+    t1Second: number
+    t2First: number
+    t2Second: number
+}
+
+/** Compact "PREKRŠAJI 3 : 2" tally for a timeline section header. Renders the
+ *  bare inline content (no background/padding) so the caller can drop it into
+ *  whatever chip masks the dashed centre line. Mono numerals in `pitch.fg` to
+ *  match the live console's cyan foul styling. */
+export function FoulChip({ a, b }: { a: number; b: number }) {
+    return (
+        <HStack as="span" gap="1.5" align="center" flexShrink={0}>
+            <Text
+                as="span"
+                fontFamily="mono"
+                fontSize="2xs"
+                fontWeight={700}
+                letterSpacing="0.1em"
+                color="fg.muted"
+                whiteSpace="nowrap"
+            >
+                PREKRŠAJI
+            </Text>
+            <Text
+                as="span"
+                fontFamily="mono"
+                fontSize="2xs"
+                fontWeight={800}
+                color="pitch.fg"
+                fontVariantNumeric="tabular-nums"
+                whiteSpace="nowrap"
+            >
+                {a} : {b}
+            </Text>
+        </HStack>
+    )
+}
+
 type EventTimelineState =
     | { status: "idle" }
     | { status: "loading" }
@@ -837,6 +880,7 @@ export function GoalscorersPanel({
     hideEmpty = false,
     emptyNote,
     refreshSignal,
+    fouls,
 }: {
     tournamentUuid: string
     matchId: number
@@ -861,6 +905,11 @@ export function GoalscorersPanel({
     /** Bump this (from a WebSocket live-update) to refetch immediately - the
      *  instant path; polling above is the fallback. */
     refreshSignal?: number
+    /** Accumulated per-half team fouls. When given, each half's section header
+     *  gains a "PREKRŠAJI x : y" tally (omitted for a 0:0 half, and never on
+     *  the "Penali" section). With no half boundary the whole timeline gets a
+     *  single combined tally at the top instead. */
+    fouls?: TimelineFouls | null
 }) {
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
 
@@ -951,19 +1000,35 @@ export function GoalscorersPanel({
             (e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED",
         )
 
+        const hl = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
+
+        // Accumulated per-half foul tallies. A half with no fouls on either
+        // side gets no chip (pure noise otherwise); with no half boundary known
+        // the two halves collapse into one combined tally.
+        const foulPair = (a: number, b: number): [number, number] | null =>
+            a > 0 || b > 0 ? [a, b] : null
+        const foulsH1 = fouls ? foulPair(fouls.t1First, fouls.t2First) : null
+        const foulsH2 = fouls ? foulPair(fouls.t1Second, fouls.t2Second) : null
+        const foulsAll = fouls
+            ? foulPair(fouls.t1First + fouls.t1Second, fouls.t2First + fouls.t2Second)
+            : null
+        const sectionFouls = (key: string): [number, number] | null =>
+            key === "h1" ? foulsH1 : key === "h2" ? foulsH2 : null
+
         if (events.length === 0) {
-            if (emptyNote) {
-                return (
-                    <Text fontSize="xs" color="fg.muted" textAlign="center">
-                        {emptyNote}
-                    </Text>
-                )
-            }
-            if (hideEmpty) return null
+            const note = emptyNote ?? (hideEmpty ? null : "Još nema događaja.")
+            // A match can accumulate fouls without a single event (e.g. a 0:0),
+            // so the tally still shows rather than rendering nothing at all.
+            if (!note && !foulsAll) return null
             return (
-                <Text fontSize="xs" color="fg.muted" textAlign="center">
-                    Još nema događaja.
-                </Text>
+                <VStack align="center" gap="2" w="full">
+                    {note && (
+                        <Text fontSize="xs" color="fg.muted" textAlign="center">
+                            {note}
+                        </Text>
+                    )}
+                    {foulsAll && <FoulChip a={foulsAll[0]} b={foulsAll[1]} />}
+                </VStack>
             )
         }
 
@@ -972,18 +1037,17 @@ export function GoalscorersPanel({
         // half = its minute below / at-or-above the boundary); penalty-shootout
         // kicks always get their own "Penali" section.
         const sections: { key: string; title: string; events: MatchEventDto[] }[] = []
-        const hl = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
-        if (regulation.length > 0) {
-            if (hl != null) {
-                const first = regulation.filter((e) => e.minute < hl)
-                const second = regulation.filter((e) => e.minute >= hl)
-                if (first.length) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
-                if (second.length) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
-            } else {
-                // No half boundary known - one headerless timeline section (the
-                // parent already labels the whole thing "Tijek utakmice").
-                sections.push({ key: "reg", title: "", events: regulation })
-            }
+        if (hl != null) {
+            const first = regulation.filter((e) => e.minute < hl)
+            const second = regulation.filter((e) => e.minute >= hl)
+            // A half with fouls but no goals/cards still gets its header, so
+            // the tally has somewhere to sit instead of being dropped.
+            if (first.length || foulsH1) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
+            if (second.length || foulsH2) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
+        } else if (regulation.length > 0) {
+            // No half boundary known - one headerless timeline section (the
+            // parent already labels the whole thing "Tijek utakmice").
+            sections.push({ key: "reg", title: "", events: regulation })
         }
         if (penalties.length > 0) {
             sections.push({ key: "pen", title: "Penali", events: penalties })
@@ -1021,24 +1085,40 @@ export function GoalscorersPanel({
                     zIndex={0}
                 />
                 <VStack align="stretch" gap="0" w="full" position="relative" zIndex={1}>
-                {sections.map((sec) => (
+                {/* Headerless timeline (no half boundary known) - the per-half
+                    tallies have nowhere to sit, so one combined chip goes on
+                    top rather than losing the information entirely. */}
+                {foulsAll && sections.some((s) => s.key === "reg") && (
+                    <Flex justify="center" pb="2">
+                        <Box bg="bg.panel" px="3">
+                            <FoulChip a={foulsAll[0]} b={foulsAll[1]} />
+                        </Box>
+                    </Flex>
+                )}
+                {sections.map((sec) => {
+                    const sf = sectionFouls(sec.key)
+                    return (
                     <Box key={sec.key} w="full">
                         {/* Section header ("1./2. poluvrijeme" / "Penali") -
-                            centred, masks the dashed line behind it. */}
+                            centred, masks the dashed line behind it. The half's
+                            accumulated foul tally rides along on the right,
+                            INSIDE the same masking chip so the dashed centre
+                            line stays hidden behind the header. */}
                         {sec.title && (
                             <Flex justify="center" py="2">
-                                <Text
-                                    px="3"
-                                    bg="bg.panel"
-                                    fontSize="xs"
-                                    fontWeight={700}
-                                    letterSpacing="0.04em"
-                                    color="fg.muted"
-                                    textAlign="center"
-                                    whiteSpace="nowrap"
-                                >
-                                    {sec.title}
-                                </Text>
+                                <HStack gap="2.5" align="center" bg="bg.panel" px="3">
+                                    <Text
+                                        fontSize="xs"
+                                        fontWeight={700}
+                                        letterSpacing="0.04em"
+                                        color="fg.muted"
+                                        textAlign="center"
+                                        whiteSpace="nowrap"
+                                    >
+                                        {sec.title}
+                                    </Text>
+                                    {sf && <FoulChip a={sf[0]} b={sf[1]} />}
+                                </HStack>
                             </Flex>
                         )}
                         {sec.events.map((evt) => (
@@ -1050,7 +1130,8 @@ export function GoalscorersPanel({
                             />
                         ))}
                     </Box>
-                ))}
+                    )
+                })}
                 </VStack>
             </Box>
         )
@@ -2043,14 +2124,14 @@ function KickChip({
             py="0.5"
             rounded="full"
             borderWidth="1px"
-            borderColor={kick.scored ? "pitch.500" : "border.emphasized"}
-            bg={kick.scored ? "rgba(58,165,107,0.12)" : "transparent"}
+            borderColor={kick.scored ? "#16A34A" : "border.emphasized"}
+            bg={kick.scored ? "rgba(22,163,74,0.12)" : "transparent"}
             cursor={disabled ? "default" : "pointer"}
             _hover={disabled ? undefined : { borderColor: "accent.amber" }}
         >
             <Box
                 as="span"
-                color={kick.scored ? "pitch.500" : "fg.muted"}
+                color={kick.scored ? "#16A34A" : "fg.muted"}
                 fontWeight={800}
                 fontSize="10px"
             >
@@ -2151,6 +2232,12 @@ type TimelineMatch = {
     score1?: number | null
     score2?: number | null
     status?: string | null
+    /** Accumulated per-half team fouls - BracketMatch / GroupMatch already
+     *  carry these, so passing either straight through keeps working. */
+    fouls1First?: number | null
+    fouls1Second?: number | null
+    fouls2First?: number | null
+    fouls2Second?: number | null
 }
 
 export function MatchTimelineModal({
@@ -2260,6 +2347,12 @@ export function MatchTimelineModal({
                                 halfLengthMin={halfLengthMin}
                                 pollMs={isLive ? 6000 : undefined}
                                 hideEmpty={!isLive}
+                                fouls={{
+                                    t1First: match.fouls1First ?? 0,
+                                    t1Second: match.fouls1Second ?? 0,
+                                    t2First: match.fouls2First ?? 0,
+                                    t2Second: match.fouls2Second ?? 0,
+                                }}
                                 emptyNote={
                                     match.status === "FINISHED"
                                         ? "Prikazan samo krajnji rezultat bez strijelca."

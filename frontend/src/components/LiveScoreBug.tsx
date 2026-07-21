@@ -1,5 +1,6 @@
-import { Box, Flex, Text } from "@chakra-ui/react"
+import { Flex, Text } from "@chakra-ui/react"
 import { PulseDot } from "../ui/pitch"
+import { KitSwatch } from "./jersey"
 
 /* ──────────────────────────────────────────────────────────────────────────
    LiveScoreBug - a TV-broadcast-style score overlay for the current live
@@ -66,7 +67,7 @@ export default function LiveScoreBug({
     return (
         <Flex
             align="stretch"
-            bg="rgba(15,15,17,0.86)"
+            bg="rgba(11,21,34,0.86)"
             css={{ backdropFilter: "blur(6px)" }}
             rounded={lg ? "xl" : "lg"}
             overflow="hidden"
@@ -133,18 +134,18 @@ export default function LiveScoreBug({
     )
 }
 
-/** Two-tone kit accent bar beside a team name: jersey (top) over shorts
- *  (bottom). Falls back to a single jersey bar when shorts isn't set. */
+/** Compact kit silhouette beside a team name: the shared "shirt over shorts"
+ *  icon in the two kit colours. The scorebug sits on a dark, blurred panel, so
+ *  the jersey falls back to a faint white (matching the old placeholder bar) and
+ *  the outline uses `whiteAlpha` so a dark kit still reads on the dark bug. */
 function KitBar({ jersey, shorts, lg }: { jersey?: string | null; shorts?: string | null; lg: boolean }) {
-    const w = lg ? "6px" : "4px"
-    const j = jersey ?? "whiteAlpha.400"
-    if (!shorts) {
-        return <Box w={w} alignSelf="stretch" rounded="sm" bg={j} flexShrink={0} />
-    }
+    const fallback = "rgba(255,255,255,0.38)"
     return (
-        <Box w={w} alignSelf="stretch" rounded="sm" overflow="hidden" flexShrink={0} display="flex" flexDirection="column">
-            <Box flex="1.15" bg={j} />
-            <Box flex="0.85" bg={shorts} />
-        </Box>
+        <KitSwatch
+            jersey={jersey ?? fallback}
+            shorts={shorts ?? undefined}
+            size={lg ? 14 : 12}
+            borderColor="whiteAlpha.500"
+        />
     )
 }

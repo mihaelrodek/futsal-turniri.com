@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Box, IconButton } from "@chakra-ui/react"
+import { Box, IconButton, Menu } from "@chakra-ui/react"
 import { FiBell, FiBellOff } from "react-icons/fi"
 import {
     fetchTournamentSubscription,
@@ -56,8 +56,12 @@ function writeAnonCache(uuid: string, subscribed: boolean) {
 
 export default function TournamentNotificationBell({
     uuid,
+    asMenuItem,
 }: {
     uuid: string
+    /** Render as a `Menu.Item` (mobile overflow menu) instead of the round
+     *  icon button. Same toggle logic - only the shell differs. */
+    asMenuItem?: boolean
 }) {
     const { user, loading: authLoading } = useAuth()
     const [subscribed, setSubscribed] = useState<boolean | null>(null)
@@ -200,6 +204,20 @@ export default function TournamentNotificationBell({
     const label = subscribed
         ? "Primaš obavijesti o turniru - klikni za isključi"
         : "Primaj obavijesti o turniru (golovi, kraj utakmice)"
+
+    if (asMenuItem) {
+        return (
+            <Menu.Item
+                value="notify"
+                onSelect={toggle}
+                disabled={busy || subscribed == null}
+                color={subscribed ? "pitch.fg" : undefined}
+            >
+                <Icon size={15} />
+                {subscribed ? "Isključi obavijesti" : "Primaj obavijesti"}
+            </Menu.Item>
+        )
+    }
 
     return (
         <Box position="relative">

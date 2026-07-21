@@ -1,4 +1,4 @@
-import { Box } from "@chakra-ui/react"
+import { Box, chakra } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 
 import { qk } from "../queryClient"
@@ -90,9 +90,31 @@ export function TeamKitChip({
     return <KitSwatch jersey={kit.jersey} shorts={kit.shorts} size={size} />
 }
 
-/** Two-tone kit chip: a small "jersey" (top) over "shorts" (bottom). Falls back
- *  to a plain swatch when only one colour is set, and renders nothing when the
- *  team has no colour. `size` is the width; height is ~1.3× for the jersey look. */
+/* Kit silhouette geometry (viewBox 0 0 20 26 → the 1 : 1.3 footprint every
+   caller already sizes for). One flat shirt path (torso + stubby short sleeves
+   with a soft V-neck) sits over a simple two-leg shorts path; both carry a thin
+   non-scaling stroke so a white kit stays outlined on a white card. */
+const KIT_SHIRT_PATH =
+    "M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z"
+const KIT_SHORTS_PATH =
+    "M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z"
+
+/** Resolve a KitSwatch border token to something usable as an SVG `stroke`.
+ *  Chakra v3 doesn't resolve colour *tokens* on raw <path> elements (unlike a
+ *  Box `borderColor`), so map a dotted token (`blackAlpha.400`,
+ *  `border.emphasized`, `whiteAlpha.500`, …) to its generated CSS custom
+ *  property and pass raw colours (hex/rgb/hsl/var/keyword) straight through. */
+function kitStroke(token: string): string {
+    return /^(#|rgb|hsl|var\(|transparent|currentcolor)/i.test(token)
+        ? token
+        : `var(--chakra-colors-${token.replace(/\./g, "-")})`
+}
+
+/** Kit silhouette: a flat "shirt over shorts" icon in the team's colours - the
+ *  shirt filled with the jersey (dres) colour, the shorts with the shorts
+ *  (hlače) colour. Falls back to a single colour when only one is set (the whole
+ *  kit takes it) and renders nothing when the team has no colour. `size` is the
+ *  width; height stays ~1.3× so the footprint matches the old two-tone chip. */
 export function KitSwatch({
     jersey,
     shorts,
@@ -103,42 +125,61 @@ export function KitSwatch({
     jersey?: string | null
     shorts?: string | null
     size?: number
-    /** Border colour token/value. Defaults to `blackAlpha.400` so every
+    /** Border/outline colour token/value. Defaults to `blackAlpha.400` so every
      *  existing caller renders identically; pass a theme token like
-     *  `border.emphasized` when the chip must stay visible on both light and
-     *  dark panels (e.g. a white kit on a light panel, black on dark). */
+     *  `border.emphasized` (or a `whiteAlpha.*` on dark surfaces) when the
+     *  outline must stay visible on both light and dark panels (a white kit on a
+     *  light card, a black kit on a dark one). */
     borderColor?: string
-    /** Corner rounding. Defaults to `2px` (unchanged for existing callers);
-     *  larger header chips can pass e.g. `md` for a softer, more legible shape. */
+    /** Corner rounding of the bounding box. Kept for API compatibility; the
+     *  silhouette itself is shaped by the SVG (rounded joins), so this now only
+     *  rounds the invisible box. Defaults to `2px`. */
     rounded?: string
 }) {
     if (!jersey && !shorts) return null
     const h = Math.round(size * 1.3)
-    const both = !!jersey && !!shorts
-    const single = jersey ?? shorts ?? undefined
+    // Mirror the old single-colour fallback: when only one colour is set the
+    // whole kit takes that colour (shirt and shorts alike).
+    const shirtColor = jersey ?? shorts ?? undefined
+    const shortsColor = shorts ?? jersey ?? undefined
+    const stroke = kitStroke(borderColor)
     return (
         <Box
             as="span"
-            display="inline-flex"
-            flexDirection="column"
+            display="inline-block"
+            verticalAlign="middle"
             w={`${size}px`}
             h={`${h}px`}
-            rounded={rounded}
-            overflow="hidden"
-            borderWidth="1px"
-            borderColor={borderColor}
+            borderRadius={rounded}
             flexShrink={0}
             title="Boja dresa / hlača"
             aria-hidden
         >
-            {both ? (
-                <>
-                    <Box flex="1.15" bg={jersey!} />
-                    <Box flex="0.85" bg={shorts!} />
-                </>
-            ) : (
-                <Box flex="1" bg={single} />
-            )}
+            <chakra.svg
+                viewBox="0 0 20 26"
+                width="100%"
+                height="100%"
+                display="block"
+                overflow="visible"
+            >
+                {/* Shorts first so the shirt's hem overlaps the waistband cleanly. */}
+                <path
+                    d={KIT_SHORTS_PATH}
+                    fill={shortsColor}
+                    stroke={stroke}
+                    strokeWidth={0.75}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+                <path
+                    d={KIT_SHIRT_PATH}
+                    fill={shirtColor}
+                    stroke={stroke}
+                    strokeWidth={0.75}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+            </chakra.svg>
         </Box>
     )
 }

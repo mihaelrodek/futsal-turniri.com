@@ -1904,7 +1904,7 @@ export default function GroupsTab({
                                                 fontWeight={700}
                                                 letterSpacing="0.06em"
                                                 color="pitch.500"
-                                                bg="rgba(58,165,107,0.12)"
+                                                bg="rgba(42,212,200,0.12)"
                                                 px="2.5"
                                                 py="1"
                                                 rounded="full"
@@ -1917,7 +1917,7 @@ export default function GroupsTab({
                                     return (
                                         <HStack
                                             gap="0.5"
-                                            bg={overridden ? "rgba(58,165,107,0.18)" : "rgba(58,165,107,0.12)"}
+                                            bg={overridden ? "rgba(42,212,200,0.18)" : "rgba(42,212,200,0.12)"}
                                             borderWidth={overridden ? "1px" : "0"}
                                             borderColor="pitch.500"
                                             rounded="full"
@@ -2051,7 +2051,7 @@ export default function GroupsTab({
                                         minH="56px"
                                         px={{base: "3", md: "4"}}
                                         py="2.5"
-                                        bg={advances ? "rgba(58,165,107,0.08)" : undefined}
+                                        bg={advances ? "rgba(42,212,200,0.08)" : undefined}
                                         borderLeftWidth="3px"
                                         borderLeftColor={advances ? "pitch.500" : "transparent"}
                                         borderTopWidth={idx === 0 ? "0" : "1px"}
@@ -2062,7 +2062,7 @@ export default function GroupsTab({
                                         transition={onSelectTeam ? "background 0.12s" : undefined}
                                         _hover={
                                             onSelectTeam
-                                                ? { bg: advances ? "rgba(58,165,107,0.14)" : "bg.surfaceTint" }
+                                                ? { bg: advances ? "rgba(42,212,200,0.14)" : "bg.surfaceTint" }
                                                 : undefined
                                         }
                                         onClick={
@@ -2155,7 +2155,7 @@ export default function GroupsTab({
                                                         fontSize="9px"
                                                         fontWeight={800}
                                                         color="white"
-                                                        bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
+                                                        bg={isW ? "#16A34A" : isL ? "accent.red" : "#9aa6b2"}
                                                         title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
                                                     >
                                                         {isW ? "P" : isL ? "I" : "N"}
@@ -2284,7 +2284,7 @@ export default function GroupsTab({
                                 </Text>
                             </HStack>
                             <Box fontFamily="mono" fontSize="9px" fontWeight={700} letterSpacing="0.06em"
-                                 color="pitch.500" bg="rgba(58,165,107,0.12)" px="2.5" py="1" rounded="full">
+                                 color="pitch.500" bg="rgba(42,212,200,0.12)" px="2.5" py="1" rounded="full">
                                 {thirdTable.bestThirdCount} PROLAZE
                             </Box>
                         </Flex>
@@ -2335,7 +2335,7 @@ export default function GroupsTab({
                                     alignItems="center"
                                     px={{base: "3", md: "4"}}
                                     py="2.5"
-                                    bg={q ? "rgba(58,165,107,0.08)" : undefined}
+                                    bg={q ? "rgba(42,212,200,0.08)" : undefined}
                                     borderLeftWidth="3px"
                                     borderLeftColor={q ? "pitch.500" : "transparent"}
                                     borderTopWidth={idx === 0 ? "0" : "1px"}
@@ -2346,7 +2346,7 @@ export default function GroupsTab({
                                     transition={onSelectTeam ? "background 0.12s" : undefined}
                                     _hover={
                                         onSelectTeam
-                                            ? { bg: q ? "rgba(58,165,107,0.14)" : "bg.surfaceTint" }
+                                            ? { bg: q ? "rgba(42,212,200,0.14)" : "bg.surfaceTint" }
                                             : undefined
                                     }
                                     onClick={
@@ -2425,7 +2425,7 @@ export default function GroupsTab({
                                                     fontSize="9px"
                                                     fontWeight={800}
                                                     color="white"
-                                                    bg={isW ? "pitch.500" : isL ? "accent.red" : "#9aa6b2"}
+                                                    bg={isW ? "#16A34A" : isL ? "accent.red" : "#9aa6b2"}
                                                     title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
                                                 >
                                                     {isW ? "P" : isL ? "I" : "N"}

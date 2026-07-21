@@ -57,19 +57,26 @@ export type ExportMeta = {
     tournamentUrl: string
 }
 
-/* -- Brand palette (literal hex, see file header) ------------------------- */
+/* -- Brand palette (literal hex, see file header) -------------------------
+   SPECTO: navy + cyan brand pairing (no turf greens). `green` now names the
+   brand ACCENT token (deep teal - headers/badges/hairline-rules/tiles), kept
+   distinct from `win`, the semantic success-green used ONLY for genuine
+   win/goal markers (winner names, positive goal-diff, goal glyphs) so the
+   brand recolor doesn't wash out match-result meaning. */
 const C = {
-    green: "#0b6b3a",
-    greenMid: "#3aa56b",
-    ink: "#0e1f15",
-    inkSoft: "#4a5a50",
-    surface: "#f3f6f1",
-    line: "#dde5d8",
+    green: "#0B6D66",
+    greenMid: "#2AD4C8",
+    ink: "#1B2836",
+    inkSoft: "#3D4C5B",
+    surface: "#EDF1F5",
+    line: "#DDE3E8",
     white: "#ffffff",
-    muted: "#7c8a80",
-    greenWash: "rgba(11,107,58,0.07)",
-    zebra: "rgba(11,107,58,0.035)",
-    /* Live accent (only place a non-green hue appears on the poster). */
+    muted: "#5F7080",
+    greenWash: "rgba(42,212,200,0.12)",
+    zebra: "rgba(42,212,200,0.10)",
+    /* Semantic success green (win/goal markers only - see file header note). */
+    win: "#16A34A",
+    /* Live accent (only place a non-brand hue appears on the poster). */
     live: "#d64545",
     liveWash: "rgba(214,69,69,0.07)",
 }
@@ -234,7 +241,7 @@ function matchKickoffLine(iso: string | null): string | null {
 function BrandMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <rect x="0" y="0" width="112" height="112" rx="28" fill="#0b6b3a" />
+            <rect x="0" y="0" width="112" height="112" rx="28" fill="#0B1522" />
             <g stroke="#ffffff" strokeWidth="1" opacity="0.35">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
@@ -242,14 +249,14 @@ function BrandMark({ size }: { size: number }) {
             <path d="M30 82 V38 H82 V82" fill="none" stroke="#ffffff" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="46" fill="#fff" />
-                <g stroke="#0b6b3a" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <g stroke="#2AD4C8" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#0b6b3a">
+                <g fill="#2AD4C8">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -262,25 +269,25 @@ function BrandMark({ size }: { size: number }) {
     )
 }
 
-/** Monochrome green mark (no tile) - the huge background watermark. */
+/** Monochrome navy mark (no tile) - the huge background watermark. */
 function WatermarkMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <g stroke="#0b6b3a" strokeWidth="1.4" opacity="0.6">
+            <g stroke="#0B1522" strokeWidth="1.4" opacity="0.6">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
             </g>
-            <path d="M30 82 V38 H82 V82" fill="none" stroke="#0b6b3a" strokeWidth="3.6" strokeLinejoin="round" />
+            <path d="M30 82 V38 H82 V82" fill="none" stroke="#0B1522" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" fill="none" stroke="#0b6b3a" strokeWidth="2.6" />
-                <g stroke="#0b6b3a" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <circle cx="50" cy="50" r="46" fill="none" stroke="#0B1522" strokeWidth="2.6" />
+                <g stroke="#0B1522" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#0b6b3a">
+                <g fill="#0B1522">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -670,7 +677,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         textAlign: "right",
                         fontSize: "15px",
                         fontWeight: w1 ? 800 : 600,
-                        color: w1 ? C.green : C.ink,
+                        color: w1 ? C.win : C.ink,
                         lineHeight: 1.2,
                         wordBreak: "break-word",
                     }}
@@ -686,7 +693,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         textAlign: "left",
                         fontSize: "15px",
                         fontWeight: w2 ? 800 : 600,
-                        color: w2 ? C.green : C.ink,
+                        color: w2 ? C.win : C.ink,
                         lineHeight: 1.2,
                         wordBreak: "break-word",
                     }}
@@ -958,7 +965,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                 zebra only returns when no highlight is shown at all. */}
             {teams.map((t, i) => {
                 const gd = t.goalDiff
-                const grColor = gd > 0 ? C.green : gd < 0 ? C.live : C.muted
+                const grColor = gd > 0 ? C.win : gd < 0 ? C.live : C.muted
                 const grText = gd > 0 ? `+${gd}` : String(gd)
                 const qualifies = advance > 0 && i < advance
                 const rowBg = qualifies
@@ -1253,7 +1260,7 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
             {rows.map((row) => {
                 const t = row.standing
                 const gd = t.goalDiff
-                const grColor = gd > 0 ? C.green : gd < 0 ? C.live : C.muted
+                const grColor = gd > 0 ? C.win : gd < 0 ? C.live : C.muted
                 const grText = gd > 0 ? `+${gd}` : String(gd)
                 const q = row.qualifies
                 return (
@@ -1764,7 +1771,7 @@ function BracketTeamLine({
                         fontFamily: F_MONO,
                         fontSize: `${t.scoreFont}px`,
                         fontWeight: winner ? 800 : 600,
-                        color: winner ? C.green : C.ink,
+                        color: winner ? C.win : C.ink,
                         fontVariantNumeric: "tabular-nums",
                         whiteSpace: "nowrap",
                     }}
@@ -2298,7 +2305,7 @@ function TimelineIcon({ type }: { type: MatchEventType }) {
     switch (type) {
         case "GOAL":
         case "PENALTY_GOAL":
-            return <BallGlyph color={C.green} />
+            return <BallGlyph color={C.win} />
         case "OWN_GOAL":
             return <BallGlyph color={C.live} />
         case "YELLOW_CARD":
@@ -2884,7 +2891,7 @@ function ScorerPosterRow({ scorer, rank }: RankedScorer) {
             {/* Goals - big and bold, right-aligned (ball glyph mirrors the app). */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                    <BallGlyph color={C.green} size={podium ? 17 : 14} />
+                    <BallGlyph color={C.win} size={podium ? 17 : 14} />
                     <span
                         style={{
                             fontFamily: F_HEAD,

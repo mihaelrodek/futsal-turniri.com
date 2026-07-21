@@ -512,6 +512,16 @@ export default function MatchLivePage() {
                             halfLengthMin={halfLengthMin}
                             pollMs={isLive ? POLL_MS : undefined}
                             refreshSignal={scorerTick}
+                            /* Live overlay first (it moves as fouls are given),
+                               falling back to the scheduled record so a FINISHED
+                               match - which has no live overlay - still shows
+                               its accumulated per-half fouls. */
+                            fouls={{
+                                t1First: live?.fouls1First ?? scheduled.fouls1First ?? 0,
+                                t1Second: live?.fouls1Second ?? scheduled.fouls1Second ?? 0,
+                                t2First: live?.fouls2First ?? scheduled.fouls2First ?? 0,
+                                t2Second: live?.fouls2Second ?? scheduled.fouls2Second ?? 0,
+                            }}
                             emptyNote={
                                 isFinished
                                     ? "Prikazan samo krajnji rezultat bez strijelca."

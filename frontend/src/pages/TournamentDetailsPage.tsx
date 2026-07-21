@@ -4,8 +4,11 @@ import {
     Button,
     chakra,
     Flex,
+    Heading,
     HStack,
     IconButton,
+    Menu,
+    Portal,
     Spinner,
     Text,
     VStack,
@@ -25,10 +28,11 @@ import {
     FiGitMerge,
     FiInfo,
     FiMaximize2,
+    FiMoreHorizontal,
     FiShare2,
     FiUsers,
 } from "react-icons/fi"
-import { PageTitle, PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
+import { PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
 import TournamentResults from "../components/TournamentResults"
 import { showError, showSuccess } from "../toaster"
@@ -106,47 +110,6 @@ registerLocale("hr", hr)
 
 /** Sub-tabs inside the Ždrijeb tab. */
 type DrawSubKey = "grupe" | "eliminacija"
-
-/** Compact header action button - icon always shown; label collapses on
- *  small screens to keep the cluster on one row next to the title. */
-function HeaderAction({
-    icon,
-    label,
-    onClick,
-    danger,
-}: {
-    icon: React.ReactNode
-    label: string
-    onClick: () => void
-    danger?: boolean
-}) {
-    return (
-        <chakra.button
-            type="button"
-            onClick={onClick}
-            title={label}
-            aria-label={label}
-            display="inline-flex"
-            alignItems="center"
-            gap="2"
-            bg="bg.panel"
-            color={danger ? "accent.red" : "fg.ink"}
-            borderWidth="1px"
-            borderColor={danger ? "rgba(220,38,38,0.3)" : "border"}
-            px={{ base: "2.5", md: "3.5" }}
-            py="2"
-            rounded="full"
-            fontWeight={600}
-            fontSize="13px"
-            cursor="pointer"
-            transition="background 150ms"
-            _hover={{ bg: "bg.surfaceTint" }}
-        >
-            {icon}
-            <chakra.span display={{ base: "none", lg: "inline" }}>{label}</chakra.span>
-        </chakra.button>
-    )
-}
 
 /** Icon per section for the desktop sidebar nav. */
 const SECTION_ICONS: Record<SectionKey, React.ReactNode> = {
@@ -1045,28 +1008,61 @@ export default function TournamentDetailsPage() {
     const showEditAction =
         canEdit && t.status !== "FINISHED" && !editingDetails && section === "details"
 
-    /** Top-right header actions (mobile/tablet): edit, share, fullscreen + bell. */
-    const headerActions = (
-        <HStack gap="2" wrap="wrap" justify="flex-end">
-            {showEditAction && (
-                <HeaderAction
-                    icon={<FiEdit2 size={15} />}
-                    label="Uredi"
-                    onClick={enterDetailsEdit}
-                />
-            )}
-            <HeaderAction
-                icon={<FiShare2 size={15} />}
-                label="Podijeli"
-                onClick={shareTournament}
-            />
-            <HeaderAction
-                icon={<FiMaximize2 size={15} />}
-                label="Turnir mode"
-                onClick={openTournamentMode}
-            />
-            <TournamentNotificationBell uuid={t.uuid} />
-        </HStack>
+    // Steps the mobile title font down for long names so the whole name still
+    // fits the 2-row clamp in the narrow (~55%) title column of the compact
+    // bar instead of being cut off with an ellipsis.
+    const nameLen = t.name.length
+
+    /** Mobile overflow menu - the four round action buttons (uredi, podijeli,
+     *  turnir mode, obavijesti) used to occupy a whole row of their own under
+     *  the title. They are rarely tapped, so they now collapse into this one
+     *  "⋯" trigger and the row disappears. Desktop keeps the icon toolbar in
+     *  the sidebar. */
+    const overflowMenu = (
+        <Menu.Root positioning={{ placement: "bottom-end" }}>
+            <Menu.Trigger asChild>
+                <IconButton
+                    aria-label="Više opcija"
+                    title="Više opcija"
+                    size="sm"
+                    variant="outline"
+                    rounded="full"
+                    flexShrink={0}
+                >
+                    <FiMoreHorizontal size={17} />
+                </IconButton>
+            </Menu.Trigger>
+            {/* Portalled (like every other menu in the app): the positioner
+                would otherwise stay inside the sticky bar, which is its own
+                stacking / containing context - the popup then never gets its
+                computed offset and lands on top of the title. */}
+            <Portal>
+                <Menu.Positioner>
+                    <Menu.Content
+                        minW="210px"
+                        rounded="lg"
+                        borderWidth="1px"
+                        borderColor="border"
+                        bg="bg.panel"
+                        shadow="lg"
+                        py="1"
+                    >
+                        {showEditAction && (
+                            <Menu.Item value="edit" onSelect={enterDetailsEdit}>
+                                <FiEdit2 size={15} /> Uredi
+                            </Menu.Item>
+                        )}
+                        <Menu.Item value="share" onSelect={shareTournament}>
+                            <FiShare2 size={15} /> Podijeli
+                        </Menu.Item>
+                        <Menu.Item value="fullscreen" onSelect={openTournamentMode}>
+                            <FiMaximize2 size={15} /> Turnir mode
+                        </Menu.Item>
+                        <TournamentNotificationBell uuid={t.uuid} asMenuItem />
+                    </Menu.Content>
+                </Menu.Positioner>
+            </Portal>
+        </Menu.Root>
     )
 
     /** Compact Grupe / Eliminacija sub-tab pills for the Ždrijeb section.
@@ -1133,31 +1129,82 @@ export default function TournamentDetailsPage() {
                     </Text>
                 </HStack>
             )}
-            {/* ── Mobile / tablet shell (base → lg): the classic header +
-                pill tab bar. Hidden on lg+, where the sidebar carries the
-                title, status, tabs and actions instead. */}
-            <Box display={{ base: "block", lg: "none" }}>
-                {/* Back is now an arrow button inside the header action cluster
-                    (top-right), so the standalone "Natrag na popis" link is
-                    gone - frees up the vertical space above the title. */}
-                <PageTitle
-                    title={t.name}
-                    status={statusKind ?? undefined}
-                    statusLabel={statusLabel ?? undefined}
-                    action={headerActions}
-                />
+            {/* ── Mobile / tablet shell (base → lg): ONE compact sticky bar.
+                Row 1 = title (up to 2 rows, font steps down by length so the
+                full name shows) + status chip + "⋯" overflow menu; row 2 = the
+                pill tab bar. Everything the old header spread over three bands
+                (big title / chip / four round action buttons / tabs) now fits
+                in ~100px, and it stays pinned under the NavBar for the whole
+                page so switching tabs never needs a scroll back up. No back
+                button - the bottom nav and browser back cover that.
 
-                {/* Section nav - pill tab bar. */}
-                <Box mt="2">
-                    <PillTabBar
-                        tabs={sectionLabels}
-                        active={activeLabel}
-                        onChange={(label) => {
-                            const next = sections.find((s) => s.label === label)
-                            if (next) setSection(next.key)
-                        }}
-                    />
-                </Box>
+                Sticky lives on THIS box, whose parent is the page-tall outer
+                VStack; a sticky child INSIDE it would unpin the moment this
+                short box scrolled past (same trap as the desktop sidebar).
+                Hidden on lg+, where the sidebar carries all of it. */}
+            <Box
+                display={{ base: "block", lg: "none" }}
+                position="sticky"
+                // Right under the sticky NavBar: 53px in its mobile layout,
+                // 57px from md up where it switches to the desktop grid. The
+                // 1px tuck hides sub-pixel gaps that let content peek through.
+                top={{ base: "52px", md: "56px" }}
+                zIndex={100}
+                bg="bg.canvas"
+                // The Container's top padding (py 5 base / 7 md) used to sit
+                // ABOVE this bar, so cards scrolled visibly through that white
+                // strip until the bar reached its sticky offset - a flicker on
+                // every scroll start. The negative margin pulls the bar's
+                // painted white up to the NavBar's bottom edge and the enlarged
+                // padding puts the title back exactly where it was, so the
+                // whole white band is sticky from scroll 0 and nothing ever
+                // slides through it. Skipped for hidden tournaments, where the
+                // 🔒 banner occupies the space above.
+                mt={t.hidden ? undefined : { base: "-20px", md: "-28px" }}
+                pt={t.hidden ? "2" : { base: "28px", md: "36px" }}
+                pb="1"
+            >
+                <Flex align="center" gap="2.5" mb="2">
+                    <Heading
+                        as="h1"
+                        flex="1"
+                        minW="0"
+                        fontFamily="heading"
+                        fontSize={
+                            nameLen > 52
+                                ? { base: "14px", md: "17px" }
+                                : nameLen > 38
+                                    ? { base: "15px", md: "19px" }
+                                    : nameLen > 24
+                                        ? { base: "17px", md: "21px" }
+                                        : { base: "19px", md: "23px" }
+                        }
+                        fontWeight={800}
+                        letterSpacing="-0.02em"
+                        lineHeight={1.2}
+                        color="fg.ink"
+                        lineClamp={2}
+                    >
+                        {t.name}
+                    </Heading>
+                    {statusKind && statusLabel ? (
+                        <Box flexShrink={0}>
+                            <StatusChip status={statusKind} label={statusLabel} size="md" />
+                        </Box>
+                    ) : null}
+                    {overflowMenu}
+                </Flex>
+
+                <PillTabBar
+                    tabs={sectionLabels}
+                    active={activeLabel}
+                    onChange={(label) => {
+                        const next = sections.find((s) => s.label === label)
+                        if (next) setSection(next.key)
+                    }}
+                    padding="4px"
+                    mb="0"
+                />
             </Box>
 
             {/* ── Desktop shell (lg+): FIXED sidebar left, content right. ── */}
@@ -1391,9 +1438,11 @@ export default function TournamentDetailsPage() {
                 either explicitly FINISHED or the champion has been decided (the
                 final set winnerName). MOBILE / TABLET ONLY now: on lg+ the results
                 move into the sidebar as a compact card (below the nav). Here the
-                full band keeps its onFinish so organizers can finish on mobile. */}
+                full band keeps its onFinish so organizers can finish on mobile.
+                Shown ONLY on the Detalji tab - repeated above every tab it ate
+                a full screen of podium before the actual tab content. */}
             <Box display={{ base: "block", lg: "none" }}>
-                {(t.status === "FINISHED" || !!t.winnerName) && (
+                {section === "details" && (t.status === "FINISHED" || !!t.winnerName) && (
                     <TournamentResults
                         t={t}
                         canEdit={canEdit}
