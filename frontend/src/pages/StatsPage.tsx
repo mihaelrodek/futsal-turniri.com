@@ -103,7 +103,15 @@ export default function StatsPage() {
                             </Box>
                             <Input
                                 pl="9"
-                                size="sm"
+                                // Slimmer on phones: ~40px md-size box on base
+                                // (the size recipe carries the matching height +
+                                // padding), reverting to the compact sm on md+.
+                                size={{ base: "md", md: "sm" }}
+                                // iOS Safari auto-zooms the whole page when a
+                                // focused input's font-size is < 16px. Pin base
+                                // to 16px to stop that jump; md+ keeps the sm
+                                // recipe's 14px (no zoom risk on desktop).
+                                fontSize={{ base: "16px", md: "sm" }}
                                 placeholder="Pretraži igrača…"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}

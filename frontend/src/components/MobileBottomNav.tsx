@@ -61,9 +61,12 @@ function NavTab({ item, liveCount }: { item: Item; liveCount: number }) {
                 justify="center"
                 gap="0.5"
                 py="2"
-                color={isActive ? "pitch.500" : isLive ? "accent.red" : "fg.muted"}
+                // `pitch.fg` (not the raw `pitch.500` swatch) so the active
+                // tab's text/icon has a dark twin and stays readable once
+                // the SPECTO dark panel kicks in.
+                color={isActive ? "pitch.fg" : isLive ? "accent.red" : "fg.muted"}
                 position="relative"
-                _hover={{ color: isActive ? "pitch.500" : "fg.ink" }}
+                _hover={{ color: isActive ? "pitch.fg" : "fg.ink" }}
             >
                 {isActive && (
                     <Box
@@ -73,7 +76,12 @@ function NavTab({ item, liveCount }: { item: Item; liveCount: number }) {
                         w="36px"
                         h="36px"
                         rounded="full"
-                        bg="pitch.50"
+                        // `pitch.50` is a light-only swatch (no `_dark`
+                        // twin), so the halo stayed pale cyan even on the
+                        // dark panel. `pitch.subtle` + `pitch.fg` is the
+                        // same active-pill pairing already used in
+                        // LiveMatchPanel, and both carry dark twins.
+                        bg="pitch.subtle"
                         css={{ transform: "translateX(-50%)" }}
                     />
                 )}
@@ -147,7 +155,11 @@ function CreateFab() {
                         h="54px"
                         rounded="full"
                         bg={isActive ? "pitch.600" : "pitch.500"}
-                        color="white"
+                        // Project rule: icon/text sitting on solid cyan
+                        // uses the navy `pitch.contrast` token, not plain
+                        // white - keeps this FAB consistent with the same
+                        // cyan/navy pairing used for CTAs elsewhere.
+                        color="pitch.contrast"
                         align="center"
                         justify="center"
                         boxShadow="0 8px 20px rgba(42,212,200,0.35)"
@@ -161,7 +173,9 @@ function CreateFab() {
                         fontSize="10px"
                         fontWeight={700}
                         letterSpacing="-0.01em"
-                        color={isActive ? "pitch.500" : "fg.muted"}
+                        // Same fix as NavTab's active label: `pitch.fg` has
+                        // a dark twin, the raw `pitch.500` swatch doesn't.
+                        color={isActive ? "pitch.fg" : "fg.muted"}
                         lineHeight={1}
                     >
                         Kreiraj
@@ -208,11 +222,21 @@ export default function MobileBottomNav() {
             // through with a soft blur, blended with a small saturation
             // boost so brand colours stay vibrant. Solid fallback for
             // browsers that don't support backdrop-filter (older Firefox
-            // on Android). Outer 1px white-ish border + soft top hairline
-            // create the "glass edge" highlight.
-            bg="rgba(247, 249, 250, 0.65)"
+            // on Android).
+            //
+            // Dark-theme fix: this used to be a hardcoded
+            // rgba(247,249,250,…) (near-white) fill with a white-ish
+            // border, so on the SPECTO dark theme the bar stayed a light
+            // grey strip instead of following the page into dark navy.
+            // `color-mix` blends the theme's own `bg.panel` token (white
+            // in light mode, #111F31 in dark) with transparency, so the
+            // glass tint now follows whichever theme is active - same
+            // technique already used for panel tints in BracketTab /
+            // GroupsTab / TeamsSection. The border uses the semantic
+            // `border` token for the same reason.
+            bg="color-mix(in srgb, var(--chakra-colors-bg-panel) 65%, transparent)"
             borderTopWidth="1px"
-            borderColor="rgba(255, 255, 255, 0.6)"
+            borderColor="border"
             // z-index high enough to beat Leaflet panes (Leaflet container
             // is typically 400, controls 800). Also stays above Chakra
             // toasts (zIndex ~1700) is NOT what we want - toasts must be
@@ -228,8 +252,19 @@ export default function MobileBottomNav() {
                 // Subtle inner highlight at the very top to sell the
                 // glass edge - same trick Apple's translucent toolbars
                 // use. Pure CSS, no extra DOM.
+                //
+                // Dark-theme fix: the highlight used to be a flat
+                // rgba(255,255,255,0.5) line, which assumes a light page
+                // catching a bright gloss - on the dark navy panel it
+                // showed up as a glowing white hairline instead. Reading
+                // `var(--chakra-colors-border)` ties the highlight to the
+                // same theme-aware token as the outer border above (this
+                // CSS-var-in-boxShadow trick is already used the same way
+                // in ui/pitch.tsx). The drop-shadow layer already used
+                // the navy `rgba(11,21,34,…)` ink colour, so it needed no
+                // change - it reads fine on both light and dark canvases.
                 boxShadow:
-                    "inset 0 1px 0 rgba(255,255,255,0.5), 0 -8px 24px rgba(11,21,34,0.05)",
+                    "inset 0 1px 0 var(--chakra-colors-border), 0 -8px 24px rgba(11,21,34,0.05)",
                 // Bottom padding strategy:
                 //   1. safe-area-inset-bottom - covers iOS PWA home
                 //      indicator (≈ 34px on modern iPhones).

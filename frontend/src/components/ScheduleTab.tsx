@@ -2092,14 +2092,37 @@ export default function ScheduleTab({
                         >
                             {/* Filters - only the dropdowns worth showing, same
                                 conditions + handlers as before, now inline in the
-                                header (the old standalone tinted box is gone). On
-                                base the selects split the row into equal thirds
-                                (native selects ellipsise their label) so all
-                                three + the broom stay on ONE line. */}
+                                header (the old standalone tinted box is gone).
+                                Base used to squeeze all three selects onto ONE
+                                row (~84px each on a 412px phone), clipping their
+                                labels to "Sve ekip" / "Sve sku" / "Svi dan". Now
+                                wrap="wrap" lets them break into two rows: ekipe +
+                                skupine each get a 40% basis so that pair alone
+                                fits one line, while dani gets 60% so it can never
+                                also fit on that line and wraps to its own row,
+                                pulling the broom (last in DOM order, tiny fixed
+                                width) down with it. With fewer than three selects
+                                there's more slack, so the broom simply lands on
+                                whichever row still has room - i.e. it always ends
+                                up at the end of the last real row. lg+: flex goes
+                                back to equal "1 1 0" shares (with the per-select
+                                maxW caps below) and nowrap keeps everything on the
+                                single original row. */}
                             {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
-                                <Flex align="center" gap="2" minW="0" flex="1">
+                                <Flex
+                                    align="center"
+                                    gap="2"
+                                    minW="0"
+                                    flex="1"
+                                    wrap={{ base: "wrap", lg: "nowrap" }}
+                                >
                                     {allTeamCount > 1 && (
-                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "220px" }}>
+                                        <NativeSelect.Root
+                                            size="sm"
+                                            flex={{ base: "1 1 40%", lg: "1 1 0" }}
+                                            minW="0"
+                                            maxW={{ lg: "220px" }}
+                                        >
                                             <NativeSelect.Field
                                                 value={teamFilter}
                                                 onChange={(e) => setTeamFilter(e.target.value)}
@@ -2118,7 +2141,12 @@ export default function ScheduleTab({
                                     )}
 
                                     {allGroupCount > 1 && (
-                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "170px" }}>
+                                        <NativeSelect.Root
+                                            size="sm"
+                                            flex={{ base: "1 1 40%", lg: "1 1 0" }}
+                                            minW="0"
+                                            maxW={{ lg: "170px" }}
+                                        >
                                             <NativeSelect.Field
                                                 value={groupFilter}
                                                 onChange={(e) => setGroupFilter(e.target.value)}
@@ -2137,7 +2165,12 @@ export default function ScheduleTab({
                                     )}
 
                                     {multiDay && (
-                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "200px" }}>
+                                        <NativeSelect.Root
+                                            size="sm"
+                                            flex={{ base: "1 1 60%", lg: "1 1 0" }}
+                                            minW="0"
+                                            maxW={{ lg: "200px" }}
+                                        >
                                             <NativeSelect.Field
                                                 value={dayFilter}
                                                 onChange={(e) => setDayFilter(e.target.value)}

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Box, Button, Flex, HStack, Input, NativeSelect, Text, VStack } from "@chakra-ui/react"
-import { FaTrophy, FaMedal, FaShieldAlt, FaStar, FaFutbol } from "react-icons/fa"
+import { FaTrophy, FaShieldAlt, FaStar, FaFutbol } from "react-icons/fa"
 import { FiEdit2 } from "react-icons/fi"
 import {
     fetchAwardSuggestions,
@@ -255,6 +255,12 @@ export default function TournamentResults({
                 rounded="2xl"
                 borderWidth="1px"
                 overflow="hidden"
+                // The compact card lives inside the FIXED, scrollable sidebar
+                // column. As a flex child it would otherwise shrink to fit the
+                // viewport and clip its own tail (najbolji strijelac / MVP);
+                // keeping its natural height is what gives the column something
+                // to scroll.
+                flexShrink={0}
                 css={{
                     borderColor: "color-mix(in srgb, #f5c842 45%, transparent)",
                     background:
@@ -300,7 +306,10 @@ export default function TournamentResults({
                                     css={{ background: `${p.color}22` }}
                                     color={p.color}
                                 >
-                                    {p.place === 1 ? <FaTrophy size={14} /> : <FaMedal size={14} />}
+                                    {/* Trophy for ALL podium places (gold /
+                                        silver / bronze via p.color), not a
+                                        medal for 2nd/3rd - design feedback. */}
+                                    <FaTrophy size={14} />
                                 </Flex>
                                 <Box minW="0">
                                     <Text
@@ -489,7 +498,7 @@ export default function TournamentResults({
                                     css={{ background: `${p.color}22` }}
                                     color={p.color}
                                 >
-                                    {p.place === 1 ? <FaTrophy size={20} /> : <FaMedal size={20} />}
+                                    <FaTrophy size={20} />
                                 </Flex>
                                 <Box minW="0">
                                     <Text

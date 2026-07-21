@@ -73,7 +73,9 @@ export function BulkImportDialog({
                                     placeholder={placeholder}
                                     rows={10}
                                     fontFamily="mono"
-                                    fontSize="sm"
+                                    /* base must stay 16px: iOS Safari auto-zooms the page on
+                                       focus for any input/textarea with font-size < 16px. */
+                                    fontSize={{ base: "16px", md: "sm" }}
                                     resize="vertical"
                                     autoFocus
                                 />

@@ -1230,16 +1230,33 @@ export default function TournamentDetailsPage() {
                     // staying put while the content scrolls past.
                     top="85px"
                     // Viewport-bound height; anything taller (menu + live card +
-                    // results) scrolls INSIDE the column - with the scrollbar
-                    // fully HIDDEN (both engines) per design.
+                    // a results card with all the individual awards) scrolls
+                    // INSIDE the column. The scrollbar is a slim themed sliver
+                    // rather than fully hidden: hidden, there was no hint that
+                    // the tail (MVP) was even reachable. `overscrollBehavior
+                    // contain` keeps a wheel gesture that reaches the column's
+                    // end from spilling into the page scroll.
                     bottom="12px"
                     overflowY="auto"
                     css={{
-                        scrollbarWidth: "none",
-                        "&::-webkit-scrollbar": { display: "none" },
+                        scrollbarWidth: "thin",
+                        scrollbarColor: "var(--chakra-colors-border-emphasized) transparent",
+                        "&::-webkit-scrollbar": { width: "6px" },
+                        "&::-webkit-scrollbar-track": { background: "transparent" },
+                        "&::-webkit-scrollbar-thumb": {
+                            background: "var(--chakra-colors-border-emphasized)",
+                            borderRadius: "999px",
+                        },
+                        overscrollBehavior: "contain",
                     }}
                     gap="2.5"
+                    pb="1"
                 >
+                    {/* NOTE: every card below carries flexShrink={0}. Without it
+                        flexbox SHRINKS the children to fit the fixed column
+                        instead of overflowing it - the results card got squashed,
+                        its tail (najbolji strijelac / MVP) was clipped, and since
+                        nothing overflowed there was nothing to scroll either. */}
                     {/* Menu card - the primary nav panel: title, status chip,
                         live-stream shortcut, section nav and the actions toolbar.
                         The fixed / scroll props live on the wrapper above; this
@@ -1247,6 +1264,7 @@ export default function TournamentDetailsPage() {
                         SIBLINGS below, outside this box. */}
                     <Flex
                         direction="column"
+                        flexShrink={0}
                         bg="bg.panel"
                         borderWidth="1px"
                         borderColor="border"
@@ -1397,6 +1415,7 @@ export default function TournamentDetailsPage() {
                         Renders only inside the lg-only sidebar. */}
                     {liveMatches.length > 0 && (
                         <Box
+                            flexShrink={0}
                             bg="bg.panel"
                             borderWidth="1px"
                             borderColor="border"
@@ -1440,7 +1459,10 @@ export default function TournamentDetailsPage() {
                 move into the sidebar as a compact card (below the nav). Here the
                 full band keeps its onFinish so organizers can finish on mobile.
                 Shown ONLY on the Detalji tab - repeated above every tab it ate
-                a full screen of podium before the actual tab content. */}
+                a full screen of podium before the actual tab content - and in
+                the COMPACT variant (slim rows like the desktop sidebar card):
+                the full band's huge podium tiles filled the whole phone screen
+                before any tab content appeared. */}
             <Box display={{ base: "block", lg: "none" }}>
                 {section === "details" && (t.status === "FINISHED" || !!t.winnerName) && (
                     <TournamentResults
@@ -1453,6 +1475,7 @@ export default function TournamentDetailsPage() {
                                 : undefined
                         }
                         finishing={finishingTournament}
+                        compact
                     />
                 )}
             </Box>

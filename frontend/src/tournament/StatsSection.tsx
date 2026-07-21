@@ -170,8 +170,12 @@ function ScorerRow({
                 w="42px"
                 h="42px"
                 rounded="md"
+                // Token INVERSION so the number stays legible in BOTH themes:
+                // bg.canvas flips opposite fg.ink (light: dark tile + white
+                // number; dark: light tile + navy number). A hardcoded white
+                // number went invisible on the light-in-dark fg.ink tile.
                 bg="fg.ink"
-                color="white"
+                color="bg.canvas"
                 align="center"
                 justify="center"
                 fontFamily="heading"
