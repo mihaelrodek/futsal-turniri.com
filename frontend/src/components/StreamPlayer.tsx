@@ -54,6 +54,10 @@ const STALL_LIMIT_MS = 12000
  *  the network) is wedged → go straight to the hard rebuild. */
 const SOFT_HEAL_GRACE_MS = 45000
 
+/** Fullscreen only: how long the scorer columns stay up after the last
+ *  pointer activity before they fade out again. */
+const CHROME_HIDE_MS = 4000
+
 /** Work out how to play the pasted url. Exported for reuse/tests. */
 export function classifyStreamUrl(url: string): { kind: StreamKind; src: string } {
     const yt = url.match(
@@ -77,6 +81,7 @@ export default function StreamPlayer({
     overlay,
     centerOverlay,
     viewers,
+    sideScorers,
 }: {
     url: string
     /** Optional display-only overlay (e.g. a live scorebug) pinned to the top
@@ -88,6 +93,12 @@ export default function StreamPlayer({
     centerOverlay?: React.ReactNode
     /** Live-viewer count for the "👁 N" badge; null/0 hides it. */
     viewers?: number | null
+    /** Per-side goalscorer lists (name + minute): `left` for team 1, `right`
+     *  for team 2. Rendered ONLY in fullscreen, under the scorebug, where the
+     *  columns auto-hide a few seconds after the last pointer activity and
+     *  fade back in on the next mouse move / tap. Non-interactive, and
+     *  completely inert outside fullscreen. */
+    sideScorers?: { left: React.ReactNode; right: React.ReactNode }
 }) {
     const { kind, src } = useMemo(() => classifyStreamUrl(url), [url])
 
@@ -219,6 +230,58 @@ export default function StreamPlayer({
         document.addEventListener("fullscreenchange", onChange)
         return () => document.removeEventListener("fullscreenchange", onChange)
     }, [])
+
+    // ── Fullscreen chrome (the side scorer columns) ────────────────────────
+    // Broadcast behaviour: the scorers show for a few seconds, fade away so
+    // they never sit on top of the football, and come straight back when the
+    // viewer moves the mouse / touches the screen. This whole machinery runs
+    // ONLY while fullscreen - the windowed player is never affected.
+    const [chromeVisible, setChromeVisible] = useState(true)
+    const chromeTimer = useRef<number | null>(null)
+
+    function clearChromeTimer() {
+        if (chromeTimer.current != null) {
+            clearTimeout(chromeTimer.current)
+            chromeTimer.current = null
+        }
+    }
+
+    /** Show the columns now and re-arm the auto-hide countdown. */
+    function revealChrome() {
+        setChromeVisible(true)
+        clearChromeTimer()
+        chromeTimer.current = window.setTimeout(() => {
+            chromeTimer.current = null
+            setChromeVisible(false)
+        }, CHROME_HIDE_MS)
+    }
+
+    useEffect(() => {
+        if (!isFs) {
+            // Left fullscreen (or never entered): no pending hide, and the
+            // normal view is always fully visible.
+            clearChromeTimer()
+            setChromeVisible(true)
+            return
+        }
+        const el = wrapRef.current
+        if (!el) return
+        const onActivity = () => revealChrome()
+        // Entering fullscreen: start visible, then fade after the idle delay.
+        revealChrome()
+        el.addEventListener("pointermove", onActivity)
+        el.addEventListener("pointerdown", onActivity)
+        el.addEventListener("touchstart", onActivity, { passive: true })
+        el.addEventListener("click", onActivity)
+        return () => {
+            el.removeEventListener("pointermove", onActivity)
+            el.removeEventListener("pointerdown", onActivity)
+            el.removeEventListener("touchstart", onActivity)
+            el.removeEventListener("click", onActivity)
+            clearChromeTimer()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isFs])
 
     // HLS pipeline: native where supported (iOS/macOS Safari), hls.js
     // elsewhere. Lazy import keeps hls.js out of the main bundle.
@@ -417,6 +480,31 @@ export default function StreamPlayer({
                 >
                     <Box css={{ transform: isFs ? "scale(1.6)" : "none", transformOrigin: "top center", transition: "transform 150ms" }}>
                         {overlay}
+
+                        {/* FULLSCREEN ONLY - goalscorers hang directly UNDER the
+                            scorebug, inside its scaled box: the left column sits
+                            under team 1's name, the right under team 2's (the
+                            row is as wide as the bug and space-between'd, so the
+                            two columns track the two name ends). They fade out a
+                            few seconds after the last pointer activity and fade
+                            back in on the next mouse move / tap (revealChrome).
+                            Faded rather than unmounted so nothing reflows;
+                            click-through is inherited from the parent Flex. */}
+                        {isFs && sideScorers && (
+                            <Flex
+                                justify="space-between"
+                                align="flex-start"
+                                gap="4"
+                                mt="1.5"
+                                color="white"
+                                opacity={chromeVisible ? 1 : 0}
+                                transition="opacity 220ms"
+                                css={{ textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+                            >
+                                <Box maxW="45%" textAlign="left">{sideScorers.left}</Box>
+                                <Box maxW="45%" textAlign="right">{sideScorers.right}</Box>
+                            </Flex>
+                        )}
                     </Box>
                 </Flex>
             )}
@@ -444,7 +532,7 @@ export default function StreamPlayer({
                         px="2"
                         py="0.5"
                         rounded="full"
-                        bg="rgba(0,0,0,0.62)"
+                        bg="rgba(11,21,34,0.62)"
                         color="white"
                         fontFamily="mono"
                         fontSize="9px"

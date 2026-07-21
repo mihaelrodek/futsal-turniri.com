@@ -150,7 +150,7 @@ function CreateFab() {
                         color="white"
                         align="center"
                         justify="center"
-                        boxShadow="0 8px 20px rgba(11,107,58,0.35)"
+                        boxShadow="0 8px 20px rgba(42,212,200,0.35)"
                         borderWidth="3px"
                         borderColor="bg.panel"
                         _active={{ transform: "scale(0.96)" }}
@@ -210,7 +210,7 @@ export default function MobileBottomNav() {
             // browsers that don't support backdrop-filter (older Firefox
             // on Android). Outer 1px white-ish border + soft top hairline
             // create the "glass edge" highlight.
-            bg="rgba(247, 250, 246, 0.65)"
+            bg="rgba(247, 249, 250, 0.65)"
             borderTopWidth="1px"
             borderColor="rgba(255, 255, 255, 0.6)"
             // z-index high enough to beat Leaflet panes (Leaflet container
@@ -229,7 +229,7 @@ export default function MobileBottomNav() {
                 // glass edge - same trick Apple's translucent toolbars
                 // use. Pure CSS, no extra DOM.
                 boxShadow:
-                    "inset 0 1px 0 rgba(255,255,255,0.5), 0 -8px 24px rgba(14,31,21,0.05)",
+                    "inset 0 1px 0 rgba(255,255,255,0.5), 0 -8px 24px rgba(11,21,34,0.05)",
                 // Bottom padding strategy:
                 //   1. safe-area-inset-bottom - covers iOS PWA home
                 //      indicator (≈ 34px on modern iPhones).

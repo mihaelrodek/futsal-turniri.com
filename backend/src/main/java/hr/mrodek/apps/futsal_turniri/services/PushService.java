@@ -16,6 +16,7 @@ import org.jboss.logging.Logger;
 import java.security.Security;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -110,9 +111,10 @@ public class PushService {
 
     /**
      * Fan-out for tournament-scoped live events (goals, second half,
-     * finished matches). Resolves every user that opted into the
-     * tournament's bell, then walks each user's per-device push
-     * subscriptions and sends one notification per device.
+     * finished matches). Resolves every subscriber that opted into the
+     * tournament's bell - logged-in users via all their devices, ANONYMOUS
+     * followers via their single endpoint - then sends one notification per
+     * distinct device.
      *
      * <p>One subscriber's failure (bad endpoint, expired browser sub,
      * network blip) MUST NOT abort the rest of the fan-out - wraps each
@@ -126,36 +128,18 @@ public class PushService {
         var tournamentSubs = tournamentSubRepo.findByTournamentId(tournamentId);
         if (tournamentSubs.isEmpty()) return;
 
-        String json = serialize(new PushPayload(title, body, url));
+        Map<Long, PushSubscription> targets = new LinkedHashMap<>();
         for (var ts : tournamentSubs) {
-            String uid = ts.getUserUid();
-            if (uid == null || uid.isBlank()) continue;
-            try {
-                var deviceSubs = subRepo.findByUserUid(uid);
-                for (var deviceSub : deviceSubs) {
-                    // sendOne already swallows per-device failures and
-                    // logs them - wrapping here is belt-and-braces
-                    // against an unexpected throw escaping the inner
-                    // catch.
-                    try {
-                        sendOne(deviceSub, json);
-                    } catch (Exception inner) {
-                        LOG.warnf(inner,
-                                "Push: tournament fan-out failed for subscription %d (uid=%s)",
-                                deviceSub.getId(), uid);
-                    }
-                }
-            } catch (Exception outer) {
-                LOG.warnf(outer,
-                        "Push: tournament fan-out failed for uid=%s tournament=%d",
-                        uid, tournamentId);
-            }
+            collectDevices(ts.getUserUid(), ts.getPushEndpoint(), targets);
         }
+        if (targets.isEmpty()) return;
+        fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
     }
 
     /**
      * Fan-out for a single match's bell subscribers - fired when that match
-     * goes live. Same per-device resilience as {@link #sendToTournamentSubscribers}.
+     * goes live. Same per-device resilience as {@link #sendToTournamentSubscribers},
+     * and the same logged-in + anonymous resolution.
      */
     @Transactional
     public void sendToMatchSubscribers(Long matchId, String title, String body, String url) {
@@ -164,65 +148,72 @@ public class PushService {
         var matchSubs = matchSubRepo.findByMatchId(matchId);
         if (matchSubs.isEmpty()) return;
 
-        String json = serialize(new PushPayload(title, body, url));
+        Map<Long, PushSubscription> targets = new LinkedHashMap<>();
         for (var ms : matchSubs) {
-            String uid = ms.getUserUid();
-            if (uid == null || uid.isBlank()) continue;
-            try {
-                var deviceSubs = subRepo.findByUserUid(uid);
-                for (var deviceSub : deviceSubs) {
-                    try {
-                        sendOne(deviceSub, json);
-                    } catch (Exception inner) {
-                        LOG.warnf(inner,
-                                "Push: match fan-out failed for subscription %d (uid=%s)",
-                                deviceSub.getId(), uid);
-                    }
-                }
-            } catch (Exception outer) {
-                LOG.warnf(outer,
-                        "Push: match fan-out failed for uid=%s match=%d", uid, matchId);
-            }
+            collectDevices(ms.getUserUid(), ms.getPushEndpoint(), targets);
         }
+        if (targets.isEmpty()) return;
+        fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
     }
 
     /**
      * Fan-out for a single match's live events (goal, finished) to BOTH its
      * per-match bell subscribers AND the tournament bell subscribers - but
-     * de-duplicated by user, so someone subscribed to both gets exactly one
-     * notification. Same per-device resilience as the other fan-outs.
+     * de-duplicated by DEVICE (subscription id), so a follower on both lists
+     * (and a device shared by a logged-in and anonymous follow) gets exactly
+     * one notification. Same per-device resilience as the other fan-outs.
      */
     @Transactional
     public void sendToMatchAndTournamentSubscribers(
             Long matchId, Long tournamentId, String title, String body, String url) {
         if (!isReady()) return;
-        java.util.LinkedHashSet<String> uids = new java.util.LinkedHashSet<>();
+        Map<Long, PushSubscription> targets = new LinkedHashMap<>();
         if (matchId != null) {
             for (var ms : matchSubRepo.findByMatchId(matchId)) {
-                if (ms.getUserUid() != null && !ms.getUserUid().isBlank()) uids.add(ms.getUserUid());
+                collectDevices(ms.getUserUid(), ms.getPushEndpoint(), targets);
             }
         }
         if (tournamentId != null) {
             for (var ts : tournamentSubRepo.findByTournamentId(tournamentId)) {
-                if (ts.getUserUid() != null && !ts.getUserUid().isBlank()) uids.add(ts.getUserUid());
+                collectDevices(ts.getUserUid(), ts.getPushEndpoint(), targets);
             }
         }
-        if (uids.isEmpty()) return;
+        if (targets.isEmpty()) return;
+        fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
+    }
 
-        String json = serialize(new PushPayload(title, body, url));
-        for (String uid : uids) {
+    /**
+     * Resolve one bell subscriber into the device {@link PushSubscription}(s)
+     * that should receive the notification, adding them to {@code out}
+     * deduplicated by subscription id.
+     *
+     * <ul>
+     *   <li>Logged-in follow ({@code uid} non-blank): every device the user
+     *       has registered.</li>
+     *   <li>Anonymous follow ({@code endpoint} non-blank): the single
+     *       subscription that endpoint points at. A dead endpoint (its push
+     *       row already pruned) simply resolves to nothing.</li>
+     * </ul>
+     */
+    private void collectDevices(String uid, String endpoint, Map<Long, PushSubscription> out) {
+        if (uid != null && !uid.isBlank()) {
+            for (var d : subRepo.findByUserUid(uid)) out.putIfAbsent(d.getId(), d);
+        } else if (endpoint != null && !endpoint.isBlank()) {
+            subRepo.findByEndpoint(endpoint).ifPresent(d -> out.putIfAbsent(d.getId(), d));
+        }
+    }
+
+    /**
+     * Send one payload to each target device, isolating per-device failures so
+     * a single bad endpoint (or a 410 that prunes its own row inside
+     * {@link #sendOne}) never aborts the rest of the fan-out.
+     */
+    private void fanOut(Collection<PushSubscription> targets, String json) {
+        for (var sub : targets) {
             try {
-                for (var deviceSub : subRepo.findByUserUid(uid)) {
-                    try {
-                        sendOne(deviceSub, json);
-                    } catch (Exception inner) {
-                        LOG.warnf(inner,
-                                "Push: match+tournament fan-out failed for subscription %d (uid=%s)",
-                                deviceSub.getId(), uid);
-                    }
-                }
-            } catch (Exception outer) {
-                LOG.warnf(outer, "Push: match+tournament fan-out failed for uid=%s", uid);
+                sendOne(sub, json);
+            } catch (Exception e) {
+                LOG.warnf(e, "Push: fan-out failed for subscription %d", sub.getId());
             }
         }
     }

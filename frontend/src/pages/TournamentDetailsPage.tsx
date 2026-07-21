@@ -4,7 +4,11 @@ import {
     Button,
     chakra,
     Flex,
+    Heading,
     HStack,
+    IconButton,
+    Menu,
+    Portal,
     Spinner,
     Text,
     VStack,
@@ -16,8 +20,19 @@ import "../datepicker.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
-import { FiEdit2, FiMaximize2, FiShare2 } from "react-icons/fi"
-import { PageTitle, PillTabBar, type StatusKind } from "../ui/pitch"
+import {
+    FiBarChart2,
+    FiCalendar,
+    FiClipboard,
+    FiEdit2,
+    FiGitMerge,
+    FiInfo,
+    FiMaximize2,
+    FiMoreHorizontal,
+    FiShare2,
+    FiUsers,
+} from "react-icons/fi"
+import { PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
 import TournamentResults from "../components/TournamentResults"
 import { showError, showSuccess } from "../toaster"
@@ -54,6 +69,7 @@ import ScheduleTab from "../components/ScheduleTab"
 import { MatchTimelineModal } from "../components/liveMatch"
 import ActiveMatchOverview from "../components/ActiveMatchOverview"
 import { fetchLiveMatches, type LiveMatch } from "../api/live"
+import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { usePolling } from "../hooks/usePolling"
 
@@ -95,43 +111,52 @@ registerLocale("hr", hr)
 /** Sub-tabs inside the Ždrijeb tab. */
 type DrawSubKey = "grupe" | "eliminacija"
 
-/** Compact header action button - icon always shown; label collapses on
- *  small screens to keep the cluster on one row next to the title. */
-function HeaderAction({
+/** Icon per section for the desktop sidebar nav. */
+const SECTION_ICONS: Record<SectionKey, React.ReactNode> = {
+    details: <FiInfo size={15} />,
+    live: <FiClipboard size={15} />,
+    teams: <FiUsers size={15} />,
+    bracket: <FiGitMerge size={15} />,
+    raspored: <FiCalendar size={15} />,
+    stats: <FiBarChart2 size={15} />,
+}
+
+/** One desktop-sidebar navigation row. The active item is a solid pitch-green
+ *  pill; inactive rows are muted text with a subtle hover fill. */
+function SidebarNavItem({
     icon,
     label,
+    active,
     onClick,
-    danger,
 }: {
-    icon: React.ReactNode
+    icon?: React.ReactNode
     label: string
+    active: boolean
     onClick: () => void
-    danger?: boolean
 }) {
     return (
         <chakra.button
             type="button"
             onClick={onClick}
-            title={label}
-            aria-label={label}
-            display="inline-flex"
+            display="flex"
             alignItems="center"
-            gap="2"
-            bg="bg.panel"
-            color={danger ? "accent.red" : "fg.ink"}
-            borderWidth="1px"
-            borderColor={danger ? "rgba(220,38,38,0.3)" : "border"}
-            px={{ base: "2.5", md: "3.5" }}
+            gap="2.5"
+            w="full"
+            textAlign="left"
+            pl="3"
+            pr="3"
             py="2"
-            rounded="full"
-            fontWeight={600}
-            fontSize="13px"
+            rounded="lg"
+            fontSize="14px"
+            fontWeight={active ? 700 : 600}
+            bg={active ? "pitch.500" : "transparent"}
+            color={active ? "white" : "fg.soft"}
             cursor="pointer"
-            transition="background 150ms"
-            _hover={{ bg: "bg.surfaceTint" }}
+            transition="background 120ms"
+            _hover={{ bg: active ? "pitch.500" : "bg.surfaceTint" }}
         >
             {icon}
-            <chakra.span display={{ base: "none", lg: "inline" }}>{label}</chakra.span>
+            {label}
         </chakra.button>
     )
 }
@@ -213,7 +238,21 @@ export default function TournamentDetailsPage() {
         const n = m ? Number(m) : NaN
         return Number.isFinite(n) ? n : null
     })()
-    const [section, setSection] = useState<SectionKey>(initialSection)
+    const [section, setSection] = useState<SectionKey>(() => {
+        // No explicit ?tab= and the (cached) tournament has already begun →
+        // open Ždrijeb IMMEDIATELY, on the very first paint. The effect below
+        // does the same for cold opens (content is behind the spinner there,
+        // so it can't flash), but with a cache-seeded `t` it used to paint
+        // Detalji for a frame and then flip - visible jank on every open.
+        if (
+            searchParams.get("tab") == null &&
+            cachedT &&
+            (cachedT.status === "STARTED" || cachedT.status === "FINISHED")
+        ) {
+            return "bracket"
+        }
+        return initialSection
+    })
     const [drawSub, setDrawSub] = useState<DrawSubKey>(initialDrawSub)
     // Set by the bracket's position-save step: opens the knockout-times dialog
     // once when the Raspored tab mounts (cleared as soon as ScheduleTab consumes
@@ -247,6 +286,23 @@ export default function TournamentDetailsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [section, drawSub])
 
+    // Resolve which Ždrijeb sub-tab to open from what's being played right
+    // now: pull the cached schedule, pick the on-deck match (the LIVE one,
+    // else the earliest-kickoff SCHEDULED one) and open Eliminacija when it's
+    // a knockout game, otherwise Grupe. On any fetch failure the current
+    // sub-tab is left untouched. Only meaningful for GROUPS_KNOCKOUT -
+    // KNOCKOUT_ONLY is pinned to Eliminacija by the format effect below.
+    const resolveDrawSub = useCallback(() => {
+        if (!uuid) return
+        queryClient
+            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
+            .then((s) => {
+                const onDeck = pickOnDeckMatch(s.matches)
+                setDrawSub(onDeck && onDeck.stage !== "GROUP" ? "eliminacija" : "grupe")
+            })
+            .catch(() => { /* leave the current sub-tab on a fetch failure */ })
+    }, [uuid, queryClient])
+
     // Once a tournament has begun (STARTED or FINISHED), default to the Ždrijeb
     // (draw/bracket) tab when it opens - that's where the action is. Runs once,
     // after the tournament loads, and only when the URL didn't request a tab.
@@ -257,19 +313,10 @@ export default function TournamentDetailsPage() {
         if (t.status !== "STARTED" && t.status !== "FINISHED") return
         setSection("bracket")
         // For a GROUPS_KNOCKOUT tournament, also pick the draw sub-tab that
-        // matches what's being played right now: if the on-deck match (the LIVE
-        // one, else the earliest-kickoff SCHEDULED one) is a knockout match,
-        // open Eliminacija; otherwise keep the default Grupe. KNOCKOUT_ONLY is
-        // already pinned to Eliminacija by the format effect below. Uses the
-        // cached schedule so it's cheap.
-        if (!uuid || t.format !== "GROUPS_KNOCKOUT") return
-        queryClient
-            .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
-            .then((s) => {
-                const onDeck = pickOnDeckMatch(s.matches)
-                if (onDeck && onDeck.stage !== "GROUP") setDrawSub("eliminacija")
-            })
-            .catch(() => { /* leave the default Grupe sub-tab on a fetch failure */ })
+        // matches what's being played right now (Grupe vs Eliminacija).
+        // KNOCKOUT_ONLY is already pinned to Eliminacija by the format effect
+        // below. Uses the cached schedule so it's cheap.
+        if (uuid && t.format === "GROUPS_KNOCKOUT") resolveDrawSub()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [t])
 
@@ -291,6 +338,19 @@ export default function TournamentDetailsPage() {
         if (msg.tournamentUuid && t?.uuid && msg.tournamentUuid !== t.uuid) return
         loadLiveMatches()
     }, liveOverviewEnabled)
+
+    // Global stream-banner state (one active stream app-wide), polled so the
+    // sidebar's "Live stream" shortcut appears the moment a broadcast for THIS
+    // tournament goes live. Seeded from the cached hint for an instant paint.
+    const [streamBanner, setStreamBanner] = useState<StreamBanner | null>(() => readStreamBannerHint())
+    const loadStreamBanner = useCallback(() => {
+        fetchStreamBanner().then(setStreamBanner).catch(() => { /* keep last known */ })
+    }, [])
+    usePolling(loadStreamBanner, 30000, liveOverviewEnabled)
+    // This tournament is being streamed right now (state STREAMING and the
+    // banner is linked to it) - drives the pulsing "Live stream" sidebar item.
+    const streamLiveForThis =
+        !!t && streamBanner?.state === "STREAMING" && streamBanner?.tournamentUuid === t.uuid
 
     // Keep the roster-lock flag current: fetch on mount and whenever the user
     // opens the Ekipe tab, so a draw generated on the Ždrijeb tab immediately
@@ -540,6 +600,13 @@ export default function TournamentDetailsPage() {
         setTeams(teamList)
         setTeamRequests(prList)
     }
+
+    // Opening a tournament (or switching to another one) always starts at the
+    // top - React Router keeps the previous page's window scroll, so a deep
+    // scroll on the list page used to carry over into the details view.
+    useEffect(() => {
+        window.scrollTo(0, 0)
+    }, [uuid])
 
     useEffect(() => {
         if (authLoading) return
@@ -911,47 +978,125 @@ export default function TournamentDetailsPage() {
             ? "Završeno"
             : null
 
-    /** Top-right header actions: edit, share, fullscreen + bell. */
-    const headerActions = (
-        <HStack gap="2" wrap="wrap" justify="flex-end">
-            {/* "Uredi" only appears on the Detalji tab - otherwise it would
-                open the edit form (which lives in the details view) "in the
-                background" while another tab is showing. */}
-            {canEdit && t.status !== "FINISHED" && !editingDetails && section === "details" && (
-                <HeaderAction
-                    icon={<FiEdit2 size={15} />}
-                    label="Uredi"
-                    onClick={enterDetailsEdit}
-                />
-            )}
-            <HeaderAction
-                icon={<FiShare2 size={15} />}
-                label="Podijeli"
-                onClick={async () => {
-                    if (typeof navigator !== "undefined" && (navigator as any).share) {
-                        try {
-                            await (navigator as any).share({ title: t.name, url: shareUrl })
-                        } catch {
-                            /* user cancelled */
-                        }
-                        return
-                    }
-                    try {
-                        await navigator.clipboard.writeText(shareUrl)
-                        showSuccess("Kopirano", "Link je u clipboardu.")
-                    } catch {
-                        window.prompt("Kopiraj link:", shareUrl)
-                    }
-                }}
-            />
-            <HeaderAction
-                icon={<FiMaximize2 size={15} />}
-                label="Turnir mode"
-                onClick={() =>
-                    window.open(`/turniri/${t.slug ?? t.uuid}/fullscreen`, "_blank", "noopener")
-                }
-            />
-            <TournamentNotificationBell uuid={t.uuid} />
+    /** Share the tournament page - the native share sheet where available,
+     *  clipboard fallback elsewhere. Used by both the mobile header actions
+     *  and the desktop sidebar. */
+    const shareTournament = async () => {
+        if (typeof navigator !== "undefined" && (navigator as any).share) {
+            try {
+                await (navigator as any).share({ title: t.name, url: shareUrl })
+            } catch {
+                /* user cancelled */
+            }
+            return
+        }
+        try {
+            await navigator.clipboard.writeText(shareUrl)
+            showSuccess("Kopirano", "Link je u clipboardu.")
+        } catch {
+            window.prompt("Kopiraj link:", shareUrl)
+        }
+    }
+
+    /** Open the fullscreen "Turnir mode" display in a new tab. */
+    const openTournamentMode = () =>
+        window.open(`/turniri/${t.slug ?? t.uuid}/fullscreen`, "_blank", "noopener")
+
+    // "Uredi" only appears on the Detalji tab - otherwise it would open the
+    // edit form (which lives in the details view) "in the background" while
+    // another tab is showing.
+    const showEditAction =
+        canEdit && t.status !== "FINISHED" && !editingDetails && section === "details"
+
+    // Steps the mobile title font down for long names so the whole name still
+    // fits the 2-row clamp in the narrow (~55%) title column of the compact
+    // bar instead of being cut off with an ellipsis.
+    const nameLen = t.name.length
+
+    /** Mobile overflow menu - the four round action buttons (uredi, podijeli,
+     *  turnir mode, obavijesti) used to occupy a whole row of their own under
+     *  the title. They are rarely tapped, so they now collapse into this one
+     *  "⋯" trigger and the row disappears. Desktop keeps the icon toolbar in
+     *  the sidebar. */
+    const overflowMenu = (
+        <Menu.Root positioning={{ placement: "bottom-end" }}>
+            <Menu.Trigger asChild>
+                <IconButton
+                    aria-label="Više opcija"
+                    title="Više opcija"
+                    size="sm"
+                    variant="outline"
+                    rounded="full"
+                    flexShrink={0}
+                >
+                    <FiMoreHorizontal size={17} />
+                </IconButton>
+            </Menu.Trigger>
+            {/* Portalled (like every other menu in the app): the positioner
+                would otherwise stay inside the sticky bar, which is its own
+                stacking / containing context - the popup then never gets its
+                computed offset and lands on top of the title. */}
+            <Portal>
+                <Menu.Positioner>
+                    <Menu.Content
+                        minW="210px"
+                        rounded="lg"
+                        borderWidth="1px"
+                        borderColor="border"
+                        bg="bg.panel"
+                        shadow="lg"
+                        py="1"
+                    >
+                        {showEditAction && (
+                            <Menu.Item value="edit" onSelect={enterDetailsEdit}>
+                                <FiEdit2 size={15} /> Uredi
+                            </Menu.Item>
+                        )}
+                        <Menu.Item value="share" onSelect={shareTournament}>
+                            <FiShare2 size={15} /> Podijeli
+                        </Menu.Item>
+                        <Menu.Item value="fullscreen" onSelect={openTournamentMode}>
+                            <FiMaximize2 size={15} /> Turnir mode
+                        </Menu.Item>
+                        <TournamentNotificationBell uuid={t.uuid} asMenuItem />
+                    </Menu.Content>
+                </Menu.Positioner>
+            </Portal>
+        </Menu.Root>
+    )
+
+    /** Compact Grupe / Eliminacija sub-tab pills for the Ždrijeb section.
+     *  Passed into GroupsTab / BracketTab via the `subTabs` prop so they
+     *  render it inline next to their own action rows - on both mobile and
+     *  desktop - instead of a separate full-width bar above the content. */
+    const drawSubPills = (
+        <HStack
+            gap="1"
+            p="1"
+            bg="bg.muted"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            w="max-content"
+        >
+            {([
+                { key: "grupe" as DrawSubKey, label: "Grupe" },
+                { key: "eliminacija" as DrawSubKey, label: "Eliminacija" },
+            ]).map((s) => {
+                const active = drawSub === s.key
+                return (
+                    <Button
+                        key={s.key}
+                        size="sm"
+                        variant={active ? "solid" : "ghost"}
+                        colorPalette={active ? "brand" : "gray"}
+                        rounded="md"
+                        onClick={() => setDrawSub(s.key)}
+                    >
+                        {s.label}
+                    </Button>
+                )
+            })}
         </HStack>
     )
 
@@ -984,50 +1129,344 @@ export default function TournamentDetailsPage() {
                     </Text>
                 </HStack>
             )}
-            {/* Back is now an arrow button inside the header action cluster
-                (top-right), so the standalone "Natrag na popis" link is
-                gone - frees up the vertical space above the title. */}
-            <PageTitle
-                title={t.name}
-                status={statusKind ?? undefined}
-                statusLabel={statusLabel ?? undefined}
-                action={headerActions}
-            />
+            {/* ── Mobile / tablet shell (base → lg): ONE compact sticky bar.
+                Row 1 = title (up to 2 rows, font steps down by length so the
+                full name shows) + status chip + "⋯" overflow menu; row 2 = the
+                pill tab bar. Everything the old header spread over three bands
+                (big title / chip / four round action buttons / tabs) now fits
+                in ~100px, and it stays pinned under the NavBar for the whole
+                page so switching tabs never needs a scroll back up. No back
+                button - the bottom nav and browser back cover that.
 
-            {/* ── Section nav - pill tab bar ──────────────────────────── */}
-            <PillTabBar
-                tabs={sectionLabels}
-                active={activeLabel}
-                onChange={(label) => {
-                    const next = sections.find((s) => s.label === label)
-                    if (next) setSection(next.key)
-                }}
-            />
+                Sticky lives on THIS box, whose parent is the page-tall outer
+                VStack; a sticky child INSIDE it would unpin the moment this
+                short box scrolled past (same trap as the desktop sidebar).
+                Hidden on lg+, where the sidebar carries all of it. */}
+            <Box
+                display={{ base: "block", lg: "none" }}
+                position="sticky"
+                // Right under the sticky NavBar: 53px in its mobile layout,
+                // 57px from md up where it switches to the desktop grid. The
+                // 1px tuck hides sub-pixel gaps that let content peek through.
+                top={{ base: "52px", md: "56px" }}
+                zIndex={100}
+                bg="bg.canvas"
+                // The Container's top padding (py 5 base / 7 md) used to sit
+                // ABOVE this bar, so cards scrolled visibly through that white
+                // strip until the bar reached its sticky offset - a flicker on
+                // every scroll start. The negative margin pulls the bar's
+                // painted white up to the NavBar's bottom edge and the enlarged
+                // padding puts the title back exactly where it was, so the
+                // whole white band is sticky from scroll 0 and nothing ever
+                // slides through it. Skipped for hidden tournaments, where the
+                // 🔒 banner occupies the space above.
+                mt={t.hidden ? undefined : { base: "-20px", md: "-28px" }}
+                pt={t.hidden ? "2" : { base: "28px", md: "36px" }}
+                pb="1"
+            >
+                <Flex align="center" gap="2.5" mb="2">
+                    <Heading
+                        as="h1"
+                        flex="1"
+                        minW="0"
+                        fontFamily="heading"
+                        fontSize={
+                            nameLen > 52
+                                ? { base: "14px", md: "17px" }
+                                : nameLen > 38
+                                    ? { base: "15px", md: "19px" }
+                                    : nameLen > 24
+                                        ? { base: "17px", md: "21px" }
+                                        : { base: "19px", md: "23px" }
+                        }
+                        fontWeight={800}
+                        letterSpacing="-0.02em"
+                        lineHeight={1.2}
+                        color="fg.ink"
+                        lineClamp={2}
+                    >
+                        {t.name}
+                    </Heading>
+                    {statusKind && statusLabel ? (
+                        <Box flexShrink={0}>
+                            <StatusChip status={statusKind} label={statusLabel} size="md" />
+                        </Box>
+                    ) : null}
+                    {overflowMenu}
+                </Flex>
 
-            {/* Golden "Rezultati turnira" - pinned at the very top (right below
-                the tabs) once the tournament is over: either explicitly FINISHED
-                or the champion has been decided (the final set winnerName). Shown
-                to everyone, on every tab. */}
-            {(t.status === "FINISHED" || !!t.winnerName) && (
-                <TournamentResults
-                    t={t}
-                    canEdit={canEdit}
-                    onSaved={(updated) => setT(updated)}
-                    onFinish={
-                        canEdit && t.status !== "FINISHED"
-                            ? runFinishTournament
-                            : undefined
-                    }
-                    finishing={finishingTournament}
+                <PillTabBar
+                    tabs={sectionLabels}
+                    active={activeLabel}
+                    onChange={(label) => {
+                        const next = sections.find((s) => s.label === label)
+                        if (next) setSection(next.key)
+                    }}
+                    padding="4px"
+                    mb="0"
                 />
-            )}
+            </Box>
+
+            {/* ── Desktop shell (lg+): FIXED sidebar left, content right. ── */}
+            <Flex align="flex-start" gap={{ base: "0", lg: "5" }}>
+                {/* Flow placeholder - reserves the 230px column in the layout;
+                    the actual sidebar inside is position:FIXED (not sticky!) so
+                    it can NEVER move with the page scroll. Sticky proved
+                    un-pinnable here: it is bound by its parent's bottom edge,
+                    and on short tabs (Zapisnik, Detalji) that boundary dragged
+                    the column for most of the scroll range. Fixed is bound only
+                    by the viewport. With left/right auto a fixed box keeps its
+                    static horizontal position, so it stays exactly in this
+                    reserved column and re-centres with the Container on resize. */}
+                <Box w="230px" flexShrink={0} display={{ base: "none", lg: "block" }}>
+                <Flex
+                    direction="column"
+                    w="230px"
+                    position="fixed"
+                    // Aligned with the CONTENT column's resting top edge: sticky
+                    // NavBar (~57px) + the app Container's md py (28px) = 85px.
+                    // Since the column is fixed it sits here permanently - level
+                    // with the first card of every tab at scroll 0, and simply
+                    // staying put while the content scrolls past.
+                    top="85px"
+                    // Viewport-bound height; anything taller (menu + live card +
+                    // results) scrolls INSIDE the column - with the scrollbar
+                    // fully HIDDEN (both engines) per design.
+                    bottom="12px"
+                    overflowY="auto"
+                    css={{
+                        scrollbarWidth: "none",
+                        "&::-webkit-scrollbar": { display: "none" },
+                    }}
+                    gap="2.5"
+                >
+                    {/* Menu card - the primary nav panel: title, status chip,
+                        live-stream shortcut, section nav and the actions toolbar.
+                        The fixed / scroll props live on the wrapper above; this
+                        keeps the chrome. The live-match and results cards are
+                        SIBLINGS below, outside this box. */}
+                    <Flex
+                        direction="column"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="2xl"
+                        p="3"
+                        gap="0.5"
+                    >
+                        <Text fontSize="15px" fontWeight={800} lineHeight="1.3" px="1.5" pt="1">
+                            {t.name}
+                        </Text>
+                        {/* The status chip is hidden while a live stream is on - the
+                            pulsing "Live stream" item below already signals the live
+                            state, so "U tijeku" would just be a duplicate. */}
+                        {statusKind && statusLabel && !streamLiveForThis ? (
+                            <Flex justify="center" pt="1.5" pb="2.5">
+                                <StatusChip status={statusKind} label={statusLabel} size="md" />
+                            </Flex>
+                        ) : (
+                            <Box pb="1.5" />
+                        )}
+                        {/* Live-stream shortcut - only while a broadcast for THIS
+                            tournament is running. A red, pulsing item pinned above
+                            the sections that jumps to the public live view (same
+                            destination as the home page's "Gledaj uživo"). */}
+                        {streamLiveForThis && (
+                            <chakra.button
+                                type="button"
+                                onClick={() => navigate(`/turniri/${t.slug ?? t.uuid}/uzivo`)}
+                                display="flex"
+                                alignItems="center"
+                                gap="2.5"
+                                w="full"
+                                textAlign="left"
+                                pl="3"
+                                pr="3"
+                                py="2"
+                                mb="0.5"
+                                rounded="lg"
+                                fontSize="14px"
+                                fontWeight={700}
+                                bg="accent.red"
+                                color="white"
+                                cursor="pointer"
+                                // Same expanding red-ring throb as the "U tijeku"
+                                // StatusChip (livePillPulse, defined in index.html).
+                                css={{ animation: "livePillPulse 1.6s ease-out infinite" }}
+                                _hover={{ bg: "#b91c1c" }}
+                            >
+                                <Box
+                                    w="8px"
+                                    h="8px"
+                                    rounded="full"
+                                    bg="white"
+                                    flexShrink={0}
+                                    css={{ animation: "pitchPulse 1.6s infinite" }}
+                                />
+                                Live stream
+                            </chakra.button>
+                        )}
+                        {sections.map((s) => (
+                            <SidebarNavItem
+                                key={s.key}
+                                icon={SECTION_ICONS[s.key]}
+                                label={s.label}
+                                active={section === s.key}
+                                onClick={() => {
+                                    // Entering Ždrijeb auto-picks the sub-tab
+                                    // (Grupe / Eliminacija) matching what's on now,
+                                    // but only when ENTERING - don't flip the sub
+                                    // while already on the bracket section - and
+                                    // only when there's a group stage (KNOCKOUT_ONLY
+                                    // is pinned to Eliminacija by the format effect).
+                                    if (s.key === "bracket" && section !== "bracket" && hasGroupStage) {
+                                        resolveDrawSub()
+                                    }
+                                    setSection(s.key)
+                                }}
+                            />
+                        ))}
+                        {/* Actions - an icon-only toolbar under a divider at the
+                            menu card's tail. Uniform circular icon buttons (matching
+                            the notification bell) evenly spread across the row, so
+                            they read as a toolbar rather than the wrapping pill
+                            "chips" they were before. Tooltips carry the labels. */}
+                        <Flex gap="1" align="center" borderTopWidth="1px" borderColor="border" mt="2" pt="3">
+                            {/* The Uredi SLOT is reserved for any organizer of an
+                                unfinished tournament (stable across tab switches);
+                                only its VISIBILITY follows showEditAction (Detalji
+                                tab, not editing). Mount/unmount used to re-space
+                                the whole flex-1 toolbar every time the section
+                                changed - now the other icons never move. Viewers
+                                (no canEdit) never get the slot at all. */}
+                            {canEdit && t.status !== "FINISHED" && (
+                                <Box
+                                    flex="1"
+                                    display="flex"
+                                    justifyContent="center"
+                                    visibility={showEditAction ? "visible" : "hidden"}
+                                    aria-hidden={!showEditAction}
+                                >
+                                    <IconButton
+                                        aria-label="Uredi"
+                                        title="Uredi"
+                                        onClick={enterDetailsEdit}
+                                        size="sm"
+                                        variant="outline"
+                                        rounded="full"
+                                        tabIndex={showEditAction ? 0 : -1}
+                                    >
+                                        <FiEdit2 size={16} />
+                                    </IconButton>
+                                </Box>
+                            )}
+                            <Box flex="1" display="flex" justifyContent="center">
+                                <IconButton
+                                    aria-label="Podijeli"
+                                    title="Podijeli"
+                                    onClick={shareTournament}
+                                    size="sm"
+                                    variant="outline"
+                                    rounded="full"
+                                >
+                                    <FiShare2 size={16} />
+                                </IconButton>
+                            </Box>
+                            <Box flex="1" display="flex" justifyContent="center">
+                                <IconButton
+                                    aria-label="Turnir mode"
+                                    title="Turnir mode"
+                                    onClick={openTournamentMode}
+                                    size="sm"
+                                    variant="outline"
+                                    rounded="full"
+                                >
+                                    <FiMaximize2 size={16} />
+                                </IconButton>
+                            </Box>
+                            <Box flex="1" display="flex" justifyContent="center">
+                                <TournamentNotificationBell uuid={t.uuid} />
+                            </Box>
+                        </Flex>
+
+                    </Flex>
+
+                    {/* Live-match overview - its OWN card BELOW the menu card
+                        (outside the white box), right after the actions toolbar.
+                        The mobile header still shows the full-width card up top.
+                        Renders only inside the lg-only sidebar. */}
+                    {liveMatches.length > 0 && (
+                        <Box
+                            bg="bg.panel"
+                            borderWidth="1px"
+                            borderColor="border"
+                            rounded="2xl"
+                            p="2.5"
+                        >
+                            <ActiveMatchOverview
+                                matches={liveMatches}
+                                uuidOrSlug={t.slug ?? t.uuid}
+                                compact
+                            />
+                        </Box>
+                    )}
+
+                    {/* Results card - once the tournament is over the golden podium
+                        + individual awards live HERE as their OWN card under the
+                        menu card (still inside the fixed column). The organizer
+                        keeps the award editor + "Završi turnir" inside the compact
+                        card. It carries its own golden border, so it stands alone. */}
+                    {(t.status === "FINISHED" || !!t.winnerName) && (
+                        <TournamentResults
+                            t={t}
+                            canEdit={canEdit}
+                            onSaved={(updated) => setT(updated)}
+                            onFinish={
+                                canEdit && t.status !== "FINISHED"
+                                    ? runFinishTournament
+                                    : undefined
+                            }
+                            finishing={finishingTournament}
+                            compact
+                        />
+                    )}
+                </Flex>
+                </Box>
+
+                <VStack flex="1" minW="0" align="stretch" gap="2">
+            {/* Golden "Rezultati turnira" band - once the tournament is over:
+                either explicitly FINISHED or the champion has been decided (the
+                final set winnerName). MOBILE / TABLET ONLY now: on lg+ the results
+                move into the sidebar as a compact card (below the nav). Here the
+                full band keeps its onFinish so organizers can finish on mobile.
+                Shown ONLY on the Detalji tab - repeated above every tab it ate
+                a full screen of podium before the actual tab content. */}
+            <Box display={{ base: "block", lg: "none" }}>
+                {section === "details" && (t.status === "FINISHED" || !!t.winnerName) && (
+                    <TournamentResults
+                        t={t}
+                        canEdit={canEdit}
+                        onSaved={(updated) => setT(updated)}
+                        onFinish={
+                            canEdit && t.status !== "FINISHED"
+                                ? runFinishTournament
+                                : undefined
+                        }
+                        finishing={finishingTournament}
+                    />
+                )}
+            </Box>
 
             {/* Small "active match" overview - same slot as the results panel,
                 shown while a game is in progress so anyone opening the
                 tournament sees there's a match live right now. Tapping it opens
-                that match's own live page. */}
+                that match's own live page. Mobile / tablet only: on lg+ the
+                live card moves into the sidebar (a compact variant, below the
+                actions toolbar) so it doesn't duplicate here. */}
             {liveMatches.length > 0 && (
-                <ActiveMatchOverview matches={liveMatches} uuidOrSlug={t.slug ?? t.uuid} />
+                <Box display={{ base: "block", lg: "none" }}>
+                    <ActiveMatchOverview matches={liveMatches} uuidOrSlug={t.slug ?? t.uuid} />
+                </Box>
             )}
 
             {/* ===== ACTIVE SECTION ===== */}
@@ -1064,7 +1503,11 @@ export default function TournamentDetailsPage() {
                 )}
 
                 {section === "live" && canEdit && (
-                    <LiveControlTab uuid={t.uuid} finishedLocked={finishedLocked} />
+                    <LiveControlTab
+                        uuid={t.uuid}
+                        finishedLocked={finishedLocked}
+                        standaloneHref={`/turniri/${t.slug ?? t.uuid}/zapisnik`}
+                    />
                 )}
 
                 {section === "teams" && (
@@ -1102,50 +1545,10 @@ export default function TournamentDetailsPage() {
 
                 {section === "bracket" && (
                     <VStack align="stretch" gap="4">
-                        {/* Ždrijeb sub-tabs - only shown when the format has a
-                            group stage. KNOCKOUT_ONLY jumps straight to the
-                            bracket with no sub-tab bar. */}
-                        {hasGroupStage && (
-                            <Box
-                                overflowX="auto"
-                                css={{
-                                    scrollbarWidth: "none",
-                                    "&::-webkit-scrollbar": { display: "none" },
-                                }}
-                            >
-                                <HStack
-                                    gap="2"
-                                    p="1"
-                                    bg="bg.muted"
-                                    borderWidth="1px"
-                                    borderColor="border"
-                                    rounded="lg"
-                                    w="max-content"
-                                    minW="full"
-                                >
-                                    {([
-                                        { key: "grupe" as DrawSubKey, label: "Grupe" },
-                                        { key: "eliminacija" as DrawSubKey, label: "Eliminacija" },
-                                    ]).map((s) => {
-                                        const active = drawSub === s.key
-                                        return (
-                                            <Button
-                                                key={s.key}
-                                                size="sm"
-                                                variant={active ? "solid" : "ghost"}
-                                                colorPalette={active ? "brand" : "gray"}
-                                                rounded="md"
-                                                flex="1"
-                                                onClick={() => setDrawSub(s.key)}
-                                            >
-                                                {s.label}
-                                            </Button>
-                                        )
-                                    })}
-                                </HStack>
-                            </Box>
-                        )}
-
+                        {/* The Grupe / Eliminacija sub-tabs no longer live in a
+                            full-width bar here - they're handed to GroupsTab /
+                            BracketTab via `subTabs` (drawSubPills) so each tab
+                            renders them inline next to its own action row. */}
                         {(() => {
                             // Once the tournament has started (status moved
                             // past DRAFT), destructive draw/regenerate
@@ -1165,6 +1568,8 @@ export default function TournamentDetailsPage() {
                                     canEdit={canEdit}
                                     finishedLocked={finishedLocked}
                                     tournamentStarted={tournamentStarted}
+                                    subTabs={hasGroupStage ? drawSubPills : undefined}
+                                    onSelectTeam={setInfoTeamId}
                                     onGoToSchedule={() => setSection("raspored")}
                                     exportMeta={{
                                         tournamentName: t.name,
@@ -1182,6 +1587,7 @@ export default function TournamentDetailsPage() {
                                     tournamentStarted={tournamentStarted}
                                     tournamentName={t.name}
                                     format={t.format}
+                                    subTabs={hasGroupStage ? drawSubPills : undefined}
                                     onGoToSchedule={(openPlanner) => {
                                         if (openPlanner) setKnockoutTimesRequest(true)
                                         setSection("raspored")
@@ -1228,9 +1634,18 @@ export default function TournamentDetailsPage() {
                         canEdit={canEdit}
                         scorerScope={t.scorerScope}
                         onTournamentChanged={(updated) => setT(updated)}
+                        exportMeta={{
+                            tournamentName: t.name,
+                            organizerName: t.organizerName ?? t.createdByName ?? null,
+                            location: t.location,
+                            startAt: t.startAt,
+                            tournamentUrl: `${window.location.origin}/turniri/${t.slug ?? t.uuid}`,
+                        }}
                     />
                 )}
             </Box>
+                </VStack>
+            </Flex>
 
             {/* ===== Dialogs ===== */}
             <SelfRegisterDialog
@@ -1251,6 +1666,7 @@ export default function TournamentDetailsPage() {
             />
 
             <TeamInfoDialog
+                uuid={uuid ?? ""}
                 teamId={infoTeamId}
                 teams={teams}
                 matches={infoMatches}

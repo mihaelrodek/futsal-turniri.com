@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { Box, Container, Flex, Spinner, Text } from '@chakra-ui/react'
 import NavBar from './components/NavBar'
-import Footer from './components/Footer'
+// Footer is temporarily hidden (see the commented render below) - the
+// component itself stays in src/components/Footer.tsx.
+// import Footer from './components/Footer'
 import MobileBottomNav from './components/MobileBottomNav'
 import PushBootstrap from './components/PushBootstrap'
 import ThemeSync from './components/ThemeSync'
@@ -57,6 +59,7 @@ const TournamentDetailsPage = lazyWithReload(() => import('./pages/TournamentDet
 const FullscreenTournamentPage = lazyWithReload(() => import('./pages/FullscreenTournamentPage'))
 const MatchLivePage = lazyWithReload(() => import('./pages/MatchLivePage'))
 const TournamentLivePage = lazyWithReload(() => import('./pages/TournamentLivePage'))
+const ZapisnikModePage = lazyWithReload(() => import('./pages/ZapisnikModePage'))
 const FindTeamPage = lazyWithReload(() => import('./pages/FindTeamPage'))
 const LivePage = lazyWithReload(() => import('./pages/LivePage'))
 const MapPage = lazyWithReload(() => import('./pages/MapPage'))
@@ -181,6 +184,27 @@ export default function App() {
         )
     }
 
+    // Zapisnik mode - organizer's fullscreen scorekeeper. NO app chrome at all
+    // (no NavBar / bottom nav / footer): the page owns the whole viewport and
+    // scrolls internally; its own header carries the exit. `scrollbar-gutter:
+    // stable` reserves the scrollbar column permanently - switching between the
+    // short pre-match view (no scroll) and the tall live console (scroll) used
+    // to add/remove the scrollbar and shift the whole layout ~15px left/right.
+    if (/^\/turniri\/[^/]+\/zapisnik$/.test(pathname)) {
+        return (
+            <Box h="100dvh" overflowY="auto" bg="bg.canvas" css={{ scrollbarGutter: "stable" }}>
+                <PushBootstrap />
+                <ThemeSync />
+                <Suspense fallback={<RouteLoading />}>
+                    <Routes>
+                        <Route path="/turniri/:uuid/zapisnik" element={<ZapisnikModePage />} />
+                        <Route path="*" element={<Navigate to="/turniri" replace />} />
+                    </Routes>
+                </Suspense>
+            </Box>
+        )
+    }
+
     return (
         <>
             <NavBar />
@@ -295,9 +319,10 @@ export default function App() {
                 </Suspense>
             </Container>
             </Box>
-            {/* Slim sticky brand footer - pinned to the viewport bottom,
-                stays visible while scrolling. */}
-            <Footer />
+            {/* Slim sticky brand footer - TEMPORARILY hidden (per request);
+                the component stays in the codebase so re-enabling it is a
+                one-line uncomment. */}
+            {/* <Footer /> */}
             <MobileBottomNav />
         </>
     )

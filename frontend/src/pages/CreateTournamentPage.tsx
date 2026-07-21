@@ -462,7 +462,7 @@ export default function CreateTournamentPage() {
                     rounded="xl"
                     px={{ base: "3", md: "4" }}
                     py="2.5"
-                    css={{ boxShadow: "0 4px 16px rgba(14,31,21,0.06)" }}
+                    css={{ boxShadow: "0 4px 16px rgba(11,21,34,0.06)" }}
                 >
                     <HStack
                         gap="1"
@@ -1341,7 +1341,7 @@ export default function CreateTournamentPage() {
                     p="1.5"
                     css={{
                         pointerEvents: "auto",
-                        boxShadow: "0 8px 28px rgba(14,31,21,0.16)",
+                        boxShadow: "0 8px 28px rgba(11,21,34,0.16)",
                     }}
                 >
                     {step > 1 && (

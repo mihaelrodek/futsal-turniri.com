@@ -1,10 +1,20 @@
 /*
- * Style overrides for react-datepicker so the input looks like a Chakra v3
- * <Input>. The library ships its own stylesheet (imported in
- * CreateTournamentPage.tsx) which handles the calendar popup; this file
- * only restyles the trigger input + makes the popup respect the app's
- * z-index stacking (it must beat the NavBar and Leaflet).
+ * SPECTO theming for react-datepicker (v7).
+ *
+ * The library ships its own stylesheet (imported in DateTimeField.tsx) whose
+ * palette is hardcoded: #216ba5 blue selection, #f0f0f0 header, #aeaeae
+ * borders, white surfaces. None of that follows the app theme, so the popup
+ * stayed generic-blue after the SPECTO recolor and was unreadable in dark
+ * mode. Everything below re-skins BOTH the trigger input and the calendar /
+ * time popup through Chakra CSS variables, so a single set of rules tracks
+ * light + dark automatically and inherits the brand cyan.
+ *
+ * Specificity note: several react-datepicker defaults ship with `!important`
+ * (notably the selected time item), so the matching overrides here need it
+ * too - that's deliberate, not sloppiness.
  */
+
+/* ── Trigger input ─────────────────────────────────────────────────────── */
 
 .futsal-datepicker-input-wrap,
 .futsal-datepicker-input-wrap > div,
@@ -20,6 +30,7 @@
     border: 1px solid var(--chakra-colors-border);
     background: var(--chakra-colors-bg);
     color: var(--chakra-colors-fg);
+    font-family: inherit;
     font-size: 14px;
     line-height: 1.4;
     outline: none;
@@ -44,13 +55,227 @@
     border-color: var(--chakra-colors-border-emphasized);
 }
 
+/* Brand focus ring (was Chakra's stock blue). */
 .futsal-datepicker-input:focus {
-    border-color: var(--chakra-colors-blue-solid);
-    box-shadow: 0 0 0 1px var(--chakra-colors-blue-solid);
+    border-color: var(--chakra-colors-pitch-solid);
+    box-shadow: 0 0 0 1px var(--chakra-colors-pitch-solid);
 }
+
+/* ── Popup shell ───────────────────────────────────────────────────────── */
 
 /* Calendar popup must float above NavBar (z-index 1000) and any sticky
    Card.Root toolbars on the page. */
 .react-datepicker-popper {
     z-index: 1500 !important;
+}
+
+/* Flex instead of the library's float-based layout: the month grid and the
+   time column then share one top edge. With floats the time column dropped
+   below the calendar header whenever the two differed in height. */
+.react-datepicker {
+    display: flex;
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--chakra-colors-bg-panel);
+    color: var(--chakra-colors-fg);
+    border: 1px solid var(--chakra-colors-border);
+    border-radius: 12px;
+    box-shadow: var(--chakra-shadows-lg);
+    overflow: hidden;
+}
+
+.react-datepicker__month-container,
+.react-datepicker__time-container {
+    float: none;
+}
+
+/* Pointer triangle - tinted to the panel/border so it reads as one surface. */
+.react-datepicker-popper[data-placement^="bottom"] .react-datepicker__triangle::before {
+    border-bottom-color: var(--chakra-colors-border);
+}
+.react-datepicker-popper[data-placement^="bottom"] .react-datepicker__triangle::after {
+    border-bottom-color: var(--chakra-colors-bg-muted);
+}
+.react-datepicker-popper[data-placement^="top"] .react-datepicker__triangle::before {
+    border-top-color: var(--chakra-colors-border);
+}
+.react-datepicker-popper[data-placement^="top"] .react-datepicker__triangle::after {
+    border-top-color: var(--chakra-colors-bg-panel);
+}
+
+/* ── Header (month title + weekday row) ────────────────────────────────── */
+
+.react-datepicker__header {
+    background: var(--chakra-colors-bg-muted);
+    border-bottom: 1px solid var(--chakra-colors-border);
+    padding-top: 10px;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker-year-header {
+    color: var(--chakra-colors-fg-ink);
+    font-weight: 700;
+    font-size: 14px;
+    text-transform: capitalize;
+}
+
+.react-datepicker__day-name {
+    color: var(--chakra-colors-fg-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Month-nav chevrons. */
+.react-datepicker__navigation-icon::before {
+    border-color: var(--chakra-colors-fg-muted);
+    border-width: 2px 2px 0 0;
+}
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+    border-color: var(--chakra-colors-pitch-fg);
+}
+
+/* ── Day cells ─────────────────────────────────────────────────────────── */
+
+.react-datepicker__day,
+.react-datepicker__month-text,
+.react-datepicker__quarter-text,
+.react-datepicker__year-text {
+    color: var(--chakra-colors-fg);
+    border-radius: 8px;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.react-datepicker__day:hover,
+.react-datepicker__month-text:hover,
+.react-datepicker__quarter-text:hover,
+.react-datepicker__year-text:hover {
+    background: var(--chakra-colors-bg-muted);
+}
+
+/* Today: brand-tinted but not "selected". */
+.react-datepicker__day--today,
+.react-datepicker__month-text--today,
+.react-datepicker__year-text--today {
+    font-weight: 700;
+    color: var(--chakra-colors-pitch-fg);
+}
+
+/* Selection - brand cyan with NAVY text (white on cyan fails contrast). */
+.react-datepicker__day--selected,
+.react-datepicker__day--in-selecting-range,
+.react-datepicker__day--in-range,
+.react-datepicker__day--keyboard-selected,
+.react-datepicker__month-text--selected,
+.react-datepicker__month-text--keyboard-selected,
+.react-datepicker__quarter-text--selected,
+.react-datepicker__quarter-text--keyboard-selected,
+.react-datepicker__year-text--selected,
+.react-datepicker__year-text--keyboard-selected {
+    background: var(--chakra-colors-pitch-solid);
+    color: var(--chakra-colors-pitch-contrast);
+    font-weight: 700;
+}
+
+.react-datepicker__day--selected:hover,
+.react-datepicker__day--in-range:hover,
+.react-datepicker__day--keyboard-selected:hover,
+.react-datepicker__month-text--selected:hover,
+.react-datepicker__year-text--selected:hover {
+    background: var(--chakra-colors-pitch-500);
+    color: var(--chakra-colors-pitch-contrast);
+}
+
+.react-datepicker__day--outside-month {
+    color: var(--chakra-colors-fg-subtle);
+}
+
+.react-datepicker__day--disabled,
+.react-datepicker__month-text--disabled,
+.react-datepicker__time-list-item--disabled {
+    color: var(--chakra-colors-fg-subtle);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.react-datepicker__day--disabled:hover {
+    background: transparent;
+}
+
+/* ── Time column ───────────────────────────────────────────────────────── */
+
+.react-datepicker__time-container {
+    border-left: 1px solid var(--chakra-colors-border);
+}
+
+.react-datepicker__time-container .react-datepicker__time,
+.react-datepicker__time-box {
+    background: var(--chakra-colors-bg-panel);
+}
+
+.react-datepicker__time-list-item {
+    color: var(--chakra-colors-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.react-datepicker__time-container
+    .react-datepicker__time
+    .react-datepicker__time-box
+    ul.react-datepicker__time-list
+    li.react-datepicker__time-list-item:hover {
+    background: var(--chakra-colors-bg-muted);
+}
+
+/* The library ships this one with !important, so we must match it. */
+.react-datepicker__time-container
+    .react-datepicker__time
+    .react-datepicker__time-box
+    ul.react-datepicker__time-list
+    li.react-datepicker__time-list-item--selected {
+    background: var(--chakra-colors-pitch-solid) !important;
+    color: var(--chakra-colors-pitch-contrast) !important;
+    font-weight: 700;
+}
+.react-datepicker__time-container
+    .react-datepicker__time
+    .react-datepicker__time-box
+    ul.react-datepicker__time-list
+    li.react-datepicker__time-list-item--selected:hover {
+    background: var(--chakra-colors-pitch-500) !important;
+}
+
+/* Slim, themed scrollbar instead of the chunky default one. */
+.react-datepicker__time-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--chakra-colors-border-emphasized) transparent;
+}
+.react-datepicker__time-list::-webkit-scrollbar {
+    width: 6px;
+}
+.react-datepicker__time-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.react-datepicker__time-list::-webkit-scrollbar-thumb {
+    background: var(--chakra-colors-border-emphasized);
+    border-radius: 999px;
+}
+
+/* ── Small screens ─────────────────────────────────────────────────────── */
+
+/* Keep the popup inside the viewport on phones: the calendar shrinks and the
+   time column narrows rather than the whole panel overflowing sideways. */
+@media (max-width: 400px) {
+    .react-datepicker__day,
+    .react-datepicker__day-name {
+        width: 1.6rem;
+        line-height: 1.6rem;
+    }
+    .react-datepicker__time-container,
+    .react-datepicker__time-container .react-datepicker__time-box {
+        width: 74px;
+    }
 }

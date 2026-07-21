@@ -6,16 +6,20 @@ import {
     Field,
     Flex,
     HStack,
+    IconButton,
     Input,
     NativeSelect,
     SimpleGrid,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiChevronDown, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiFilter, FiGrid, FiInfo, FiList, FiRefreshCw, FiTrash2 } from "react-icons/fi"
+import { FiCalendar, FiChevronDown, FiChevronRight, FiChevronsDown, FiChevronUp, FiClock, FiDownload, FiEdit2, FiGrid, FiInfo, FiList, FiMenu, FiRefreshCw, FiTrash2 } from "react-icons/fi"
+import { FaBroom } from "react-icons/fa6"
 import { LuCalendarClock, LuCalendarX2 } from "react-icons/lu"
+import { useNavigate } from "react-router-dom"
 import { clearSchedule, fetchSchedule, generateSchedule, updateKickoff } from "../api/schedule"
 import MultiDaySchedulePlanner from "./MultiDaySchedulePlanner"
+import MatchNotificationBell from "./MatchNotificationBell"
 import { DateTimeField } from "./DateTimeField"
 import { fetchGroups } from "../api/groups"
 import { useQueryClient } from "@tanstack/react-query"
@@ -239,40 +243,19 @@ function CfgField({
     )
 }
 
-/* -- Read-only format stat ----------------------------------------------- */
-/** Compact read-only tile (uppercase label above a mono "N min" value) used by
- *  the collapsible format summary box between the filters and the schedule
- *  list. The read-only sibling of CfgField. */
-function FormatStat({ label, value }: { label: string; value: string }) {
-    return (
-        <Box
-            flex={{ base: "1 1 calc(50% - 0.25rem)", md: "0 0 auto" }}
-            minW="0"
-            borderWidth="1px"
-            borderColor="border"
-            rounded="lg"
-            bg="bg.panel"
-            px="3"
-            py="2"
-        >
-            <Text
-                fontSize="2xs"
-                fontWeight={700}
-                letterSpacing="wide"
-                textTransform="uppercase"
-                color="fg.muted"
-                lineHeight="1.2"
-            >
-                {label}
-            </Text>
-            <Text fontFamily="mono" fontSize="15px" fontWeight={800} color="fg.ink" mt="0.5">
-                {value}
-            </Text>
-        </Box>
+const RowButton = chakra("button")
+
+/* -- Interactive-child click guard --------------------------------------- */
+/** True when a click originated on an interactive child (button, link, form
+ *  control, menu item). The compact list rows and grid-sm cards navigate on a
+ *  body click but must ignore clicks on inner controls - same guard pattern as
+ *  BracketTab's MatchCard onClick. */
+function isInteractiveClick(e: React.MouseEvent): boolean {
+    const t = e.target as HTMLElement | null
+    return !!t?.closest(
+        'button, a, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [data-scope="menu"]',
     )
 }
-
-const RowButton = chakra("button")
 
 /* -- Shared match display state ------------------------------------------ */
 /** Derived render state shared by the list row (MatchRow) and the grid card
@@ -296,6 +279,39 @@ function matchDisplay(match: ScheduledMatch) {
     const t2Muted = match.team2Name == null && (match.slot2PredictedName != null || match.slot2Label != null)
     const scoreText = hasScore ? `${match.score1}:${match.score2}` : scoreboard ? "-" : "vs"
     return { hasScore, isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText }
+}
+
+/* -- Shared "add to calendar" (.ics) action ------------------------------ */
+/** Builds + downloads the per-match calendar entry. Shared by all three
+ *  raspored layouts (the full MatchRow, the compact list row and the grid-sm
+ *  card) so the SUMMARY / LOCATION / URL wording can't drift between them. */
+type IcsOpts = {
+    tournamentUuid: string
+    tournamentName: string
+    tournamentLocation?: string | null
+    tournamentSlug?: string | null
+    slotMinutes: number
+}
+function downloadMatchIcs(match: ScheduledMatch, opts: IcsOpts) {
+    if (!match.kickoffAt) return
+    const start = new Date(match.kickoffAt)
+    const end = new Date(start.getTime() + Math.max(opts.slotMinutes, 30) * 60 * 1000)
+    const t1 = match.team1Name ?? "-"
+    const t2 = match.team2Name ?? "-"
+    const url = opts.tournamentSlug
+        ? `${window.location.origin}/turniri/${opts.tournamentSlug}`
+        : `${window.location.origin}/turniri/${opts.tournamentUuid}`
+    const ics = buildMatchIcs({
+        uid: `match-${match.matchId}@futsal-turniri.com`,
+        summary: `${t1} vs ${t2} - ${opts.tournamentName}`,
+        location: opts.tournamentLocation ?? undefined,
+        description: `${opts.tournamentName}`,
+        url,
+        start,
+        end,
+    })
+    const safeName = `${t1}-${t2}`.replace(/[^a-z0-9\-]+/gi, "_").slice(0, 40)
+    downloadIcs(`utakmica-${safeName}.ics`, ics)
 }
 
 /* -- Match row ----------------------------------------------------------- */
@@ -336,9 +352,10 @@ function MatchRow({
     const [expanded, setExpanded] = useState(false)
     const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
         matchDisplay(match)
-    // Only a started match (LIVE or FINISHED) has a timeline to expand; a match
-    // that hasn't kicked off yet can't be expanded.
-    const canExpand = scoreboard
+    // Only a FINISHED match offers the "Detalji" timeline expand - a live
+    // match's row stays clean (its details live on the match page), and a
+    // match that hasn't kicked off has nothing to expand.
+    const canExpand = isFinished
 
     // Long club names shrink a touch and wrap (up to three lines) so they stay
     // readable in the schedule row instead of truncating with an ellipsis.
@@ -346,25 +363,13 @@ function MatchRow({
     const nameFont = nameMaxLen > 26 ? { base: "12px", md: "13px" } : "sm"
 
     function addToCalendar() {
-        if (!match.kickoffAt) return
-        const start = new Date(match.kickoffAt)
-        const end = new Date(start.getTime() + Math.max(slotMinutes, 30) * 60 * 1000)
-        const t1 = match.team1Name ?? "-"
-        const t2 = match.team2Name ?? "-"
-        const url = tournamentSlug
-            ? `${window.location.origin}/turniri/${tournamentSlug}`
-            : `${window.location.origin}/turniri/${tournamentUuid}`
-        const ics = buildMatchIcs({
-            uid: `match-${match.matchId}@futsal-turniri.com`,
-            summary: `${t1} vs ${t2} - ${tournamentName}`,
-            location: tournamentLocation ?? undefined,
-            description: `${tournamentName}`,
-            url,
-            start,
-            end,
+        downloadMatchIcs(match, {
+            tournamentUuid,
+            tournamentName,
+            tournamentLocation,
+            tournamentSlug,
+            slotMinutes,
         })
-        const safeName = `${t1}-${t2}`.replace(/[^a-z0-9\-]+/gi, "_").slice(0, 40)
-        downloadIcs(`utakmica-${safeName}.ics`, ics)
     }
 
     // Kickoff time - editable picker for admins, read-only stamp otherwise.
@@ -445,32 +450,50 @@ function MatchRow({
             <VStack align="stretch" gap="1">
                 {scoreboard ? (
                     /* LIVE / FINISHED header - stage badge on the left, kickoff
-                       time centred between two equal-flex clusters (dead-centre
-                       above the score). A LIVE match is signalled by the red
+                       time dead-centre in a true 1fr/auto/1fr grid (the centre
+                       column stays centred regardless of how wide the two side
+                       clusters are). A LIVE match is signalled by the red
                        border + red score box alone - no "UŽIVO" text badge. */
-                    <Flex align="center" gap="2" wrap="wrap">
-                        <HStack gap="2" flex="1" minW="fit-content" wrap="wrap">
+                    <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
+                        <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
                             <StageBadge stage={match.stage} groupName={match.groupName} />
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
                         </Box>
-                        <Flex flex="1" minW="fit-content" justify="flex-end" />
-                    </Flex>
-                ) : (
-                    /* SCHEDULED header - stage badge (left) + "add to calendar"
-                       (right) on one row, kickoff time centred on its own row
-                       below. Fixed positions so the badge, date and calendar
-                       icon line up identically across every card regardless of
-                       badge width. The next-to-start match keeps its red border
-                       (the "Na redu" tag was dropped). */
-                    <>
-                        <Flex align="center" justify="space-between" gap="2">
-                            <StageBadge stage={match.stage} groupName={match.groupName} />
-                            {calendarBtn}
+                        <Flex wrap="wrap" minW="0" justify="flex-end">
+                            {isLive && (
+                                <MatchNotificationBell
+                                    tournamentUuid={tournamentUuid}
+                                    matchId={match.matchId}
+                                />
+                            )}
                         </Flex>
-                        <Flex justify="center">{timeContent}</Flex>
-                    </>
+                    </Box>
+                ) : (
+                    /* SCHEDULED header - all on ONE row: stage badge (left),
+                       kickoff time dead-centre, and the "add to calendar" button
+                       (right). A true 1fr/auto/1fr grid keeps the centre column
+                       dead-centre regardless of how wide the two side clusters
+                       are (the old equal-flex clusters drifted once the right
+                       cluster - calendar button + bell - grew wider than the
+                       left stage badge). The next-to-start match keeps its red
+                       border (the "Na redu" tag was dropped). */
+                    <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
+                        <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
+                            <StageBadge stage={match.stage} groupName={match.groupName} />
+                        </HStack>
+                        <Box flexShrink={0} w="200px" maxW="100%">
+                            {timeContent}
+                        </Box>
+                        <Flex wrap="wrap" minW="0" justify="flex-end" align="center" gap="1.5">
+                            {calendarBtn}
+                            <MatchNotificationBell
+                                tournamentUuid={tournamentUuid}
+                                matchId={match.matchId}
+                            />
+                        </Flex>
+                    </Box>
                 )}
 
                 {/* Teams + score - one fixed 3-column grid used for EVERY
@@ -575,17 +598,37 @@ function MatchRow({
 function MatchCard({
     match,
     multiDay,
+    onOpen,
+    tournamentUuid,
+    tournamentName,
+    tournamentLocation,
+    tournamentSlug,
+    slotMinutes,
     isNext = false,
 }: {
     match: ScheduledMatch
     /** Multi-day tournament - the kickoff stamp adds the date ("DD.MM. HH:MM"),
      *  matching the list's day-aware time display; single-day shows just HH:MM. */
     multiDay: boolean
+    /** Navigate to the match-details page on a body click (clicks on inner
+     *  controls are ignored via isInteractiveClick). */
+    onOpen: (m: ScheduledMatch) => void
+    /** ICS + notification-bell props (threaded like MatchRow) so the card can
+     *  offer the same add-to-calendar / notify actions. */
+    tournamentUuid: string
+    tournamentName: string
+    tournamentLocation?: string | null
+    tournamentSlug?: string | null
+    slotMinutes: number
     /** True for the single next-to-start match - same red-border emphasis as
      *  the list row (already suppressed upstream while any match is LIVE). */
     isNext?: boolean
 }) {
     const { isLive, t1Name, t2Name, t1Muted, t2Muted, scoreText } = matchDisplay(match)
+    // Add-to-calendar only for a scheduled match that has a termin; the notify
+    // bell for scheduled + live (pointless once finished).
+    const showCalBtn = match.status === "SCHEDULED" && !!match.kickoffAt
+    const showBell = match.status !== "FINISHED"
 
     // "HH:MM" for a single-day tournament; "DD.MM. HH:MM" across several days.
     const kickoffLabel = (() => {
@@ -601,23 +644,70 @@ function MatchCard({
             px="3"
             py="2.5"
             h="full"
+            cursor="pointer"
+            transition="background 0.15s"
+            _hover={{ bg: "bg.muted" }}
+            onClick={(e) => {
+                if (isInteractiveClick(e)) return
+                onOpen(match)
+            }}
             borderColor={isLive || isNext ? "red.emphasized" : "border"}
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
             <VStack align="stretch" gap="2" h="full" justify="space-between">
-                <Flex align="center" justify="space-between" gap="2">
-                    <StageBadge stage={match.stage} groupName={match.groupName} />
-                    {kickoffLabel ? (
-                        <HStack gap="1" fontSize="xs" fontWeight={600} color="fg.muted" fontFamily="mono" flexShrink={0}>
-                            <FiClock size={11} />
-                            <Box as="span">{kickoffLabel}</Box>
-                        </HStack>
-                    ) : (
-                        <Text fontSize="2xs" color="fg.subtle" flexShrink={0}>
-                            Termin nije određen
-                        </Text>
-                    )}
-                </Flex>
+                <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
+                    {/* Left cell - icon-only "add to calendar" button (scheduled
+                        matches only). Right cell mirrors it with the bell, so a
+                        true 1fr/auto/1fr grid keeps the centre cell (stage badge
+                        + kickoff) dead-centre regardless of which side actions
+                        are present. */}
+                    <Flex justify="flex-start" minW="0">
+                        {showCalBtn && (
+                            <IconButton
+                                aria-label="Dodaj u kalendar"
+                                title="Dodaj u kalendar"
+                                size="xs"
+                                variant="ghost"
+                                colorPalette="gray"
+                                rounded="full"
+                                flexShrink={0}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    downloadMatchIcs(match, {
+                                        tournamentUuid,
+                                        tournamentName,
+                                        tournamentLocation,
+                                        tournamentSlug,
+                                        slotMinutes,
+                                    })
+                                }}
+                            >
+                                <FiCalendar size={13} />
+                            </IconButton>
+                        )}
+                    </Flex>
+                    <VStack gap="0.5" align="center" minW="0">
+                        <StageBadge stage={match.stage} groupName={match.groupName} />
+                        {kickoffLabel ? (
+                            <HStack gap="1" fontSize="xs" fontWeight={600} color="fg.muted" fontFamily="mono">
+                                <FiClock size={11} />
+                                <Box as="span">{kickoffLabel}</Box>
+                            </HStack>
+                        ) : (
+                            <Text fontSize="2xs" color="fg.subtle">
+                                Termin nije određen
+                            </Text>
+                        )}
+                    </VStack>
+                    <Flex justify="flex-end" minW="0">
+                        {showBell && (
+                            <MatchNotificationBell
+                                tournamentUuid={tournamentUuid}
+                                matchId={match.matchId}
+                            />
+                        )}
+                    </Flex>
+                </Box>
 
                 {/* Same 3-column scoreboard grid as the list row, sized down. */}
                 <Box
@@ -666,6 +756,159 @@ function MatchCard({
     )
 }
 
+/* -- Match compact row (list view) --------------------------------------- */
+/** Slim, view-only row for the default "list" prikaz - the register of the
+ *  /uzivo "Nadolazeće utakmice" list: a mono time pill (replaced by the score
+ *  once the match is LIVE / FINISHED, shown in the time's place like MatchRow)
+ *  on the left, the resolved "Team A vs Team B" bold with a muted stage/group
+ *  tag beneath, and a chevron on the right. The whole row is a click-through to
+ *  the match page (inner-control clicks ignored via isInteractiveClick). Team
+ *  names reuse the shared matchDisplay so the predicted-pairing / slot-label
+ *  fallbacks render muted, exactly like the other two layouts. */
+function MatchCompactRow({
+    match,
+    multiDay,
+    onOpen,
+    tournamentUuid,
+    tournamentName,
+    tournamentLocation,
+    tournamentSlug,
+    slotMinutes,
+    isNext = false,
+}: {
+    match: ScheduledMatch
+    /** Multi-day tournament - the time pill adds the date ("DD.MM. HH:MM"). */
+    multiDay: boolean
+    /** Navigate to the match-details page on a body click. */
+    onOpen: (m: ScheduledMatch) => void
+    /** ICS + notification-bell props (threaded like MatchRow) so the slim row
+     *  can offer the same add-to-calendar / notify actions. */
+    tournamentUuid: string
+    tournamentName: string
+    tournamentLocation?: string | null
+    tournamentSlug?: string | null
+    slotMinutes: number
+    /** True for the single next-to-start match - red border, same as MatchRow. */
+    isNext?: boolean
+}) {
+    const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
+        matchDisplay(match)
+    // Add-to-calendar only for a scheduled match that has a termin; the notify
+    // bell for scheduled + live (pointless once finished).
+    const showCalBtn = match.status === "SCHEDULED" && !!match.kickoffAt
+    const showBell = !isFinished
+
+    // "HH:MM" (single-day) / "DD.MM. HH:MM" (multi-day); null when no kickoff.
+    const kickoffLabel = (() => {
+        const v = isoToLocal(match.kickoffAt)
+        if (!v) return null
+        const [d, t] = v.split("T")
+        const [, mo, day] = d.split("-")
+        return multiDay ? `${day}.${mo}. ${t}` : t
+    })()
+
+    // The left pill shows the score once the match is LIVE / FINISHED (in the
+    // time's place, like MatchRow), else the kickoff time - or "-" when a match
+    // has no termin yet (MatchRow's unscheduled fallback, compacted to a dash).
+    const pillText = scoreboard ? scoreText : kickoffLabel ?? "-"
+
+    return (
+        <Panel
+            px="3"
+            py="2.5"
+            cursor="pointer"
+            transition="background 0.15s"
+            _hover={{ bg: "bg.muted" }}
+            onClick={(e) => {
+                if (isInteractiveClick(e)) return
+                onOpen(match)
+            }}
+            borderColor={isLive || isNext ? "red.emphasized" : "border"}
+            borderWidth={isLive || isNext ? "2px" : "1px"}
+        >
+            <Flex align="center" gap="3">
+                {/* Time / score pill - mono, fixed min-width so the team names
+                    line up straight down the list regardless of the content.
+                    Multi-day floor = the widest content, "DD.MM. HH:MM" (12 mono
+                    chars, `ch` tracks this Box's own font) + the 2×10px padding -
+                    the slight negative letter-spacing keeps the date's natural
+                    width just UNDER the floor, so live/score pills and date
+                    pills all render at exactly the same width. */}
+                <Box
+                    fontFamily="mono"
+                    fontSize="sm"
+                    fontWeight={scoreboard ? 800 : 600}
+                    letterSpacing="-0.02em"
+                    color={isLive ? "red.fg" : isFinished ? "fg.ink" : "fg.muted"}
+                    bg={isLive ? "red.subtle" : "bg.surfaceTint"}
+                    px="2.5"
+                    py="1"
+                    rounded="lg"
+                    minW={multiDay ? "calc(12ch + 20px)" : "64px"}
+                    textAlign="center"
+                    fontVariantNumeric="tabular-nums"
+                    flexShrink={0}
+                >
+                    {pillText}
+                </Box>
+
+                {/* Teams (bold, one truncated line) + the stage/group tag. Each
+                    team keeps its muted colouring for undecided knockout slots. */}
+                <Box flex="1" minW="0">
+                    <Text fontSize="sm" fontWeight={700} truncate>
+                        <chakra.span color={t1Muted ? "fg.muted" : "fg.ink"}>{t1Name}</chakra.span>
+                        <chakra.span color="fg.subtle" fontWeight={500} px="1.5">
+                            vs
+                        </chakra.span>
+                        <chakra.span color={t2Muted ? "fg.muted" : "fg.ink"}>{t2Name}</chakra.span>
+                    </Text>
+                    <Flex mt="1" minW="0">
+                        <StageBadge stage={match.stage} groupName={match.groupName} />
+                    </Flex>
+                </Box>
+
+                {(showCalBtn || showBell) && (
+                    <HStack gap="0.5" flexShrink={0}>
+                        {showCalBtn && (
+                            <IconButton
+                                aria-label="Dodaj u kalendar"
+                                title="Dodaj u kalendar"
+                                size="xs"
+                                variant="ghost"
+                                colorPalette="gray"
+                                rounded="full"
+                                flexShrink={0}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    downloadMatchIcs(match, {
+                                        tournamentUuid,
+                                        tournamentName,
+                                        tournamentLocation,
+                                        tournamentSlug,
+                                        slotMinutes,
+                                    })
+                                }}
+                            >
+                                <FiCalendar size={13} />
+                            </IconButton>
+                        )}
+                        {showBell && (
+                            <MatchNotificationBell
+                                tournamentUuid={tournamentUuid}
+                                matchId={match.matchId}
+                            />
+                        )}
+                    </HStack>
+                )}
+
+                <Box as="span" color="fg.muted" flexShrink={0} display="inline-flex">
+                    <FiChevronRight />
+                </Box>
+            </Flex>
+        </Panel>
+    )
+}
+
 /* -- View toggle --------------------------------------------------------- */
 /** Segmented-control button for the list/grid view switcher - same pattern as
  *  the tournaments page "prikaz" toggle, sized to the schedule header. */
@@ -708,7 +951,7 @@ function ViewToggleButton({
 /** localStorage key for the list/grid choice - global (not per tournament) so
  *  the preferred prikaz follows the user across tournaments. */
 const VIEW_KEY = "futsal:schedule-view"
-type ScheduleView = "list" | "grid"
+type ScheduleView = "list" | "grid" | "grid-sm"
 
 /* -- Main export --------------------------------------------------------- */
 /** `canEdit` - owner/admin gate for the mutating actions: format config
@@ -762,6 +1005,7 @@ export default function ScheduleTab({
     onAutoOpenKnockoutTimesConsumed?: () => void
 }) {
     const queryClient = useQueryClient()
+    const navigate = useNavigate()
     // Seed from the shared schedule cache so returning to the Raspored tab (or a
     // recently-viewed tournament) paints instantly instead of refetching.
     const cachedSchedule = queryClient.getQueryData<Schedule>(qk.schedule(uuid))
@@ -809,11 +1053,16 @@ export default function ScheduleTab({
             /* storage unavailable - collapse just won't persist */
         }
     }, [collapseKey, collapsed])
-    /** List (rows, default) vs grid (compact cards) prikaz. Persisted globally
-     *  under one key - the choice is a viewing preference, not per tournament. */
+    /** Prikaz: "list" = slim compact rows (default), "grid" = full detail rows
+     *  (MatchRow: inline time editing + add-to-calendar), "grid-sm" = compact
+     *  MatchCard cards. Persisted globally under one key - a viewing preference,
+     *  not per tournament. An unknown / legacy stored value falls back to the
+     *  new compact "list" (a previously stored "list"/"grid" simply maps onto
+     *  the new meanings). */
     const [viewMode, setViewMode] = useState<ScheduleView>(() => {
         try {
-            return localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list"
+            const v = localStorage.getItem(VIEW_KEY)
+            return v === "grid" || v === "grid-sm" ? v : "list"
         } catch {
             return "list"
         }
@@ -825,23 +1074,6 @@ export default function ScheduleTab({
             /* storage unavailable - the view choice just won't persist */
         }
     }, [viewMode])
-    /** Read-only format box (between the filters and the list): a one-line
-     *  summary that expands to the compact stat cards. Default collapsed;
-     *  the expand choice is persisted globally. */
-    const [formatBoxOpen, setFormatBoxOpen] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem("futsal:schedule-format-open") === "1"
-        } catch {
-            return false
-        }
-    })
-    useEffect(() => {
-        try {
-            localStorage.setItem("futsal:schedule-format-open", formatBoxOpen ? "1" : "0")
-        } catch {
-            /* storage unavailable - the expand choice just won't persist */
-        }
-    }, [formatBoxOpen])
     /** Team id (as string) to filter the schedule by; "" = all teams. */
     const [teamFilter, setTeamFilter] = useState<string>("")
     /** Group name (A, B, …) to filter by; "" = all groups. */
@@ -951,17 +1183,6 @@ export default function ScheduleTab({
 
     const fixedBreaks = numVal(cfg.breakBetweenMatchesMin) + numVal(cfg.bufferMin)
     const slot = HALF_COUNT * numVal(cfg.halfLengthMin) + numVal(cfg.halftimeBreakMin) + fixedBreaks
-    // The knockout break between matches falls back to the group break when the
-    // field is left empty (inherit), mirroring the backend.
-    const koBreakBetween = numValOrNull(cfg.koBreakBetweenMatchesMin) ?? numVal(cfg.breakBetweenMatchesMin)
-    const koFixedBreaks = koBreakBetween + numVal(cfg.bufferMin)
-    // The knockout slot only differs while the override is on; mirrors the
-    // backend's slotFor(stage) so the footer never disagrees with the layout.
-    const koSlot = cfg.koEnabled
-        ? HALF_COUNT * numVal(cfg.koHalfLengthMin) + numVal(cfg.koHalftimeBreakMin) + koFixedBreaks
-        : slot
-    // The override is only meaningful when there IS a knockout to differ from
-    // the groups - KNOCKOUT_ONLY has no group stage, GROUPS_ONLY no knockout.
     const canSplitFormat = format === "GROUPS_KNOCKOUT"
 
     // A schedule change creates/retimes the group + knockout fixtures that the
@@ -1157,6 +1378,12 @@ export default function ScheduleTab({
         ? null
         : byKickoff.find((m) => m.status === "SCHEDULED")?.matchId ?? null
 
+    // Click-through target for the compact list rows and the grid-sm cards: the
+    // match-details page, the same destination the bracket uses. Prefer the
+    // human slug, fall back to the uuid when the tournament has none.
+    const openMatch = (m: ScheduledMatch) =>
+        navigate(`/turniri/${tournamentSlug ?? uuid}/utakmica/${m.matchId}`)
+
     const renderRow = (m: ScheduledMatch) => {
         const content = (
             <MatchRow
@@ -1202,7 +1429,45 @@ export default function ScheduleTab({
                     : undefined
             }
         >
-            <MatchCard match={m} multiDay={multiDay} isNext={m.matchId === nextMatchId} />
+            <MatchCard
+                match={m}
+                multiDay={multiDay}
+                onOpen={openMatch}
+                tournamentUuid={uuid}
+                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentLocation={tournamentLocation}
+                tournamentSlug={tournamentSlug}
+                slotMinutes={slot}
+                isNext={m.matchId === nextMatchId}
+            />
+        </Box>
+    )
+
+    // Compact list row (default prikaz) - view-only + click-through, keeping the
+    // sched-match id + focus outline so the /uzivo deep-link scroll still works
+    // here too. Mirrors renderCard/renderRow's wrapper (id + focus outline).
+    const renderCompactRow = (m: ScheduledMatch) => (
+        <Box
+            key={m.matchId}
+            id={`sched-match-${m.matchId}`}
+            rounded="2xl"
+            css={
+                focusMatchId === m.matchId
+                    ? { outline: "2px solid var(--chakra-colors-brand-solid)", outlineOffset: "2px" }
+                    : undefined
+            }
+        >
+            <MatchCompactRow
+                match={m}
+                multiDay={multiDay}
+                onOpen={openMatch}
+                tournamentUuid={uuid}
+                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentLocation={tournamentLocation}
+                tournamentSlug={tournamentSlug}
+                slotMinutes={slot}
+                isNext={m.matchId === nextMatchId}
+            />
         </Box>
     )
 
@@ -1217,6 +1482,52 @@ export default function ScheduleTab({
             else out.push({ key: k, items: [m] })
         }
         return out
+    }
+
+    // Render one day-grouped match section for the active prikaz. "grid-sm"
+    // lays the compact cards into a responsive grid under each day divider;
+    // "list" (slim compact rows) and "grid" (full MatchRow rows) share a flat
+    // per-day-divided VStack and differ only in the row renderer. `trailer` is
+    // the collapse "+ još N" button (upcoming section) or null (finished).
+    const renderMatchSection = (matches: ScheduledMatch[], trailer: React.ReactNode) => {
+        if (viewMode === "grid-sm") {
+            return (
+                <VStack align="stretch" gap="2">
+                    {dayGroups(matches).map((g, gi) => (
+                        <Fragment key={g.key || "bez-termina"}>
+                            {multiDay && (
+                                <DayDivider label={dividerLabel(g.key)} first={gi === 0} />
+                            )}
+                            <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
+                                {g.items.map((m) => renderCard(m))}
+                            </SimpleGrid>
+                        </Fragment>
+                    ))}
+                    {trailer}
+                </VStack>
+            )
+        }
+        // "list" → compact rows, "grid" → full rows; identical day scaffolding.
+        const renderItem = viewMode === "list" ? renderCompactRow : renderRow
+        return (
+            <VStack align="stretch" gap="2">
+                {matches.map((m, idx) => {
+                    // Day separator before the first match of each day (multi-day).
+                    const curKey = dateKey(m.kickoffAt)
+                    const prevKey = idx > 0 ? dateKey(matches[idx - 1].kickoffAt) : null
+                    const dayNode = multiDay && curKey !== prevKey
+                        ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
+                        : null
+                    return (
+                        <Fragment key={m.matchId}>
+                            {dayNode}
+                            {renderItem(m)}
+                        </Fragment>
+                    )
+                })}
+                {trailer}
+            </VStack>
+        )
     }
 
     // Tournament has started once a REAL match is played. A knockout bye is
@@ -1255,32 +1566,6 @@ export default function ScheduleTab({
     // inline time pickers go read-only.
     const inlineTimeEditable = canEdit && !tournamentStarted && !finishedLocked
 
-    // At least one not-yet-finished knockout match? Gates "Termini završnice",
-    // which opens the knockout-only planner (group kickoffs untouched). With the
-    // backend's remaining semantics the planner stays useful while ≥1 knockout
-    // match is unplayed (finished KO matches keep their times, excluded from the
-    // plan) - e.g. the user's case of 2 matches left.
-    const hasUnfinishedKnockout = byKickoff.some(
-        (m) => m.stage !== "GROUP" && m.status !== "FINISHED",
-    )
-
-    /* ── Format summary (read-only) ────────────────────────────────────────
-       Compact "2×6 min · završnica 2×8 min" readout of the STORED schedule
-       format, shown in the collapsible box between the filters and the list.
-       Reads from the stored schedule once generated (mirrors the live `cfg`
-       only as a harmless fallback before that - the box itself is gated on the
-       schedule being generated). */
-    const pillHalfCount = scheduleHasConfig ? (schedule?.halfCount ?? HALF_COUNT) : HALF_COUNT
-    const pillGroupLen = scheduleHasConfig ? (schedule?.halfLengthMin ?? 0) : numVal(cfg.halfLengthMin)
-    const pillKoOn = scheduleHasConfig ? koFormatOn : cfg.koEnabled
-    const pillKoLen = scheduleHasConfig ? (schedule?.koHalfLengthMin ?? 0) : numVal(cfg.koHalfLengthMin)
-    const pillText =
-        `${pillHalfCount}×${pillGroupLen} min` +
-        (pillKoOn ? ` · završnica ${pillHalfCount}×${pillKoLen} min` : "")
-    // Short pauza readout appended after the format in the collapsed header
-    // (half-time break / between-matches break), e.g. "pauze 5/5 min".
-    const pauzeShort =
-        `pauze ${schedule?.halftimeBreakMin ?? 0}/${schedule?.breakBetweenMatchesMin ?? 0} min`
     // Inline format editor (CfgFields + KO override + generate / regenerate /
     // clear). No popover, no portal:
     //   - forced open before the schedule is laid out, so the organizer has to
@@ -1456,12 +1741,12 @@ export default function ScheduleTab({
             </Flex>
 
             {/* Unified termin readout - one compact mono line for both slots
-                (završnica only when the override is on). */}
+                (završnica only when the override is on).
             <Text fontFamily="mono" fontSize="12px" color="fg.muted" fontWeight={600}>
                 Termin grupe: {slot} min
                 {cfg.koEnabled ? ` · Termin završnice: ${koSlot} min` : ""}
-            </Text>
-
+             </Text>
+             */}
             {/* Actions - a tight button row (no big padded panel). */}
             <VStack align="stretch" gap="2">
                 {!drawGenerated && (
@@ -1502,24 +1787,13 @@ export default function ScheduleTab({
         </VStack>
     )
 
-    // The compact action cluster rendered inside the dedicated controls box
-    // (the single home for these actions) that sits above the match list.
+    // The compact action cluster (Termini završnice · Uredi format · Uredi
+    // raspored · Preuzmi) that lives in the combined card's header row, in the
+    // right cluster after the prikaz toggle - the single home for these actions.
+    // `ml="auto"` keeps the cluster pinned right when the row wraps on narrow
+    // screens.
     const scheduleControls = (
-        <HStack gap="2" wrap="wrap" justify="flex-end">
-            {/* Reopen the knockout planner while any knockout match is still
-                unplayed - so the završnica kickoffs stay schedulable after the
-                one-shot flow (finished KO matches keep their times). */}
-            {canEdit && !finishedLocked && hasUnfinishedKnockout && (
-                <GhostButton
-                    px="3.5"
-                    py="2"
-                    fontSize="13px"
-                    icon={<LuCalendarClock size={14} />}
-                    onClick={() => setPlannerMode("ko")}
-                >
-                    Termini završnice
-                </GhostButton>
-            )}
+        <HStack gap="2" wrap="wrap" align="center" justify="flex-end" ml="auto">
             {configBoxToggle && (
                 <GhostButton
                     px="3.5"
@@ -1542,7 +1816,7 @@ export default function ScheduleTab({
                     icon={<FiEdit2 size={14} />}
                     onClick={() => setPlannerMode("full")}
                 >
-                    Uredi raspored
+                    Uredi
                 </PrimaryButton>
             )}
             {rawMatches.length > 0 && (
@@ -1556,37 +1830,49 @@ export default function ScheduleTab({
                     Preuzmi
                 </GhostButton>
             )}
-            {/* List / grid prikaz switcher - same segmented pattern as the
-                tournaments page toggle, compacted to icon-only buttons. */}
-            {rawMatches.length > 0 && (
-                <HStack
-                    gap="0.5"
-                    px="0.5"
-                    py="0.5"
-                    bg="bg.panel"
-                    borderWidth="1px"
-                    borderColor="border"
-                    rounded="lg"
-                    flexShrink={0}
-                >
-                    <ViewToggleButton
-                        active={viewMode === "list"}
-                        onClick={() => setViewMode("list")}
-                        icon={<FiList size={14} />}
-                        label="Popis"
-                    />
-                    <ViewToggleButton
-                        active={viewMode === "grid"}
-                        onClick={() => setViewMode("grid")}
-                        icon={<FiGrid size={14} />}
-                        label="Mreža"
-                    />
-                </HStack>
-            )}
+        </HStack>
+    )
+
+    /* 3-way prikaz switcher - lives in the combined card's header row, in the
+       right cluster before the schedule actions (see the header below). "list" =
+       slim compact rows (default), "grid" = full detail rows, "grid-sm" = compact
+       cards. Same segmented pattern as the tournaments page toggle, icon-only. */
+    const viewToggle = (
+        <HStack
+            gap="0.5"
+            px="0.5"
+            py="0.5"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            flexShrink={0}
+        >
+            <ViewToggleButton
+                active={viewMode === "list"}
+                onClick={() => setViewMode("list")}
+                icon={<FiList size={14} />}
+                label="Lista"
+            />
+            <ViewToggleButton
+                active={viewMode === "grid"}
+                onClick={() => setViewMode("grid")}
+                icon={<FiMenu size={14} />}
+                label="Veliki prikaz"
+            />
+            <ViewToggleButton
+                active={viewMode === "grid-sm"}
+                onClick={() => setViewMode("grid-sm")}
+                icon={<FiGrid size={14} />}
+                label="Mali prikaz"
+            />
         </HStack>
     )
     return (
-        <VStack align="stretch" gap="5" py="2">
+        // No top padding: the first row (format chip) must sit flush with the
+        // content-column top so it aligns with the sidebar card's top edge -
+        // same treatment as the Grupe/Ždrijeb tabs. `pb` keeps tail room.
+        <VStack align="stretch" gap="5" pb="2">
             {/* Finished-lock notice - replaces every editing entry point with a
                 single unobtrusive row (only for users who could otherwise edit). */}
             {finishedLocked && canEdit && (
@@ -1670,244 +1956,98 @@ export default function ScheduleTab({
                 </Flex>
             )}
 
-            {/* Filter the schedule - by team, by group, and (multi-day only) by
-                day. Centred box that lights up when any filter is active. */}
-            {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
-                <Flex justify="center">
-                    <Flex
-                        align="center"
-                        justify="center"
-                        gap="3"
-                        wrap="wrap"
-                        borderWidth="1px"
-                        borderColor={anyFilter ? "brand.emphasized" : "border.emphasized"}
-                        bg={anyFilter ? "brand.subtle" : "bg.surfaceTint"}
-                        rounded="xl"
-                        px="5"
-                        py="3"
-                        shadow="xs"
-                        transition="background-color 0.15s, border-color 0.15s"
-                    >
-                        <HStack gap="1.5" color={anyFilter ? "brand.fg" : "fg.ink"} flexShrink={0}>
-                            <FiFilter size={15} />
-                            <Text fontSize="sm" fontWeight={600} whiteSpace="nowrap">
-                                Filtriraj:
-                            </Text>
-                        </HStack>
-
-                        {allTeamCount > 1 && (
-                            <NativeSelect.Root size="sm" w="auto" minW="170px" maxW="240px">
-                                <NativeSelect.Field
-                                    value={teamFilter}
-                                    onChange={(e) => setTeamFilter(e.target.value)}
-                                    fontWeight={600}
-                                    aria-label="Filtriraj po ekipi"
-                                >
-                                    <option value="">Sve ekipe</option>
-                                    {teamOptions.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.name}
-                                        </option>
-                                    ))}
-                                </NativeSelect.Field>
-                                <NativeSelect.Indicator />
-                            </NativeSelect.Root>
-                        )}
-
-                        {allGroupCount > 1 && (
-                            <NativeSelect.Root size="sm" w="auto" minW="130px" maxW="180px">
-                                <NativeSelect.Field
-                                    value={groupFilter}
-                                    onChange={(e) => setGroupFilter(e.target.value)}
-                                    fontWeight={600}
-                                    aria-label="Filtriraj po skupini"
-                                >
-                                    <option value="">Sve skupine</option>
-                                    {groupOptions.map((g) => (
-                                        <option key={g} value={g}>
-                                            Skupina {g}
-                                        </option>
-                                    ))}
-                                </NativeSelect.Field>
-                                <NativeSelect.Indicator />
-                            </NativeSelect.Root>
-                        )}
-
-                        {multiDay && (
-                            <NativeSelect.Root size="sm" w="auto" minW="150px" maxW="220px">
-                                <NativeSelect.Field
-                                    value={dayFilter}
-                                    onChange={(e) => setDayFilter(e.target.value)}
-                                    fontWeight={600}
-                                    aria-label="Filtriraj po danu"
-                                >
-                                    <option value="">Svi dani</option>
-                                    {dayOptions.map((d) => (
-                                        <option key={d} value={d}>
-                                            {dayLabel(d)}
-                                        </option>
-                                    ))}
-                                </NativeSelect.Field>
-                                <NativeSelect.Indicator />
-                            </NativeSelect.Root>
-                        )}
-
-                        {/* Always rendered (hidden when inactive) so the box keeps
-                            its size and the layout doesn't shift on pick. */}
-                        <Button
-                            size="xs"
-                            variant="ghost"
-                            colorPalette="brand"
-                            onClick={clearFilters}
-                            visibility={anyFilter ? "visible" : "hidden"}
-                            aria-hidden={!anyFilter}
-                            tabIndex={anyFilter ? 0 : -1}
-                            flexShrink={0}
-                        >
-                            Poništi filtere
-                        </Button>
-                    </Flex>
-                </Flex>
-            )}
-
-            {/* Read-only format summary - a one-line header (format + short
-                pauza) that expands to the compact stat cards. Sits between the
-                filters and the list; shown once the schedule has a stored
-                format. Replaces the old header pill (no duplication). */}
+            {/* Format summary - one compact non-expandable row above the
+                combined schedule card: group timings, then (when set) the
+                završnica timings in the same line. Organizers get a small
+                pencil on the right that toggles the inline format editor
+                (same target as the "Uredi format" button below). */}
             {scheduleHasConfig && schedule && (
                 <Box
                     borderWidth="1px"
                     borderColor="border"
                     bg="bg.surfaceTint"
                     rounded="xl"
-                    overflow="hidden"
+                    px="4"
+                    py="2.5"
                 >
-                    <chakra.button
-                        type="button"
-                        onClick={() => setFormatBoxOpen((v) => !v)}
-                        aria-expanded={formatBoxOpen}
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="space-between"
-                        gap="3"
-                        w="full"
-                        px="4"
-                        py="2.5"
-                        bg="transparent"
-                        border="none"
-                        cursor="pointer"
-                        textAlign="left"
-                        _hover={{ bg: "bg.panel" }}
+                    <Flex
+                        align="center"
+                        gap="2"
+                        wrap="wrap"
+                        fontFamily="mono"
+                        fontSize="12px"
+                        color="fg.muted"
                     >
-                        <Flex align="center" gap="2" minW="0" wrap="wrap" color="fg.muted">
-                            <FiClock size={13} />
-                            <Box
-                                as="span"
-                                fontFamily="mono"
-                                fontSize="12px"
-                                fontWeight={700}
-                                color="fg.ink"
-                                whiteSpace="nowrap"
-                            >
-                                {pillText}
-                            </Box>
-                            <Box
-                                as="span"
-                                fontFamily="mono"
-                                fontSize="11px"
-                                color="fg.muted"
-                                whiteSpace="nowrap"
-                            >
-                                · {pauzeShort}
-                            </Box>
-                        </Flex>
-                        <Box color="fg.muted" flexShrink={0} display="inline-flex">
-                            {formatBoxOpen ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
+                        <FiClock size={13} />
+                        <Box as="span">
+                            Poluvrijeme:{" "}
+                            <chakra.span fontWeight={700} color="fg.ink">
+                                {schedule.halfLengthMin ?? 0}
+                            </chakra.span>{" "}
+                            min · pauza:{" "}
+                            <chakra.span fontWeight={700} color="fg.ink">
+                                {schedule.halftimeBreakMin ?? 0}
+                            </chakra.span>{" "}
+                            min · između utakmica:{" "}
+                            <chakra.span fontWeight={700} color="fg.ink">
+                                {schedule.breakBetweenMatchesMin ?? 0}
+                            </chakra.span>{" "}
+                            min
                         </Box>
-                    </chakra.button>
-
-                    {formatBoxOpen && (
-                        <Box px="4" pt="1" pb="3.5" borderTopWidth="1px" borderColor="border">
-                            <VStack align="stretch" gap="3" pt="2.5">
-                                {koFormatOn && (
-                                    <Text
-                                        fontSize="2xs"
-                                        fontWeight={700}
-                                        letterSpacing="wide"
-                                        textTransform="uppercase"
-                                        color="fg.muted"
-                                    >
-                                        Grupe
-                                    </Text>
-                                )}
-                                <Flex gap="2" wrap="wrap">
-                                    <FormatStat
-                                        label="Trajanje poluvrijeme"
-                                        value={`${schedule.halfLengthMin ?? 0} min`}
-                                    />
-                                    <FormatStat
-                                        label="Pauza poluvrijeme"
-                                        value={`${schedule.halftimeBreakMin ?? 0} min`}
-                                    />
-                                    <FormatStat
-                                        label="Pauza između utakmica"
-                                        value={`${schedule.breakBetweenMatchesMin ?? 0} min`}
-                                    />
-                                </Flex>
-                                {koFormatOn && (
-                                    <>
-                                        <Text
-                                            fontSize="2xs"
-                                            fontWeight={700}
-                                            letterSpacing="wide"
-                                            textTransform="uppercase"
-                                            color="fg.muted"
-                                        >
-                                            Završnica
-                                        </Text>
-                                        <Flex gap="2" wrap="wrap">
-                                            <FormatStat
-                                                label="Poluvrijeme"
-                                                value={`${schedule.koHalfLengthMin ?? 0} min`}
-                                            />
-                                            <FormatStat
-                                                label="Pauza poluvrijeme"
-                                                value={`${schedule.koHalftimeBreakMin ?? 0} min`}
-                                            />
-                                            {schedule.koBreakBetweenMatchesMin != null && (
-                                                <FormatStat
-                                                    label="Pauza između utakmica"
-                                                    value={`${schedule.koBreakBetweenMatchesMin} min`}
-                                                />
-                                            )}
-                                        </Flex>
-                                    </>
-                                )}
-                            </VStack>
-                        </Box>
-                    )}
+                        {koFormatOn && (
+                            <>
+                                <Box as="span" color="border.emphasized" aria-hidden>
+                                    ·
+                                </Box>
+                                <Box as="span">
+                                    Završnica - poluvrijeme:{" "}
+                                    <chakra.span fontWeight={700} color="fg.ink">
+                                        {schedule.koHalfLengthMin ?? 0}
+                                    </chakra.span>{" "}
+                                    min · pauza:{" "}
+                                    <chakra.span fontWeight={700} color="fg.ink">
+                                        {schedule.koHalftimeBreakMin ?? 0}
+                                    </chakra.span>{" "}
+                                    min
+                                    {schedule.koBreakBetweenMatchesMin != null && (
+                                        <>
+                                            {" "}
+                                            · između utakmica:{" "}
+                                            <chakra.span fontWeight={700} color="fg.ink">
+                                                {schedule.koBreakBetweenMatchesMin}
+                                            </chakra.span>{" "}
+                                            min
+                                        </>
+                                    )}
+                                </Box>
+                            </>
+                        )}
+                        {/* Small pencil (organizers, schedule laid out) - jumps
+                            straight into the inline format editor, same toggle
+                            as the "Uredi format" button in the card header. */}
+                        {configBoxToggle && (
+                            <IconButton
+                                aria-label="Uredi format"
+                                title="Uredi format"
+                                size="2xs"
+                                variant="ghost"
+                                rounded="full"
+                                ml="auto"
+                                flexShrink={0}
+                                onClick={() => setFormatEditorOpen((v) => !v)}
+                            >
+                                <FiEdit2 size={13} />
+                            </IconButton>
+                        )}
+                    </Flex>
                 </Box>
             )}
 
-            {/* Schedule controls box - a dedicated, always-visible row that sits
-                below the format summary and above the match list. Keeps the
-                actions (Termini završnice · Uredi format · Uredi raspored ·
-                Preuzmi · view toggle) put and reachable even when only finished
-                matches remain. Single source - no header-action / fallback-row. */}
-            {rawMatches.length > 0 && (
-                <Box
-                    borderWidth="1px"
-                    borderColor="border"
-                    bg="bg.surfaceTint"
-                    rounded="xl"
-                    px="3"
-                    py="2"
-                >
-                    {scheduleControls}
-                </Box>
-            )}
-
-            {/* Match list - upcoming (the schedule) first, finished at the bottom. */}
+            {/* Match list - one combined card. The header row carries the
+                filters (left) plus the prikaz toggle and schedule actions
+                (right); the body merges the upcoming schedule with the finished
+                matches, split by a labelled delimiter when both are present. The
+                two empty-state branches below are unchanged. */}
             {rawMatches.length === 0 ? (
                 <Panel>
                     <EmptyState
@@ -1932,91 +2072,175 @@ export default function ScheduleTab({
                     />
                 </Panel>
             ) : (
-                <>
-                    {upcomingMatches.length > 0 && (
-                        <SectionCard
-                            icon={LuCalendarClock}
-                            title="Raspored"
-                            padding="4"
+                <SectionCard padding="4">
+                    <VStack align="stretch" gap="4">
+                        {/* Header row - filters on the left, the prikaz toggle +
+                            schedule actions on the right (pushed with ml:auto).
+                            Wraps cleanly on narrow screens (the actions drop under
+                            the filters). Replaces the old icon + "Raspored" title. */}
+                        <Flex
+                            // Mobile: two tidy stacked rows (filters row, then
+                            // toggle+actions row) instead of free-form wrapping,
+                            // which let the right cluster land between / over
+                            // the wrapped selects. lg+: everything on one row.
+                            direction={{ base: "column", lg: "row" }}
+                            align={{ base: "stretch", lg: "center" }}
+                            gap="2"
+                            pb="3"
+                            borderBottomWidth="1px"
+                            borderColor="border"
                         >
-                            {viewMode === "grid" ? (
-                                /* Grid prikaz - view-only cards, day dividers
-                                   above each day's card group (multi-day only),
-                                   collapse shares the same "+ još N" row. */
-                                <VStack align="stretch" gap="2">
-                                    {dayGroups(displayedUpcoming).map((g, gi) => (
-                                        <Fragment key={g.key || "bez-termina"}>
-                                            {multiDay && (
-                                                <DayDivider label={dividerLabel(g.key)} first={gi === 0} />
-                                            )}
-                                            <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
-                                                {g.items.map((m) => renderCard(m))}
-                                            </SimpleGrid>
-                                        </Fragment>
-                                    ))}
-                                    {showMoreButton}
-                                </VStack>
-                            ) : (
-                            <VStack align="stretch" gap="2">
-                                {displayedUpcoming.map((m, idx) => {
-                                    // Day separator before the first match of each
-                                    // day (multi-day tournaments only).
-                                    const curKey = dateKey(m.kickoffAt)
-                                    const prevKey = idx > 0 ? dateKey(displayedUpcoming[idx - 1].kickoffAt) : null
-                                    const dayNode = multiDay && curKey !== prevKey
-                                        ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
-                                        : null
-                                    return (
-                                        <Fragment key={m.matchId}>
-                                            {dayNode}
-                                            {renderRow(m)}
-                                        </Fragment>
-                                    )
-                                })}
-                                {showMoreButton}
-                            </VStack>
+                            {/* Filters - only the dropdowns worth showing, same
+                                conditions + handlers as before, now inline in the
+                                header (the old standalone tinted box is gone). On
+                                base the selects split the row into equal thirds
+                                (native selects ellipsise their label) so all
+                                three + the broom stay on ONE line. */}
+                            {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
+                                <Flex align="center" gap="2" minW="0" flex="1">
+                                    {allTeamCount > 1 && (
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "220px" }}>
+                                            <NativeSelect.Field
+                                                value={teamFilter}
+                                                onChange={(e) => setTeamFilter(e.target.value)}
+                                                fontWeight={600}
+                                                aria-label="Filtriraj po ekipi"
+                                            >
+                                                <option value="">Sve ekipe</option>
+                                                {teamOptions.map((t) => (
+                                                    <option key={t.id} value={t.id}>
+                                                        {t.name}
+                                                    </option>
+                                                ))}
+                                            </NativeSelect.Field>
+                                            <NativeSelect.Indicator />
+                                        </NativeSelect.Root>
+                                    )}
+
+                                    {allGroupCount > 1 && (
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "170px" }}>
+                                            <NativeSelect.Field
+                                                value={groupFilter}
+                                                onChange={(e) => setGroupFilter(e.target.value)}
+                                                fontWeight={600}
+                                                aria-label="Filtriraj po skupini"
+                                            >
+                                                <option value="">Sve skupine</option>
+                                                {groupOptions.map((g) => (
+                                                    <option key={g} value={g}>
+                                                        Skupina {g}
+                                                    </option>
+                                                ))}
+                                            </NativeSelect.Field>
+                                            <NativeSelect.Indicator />
+                                        </NativeSelect.Root>
+                                    )}
+
+                                    {multiDay && (
+                                        <NativeSelect.Root size="sm" flex="1 1 0" minW="0" maxW={{ lg: "200px" }}>
+                                            <NativeSelect.Field
+                                                value={dayFilter}
+                                                onChange={(e) => setDayFilter(e.target.value)}
+                                                fontWeight={600}
+                                                aria-label="Filtriraj po danu"
+                                            >
+                                                <option value="">Svi dani</option>
+                                                {dayOptions.map((d) => (
+                                                    <option key={d} value={d}>
+                                                        {dayLabel(d)}
+                                                    </option>
+                                                ))}
+                                            </NativeSelect.Field>
+                                            <NativeSelect.Indicator />
+                                        </NativeSelect.Root>
+                                    )}
+
+                                    {/* Icon-only, always rendered to reserve its
+                                        space so picking a filter doesn't shift the
+                                        row; hidden visually (not removed from
+                                        layout) when no filter is active. */}
+                                    <IconButton
+                                        aria-label="Poništi filtere"
+                                        title="Poništi filtere"
+                                        size="xs"
+                                        variant="outline"
+                                        colorPalette="brand"
+                                        rounded="full"
+                                        onClick={clearFilters}
+                                        flexShrink={0}
+                                        visibility={anyFilter ? "visible" : "hidden"}
+                                        aria-hidden={!anyFilter}
+                                        tabIndex={anyFilter ? 0 : -1}
+                                    >
+                                        <FaBroom size={13} />
+                                    </IconButton>
+                                </Flex>
                             )}
-                        </SectionCard>
-                    )}
-                    {finishedMatches.length > 0 && (
-                        <SectionCard
-                            icon={LuCalendarClock}
-                            title="Završene utakmice"
-                            padding="4"
-                        >
-                            {viewMode === "grid" ? (
-                                <VStack align="stretch" gap="2">
-                                    {dayGroups(finishedMatches).map((g, gi) => (
-                                        <Fragment key={g.key || "bez-termina"}>
-                                            {multiDay && (
-                                                <DayDivider label={dividerLabel(g.key)} first={gi === 0} />
-                                            )}
-                                            <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
-                                                {g.items.map((m) => renderCard(m))}
-                                            </SimpleGrid>
-                                        </Fragment>
-                                    ))}
-                                </VStack>
-                            ) : (
-                            <VStack align="stretch" gap="2">
-                                {finishedMatches.map((m, idx) => {
-                                    const curKey = dateKey(m.kickoffAt)
-                                    const prevKey = idx > 0 ? dateKey(finishedMatches[idx - 1].kickoffAt) : null
-                                    const dayNode = multiDay && curKey !== prevKey
-                                        ? <DayDivider label={dividerLabel(curKey)} first={idx === 0} />
-                                        : null
-                                    return (
-                                        <Fragment key={m.matchId}>
-                                            {dayNode}
-                                            {renderRow(m)}
-                                        </Fragment>
-                                    )
-                                })}
-                            </VStack>
-                            )}
-                        </SectionCard>
-                    )}
-                </>
+
+                            {/* Right cluster - prikaz toggle then the schedule
+                                actions (Termini završnice · Uredi format · Uredi
+                                raspored · Preuzmi). Base: its own row under the
+                                filters, toggle left / actions right. lg+: pushed
+                                to the right edge of the single header row. */}
+                            <Flex
+                                align="center"
+                                gap="2"
+                                wrap={{ base: "wrap", lg: "nowrap" }}
+                                justify={{ base: "space-between", lg: "flex-end" }}
+                                ml={{ lg: "auto" }}
+                                flexShrink={0}
+                            >
+                                {viewToggle}
+                                {scheduleControls}
+                            </Flex>
+                        </Flex>
+
+                        {/* Merged body - upcoming schedule first, then (only when
+                            BOTH lists exist) a labelled delimiter, then the
+                            finished matches. "Sažmi"/show-more stays on upcoming. */}
+                        {upcomingMatches.length > 0 &&
+                            renderMatchSection(displayedUpcoming, showMoreButton)}
+
+                        {finishedMatches.length > 0 && (
+                            <>
+                                {upcomingMatches.length > 0 ? (
+                                    /* Delimiter between the two lists - a muted
+                                       uppercase label flanked by hairline rules
+                                       (mirrors DayDivider, without the date icon). */
+                                    <Flex align="center" gap="3" aria-hidden>
+                                        <Box flex="1" h="1px" bg="green.muted" />
+                                        <Text
+                                            fontFamily="mono"
+                                            fontSize="sm"
+                                            fontWeight={800}
+                                            letterSpacing="0.08em"
+                                            textTransform="uppercase"
+                                            color="green.fg"
+                                            whiteSpace="nowrap"
+                                        >
+                                            Završene utakmice
+                                        </Text>
+                                        <Box flex="1" h="1px" bg="green.muted" />
+                                    </Flex>
+                                ) : (
+                                    /* Only finished matches remain - a plain left
+                                       label, no delimiter rules needed. */
+                                    <Text
+                                        fontFamily="mono"
+                                        fontSize="2xs"
+                                        fontWeight={800}
+                                        letterSpacing="0.08em"
+                                        textTransform="uppercase"
+                                        color="fg.muted"
+                                    >
+                                        Završene utakmice
+                                    </Text>
+                                )}
+                                {renderMatchSection(finishedMatches, null)}
+                            </>
+                        )}
+                    </VStack>
+                </SectionCard>
             )}
 
             {/* Confirm popup for the two destructive schedule actions. */}

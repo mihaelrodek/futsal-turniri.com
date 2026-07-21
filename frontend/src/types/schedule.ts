@@ -41,6 +41,13 @@ export type ScheduledMatch = {
     /** Penalty-shootout score (knockout level after regulation). */
     penalties1?: number | null
     penalties2?: number | null
+    /** Accumulated team fouls per half - counters, not timed events. Shown as a
+     *  per-half tally on the timeline; the only foul source once a match is
+     *  FINISHED and the live overlay no longer carries it. */
+    fouls1First?: number | null
+    fouls1Second?: number | null
+    fouls2First?: number | null
+    fouls2Second?: number | null
 }
 
 export type Schedule = ScheduleConfig & {

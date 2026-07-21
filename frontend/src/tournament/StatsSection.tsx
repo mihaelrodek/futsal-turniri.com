@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, NativeSelect, Text, VStack } from "@chakra-ui/react"
-import { FiAward, FiTarget } from "react-icons/fi"
+import { FiAward, FiDownload, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
 import { setScorerScope } from "../api/tournaments"
 import type { ScorerScope, TournamentDetails } from "../types/tournaments"
@@ -10,9 +10,11 @@ import { Loader } from "../ui/primitives"
 import {
     AccentStat,
     BallIcon,
+    GhostButton,
     MonoLabel,
     SectionCard,
 } from "../ui/pitch"
+import { ExportDialog, type ExportMeta } from "../components/TournamentExport"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Statistika" section - Pitch theme.
@@ -31,6 +33,50 @@ import {
    is empty - the standings panel is suppressed in that case because the
    underlying group-standings endpoint isn't wired here yet.
    ────────────────────────────────────────────────────────────────────── */
+
+/** Slim mobile stat chip - the phone-width stand-in for a full AccentStat
+ *  card. Three of these share one row (~56px total) where the stacked cards
+ *  used to eat ~350px before the search + scorer list became visible. */
+function StatChip({
+    accent,
+    label,
+    value,
+}: {
+    accent: string
+    label: string
+    value: string | number
+}) {
+    return (
+        <Box
+            position="relative"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            pl="2.5"
+            pr="2"
+            py="1.5"
+            overflow="hidden"
+            minW="0"
+        >
+            <Box position="absolute" top="0" left="0" w="3px" h="100%" bg={accent} />
+            <Text
+                fontFamily="mono"
+                fontSize="9px"
+                fontWeight={700}
+                letterSpacing="0.08em"
+                textTransform="uppercase"
+                color="fg.muted"
+                truncate
+            >
+                {label}
+            </Text>
+            <Text fontSize="15px" fontWeight={800} color="fg.ink" letterSpacing="-0.01em" truncate>
+                {value}
+            </Text>
+        </Box>
+    )
+}
 
 /** Deterministic jersey number 1–99 from a player id. Visual cue only - the
  *  backend's `ScorerDto` doesn't expose a jersey number today. */
@@ -180,6 +226,7 @@ export default function StatsSection({
     canEdit = false,
     scorerScope,
     onTournamentChanged,
+    exportMeta,
 }: {
     uuid: string
     /** Organizer/admin - shows the "which goals count" picker. */
@@ -188,6 +235,10 @@ export default function StatsSection({
     scorerScope?: ScorerScope | null
     /** Called with the fresh details DTO after the scope is saved. */
     onTournamentChanged?: (t: TournamentDetails) => void
+    /** Tournament meta for the "Preuzmi" poster header/QR. When absent (the
+     *  parent doesn't thread it yet) the poster falls back to a generic name +
+     *  a uuid-based tournament URL - see `effExportMeta`. */
+    exportMeta?: ExportMeta
 }) {
     const queryClient = useQueryClient()
     // Seed from cache so returning to the Statistika tab paints instantly.
@@ -195,6 +246,16 @@ export default function StatsSection({
     const [scorers, setScorers] = useState<ScorerDto[]>(cachedScorers ?? [])
     const [loading, setLoading] = useState(!cachedScorers)
     const [savingScope, setSavingScope] = useState(false)
+    const [exportOpen, setExportOpen] = useState(false)
+
+    // Poster meta. The parent (TournamentDetailsPage) doesn't thread `exportMeta`
+    // into StatsSection yet the way it does for the schedule/groups/bracket tabs,
+    // so fall back to a generic name + a uuid-based public URL (the QR endpoint
+    // accepts the uuid). Coordinator TODO: pass `exportMeta` for the full header.
+    const effExportMeta: ExportMeta = exportMeta ?? {
+        tournamentName: "Futsal turnir",
+        tournamentUrl: `${window.location.origin}/turniri/${uuid}`,
+    }
 
     const scope: ScorerScope = scorerScope ?? "KNOCKOUT"
     // When group goals don't count, every row shows both tallies.
@@ -333,8 +394,27 @@ export default function StatsSection({
     /* ── Populated ────────────────────────────────────────────────────── */
     return (
         <VStack align="stretch" gap="5">
-            {/* 3-tile headline strip */}
-            <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap="3">
+            {/* Headline stats. Phone: one slim row of three compact chips so
+                the search box and the scorer list surface without scrolling;
+                sm+: the familiar 3-tile AccentStat strip. */}
+            <Grid templateColumns="repeat(3, 1fr)" gap="2" display={{ base: "grid", sm: "none" }}>
+                <StatChip
+                    accent="var(--chakra-colors-pitch-500)"
+                    label="Strijelci"
+                    value={scorers.length}
+                />
+                <StatChip
+                    accent="var(--chakra-colors-accent-goal)"
+                    label="Golovi"
+                    value={totalGoals}
+                />
+                <StatChip
+                    accent="var(--chakra-colors-accent-amber)"
+                    label="Top ekipa"
+                    value={topTeam?.name ?? "-"}
+                />
+            </Grid>
+            <Grid templateColumns="repeat(3, 1fr)" gap="3" display={{ base: "none", sm: "grid" }}>
                 <AccentStat
                     accent="var(--chakra-colors-pitch-500)"
                     icon={<FiTarget size={12} />}
@@ -375,17 +455,37 @@ export default function StatsSection({
                         ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
                         : "Lista strijelaca po broju postignutih golova"
                 }
+                action={
+                    <HStack gap="3" wrap="wrap" justify="flex-end">
+                        {scopeControl}
+                        <GhostButton
+                            px="3.5"
+                            py="2"
+                            fontSize="13px"
+                            icon={<FiDownload size={14} />}
+                            onClick={() => setExportOpen(true)}
+                        >
+                            Preuzmi
+                        </GhostButton>
+                    </HStack>
+                }
             >
-                <VStack align="stretch" gap="3">
-                    {/* Which goals count toward the race - organizer can change it. */}
-                    <Flex justify="flex-end">{scopeControl}</Flex>
-                    <VStack align="stretch" gap="2">
-                        {scorers.map((s, i) => (
-                            <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
-                        ))}
-                    </VStack>
+                <VStack align="stretch" gap="2">
+                    {scorers.map((s, i) => (
+                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
+                    ))}
                 </VStack>
             </SectionCard>
+
+            {/* Branded top-scorers poster (PDF / JPG) - same export system as
+                the schedule / groups / bracket tabs. */}
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="scorers"
+                meta={effExportMeta}
+                scorers={scorers}
+            />
         </VStack>
     )
 }

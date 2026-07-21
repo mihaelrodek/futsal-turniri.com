@@ -90,6 +90,18 @@ function toOffsetIso(date: string, time: string): string {
     return `${date}T${time || "09:00"}:00${sign}${oh}:${om}`
 }
 
+/** Local "HH:mm" of an offset-ISO kickoff - the wall-clock time in the offset
+ *  the backend echoed (the very offset toOffsetIso sent), read straight off the
+ *  string so it is never re-interpreted into another zone. */
+function isoLocalTime(iso: string): string {
+    return iso.slice(11, 16)
+}
+
+/** Local "YYYY-MM-DD" of an offset-ISO kickoff (see isoLocalTime). */
+function isoLocalDate(iso: string): string {
+    return iso.slice(0, 10)
+}
+
 /** Inclusive list of "YYYY-MM-DD" dates from `from` to `to` (capped at 60). */
 function dayList(from: string, to: string): string[] {
     if (!from) return []
@@ -227,10 +239,14 @@ function Time24Picker({
     value,
     onChange,
     w = "full",
+    size = "sm",
 }: {
     value: string
     onChange: (v: string) => void
     w?: string
+    /** Trigger button size - "xs" keeps the inline sketch cell from bloating
+     *  the row height; the config-form default stays "sm". */
+    size?: "xs" | "sm"
 }) {
     const [open, setOpen] = useState(false)
     const p = (n: number) => String(n).padStart(2, "0")
@@ -250,7 +266,7 @@ function Time24Picker({
                 <Button
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size={size}
                     w={w}
                     px="2"
                     gap="1.5"
@@ -356,6 +372,12 @@ export default function MultiDaySchedulePlanner({
      *  always shows the preview's i-th match slot time; dragging changes WHICH
      *  match occupies the slot (and where the pauses sit). */
     const [sketchRows, setSketchRows] = useState<SketchRow[] | null>(null)
+    /** Per-match kickoff overrides in the sketch: MATCH `planIndex` → "HH:mm"
+     *  (24h, the local time on that match's day). An override splits the match's
+     *  day into a fresh segment starting at the picked time (see buildRequest),
+     *  cascading it + every later match in that segment. Cleared on a fresh
+     *  sketch (applyPreview) since a re-drag / re-sketch invalidates positions. */
+    const [timeOverrides, setTimeOverrides] = useState<Record<number, string>>({})
     /** Drag state: index (into `sketchRows`) being dragged + the row hovered. */
     const [dragIdx, setDragIdx] = useState<number | null>(null)
     const [overIdx, setOverIdx] = useState<number | null>(null)
@@ -377,6 +399,10 @@ export default function MultiDaySchedulePlanner({
     const blockHiRef = useRef(0)
     /** Latest-wins guard for the silent "re-price" preview re-runs. */
     const previewSeqRef = useRef(0)
+    /** Last serialized `timeOverrides` a re-price ran for - mirrors
+     *  lastBreaksKeyRef so a fresh sketch (which resets it to "{}") doesn't
+     *  trigger a redundant re-price. */
+    const lastOverridesKeyRef = useRef<string>("{}")
     /** autoSketch mode: guards the automatic sketch so React StrictMode's
      *  dev-only double effect invocation (or an unrelated re-render) can't
      *  fire it twice. */
@@ -519,16 +545,71 @@ export default function MultiDaySchedulePlanner({
     }
 
     function buildRequest(): SchedulePlanRequest {
-        return {
+        const base = {
             ...cfg,
             ...(koOnly ? { koOnly: true } : {}),
-            days: rows
-                .filter((r) => (parseInt(r.matches || "0", 10) || 0) > 0)
-                .map((r) => ({
-                    firstKickoff: toOffsetIso(r.date, r.firstStart),
-                    matches: parseInt(r.matches, 10) || 0,
-                })),
         }
+        // First sketch (no preview yet) or no time overrides → the flat per-day
+        // layout: one segment per configured day, exactly as before. Keeping
+        // this path byte-identical means initial sketching and pause re-pricing
+        // are unchanged.
+        if (!preview || Object.keys(timeOverrides).length === 0) {
+            return {
+                ...base,
+                days: rows
+                    .filter((r) => (parseInt(r.matches || "0", 10) || 0) > 0)
+                    .map((r) => ({
+                        firstKickoff: toOffsetIso(r.date, r.firstStart),
+                        matches: parseInt(r.matches, 10) || 0,
+                    })),
+            }
+        }
+        // Time overrides present → split each day into consecutive SEGMENTS. The
+        // backend lays out `days` as INDEPENDENT segments (each starts at its own
+        // firstKickoff, then concatenates onto the global play order), so a
+        // per-match override is simply "close the running segment, open a new one
+        // at the picked time". The segment `matches` counts still sum to the same
+        // scheduled total and stay in play order, so the global break positions
+        // (beforeOrderPos) line up unchanged - no backend change is needed.
+        const days: SchedulePlanRequest["days"] = []
+        dayBuckets.forEach((bucket) => {
+            // Segment MATCH rows only; pauses shift time via `breaks`, never a
+            // segment (the i-th non-empty bucket == the i-th filled `rows` day,
+            // the same alignment buildRequest's flat path relies on).
+            const matches = bucket.filter((c) => c.row.kind === "match")
+            if (matches.length === 0) return
+            // The day's calendar date + configured base start: the date comes off
+            // the first slot's ISO (the offset we sent, read straight off the
+            // string); the base start is the matching `rows` entry's firstStart
+            // (NOT the slot time, which would already fold in a preceding break).
+            const date = matches[0].kickoff ? isoLocalDate(matches[0].kickoff) : rows[0].date
+            const baseStart =
+                rows.find((r) => r.date === date)?.firstStart ??
+                (matches[0].kickoff ? isoLocalTime(matches[0].kickoff) : defaultTime)
+            let segStart = ""
+            let segCount = 0
+            const flush = () => {
+                if (segCount > 0) days.push({ firstKickoff: toOffsetIso(date, segStart), matches: segCount })
+            }
+            matches.forEach((c, mi) => {
+                const ov = timeOverrides[(c.row as MatchRow).planIndex]
+                if (mi === 0) {
+                    // The day opens at its base start, or the first match's override.
+                    segStart = ov ?? baseStart
+                    segCount = 1
+                } else if (ov != null) {
+                    // A mid-day override closes the running segment and opens a new
+                    // one at the picked time (still on the SAME day's date).
+                    flush()
+                    segStart = ov
+                    segCount = 1
+                } else {
+                    segCount++
+                }
+            })
+            flush()
+        })
+        return { ...base, days }
     }
 
     // Pointer-based drag reorder of the sketch rows - mouse AND touch (same
@@ -608,6 +689,11 @@ export default function MultiDaySchedulePlanner({
     function applyPreview(pv: SchedulePreview) {
         hasSketchedOnceRef.current = true
         setPreview(pv)
+        // A fresh sketch clears any per-match time overrides (positions are
+        // re-derived); sync the guard ref so the overrides effect below sees no
+        // change and skips a redundant re-price.
+        setTimeOverrides({})
+        lastOverridesKeyRef.current = "{}"
         const flat: SketchRow[] = []
         for (const day of pv.days) {
             for (const m of day.matches) {
@@ -687,6 +773,23 @@ export default function MultiDaySchedulePlanner({
         void refreshPreviewTimes(breaks)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [breaksKey, preview])
+
+    // Whenever a per-match time override is set / changed, silently re-price the
+    // preview so this match and every later match in its segment cascade to the
+    // new times - the current sketch order + pauses are kept (buildRequest reads
+    // the overrides). Mirrors the pauses effect above; latest-wins via
+    // previewSeqRef inside refreshPreviewTimes.
+    const overridesKey = useMemo(() => JSON.stringify(timeOverrides), [timeOverrides])
+    useEffect(() => {
+        if (!preview) {
+            lastOverridesKeyRef.current = overridesKey
+            return
+        }
+        if (overridesKey === lastOverridesKeyRef.current) return
+        lastOverridesKeyRef.current = overridesKey
+        void refreshPreviewTimes(breaks)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [overridesKey, preview])
 
     /** Append a pause to the end of the sketch list (the organizer then drags it
      *  into place). A pause left at the very end has no effect on generate. */
@@ -920,11 +1023,26 @@ export default function MultiDaySchedulePlanner({
                                                             }
                                                         >
                                                             {grip}
-                                                            <Text fontFamily="mono" fontSize="13px" color="pitch.500" fontWeight={700} flexShrink={0}>
-                                                                {kickoff
-                                                                    ? new Date(kickoff).toLocaleTimeString("hr-HR", { hour: "2-digit", minute: "2-digit" })
-                                                                    : "--:--"}
-                                                            </Text>
+                                                            {/* Clickable kickoff: pick a different time for this
+                                                                match (splits its day into a segment starting there,
+                                                                cascading this + later matches). Falls back to a
+                                                                static label only for a slot with no time yet. */}
+                                                            {kickoff ? (
+                                                                <Box flexShrink={0}>
+                                                                    <Time24Picker
+                                                                        value={timeOverrides[r.planIndex] ?? isoLocalTime(kickoff)}
+                                                                        onChange={(v) =>
+                                                                            setTimeOverrides((prev) => ({ ...prev, [r.planIndex]: v }))
+                                                                        }
+                                                                        w="auto"
+                                                                        size="xs"
+                                                                    />
+                                                                </Box>
+                                                            ) : (
+                                                                <Text fontFamily="mono" fontSize="13px" color="pitch.500" fontWeight={700} flexShrink={0}>
+                                                                    --:--
+                                                                </Text>
+                                                            )}
                                                             <Text fontFamily="mono" fontSize="10px" color="fg.muted" flexShrink={0} minW="86px" textTransform="uppercase">
                                                                 {STAGE_LABEL[r.stage] ?? r.stage}{r.groupName ? ` ${r.groupName}` : ""}
                                                             </Text>

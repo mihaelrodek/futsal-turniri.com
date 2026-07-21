@@ -234,7 +234,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
             flex="1 0 auto"
             display="flex"
             flexDirection="column"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
         >
             <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
             <Box
@@ -503,7 +503,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
    sit on a white surface. The cards are desktop-only (hidden on mobile). */
 const MOCK_SHELL = {
     bg: "rgba(255,255,255,0.97)",
-    color: "#0e1f15",
+    color: "#0B1522",
     rounded: "xl",
     overflow: "hidden",
     boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
@@ -562,7 +562,7 @@ function PromoMockLive() {
                 <Flex align="center" gap="2" px="3" py="1.5">
                     <Box fontSize="11px">⚽</Box>
                     <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
-                        <Box as="span" fontWeight={700} color="#0e1f15">12'</Box> Marko Horvat
+                        <Box as="span" fontWeight={700} color="#0B1522">12'</Box> Marko Horvat
                     </Box>
                 </Flex>
                 <Flex
@@ -575,7 +575,7 @@ function PromoMockLive() {
                 >
                     <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
                     <Box fontSize="10.5px" color="rgba(0,0,0,0.55)">
-                        <Box as="span" fontWeight={700} color="#0e1f15">18'</Box> Ivan Kovač
+                        <Box as="span" fontWeight={700} color="#0B1522">18'</Box> Ivan Kovač
                     </Box>
                 </Flex>
             </VStack>
@@ -594,8 +594,8 @@ function PromoMockNotif() {
                     w="26px"
                     h="26px"
                     rounded="lg"
-                    bg="#0b6b3a"
-                    color="white"
+                    bg="#2AD4C8"
+                    color="#0B1522"
                     flexShrink={0}
                 >
                     <FiBell size={13} />
@@ -640,7 +640,7 @@ function PromoMockFollower() {
 function PromoMockZapisnik() {
     return (
         <Box {...MOCK_SHELL} w="205px">
-            <Flex align="center" justify="space-between" px="3" py="1.5" bg="#0b6b3a" color="white">
+            <Flex align="center" justify="space-between" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <HStack gap="1.5">
                     <FiEdit3 size={11} />
                     <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
@@ -652,7 +652,7 @@ function PromoMockZapisnik() {
             <VStack align="stretch" gap="0" px="3" pt="1.5" pb="1">
                 <Flex align="center" gap="2" py="1">
                     <Box fontSize="11px">⚽</Box>
-                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0E8A81" w="18px">
                         12'
                     </Box>
                     <Box
@@ -674,7 +674,7 @@ function PromoMockZapisnik() {
                     borderColor="rgba(0,0,0,0.06)"
                 >
                     <Box w="9px" h="12px" rounded="2px" bg="#eab308" flexShrink={0} />
-                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0b6b3a" w="18px">
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} color="#0E8A81" w="18px">
                         18'
                     </Box>
                     <Box fontSize="10.5px" fontWeight={600} flex="1">Ivan Kovač</Box>
@@ -686,8 +686,8 @@ function PromoMockZapisnik() {
                     textAlign="center"
                     fontSize="9.5px"
                     fontWeight={700}
-                    color="white"
-                    bg="#0b6b3a"
+                    color="#0B1522"
+                    bg="#2AD4C8"
                     rounded="md"
                     py="1"
                 >
@@ -698,7 +698,7 @@ function PromoMockZapisnik() {
                     textAlign="center"
                     fontSize="9.5px"
                     fontWeight={700}
-                    color="#0e1f15"
+                    color="#0B1522"
                     bg="rgba(0,0,0,0.06)"
                     rounded="md"
                     py="1"
@@ -717,7 +717,7 @@ function PromoMockBracket() {
             <Box
                 fontSize="9px"
                 fontWeight={aWins ? 800 : 600}
-                color={aWins ? "#0b6b3a" : "#0e1f15"}
+                color={aWins ? "#0E8A81" : "#0B1522"}
                 px="1.5"
                 py="0.5"
                 whiteSpace="nowrap"
@@ -730,7 +730,7 @@ function PromoMockBracket() {
             <Box
                 fontSize="9px"
                 fontWeight={aWins ? 600 : 800}
-                color={aWins ? "#0e1f15" : "#0b6b3a"}
+                color={aWins ? "#0B1522" : "#0E8A81"}
                 px="1.5"
                 py="0.5"
                 whiteSpace="nowrap"
@@ -743,7 +743,7 @@ function PromoMockBracket() {
     )
     return (
         <Box {...MOCK_SHELL} w="200px">
-            <Flex align="center" gap="1.5" px="3" py="1.5" bg="#0b6b3a" color="white">
+            <Flex align="center" gap="1.5" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <FiGrid size={11} />
                 <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
                     ELIMINACIJA
@@ -760,7 +760,7 @@ function PromoMockBracket() {
                     <Box
                         fontSize="7.5px"
                         fontWeight={700}
-                        color="#0b6b3a"
+                        color="#0E8A81"
                         letterSpacing="0.12em"
                         textAlign="center"
                         mt="1"
@@ -826,7 +826,7 @@ function PromoHero({ data }: { data: PromoSlide }) {
             flex="1 0 auto"
             display="flex"
             flexDirection="column"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
         >
             <PitchBackdrop opacity={0.15} variant="hero" tone="pitch" />
             <Box
@@ -845,7 +845,7 @@ function PromoHero({ data }: { data: PromoSlide }) {
                 py="2.5"
                 borderBottomWidth="1px"
                 borderColor="rgba(255,255,255,0.12)"
-                bg="rgba(11, 107, 58, 0.32)"
+                bg="rgba(42, 212, 200, 0.32)"
                 gap="3"
             >
                 <HStack gap="2.5">
@@ -934,56 +934,52 @@ function PromoHero({ data }: { data: PromoSlide }) {
 
 /* ──────────────────────────────────────────────────────────────────────────
    Home hero carousel - the top slot on the listing page. A swipeable (touch +
-   mouse) carousel over the live content and the two promo slides. Live content
-   always leads, in priority order: the live-stream hero (when the admin banner
-   is streaming), then the zapisnik-scored live scoreboard (when a match is in
-   progress), then the promo slides (organiser + follower). While anything is
-   live the carousel pins to that live content and auto-cycles only among the
-   live slides - never into the promos; with nothing live the two promos
-   auto-advance every 5s. Snaps on drag release, shows paging dots. The
-   live/promo slides share HERO_MIN_H / flex-fill so paging never reflows the
-   page; the taller stream hero sets the height while it leads.
+   mouse) carousel over the live scoreboard slide and the two promo slides.
+   Live content always leads, so the zapisnik-scored live scoreboard (when a
+   match is in progress) is never buried behind the promos. While it's present
+   the carousel pins to it and never auto-cycles into the promos - manual
+   swipe/dots still reach them; with nothing live the two promos auto-advance
+   every 5s. Snaps on drag release, shows paging dots. The live/promo slides
+   share HERO_MIN_H / flex-fill so paging never reflows the page.
+   NOTE - the admin live-stream banner is NOT part of this carousel: when it's
+   streaming, the page renders <StreamHero> alone in the hero slot instead of
+   mounting this component at all (see the render branch below), so the stream
+   is the sole focus with no rotating banners underneath it.
    ────────────────────────────────────────────────────────────────────── */
 
-function HomeHero({ match, stream }: { match: LiveMatch | null; stream?: React.ReactNode }) {
-    // Slide order, live content first so a live hero is never buried behind the
-    // promos: the live-stream hero (when streaming), then the zapisnik-scored
-    // live scoreboard (when a match is in progress), then the two always-present
-    // promo slides. `stream` is a ready-built StreamHero passed from the page
-    // (null when not streaming); the scoreboard slide is the featured match.
-    const streamSlide = stream ?? null
+function HomeHero({ match }: { match: LiveMatch | null }) {
+    // Slide order, live content first so a live hero is never buried behind
+    // the promos: the zapisnik-scored live scoreboard (when a match is in
+    // progress), then the two always-present promo slides.
     const liveSlide = match ? <LiveHero key="live" match={match} /> : null
-    const liveSlides = [streamSlide, liveSlide].filter(Boolean) as React.ReactNode[]
     const promos = PROMO_SLIDES.map((p) => <PromoHero key={p.kicker} data={p} />)
-    const slides = [...liveSlides, ...promos]
-    const liveCount = liveSlides.length
+    const slides = liveSlide ? [liveSlide, ...promos] : promos
+    const liveCount = liveSlide ? 1 : 0
     const count = slides.length
     const [idx, setIdx] = useState(0)
     const active = idx % count
     const go = (n: number) => setIdx(((n % count) + count) % count)
 
     // Autoplay every 5s. With no live content the promos rotate as before. With
-    // live content present the carousel never rotates into the promos: it pins
-    // to the single live slide, or cycles just the two live slides (stream then
-    // scoreboard) when both exist. Manual swiping to the promos still works;
-    // autoplay simply won't take the viewer there (the guard also stays
-    // defensive - there are always the two promos behind).
+    // the live scoreboard present the carousel never rotates into the promos:
+    // it just pins to that single live slide. Manual swiping to the promos
+    // still works; autoplay simply won't take the viewer there (the guard also
+    // stays defensive - there are always the two promos behind).
     const [paused, setPaused] = useState(false)
     useEffect(() => {
         // How many leading slides autoplay may cycle through: only the live
-        // ones while any are live, otherwise all (promo) slides.
+        // one while it's present, otherwise all (promo) slides.
         const cycleLen = liveCount > 0 ? liveCount : count
         if (cycleLen < 2 || paused) return
         const id = setInterval(() => setIdx((i) => (i + 1) % cycleLen), 5000)
         return () => clearInterval(id)
     }, [count, liveCount, paused])
 
-    // Keep the active slide sensible as the live set changes underneath us
-    // (stream flips on, a match ends, promos-only <-> live): snap back to the
-    // first slide. With live content that pins the hero on the top-priority
-    // live slide (stream first, else the scoreboard); with none it just
-    // re-seeds the promo rotation. Also clamps away a now-out-of-range index
-    // when the slide count shrinks.
+    // Keep the active slide sensible as the live set changes underneath us (a
+    // match starts or ends, promos-only <-> live): snap back to the first
+    // slide. With live content that pins the hero on the scoreboard slide;
+    // with none it just re-seeds the promo rotation. Also clamps away a
+    // now-out-of-range index when the slide count shrinks.
     useEffect(() => {
         setIdx(0)
     }, [liveCount])
@@ -2125,12 +2121,14 @@ export default function TournamentsPage() {
         <VStack align="stretch" gap="4">
             <HelpFab />
             {/* Stream mode drives the hero slot: STREAMING → the video hero
-                leads the carousel; ADS → sponsor banner; PAUSED → "pauziran"
-                placeholder; OFF → the normal promo/live carousel. While a match
-                is live (streaming and/or zapisnik-scored) the carousel pins to
-                that live content and never auto-cycles into the promo banners -
-                the ordering and pinning live in HomeHero. ADS / PAUSED still
-                take over the whole hero slot (no carousel). */}
+                takes over the ENTIRE slot alone - no carousel, no promo
+                slides, no live-scoreboard slide (the stream panel already
+                shows the match timeline itself); ADS → sponsor banner; PAUSED
+                → "pauziran" placeholder - these also take over the whole slot.
+                OFF (nothing live to stream) → the normal promo/live carousel,
+                which still pins to a live scoreboard match and never
+                auto-cycles into the promo banners (ordering/pinning live in
+                HomeHero). */}
             {streamState === "ADS" ? (
                 <StreamPausedBanner
                     mode="ads"
@@ -2139,23 +2137,18 @@ export default function TournamentsPage() {
                 />
             ) : streamState === "PAUSED" ? (
                 <StreamPausedBanner mode="paused" />
-            ) : (
-                <HomeHero
-                    match={liveHeroMatch}
-                    stream={
-                        streamBannerLive ? (
-                            <StreamHero
-                                url={streamBanner!.url!}
-                                match={streamMatch}
-                                tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
-                                tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
-                                viewers={streamViewers}
-                                onEnterTheater={enterTheater}
-                                centerOverlay={streamOverlay}
-                            />
-                        ) : null
-                    }
+            ) : streamBannerLive ? (
+                <StreamHero
+                    url={streamBanner!.url!}
+                    match={streamMatch}
+                    tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
+                    tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
+                    viewers={streamViewers}
+                    onEnterTheater={enterTheater}
+                    centerOverlay={streamOverlay}
                 />
+            ) : (
+                <HomeHero match={liveHeroMatch} />
             )}
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}

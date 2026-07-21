@@ -201,7 +201,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                 rounded="2xl"
                 p="4"
                 css={{
-                    boxShadow: "0 4px 24px rgba(14, 31, 21, 0.06)",
+                    boxShadow: "0 4px 24px rgba(11, 21, 34, 0.06)",
                 }}
             >
                 {children}

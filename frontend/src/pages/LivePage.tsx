@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Box, Flex, Grid, HStack, Heading, Text, VStack } from "@chakra-ui/react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { Box, Button, Flex, Grid, HStack, Heading, Text, VStack } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
-import { FiCalendar, FiChevronRight, FiClock, FiMapPin, FiRadio } from "react-icons/fi"
+import { FiCalendar, FiChevronRight, FiClock, FiGrid, FiList, FiMapPin, FiPlay, FiRadio } from "react-icons/fi"
 import {
     fetchLiveMatches,
     fetchUpcomingMatches,
@@ -12,8 +12,10 @@ import {
 } from "../api/live"
 import { fetchFeaturedTournament, fetchTournamentDetails } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
+import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
 import type { TournamentCard } from "../types/tournaments"
 import {
+    FilterChip,
     MonoLabel,
     PitchBackdrop,
     PrimaryButton,
@@ -117,7 +119,7 @@ function FeaturedTournamentHero({
             rounded="2xl"
             overflow="hidden"
             color="white"
-            bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+            bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
             cursor="pointer"
             onClick={onOpen}
             transition="transform .15s, box-shadow .15s"
@@ -473,6 +475,12 @@ function LiveMatchCard({
                         halfLengthMin={match.halfLengthMin}
                         pollMs={8000}
                         refreshSignal={refreshSignal}
+                        fouls={{
+                            t1First: match.fouls1First ?? 0,
+                            t1Second: match.fouls1Second ?? 0,
+                            t2First: match.fouls2First ?? 0,
+                            t2Second: match.fouls2Second ?? 0,
+                        }}
                     />
                 </Box>
             )}
@@ -528,6 +536,347 @@ function LiveMatchCard({
 
 type MatchDayGroup = { key: string; date: Date; matches: UpcomingMatch[] }
 
+/* ── Upcoming-matches horizon filter ───────────────────────────────────────
+   The list spans every tournament, so it gets long fast. These chips narrow
+   it to a time horizon; "sve" is the default so nothing is hidden until the
+   user asks for it. */
+type UpcomingRange = "today" | "tomorrow" | "week" | "month" | "all"
+
+const UPCOMING_RANGES: { key: UpcomingRange; label: string }[] = [
+    { key: "today", label: "Danas" },
+    { key: "tomorrow", label: "Sutra" },
+    { key: "week", label: "Ovaj tjedan" },
+    { key: "month", label: "Ovaj mjesec" },
+    { key: "all", label: "Sve" },
+]
+
+/** Last instant of the Croatian week (Mon-Sun) that `from` falls in. */
+function endOfWeek(from: Date): Date {
+    const day = from.getDay() // 0 = Sunday … 6 = Saturday
+    const daysLeft = day === 0 ? 0 : 7 - day
+    const d = new Date(from)
+    d.setDate(d.getDate() + daysLeft)
+    d.setHours(23, 59, 59, 999)
+    return d
+}
+
+/** Last instant of `from`'s calendar month. */
+function endOfMonth(from: Date): Date {
+    return new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999)
+}
+
+/** Does a kickoff fall inside the selected horizon? "today"/"tomorrow" match
+ *  the calendar day exactly; "week"/"month" are open-ended up to the end of
+ *  the current week/month (the list only ever holds future matches anyway). */
+function withinRange(d: Date, range: UpcomingRange, today: Date): boolean {
+    if (range === "all") return true
+    if (range === "today") return dateKey(d) === dateKey(today)
+    if (range === "tomorrow") {
+        const t = new Date(today)
+        t.setDate(t.getDate() + 1)
+        return dateKey(d) === dateKey(t)
+    }
+    if (range === "week") return d.getTime() <= endOfWeek(today).getTime()
+    return d.getTime() <= endOfMonth(today).getTime()
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Live-matches VIEW toggle.
+
+   Two renderings of the same LiveMatch[]:
+     - "list"  - a compact SofaScore-style list, matches grouped by tournament
+                 (the new default).
+     - "cards" - the original GLAVNA / OSTALE scoreboard cards.
+   The choice is a viewing preference (not per-tournament), persisted globally
+   under `futsal:live-view` - same convention as `futsal:schedule-view`.
+   ────────────────────────────────────────────────────────────────────────── */
+const LIVE_VIEW_KEY = "futsal:live-view"
+type LiveView = "list" | "cards"
+
+/** Icon-only segmented button - same pattern as the schedule/tournaments
+ *  view switchers (active = solid pitch pill, inactive = muted ghost). */
+function ViewToggleButton({
+    active,
+    onClick,
+    icon,
+    label,
+}: {
+    active: boolean
+    onClick: () => void
+    icon: ReactNode
+    label: string
+}) {
+    return (
+        <Box
+            as="button"
+            onClick={onClick}
+            // Icon-only control - the aria-label IS the accessible name.
+            aria-label={label}
+            title={label}
+            aria-pressed={active}
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            px="2.5"
+            py="1.5"
+            rounded="full"
+            cursor="pointer"
+            bg={active ? "pitch.500" : "transparent"}
+            color={active ? "white" : "fg.muted"}
+            transition="background 150ms"
+            _hover={active ? undefined : { color: "fg.ink" }}
+        >
+            {icon}
+        </Box>
+    )
+}
+
+/** Two-letter initials from a team name (first letters of the first two
+ *  words). Mirrors the TeamAvatar convention in tournament/parts. */
+function initialsOf(name: string | null): string {
+    return (
+        (name || "?")
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((s) => s[0]?.toUpperCase())
+            .join("") || "?"
+    )
+}
+
+/** Small round initials tile for a team row (plain, no kit colours - the
+ *  /live DTO doesn't carry team colours). */
+function TeamInitials({ name }: { name: string | null }) {
+    return (
+        <Flex
+            w="22px"
+            h="22px"
+            rounded="full"
+            bg="brand.subtle"
+            color="brand.fg"
+            align="center"
+            justify="center"
+            fontSize="10px"
+            fontWeight={700}
+            flexShrink={0}
+        >
+            {initialsOf(name)}
+        </Flex>
+    )
+}
+
+/** Croatian phase label ("1. POL." / "PAUZA" / "2. POL." / "KRAJ") for a live
+ *  match - identical logic to the LiveMatchCard header so the two views stay
+ *  in sync. */
+function livePhaseLabel(m: LiveMatch): string {
+    const phase =
+        m.liveMode === "TIMER"
+            ? matchPhase({
+                  liveStartedAt: m.liveStartedAt,
+                  firstHalfEndedAt: m.firstHalfEndedAt ?? null,
+                  secondHalfStartedAt: m.secondHalfStartedAt ?? null,
+                  livePausedAt: m.livePausedAt ?? null,
+                  halfLengthMin: m.halfLengthMin,
+                  halfCount: m.halfCount,
+              })
+            : null
+    return m.livePausedAt && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
+        ? "PAUZA"
+        : phase === "HALFTIME" ? "PAUZA"
+            : phase === "SECOND_HALF" ? "2. POL."
+                : phase === "FULL_TIME" ? "KRAJ"
+                    : phase === "FIRST_HALF" ? "1. POL."
+                        : m.secondHalfStartedAt ? "2. POL." : "1. POL."
+}
+
+/** One live match rendered as a slim SofaScore-style row: live minute/status
+ *  on the left, two stacked team lines (initials + name + bold score) in the
+ *  middle, follow-bell + action on the right. */
+function LiveListRow({
+    match: m,
+    showTopBorder,
+    hasStream,
+    onOpenMatch,
+    onWatch,
+    onWarm,
+}: {
+    match: LiveMatch
+    /** Hairline above the row - every row except the group's first. */
+    showTopBorder: boolean
+    /** This match's tournament is currently being streamed → show "Gledaj". */
+    hasStream: boolean
+    /** Open the match's own live page ("na utakmicu" / match details). */
+    onOpenMatch: () => void
+    /** Open the shareable tournament stream theater (/turniri/:slug/uzivo). */
+    onWatch: () => void
+    /** Prefetch the tournament on hover/press so opening is instant. */
+    onWarm: () => void
+}) {
+    const s1 = m.score1 ?? 0
+    const s2 = m.score2 ?? 0
+    const lead1 = s1 > s2
+    const lead2 = s2 > s1
+    return (
+        <Box
+            role="button"
+            tabIndex={0}
+            onClick={onOpenMatch}
+            onMouseEnter={onWarm}
+            onPointerDown={onWarm}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    onOpenMatch()
+                }
+            }}
+            cursor="pointer"
+            borderTopWidth={showTopBorder ? "1px" : "0"}
+            borderColor="border"
+            transition="background 0.15s"
+            _hover={{ bg: "bg.surfaceTint" }}
+        >
+            <Grid templateColumns="56px 1fr auto auto" alignItems="center" gap="3" px="3" py="2.5">
+                {/* Left: live minute (TIMER clock) or "UŽIVO", with the phase
+                    label underneath - live accent colours of the pitch theme. */}
+                <VStack gap="0.5" minW="52px" align="center" justify="center" flexShrink={0}>
+                    {m.liveMode === "TIMER" && m.liveStartedAt ? (
+                        <LiveClock
+                            liveStartedAt={m.liveStartedAt}
+                            firstHalfEndedAt={m.firstHalfEndedAt ?? null}
+                            secondHalfStartedAt={m.secondHalfStartedAt ?? null}
+                            livePausedAt={m.livePausedAt ?? null}
+                            halfLengthMin={m.halfLengthMin}
+                            halfCount={m.halfCount}
+                            size="xs"
+                            /* The row prints its own "PAUZA" phase label below,
+                               so let the clock drop the redundant "Pauza" word
+                               (keep just the ⏸ icon + frozen time). */
+                            hidePauseLabel
+                        />
+                    ) : (
+                        <HStack
+                            gap="1"
+                            color="accent.red"
+                            fontFamily="mono"
+                            fontSize="9px"
+                            fontWeight={800}
+                            letterSpacing="0.1em"
+                        >
+                            <PulseDot color="accent.red" size={5} />
+                            UŽIVO
+                        </HStack>
+                    )}
+                    <Text
+                        fontFamily="mono"
+                        fontSize="9px"
+                        fontWeight={700}
+                        letterSpacing="0.08em"
+                        color="fg.muted"
+                        whiteSpace="nowrap"
+                    >
+                        {livePhaseLabel(m)}
+                    </Text>
+                </VStack>
+
+                {/* Middle: two stacked team lines (initials + name). The leading
+                    team's name is a touch bolder. Scores live in the right-edge
+                    column below so they line up with rows that have no stream. */}
+                <VStack gap="1" align="stretch" minW="0">
+                    <Flex align="center" gap="2" minW="0">
+                        <TeamInitials name={m.team1Name} />
+                        <Text
+                            fontSize="sm"
+                            fontWeight={lead1 ? 700 : 600}
+                            color="fg.ink"
+                            truncate
+                            flex="1"
+                            minW="0"
+                        >
+                            {m.team1Name ?? "-"}
+                        </Text>
+                    </Flex>
+                    <Flex align="center" gap="2" minW="0">
+                        <TeamInitials name={m.team2Name} />
+                        <Text
+                            fontSize="sm"
+                            fontWeight={lead2 ? 700 : 600}
+                            color="fg.ink"
+                            truncate
+                            flex="1"
+                            minW="0"
+                        >
+                            {m.team2Name ?? "-"}
+                        </Text>
+                    </Flex>
+                </VStack>
+
+                {/* Action slot: a live stream on this match's tournament shows a
+                    solid "Gledaj" here, between the names and the scores;
+                    otherwise this column has nothing and collapses to zero
+                    width (no layout cost for plain rows). */}
+                {hasStream ? (
+                    <Button
+                        size="xs"
+                        colorPalette="pitch"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onWatch()
+                        }}
+                    >
+                        <FiPlay /> Gledaj
+                    </Button>
+                ) : null}
+
+                {/* Right edge: scores (each wrapped to TeamInitials' 22px row
+                    height so they stay level with their team's name line),
+                    follow-bell (stops its own click), then ALWAYS the chevron
+                    into the match page - also next to "Gledaj", so it stays
+                    obvious the row itself opens the match. */}
+                <HStack gap="1" flexShrink={0}>
+                    <VStack gap="1" align="flex-end">
+                        <Flex align="center" h="22px">
+                            <Text
+                                fontFamily="mono"
+                                fontSize="sm"
+                                fontWeight={800}
+                                fontVariantNumeric="tabular-nums"
+                                color="fg.ink"
+                            >
+                                {s1}
+                            </Text>
+                        </Flex>
+                        <Flex align="center" h="22px">
+                            <Text
+                                fontFamily="mono"
+                                fontSize="sm"
+                                fontWeight={800}
+                                fontVariantNumeric="tabular-nums"
+                                color="fg.ink"
+                            >
+                                {s2}
+                            </Text>
+                        </Flex>
+                    </VStack>
+                    <MatchNotificationBell tournamentUuid={m.tournamentUuid} matchId={m.matchId} />
+                    <Box as="span" color="fg.muted" display="inline-flex">
+                        <FiChevronRight />
+                    </Box>
+                </HStack>
+            </Grid>
+        </Box>
+    )
+}
+
+/** A tournament's live matches, grouped for the list view. */
+type LiveGroup = {
+    tournamentUuid: string
+    tournamentName: string
+    tournamentSlug: string
+    /** Non-null when this tournament is the admin-curated daily highlight. */
+    featuredAt: string | null
+    matches: LiveMatch[]
+}
+
 export default function LivePage() {
     const queryClient = useQueryClient()
     // Seed the live list from the cache (populated here on each poll AND by the
@@ -538,10 +887,44 @@ export default function LivePage() {
     const [matchesLoading, setMatchesLoading] = useState(!cachedLive)
     const [upcomingMatches, setUpcomingMatches] = useState<UpcomingMatch[]>([])
     const [upcomingLoading, setUpcomingLoading] = useState(true)
+    // Horizon filter for the upcoming list. Defaults to "all" so the section
+    // keeps showing everything until the user narrows it themselves.
+    const [upcomingRange, setUpcomingRange] = useState<UpcomingRange>("all")
     const [featured, setFeatured] = useState<TournamentCard | null>(null)
     // Bumped on every WebSocket live-update so expanded event timelines refetch
     // instantly (see GoalscorersPanel refreshSignal).
     const [liveTick, setLiveTick] = useState(0)
+
+    // Live-matches view: the new grouped "list" (default) or the original
+    // "cards" scoreboards. Persisted globally - a viewing preference. An
+    // unknown / legacy stored value falls back to the new "list".
+    const [liveView, setLiveView] = useState<LiveView>(() => {
+        try {
+            return localStorage.getItem(LIVE_VIEW_KEY) === "cards" ? "cards" : "list"
+        } catch {
+            return "list"
+        }
+    })
+    useEffect(() => {
+        try {
+            localStorage.setItem(LIVE_VIEW_KEY, liveView)
+        } catch {
+            /* storage unavailable - the view choice just won't persist */
+        }
+    }, [liveView])
+
+    // Global stream banner (the camera is a single site-wide switch, optionally
+    // linked to ONE tournament). Seeded synchronously from the last-known hint
+    // so the "Gledaj" button paints without a flash, then polled. Purely a
+    // nicety: any failure just leaves rows with a chevron instead of "Gledaj".
+    const [streamBanner, setStreamBanner] = useState<StreamBanner | null>(() => readStreamBannerHint())
+    usePolling(() => {
+        fetchStreamBanner()
+            .then(setStreamBanner)
+            .catch(() => {
+                /* silent - rows fall back to the chevron action */
+            })
+    }, 20000)
 
     const navigate = useNavigate()
     const today = useMemo(() => new Date(), [])
@@ -609,6 +992,16 @@ export default function LivePage() {
     function goToMatchPage(m: LiveMatch) {
         navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}/utakmica/${m.matchId}`)
     }
+    // Shareable "turnir mode" stream theater - where the "Gledaj" button goes.
+    function goToTheater(m: LiveMatch) {
+        navigate(`/turniri/${m.tournamentSlug || m.tournamentUuid}/uzivo`)
+    }
+
+    // The tournament (if any) whose camera is live right now. Only an explicitly
+    // linked stream attributes to a specific tournament; an unlinked (site-wide)
+    // stream stays ambiguous, so those rows keep the chevron.
+    const streamedTournamentUuid =
+        streamBanner?.live && streamBanner?.url ? streamBanner.tournamentUuid : null
 
     // Prefetch a match's tournament (detail + schedule) on hover/press so
     // opening it - or its tournament page - from /uzivo is instant. These are
@@ -631,13 +1024,43 @@ export default function LivePage() {
         [queryClient],
     )
 
+    // Live matches grouped by tournament for the list view. The global order
+    // (featured tournament first, then by liveStartedAt) comes from
+    // pickFeaturedFirst; grouping preserves first-appearance order, so the
+    // featured tournament's group leads and each match keeps its within-group
+    // ordering.
+    const liveGroups = useMemo<LiveGroup[]>(() => {
+        const sorted = pickFeaturedFirst(matches)
+        const map = new Map<string, LiveGroup>()
+        const order: string[] = []
+        for (const m of sorted) {
+            let g = map.get(m.tournamentUuid)
+            if (!g) {
+                g = {
+                    tournamentUuid: m.tournamentUuid,
+                    tournamentName: m.tournamentName,
+                    tournamentSlug: m.tournamentSlug,
+                    featuredAt: m.tournamentFeaturedAt ?? null,
+                    matches: [],
+                }
+                map.set(m.tournamentUuid, g)
+                order.push(m.tournamentUuid)
+            }
+            g.matches.push(m)
+        }
+        return order.map((k) => map.get(k)!)
+    }, [matches])
+
     // Upcoming matches grouped by day, soonest first. Each day's matches
-    // are already kickoff-sorted by the backend; we keep that order.
+    // are already kickoff-sorted by the backend; we keep that order. The
+    // horizon filter (danas / sutra / tjedan / mjesec / sve) is applied
+    // BEFORE grouping so empty days never render a stray header.
     const matchDayGroups = useMemo<MatchDayGroup[]>(() => {
         const map = new Map<string, MatchDayGroup>()
         for (const m of upcomingMatches) {
             if (!m.kickoffAt) continue
             const d = new Date(m.kickoffAt)
+            if (!withinRange(d, upcomingRange, today)) continue
             const k = dateKey(d)
             const existing = map.get(k)
             if (existing) existing.matches.push(m)
@@ -650,7 +1073,21 @@ export default function LivePage() {
             )
         }
         return groups
-    }, [upcomingMatches])
+    }, [upcomingMatches, upcomingRange, today])
+
+    // Per-range counts for the filter chips, so the user sees what each
+    // horizon holds before switching to it. Derived from the UNFILTERED list.
+    const upcomingCounts = useMemo(() => {
+        const out = { today: 0, tomorrow: 0, week: 0, month: 0, all: 0 } as Record<UpcomingRange, number>
+        for (const m of upcomingMatches) {
+            if (!m.kickoffAt) continue
+            const d = new Date(m.kickoffAt)
+            for (const r of UPCOMING_RANGES) {
+                if (withinRange(d, r.key, today)) out[r.key] += 1
+            }
+        }
+        return out
+    }, [upcomingMatches, today])
 
     return (
         <VStack align="stretch" gap="7">
@@ -681,6 +1118,31 @@ export default function LivePage() {
                             UŽIVO SADA · {matches.length}
                         </HStack>
                     </Box>
+                    {/* List / cards view switcher - icon-only segmented control,
+                         same pattern as the schedule + tournaments toggles. */}
+                    <HStack
+                        gap="0.5"
+                        px="0.5"
+                        py="0.5"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="lg"
+                        flexShrink={0}
+                    >
+                        <ViewToggleButton
+                            active={liveView === "list"}
+                            onClick={() => setLiveView("list")}
+                            icon={<FiList size={15} />}
+                            label="Lista"
+                        />
+                        <ViewToggleButton
+                            active={liveView === "cards"}
+                            onClick={() => setLiveView("cards")}
+                            icon={<FiGrid size={15} />}
+                            label="Kartice"
+                        />
+                    </HStack>
                 </Flex>
             )}
 
@@ -724,6 +1186,81 @@ export default function LivePage() {
                             </Text>
                         </Box>
                     </Flex>
+                ) : liveView === "list" ? (
+                    // Grouped-by-tournament compact list (default). One small
+                    // header per tournament, then a bordered card of slim,
+                    // hairline-separated match rows.
+                    <VStack align="stretch" gap="5">
+                        {liveGroups.map((g) => {
+                            const featured = !!g.featuredAt
+                            return (
+                                <Box key={g.tournamentUuid}>
+                                    {/* Group header: dot + tournament name + optional featured badge. */}
+                                    <HStack gap="2" mb="2" px="1">
+                                        <PulseDot
+                                            color={featured ? "pitch.500" : "accent.red"}
+                                            size={7}
+                                            glow={featured}
+                                        />
+                                        <Text
+                                            fontSize="13px"
+                                            fontWeight={700}
+                                            color="fg.ink"
+                                            truncate
+                                            minW="0"
+                                        >
+                                            {g.tournamentName}
+                                        </Text>
+                                        {featured && (
+                                            <Box
+                                                fontFamily="mono"
+                                                fontSize="9px"
+                                                fontWeight={800}
+                                                letterSpacing="0.16em"
+                                                color="pitch.500"
+                                                bg="pitch.50"
+                                                px="1.5"
+                                                py="0.5"
+                                                rounded="full"
+                                                flexShrink={0}
+                                            >
+                                                ★ ISTAKNUTO
+                                            </Box>
+                                        )}
+                                        <Box flex="1" />
+                                        <Text fontSize="xs" fontWeight={600} color="fg.muted">
+                                            {g.matches.length}
+                                        </Text>
+                                    </HStack>
+                                    {/* Bordered card of hairline-separated match rows. */}
+                                    <Box
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        rounded="xl"
+                                        bg="bg.panel"
+                                        overflow="hidden"
+                                    >
+                                        {g.matches.map((m, i) => (
+                                            <LiveListRow
+                                                key={m.matchId}
+                                                match={m}
+                                                showTopBorder={i > 0}
+                                                hasStream={
+                                                    !!streamedTournamentUuid &&
+                                                    streamedTournamentUuid === m.tournamentUuid
+                                                }
+                                                onOpenMatch={() => goToMatchPage(m)}
+                                                onWatch={() => goToTheater(m)}
+                                                onWarm={() =>
+                                                    warmTournament(m.tournamentSlug || m.tournamentUuid)
+                                                }
+                                            />
+                                        ))}
+                                    </Box>
+                                </Box>
+                            )
+                        })}
+                    </VStack>
                 ) : (() => {
                     // Promote the admin-featured tournament's live match
                     // into a full-width "izdvojena utakmica" slot above
@@ -754,7 +1291,7 @@ export default function LivePage() {
                                         // grid cards so the featured slot
                                         // reads as the page's primary subject.
                                         boxShadow: isAdminFeatured
-                                            ? "0 0 0 3px rgba(11,107,58,0.16)"
+                                            ? "0 0 0 3px rgba(42,212,200,0.16)"
                                             : undefined,
                                         borderRadius: 12,
                                     }}
@@ -803,24 +1340,61 @@ export default function LivePage() {
                  Matches scheduled to start soon across ALL tournaments,
                  grouped by day. Replaces the old by-month tournament
                  calendar (that moved to the home page list view). */}
-            <SectionCard
-                icon={FiClock}
-                title="Nadolazeće utakmice"
-                subtitle={
-                    upcomingLoading
-                        ? "Učitavanje…"
-                        : upcomingMatches.length > 0
-                            ? "Utakmice koje uskoro počinju kroz sve turnire"
-                            : "Trenutno nema zakazanih utakmica"
-                }
-            >
+            {/* Slim header instead of SectionCard's tall icon+title+subtitle
+                band: one row with a small clock + title on the left and the
+                horizon chips on the right (they wrap under it on narrow
+                screens). The match rows below are unchanged. */}
+            <SectionCard padding="4">
+                {/* Base: title row, then the chips on their own FULL-WIDTH row
+                    so every wrapped line right-aligns to the card edge (as a
+                    fit-content flex item the second line only aligned to the
+                    first line's box, which floated mid-card). md+: single row,
+                    chips pushed right. */}
+                <Flex
+                    direction={{ base: "column", md: "row" }}
+                    align={{ base: "stretch", md: "center" }}
+                    gap={{ base: "2", md: "3" }}
+                    mb="3"
+                >
+                    <HStack gap="2" minW="0">
+                        <Box color="pitch.fg" display="inline-flex" flexShrink={0}>
+                            <FiClock size={15} />
+                        </Box>
+                        <Text fontSize="15px" fontWeight={800} color="fg.ink" whiteSpace="nowrap">
+                            Nadolazeće utakmice
+                        </Text>
+                    </HStack>
+                    <HStack
+                        gap="1.5"
+                        ml={{ md: "auto" }}
+                        w={{ base: "full", md: "auto" }}
+                        wrap="wrap"
+                        justify="flex-end"
+                    >
+                        {UPCOMING_RANGES.map((r) => (
+                            <FilterChip
+                                key={r.key}
+                                label={r.label}
+                                count={upcomingCounts[r.key]}
+                                active={upcomingRange === r.key}
+                                onClick={() => setUpcomingRange(r.key)}
+                            />
+                        ))}
+                    </HStack>
+                </Flex>
                 {upcomingLoading ? (
                     <Text color="fg.muted">Učitavanje utakmica…</Text>
                 ) : matchDayGroups.length === 0 ? (
-                    <Flex direction="column" align="center" py="8" px="4" gap="2" textAlign="center">
-                        <Heading size="sm">Nema nadolazećih utakmica</Heading>
+                    <Flex direction="column" align="center" py="6" px="4" gap="1.5" textAlign="center">
+                        <Heading size="sm">
+                            {upcomingRange === "all"
+                                ? "Nema nadolazećih utakmica"
+                                : "Nema utakmica u ovom razdoblju"}
+                        </Heading>
                         <Text fontSize="sm" color="fg.muted" maxW="md">
-                            Kad organizatori zakažu termine utakmica, pojavit će se ovdje.
+                            {upcomingRange === "all"
+                                ? "Kad organizatori zakažu termine utakmica, pojavit će se ovdje."
+                                : "Odaberi šire razdoblje da vidiš više utakmica."}
                         </Text>
                     </Flex>
                 ) : (

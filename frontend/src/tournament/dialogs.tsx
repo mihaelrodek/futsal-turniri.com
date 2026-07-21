@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import {
     Badge,
     Box,
@@ -16,6 +17,9 @@ import { FiAward, FiCheckCircle, FiX } from "react-icons/fi"
 import type { TeamShort } from "../types/teams"
 import type { UserTeamPreset } from "../api/userTeamPresets"
 import type { ScheduledMatch } from "../types/schedule"
+import type { PlayerDto } from "../types/players"
+import { fetchPlayers } from "../api/players"
+import { fetchScorers } from "../api/stats"
 import { TeamAvatar } from "./parts"
 
 /** Knockout stage → Croatian label for the match-history rows. */
@@ -26,6 +30,15 @@ const STAGE_LABEL: Record<string, string> = {
     SEMIFINAL: "Polufinale",
     FINAL: "Finale",
     THIRD_PLACE: "Za 3. mjesto",
+}
+
+/** Croatian plural for the goal-count suffix: 1 gol, 2-4 gola, else golova. */
+function golLabel(n: number): string {
+    const mod10 = n % 10
+    const mod100 = n % 100
+    if (mod10 === 1 && mod100 !== 11) return "gol"
+    if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "gola"
+    return "golova"
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -158,12 +171,15 @@ export function SelfRegisterDialog({
 
 /* ---------- Team info / match-history dialog ---------- */
 export function TeamInfoDialog({
+    uuid,
     teamId,
     teams,
     matches,
     onClose,
     onSelectMatch,
 }: {
+    /** Tournament uuid - needed to lazily load the roster + scorer tallies. */
+    uuid: string
     teamId: number | null
     teams: TeamShort[]
     /** Every match of the tournament (group + knockout), in play order. */
@@ -172,6 +188,45 @@ export function TeamInfoDialog({
     /** Open a match (its timeline modal) from a history row. */
     onSelectMatch?: (m: ScheduledMatch) => void
 }) {
+    // Roster + per-player goal tallies for the "Igrači" section. Fetched
+    // lazily: only while a team is open (teamId !== null). Reset on close so
+    // reopening another team never flashes the previous roster.
+    const [players, setPlayers] = useState<PlayerDto[]>([])
+    const [goalsByPlayerId, setGoalsByPlayerId] = useState<Record<number, number>>({})
+    const [playersLoading, setPlayersLoading] = useState(false)
+
+    useEffect(() => {
+        if (teamId === null) {
+            setPlayers([])
+            setGoalsByPlayerId({})
+            setPlayersLoading(false)
+            return
+        }
+        if (!uuid) return
+        let cancelled = false
+        setPlayersLoading(true)
+        Promise.all([fetchPlayers(uuid, teamId), fetchScorers(uuid)])
+            .then(([roster, scorers]) => {
+                if (cancelled) return
+                setPlayers(roster)
+                // playerId → full-tournament goal tally (groups + knockout).
+                const byId: Record<number, number> = {}
+                for (const s of scorers) byId[s.playerId] = s.goalsAll
+                setGoalsByPlayerId(byId)
+            })
+            .catch(() => {
+                if (cancelled) return
+                setPlayers([])
+                setGoalsByPlayerId({})
+            })
+            .finally(() => {
+                if (!cancelled) setPlayersLoading(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [uuid, teamId])
+
     return (
         <Dialog.Root open={teamId !== null} onOpenChange={(e) => { if (!e.open) onClose() }}>
             <Dialog.Backdrop />
@@ -245,18 +300,104 @@ export function TeamInfoDialog({
                         return (
                             <>
                                 <Dialog.Header py="3" px="4" borderBottomWidth="1px" borderColor="border">
-                                    <HStack gap="3" align="center">
+                                    {/* `w="full"` matters: Dialog.Header is itself a
+                                        flex container, so without it this HStack
+                                        shrinks to its content width and the close
+                                        button ends up mid-header instead of pinned
+                                        to the top-right corner. `ml="auto"` on the
+                                        button is the belt-and-braces. */}
+                                    <HStack gap="3" align="center" w="full">
                                         <TeamAvatar name={team.name} eliminated={team.isEliminated} />
                                         <Box flex="1" minW="0">
                                             <Text fontWeight="semibold" lineHeight="short">{team.name || "-"}</Text>
                                             <Text fontSize="xs" color="fg.muted">Povijest mečeva</Text>
                                         </Box>
-                                        <IconButton aria-label="Zatvori" size="sm" variant="ghost" onClick={onClose}>
+                                        <IconButton
+                                            aria-label="Zatvori"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={onClose}
+                                            ml="auto"
+                                            flexShrink={0}
+                                        >
                                             <FiX />
                                         </IconButton>
                                     </HStack>
                                 </Dialog.Header>
                                 <Dialog.Body py="4" px="4">
+                                    {/* Igrači - roster + each player's goal tally in
+                                    this tournament (full count, groups + knockout). */}
+                                    <Box mb="4">
+                                        <Text
+                                            fontSize="2xs"
+                                            fontWeight="semibold"
+                                            color="fg.muted"
+                                            letterSpacing="wider"
+                                            textTransform="uppercase"
+                                            mb="2"
+                                        >
+                                            Igrači
+                                        </Text>
+                                        {playersLoading ? (
+                                            <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
+                                        ) : players.length === 0 ? (
+                                            <Text fontSize="sm" color="fg.muted">Nema igrača na popisu.</Text>
+                                        ) : (
+                                            <VStack align="stretch" gap="0.5" maxH="220px" overflowY="auto">
+                                                {[...players]
+                                                    .map((p) => ({ p, goals: goalsByPlayerId[p.id] ?? 0 }))
+                                                    .sort(
+                                                        (a, b) =>
+                                                            b.goals - a.goals ||
+                                                            a.p.name.localeCompare(b.p.name, "hr"),
+                                                    )
+                                                    .map(({ p, goals }) => (
+                                                        <HStack key={p.id} gap="2.5" py="1">
+                                                            <Box
+                                                                w="24px"
+                                                                h="24px"
+                                                                rounded="md"
+                                                                flexShrink={0}
+                                                                display="flex"
+                                                                alignItems="center"
+                                                                justifyContent="center"
+                                                                fontFamily="mono"
+                                                                fontSize="xs"
+                                                                fontWeight="semibold"
+                                                                bg={p.number != null ? "bg.surfaceTint" : "transparent"}
+                                                                color={p.number != null ? "fg" : "fg.muted"}
+                                                                borderWidth={p.number != null ? "0" : "1px"}
+                                                                borderStyle="dashed"
+                                                                borderColor="border"
+                                                            >
+                                                                {p.number != null ? p.number : "-"}
+                                                            </Box>
+                                                            <Text
+                                                                fontSize="sm"
+                                                                fontWeight="medium"
+                                                                flex="1"
+                                                                minW="0"
+                                                                overflow="hidden"
+                                                                textOverflow="ellipsis"
+                                                                whiteSpace="nowrap"
+                                                            >
+                                                                {p.name}
+                                                                {p.captain ? (
+                                                                    <Text as="span" fontSize="2xs" color="fg.muted" ml="1.5">
+                                                                        (C)
+                                                                    </Text>
+                                                                ) : null}
+                                                            </Text>
+                                                            <HStack gap="1" flexShrink={0} align="baseline">
+                                                                <Text fontSize="sm" fontWeight="semibold">{goals}</Text>
+                                                                <Text fontSize="xs" color="fg.muted">{golLabel(goals)}</Text>
+                                                            </HStack>
+                                                        </HStack>
+                                                    ))}
+                                            </VStack>
+                                        )}
+                                    </Box>
+
                                     {/* Stat summary */}
                                     <HStack gap="6" mb="4" wrap="wrap">
                                         <Box>
@@ -354,23 +495,40 @@ export function TeamInfoDialog({
                                                                     ) : null}
                                                                 </Text>
                                                             )}
-                                                            {x.isBye ? (
-                                                                <Badge variant="solid" colorPalette="brand" size="sm">
-                                                                    <HStack gap="1"><FiCheckCircle size={11} /> Prošao</HStack>
-                                                                </Badge>
-                                                            ) : x.isLive ? (
-                                                                <Badge variant="solid" colorPalette="yellow" size="sm">Uživo</Badge>
-                                                            ) : !x.isFinished ? (
-                                                                <Badge variant="solid" colorPalette="gray" size="sm">Zakazano</Badge>
-                                                            ) : x.result === "win" ? (
-                                                                <Badge variant="solid" colorPalette="green" size="sm">
-                                                                    <HStack gap="1"><FiAward size={11} /> Pobjeda</HStack>
-                                                                </Badge>
-                                                            ) : x.result === "loss" ? (
-                                                                <Badge variant="solid" colorPalette="red" size="sm">Poraz</Badge>
-                                                            ) : (
-                                                                <Badge variant="solid" colorPalette="gray" size="sm">Neriješeno</Badge>
-                                                            )}
+                                                            {/* ONE badge shape for every outcome:
+                                                                a fixed min-width + centred content, so
+                                                                Pobjeda / Poraz / Neriješeno / Uživo /
+                                                                Zakazano / Prošao all render as
+                                                                identically sized chips instead of
+                                                                ragged, label-length-driven boxes. */}
+                                                            {(() => {
+                                                                const badge = x.isBye
+                                                                    ? { label: "Prošao", palette: "brand", icon: <FiCheckCircle size={11} /> }
+                                                                    : x.isLive
+                                                                        ? { label: "Uživo", palette: "yellow", icon: null }
+                                                                        : !x.isFinished
+                                                                            ? { label: "Zakazano", palette: "gray", icon: null }
+                                                                            : x.result === "win"
+                                                                                ? { label: "Pobjeda", palette: "green", icon: <FiAward size={11} /> }
+                                                                                : x.result === "loss"
+                                                                                    ? { label: "Poraz", palette: "red", icon: null }
+                                                                                    : { label: "Neriješeno", palette: "gray", icon: null }
+                                                                return (
+                                                                    <Badge
+                                                                        variant="solid"
+                                                                        colorPalette={badge.palette}
+                                                                        size="sm"
+                                                                        minW="104px"
+                                                                        justifyContent="center"
+                                                                        flexShrink={0}
+                                                                    >
+                                                                        <HStack gap="1" justify="center">
+                                                                            {badge.icon}
+                                                                            {badge.label}
+                                                                        </HStack>
+                                                                    </Badge>
+                                                                )
+                                                            })()}
                                                         </HStack>
                                                     </HStack>
                                                 </Box>

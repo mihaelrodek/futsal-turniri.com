@@ -641,7 +641,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                         rounded="2xl"
                         p="3"
                         maxW="320px"
-                        css={{ boxShadow: "0 8px 28px rgba(14,31,21,0.16)" }}
+                        css={{ boxShadow: "0 8px 28px rgba(11,21,34,0.16)" }}
                     >
                         {/* Only the blocking states get a line; the "ready"
                             message was removed on request. */}
@@ -779,8 +779,8 @@ function DetailsReadView({
                                 w="28px"
                                 h="28px"
                                 rounded="full"
-                                bgImage="linear-gradient(135deg, #3aa56b, #0b6b3a)"
-                                color="white"
+                                bg="#2AD4C8"
+                                color="#0B1522"
                                 align="center"
                                 justify="center"
                                 fontSize="11px"
@@ -876,22 +876,21 @@ function DetailsReadView({
                 <SectionCard
                     icon={FiGrid}
                     title="QR kod"
+                    padding="16px"
                 >
-                    <VStack align="stretch" gap="3">
-                        <Flex justify="center">
-                            <chakra.img
-                                src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
-                                alt={`QR kod za turnir ${t.name}`}
-                                w="200px"
-                                h="200px"
-                                rounded="lg"
-                                borderWidth="1px"
-                                borderColor="border"
-                                bg="white"  
-                                p="2.5"
-                                loading="lazy"
-                            />
-                        </Flex>
+                    <VStack align="center" gap="2">
+                        <chakra.img
+                            src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
+                            alt={`QR kod za turnir ${t.name}`}
+                            w="200px"
+                            h="200px"
+                            rounded="lg"
+                            borderWidth="1px"
+                            borderColor="border"
+                            bg="white"
+                            p="2.5"
+                            loading="lazy"
+                        />
                         <chakra.a
                             href={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
                             download={`qr-${t.slug ?? t.uuid}.png`}
@@ -902,13 +901,13 @@ function DetailsReadView({
                             bg="pitch.500"
                             color="white"
                             fontWeight={600}
-                            fontSize="14px"
+                            fontSize="13px"
                             px="4"
-                            py="2.5"
+                            py="2"
                             rounded="lg"
                             _hover={{ bg: "pitch.600" }}
                         >
-                            <FiDownload size={15} /> Preuzmi QR
+                            <FiDownload size={14} /> Preuzmi QR
                         </chakra.a>
                     </VStack>
                 </SectionCard>

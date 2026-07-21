@@ -88,7 +88,7 @@ function Shot({
             borderWidth="1px"
             borderColor="border"
             bg="bg.panel"
-            boxShadow="0 12px 32px -18px rgba(8, 74, 40, 0.35)"
+            boxShadow="0 12px 32px -18px rgba(11, 21, 34, 0.35)"
             maxW={maxW}
             mx={maxW ? "auto" : undefined}
             w="full"
@@ -590,7 +590,7 @@ export default function GuidePage() {
                 alignItems="center"
                 justifyContent="center"
                 p={{ base: "4", md: "10" }}
-                bg="rgba(7, 22, 13, 0.45)"
+                bg="rgba(11, 21, 34, 0.45)"
                 opacity={zoomOpen ? 1 : 0}
                 transition="opacity 180ms ease"
             >
@@ -616,7 +616,7 @@ export default function GuidePage() {
                 rounded="2xl"
                 overflow="hidden"
                 color="white"
-                bgImage="linear-gradient(135deg, #0b6b3a, #084a28)"
+                bgImage="linear-gradient(135deg, #132A3E, #0B1522)"
             >
                 <PitchBackdrop opacity={0.15} variant="guide-hero" tone="pitch" />
                 <Grid

@@ -34,4 +34,16 @@ public class TournamentSubscriptionRepository implements AppRepository<Tournamen
         if (userUid == null || userUid.isBlank() || tournamentId == null) return;
         delete("userUid = ?1 and tournament.id = ?2", userUid, tournamentId);
     }
+
+    /* ── Anonymous follows: keyed by the browser's push endpoint ──────────── */
+
+    public Optional<TournamentSubscription> findByEndpointAndTournamentId(String endpoint, Long tournamentId) {
+        if (endpoint == null || endpoint.isBlank() || tournamentId == null) return Optional.empty();
+        return find("pushEndpoint = ?1 and tournament.id = ?2", endpoint, tournamentId).firstResultOptional();
+    }
+
+    public void deleteByEndpointAndTournamentId(String endpoint, Long tournamentId) {
+        if (endpoint == null || endpoint.isBlank() || tournamentId == null) return;
+        delete("pushEndpoint = ?1 and tournament.id = ?2", endpoint, tournamentId);
+    }
 }

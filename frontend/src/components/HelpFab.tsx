@@ -146,7 +146,7 @@ export default function HelpFab() {
                 fontWeight={800}
                 lineHeight="1"
                 cursor="pointer"
-                boxShadow="0 6px 20px rgba(11,107,58,0.45)"
+                boxShadow="0 6px 20px rgba(42,212,200,0.45)"
                 transition="background .15s, transform .15s"
                 _hover={{ bg: "pitch.600", transform: "translateY(-1px)" }}
                 _active={{ bg: "pitch.700", transform: "none" }}

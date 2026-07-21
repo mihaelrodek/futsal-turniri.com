@@ -4,6 +4,7 @@ import {
     Flex,
     Grid,
     HStack,
+    IconButton,
     Slider,
     Text,
     VStack,
@@ -35,7 +36,7 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
    Behaviour:
      • Geolocated tournaments are pinned on a Leaflet map (CARTO Voyager
        tiles). Pins are coloured by classification:
-         today    → pitch.400 (green)
+         today    → brand cyan (#2AD4C8)
          soon     → accent.amber
          later    → accent.red
          live     → accent.red + pulsing `!` badge
@@ -60,7 +61,7 @@ type TournamentWithCoords = TournamentCard & {
 type Bucket = "today" | "soon" | "later" | "live"
 
 const PIN_COLORS: Record<Bucket, string> = {
-    today: "#3aa56b",
+    today: "#2AD4C8",
     soon: "#d97706",
     later: "#dc2626",
     live: "#dc2626",
@@ -90,8 +91,8 @@ function makePinIcon(color: string, isUser = false, live = false): L.DivIcon {
     const html = isUser
         ? `<div style="
               width: 18px; height: 18px; border-radius: 50%;
-              background: #0b6b3a; border: 3px solid white;
-              box-shadow: 0 0 0 2px rgba(11,107,58,0.4), 0 1px 4px rgba(0,0,0,0.4);">
+              background: #2AD4C8; border: 3px solid white;
+              box-shadow: 0 0 0 2px rgba(42,212,200,0.4), 0 1px 4px rgba(0,0,0,0.4);">
            </div>`
         : `<div style="position:relative;width:32px;height:42px;">
              ${livePing}
@@ -228,6 +229,14 @@ function circleBoxCorners(center: [number, number], radiusKm: number): [number, 
 }
 
 const MAP_RADIUS_MAX_KM = 100
+
+/** Pin colour legend - rendered in the filter bar on desktop and as a small
+ *  overlay pill on the map itself on phones (where the bar is a single row). */
+const PIN_LEGEND = [
+    { label: "Danas", color: "pitch.400" },
+    { label: "Tjedan", color: "accent.amber" },
+    { label: "Kasnije", color: "accent.red" },
+] as const
 
 /** Desktop sidebar list item - coloured pin glyph + name + city/date + chev. */
 function SidebarItem({
@@ -445,15 +454,27 @@ export default function MapPage() {
                 button into the radius row so the whole control bar is
                 one strip flush with the page top. Legend + button collapse
                 to the right side on desktop; everything wraps on mobile. */}
-            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p={{ base: "3", md: "4" }}>
+            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p={{ base: "2.5", md: "4" }}>
                 <Flex
-                    direction={{ base: "column", md: "row" }}
+                    // Phones: ONE row (radius + value + a round location button)
+                    // so the whole map fits the first screen - the legend moves
+                    // onto the map itself as an overlay and the button loses its
+                    // text. The three stacked rows this used to be pushed the map
+                    // ~90px below the fold.
+                    direction={{ base: "row", md: "row" }}
                     justify="space-between"
-                    align={{ base: "stretch", md: "center" }}
-                    gap={{ base: "3", md: "5" }}
+                    align="center"
+                    gap={{ base: "2", md: "5" }}
                 >
-                    <HStack gap="3" flex="1" minW="0">
-                        <MonoLabel>U KRUGU OD</MonoLabel>
+                    <HStack gap={{ base: "2", md: "3" }} flex="1" minW="0">
+                        {/* Shortened on phones - the full label alone ate a
+                            third of the row's width. */}
+                        <Box display={{ base: "none", sm: "block" }} flexShrink={0}>
+                            <MonoLabel>U KRUGU OD</MonoLabel>
+                        </Box>
+                        <Box display={{ base: "block", sm: "none" }} flexShrink={0}>
+                            <MonoLabel>KRUG</MonoLabel>
+                        </Box>
                         <Box flex="1" minW="0">
                             <Slider.Root
                                 min={1}
@@ -472,7 +493,7 @@ export default function MapPage() {
                                 </Slider.Control>
                             </Slider.Root>
                         </Box>
-                        <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW="50px" textAlign="right">
+                        <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW={{ base: "42px", md: "50px" }} textAlign="right">
                             {radiusDisabled
                                 ? "-"
                                 : radiusKm >= MAP_RADIUS_MAX_KM
@@ -483,15 +504,14 @@ export default function MapPage() {
                     <HStack
                         gap={{ base: "3", md: "4" }}
                         wrap="wrap"
-                        justify={{ base: "space-between", md: "flex-end" }}
+                        justify={{ base: "flex-end", md: "flex-end" }}
                         align="center"
+                        flexShrink={0}
                     >
-                        <HStack gap="3" wrap="wrap">
-                            {[
-                                { label: "Danas", color: "pitch.400" },
-                                { label: "Tjedan", color: "accent.amber" },
-                                { label: "Kasnije", color: "accent.red" },
-                            ].map((l) => (
+                        {/* Legend - desktop only; on phones it lives as an
+                            overlay pill in the map's bottom-left corner. */}
+                        <HStack gap="3" wrap="wrap" display={{ base: "none", md: "flex" }}>
+                            {PIN_LEGEND.map((l) => (
                                 <HStack key={l.label} gap="1.5">
                                     <Box w="10px" h="10px" rounded="full" bg={l.color} />
                                     <Text fontSize="12px" color="fg.ink" fontWeight={600}>
@@ -500,19 +520,38 @@ export default function MapPage() {
                                 </HStack>
                             ))}
                         </HStack>
-                        {geoStatus === "granted" ? (
-                            <GhostButton icon={<FiEyeOff size={14} />} onClick={hideLocation}>
-                                Sakrij lokaciju
-                            </GhostButton>
-                        ) : (
-                            <GhostButton
-                                icon={<FiNavigation size={14} />}
-                                onClick={requestLocation}
+                        {/* Phones get the icon alone (the label is what forced
+                            this cluster onto its own row); md+ keeps the
+                            labelled ghost button. */}
+                        <Box display={{ base: "block", md: "none" }}>
+                            <IconButton
+                                aria-label={geoStatus === "granted" ? "Sakrij lokaciju" : "Moja lokacija"}
+                                title={geoStatus === "granted" ? "Sakrij lokaciju" : "Moja lokacija"}
+                                size="sm"
+                                variant="outline"
+                                rounded="full"
+                                colorPalette={geoStatus === "granted" ? "gray" : "pitch"}
                                 disabled={geoStatus === "asking"}
+                                onClick={geoStatus === "granted" ? hideLocation : requestLocation}
                             >
-                                Moja lokacija
-                            </GhostButton>
-                        )}
+                                {geoStatus === "granted" ? <FiEyeOff size={15} /> : <FiNavigation size={15} />}
+                            </IconButton>
+                        </Box>
+                        <Box display={{ base: "none", md: "block" }}>
+                            {geoStatus === "granted" ? (
+                                <GhostButton icon={<FiEyeOff size={14} />} onClick={hideLocation}>
+                                    Sakrij lokaciju
+                                </GhostButton>
+                            ) : (
+                                <GhostButton
+                                    icon={<FiNavigation size={14} />}
+                                    onClick={requestLocation}
+                                    disabled={geoStatus === "asking"}
+                                >
+                                    Moja lokacija
+                                </GhostButton>
+                            )}
+                        </Box>
                     </HStack>
                 </Flex>
             </Box>
@@ -562,7 +601,11 @@ export default function MapPage() {
             <Grid templateColumns={{ base: "1fr", md: "340px 1fr" }} gap="5">
                 {/* Sidebar - desktop only */}
                 <Box display={{ base: "none", md: "block" }}>
-                    <Flex justify="flex-end" align="center" mb="2" minH="20px">
+                    {/* "Poništi odabir" header - centered above the list. Its
+                        fixed height (minH 20px + mb "2" = 28px) is mirrored by
+                        the map column's top offset below so the two columns'
+                        content tops line up. */}
+                    <Flex justify="center" align="center" mb="2" minH="20px">
                         {selectedUuid && (
                             <Box
                                 fontSize="12px"
@@ -603,15 +646,24 @@ export default function MapPage() {
                     </VStack>
                 </Box>
 
-                {/* Map */}
+                {/* Map - on desktop, offset the top by the sidebar's
+                    "Poništi odabir" header height (minH 20px + mb "2" = 28px,
+                    i.e. the "7" spacing token) so the map's top edge lines up
+                    with the first tournament card instead of sitting higher. No
+                    offset on mobile, where the sidebar header is not rendered. */}
                 <Box
+                    mt={{ base: "0", md: "7" }}
                     borderWidth="1px"
                     borderColor="border"
                     rounded="xl"
                     overflow="hidden"
                     shadow="sm"
-                    h={{ base: "62vh", md: "70vh" }}
-                    minH={{ base: "440px", md: "560px" }}
+                    // Phones use dvh (the *visible* viewport, so the browser's
+                    // own chrome is accounted for) and a smaller floor, so the
+                    // map ends above the bottom nav on a first paint instead of
+                    // forcing a scroll.
+                    h={{ base: "58dvh", md: "70vh" }}
+                    minH={{ base: "380px", md: "560px" }}
                     bg="bg.muted"
                     position="relative"
                 >
@@ -713,8 +765,8 @@ export default function MapPage() {
                                                     marginTop: 4,
                                                     padding: "6px 10px",
                                                     borderRadius: 8,
-                                                    background: "#0b6b3a",
-                                                    color: "white",
+                                                    background: "#2AD4C8",
+                                                    color: "#0B1522",
                                                     textAlign: "center",
                                                     textDecoration: "none",
                                                     fontSize: 13,
@@ -742,10 +794,10 @@ export default function MapPage() {
                                 center={userPos}
                                 radius={radiusKm * 1000}
                                 pathOptions={{
-                                    color: "#0b6b3a",
+                                    color: "#2AD4C8",
                                     weight: 2,
                                     opacity: 0.7,
-                                    fillColor: "#0b6b3a",
+                                    fillColor: "#2AD4C8",
                                     fillOpacity: 0.08,
                                 }}
                             />
@@ -759,6 +811,37 @@ export default function MapPage() {
                             selectedTournament={selectedTournament}
                         />
                     </MapContainer>
+
+                    {/* Phone-only pin legend, floated over the map's bottom-left
+                        corner. Costs no layout height (that's the point) and
+                        stays out of the way of taps - Leaflet's own controls sit
+                        at z-index 1000, so 500 keeps it below them. */}
+                    <HStack
+                        display={{ base: "flex", md: "none" }}
+                        position="absolute"
+                        left="8px"
+                        bottom="8px"
+                        zIndex={500}
+                        pointerEvents="none"
+                        gap="2"
+                        px="2"
+                        py="1"
+                        rounded="md"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        shadow="sm"
+                        opacity={0.95}
+                    >
+                        {PIN_LEGEND.map((l) => (
+                            <HStack key={l.label} gap="1">
+                                <Box w="7px" h="7px" rounded="full" bg={l.color} flexShrink={0} />
+                                <Text fontSize="10px" color="fg.soft" fontWeight={700}>
+                                    {l.label}
+                                </Text>
+                            </HStack>
+                        ))}
+                    </HStack>
                 </Box>
             </Grid>
         </VStack>
