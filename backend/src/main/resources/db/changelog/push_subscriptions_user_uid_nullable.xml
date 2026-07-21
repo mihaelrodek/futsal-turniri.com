@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Anonymous (not-logged-in) Web Push. A browser can now register a push
+        subscription WITHOUT a Firebase account: such rows carry
+        user_uid = NULL and are identified solely by their unique endpoint URL
+        (the same column that already enforces one-row-per-browser).
+
+        Existing rows - all owned by a real user - are untouched. The endpoint
+        uniqueness constraint stays as-is; only the NOT NULL on user_uid is
+        relaxed so an anonymous browser's subscription can live alongside the
+        logged-in ones.
+    -->
+    <changeSet id="2026-07-20-push-subscriptions-user-uid-nullable" author="mrodek">
+        <dropNotNullConstraint tableName="push_subscriptions"
+                               columnName="user_uid"
+                               columnDataType="varchar(128)"/>
+
+        <rollback>
+            <addNotNullConstraint tableName="push_subscriptions"
+                                  columnName="user_uid"
+                                  columnDataType="varchar(128)"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

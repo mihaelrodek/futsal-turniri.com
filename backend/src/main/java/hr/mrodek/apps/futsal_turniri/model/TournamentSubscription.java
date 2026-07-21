@@ -26,8 +26,23 @@ public class TournamentSubscription {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_uid", nullable = false, length = 128)
+    /**
+     * Firebase UID of the follower, or {@code null} for an ANONYMOUS follow.
+     * Exactly one of {@code userUid} / {@code pushEndpoint} is set (DB XOR
+     * check): logged-in follows carry the uid, anonymous follows carry the
+     * endpoint.
+     */
+    @Column(name = "user_uid", length = 128)
     private String userUid;
+
+    /**
+     * For an ANONYMOUS follow: the browser's Web Push endpoint (a plain-string
+     * copy of {@code push_subscriptions.endpoint}, no FK - same convention as
+     * {@code userUid}). {@code null} for logged-in follows. Fan-out resolves an
+     * anonymous row straight to this endpoint's {@link PushSubscription}.
+     */
+    @Column(name = "push_endpoint", columnDefinition = "text")
+    private String pushEndpoint;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "tournament_id", nullable = false)

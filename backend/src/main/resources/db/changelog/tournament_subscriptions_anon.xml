@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Anonymous per-tournament follows. A not-logged-in browser can now opt
+        into a tournament's push fan-out. Two row shapes share this table:
+
+          * logged-in follow  -> user_uid set,      push_endpoint NULL
+          * anonymous follow   -> user_uid NULL,     push_endpoint set
+
+        The anonymous shape is keyed by the browser's push endpoint (an FK-less
+        copy of push_subscriptions.endpoint, same plain-string convention as
+        user_uid). Fan-out resolves an anonymous row straight to its endpoint's
+        PushSubscription; logged-in rows still resolve via the user's devices.
+
+        The old blanket (user_uid, tournament_id) uniqueness can't cover the
+        endpoint shape, so it is replaced by two PARTIAL unique indexes - one
+        per shape - plus an XOR check so a row is exactly one shape, never both
+        or neither. Existing rows (all logged-in) satisfy the check unchanged.
+    -->
+    <changeSet id="2026-07-20-tournament-subscriptions-anon" author="mrodek">
+        <dropNotNullConstraint tableName="tournament_subscriptions"
+                               columnName="user_uid"
+                               columnDataType="varchar(128)"/>
+
+        <addColumn tableName="tournament_subscriptions">
+            <column name="push_endpoint" type="text"/>
+        </addColumn>
+
+        <!-- Replaced by the two partial unique indexes below. -->
+        <dropUniqueConstraint tableName="tournament_subscriptions"
+                              constraintName="uq_tournament_subscriptions_user_tournament"/>
+
+        <!-- Exactly one identity per row: logged-in (user_uid) XOR anon (endpoint). -->
+        <sql><![CDATA[
+            ALTER TABLE tournament_subscriptions
+                ADD CONSTRAINT ck_tournament_subscriptions_identity
+                CHECK ((user_uid IS NOT NULL) <> (push_endpoint IS NOT NULL))
+        ]]></sql>
+
+        <!-- Idempotent (re)subscribe per shape. Postgres partial unique indexes;
+             Liquibase has no native change for the WHERE clause, so raw SQL. -->
+        <sql><![CDATA[
+            CREATE UNIQUE INDEX uq_tournament_subscriptions_user
+                ON tournament_subscriptions (user_uid, tournament_id)
+                WHERE user_uid IS NOT NULL
+        ]]></sql>
+        <sql><![CDATA[
+            CREATE UNIQUE INDEX uq_tournament_subscriptions_endpoint
+                ON tournament_subscriptions (push_endpoint, tournament_id)
+                WHERE push_endpoint IS NOT NULL
+        ]]></sql>
+
+        <rollback>
+            <sql>DROP INDEX IF EXISTS uq_tournament_subscriptions_endpoint</sql>
+            <sql>DROP INDEX IF EXISTS uq_tournament_subscriptions_user</sql>
+            <sql>ALTER TABLE tournament_subscriptions
+                 DROP CONSTRAINT IF EXISTS ck_tournament_subscriptions_identity</sql>
+            <addUniqueConstraint tableName="tournament_subscriptions"
+                                 columnNames="user_uid, tournament_id"
+                                 constraintName="uq_tournament_subscriptions_user_tournament"/>
+            <dropColumn tableName="tournament_subscriptions" columnName="push_endpoint"/>
+            <addNotNullConstraint tableName="tournament_subscriptions"
+                                  columnName="user_uid"
+                                  columnDataType="varchar(128)"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

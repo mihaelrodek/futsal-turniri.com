@@ -73,28 +73,30 @@ export default function StatsPage() {
                 right of it so they share the header row instead of stacking
                 below. Wraps to full width under the title on mobile. */}
             <PageTitle
-                kicker="STATISTIKA · SVI TURNIRI"
                 title="Vječna lista strijelaca"
-                subtitle="Golovi svih igrača zbrojeni kroz sve turnire."
                 action={
-                    <VStack
-                        align={{ base: "stretch", md: "flex-end" }}
-                        gap="2.5"
+                    <HStack
+                        gap="3"
+                        wrap="wrap"
+                        justify={{ base: "flex-start", md: "flex-end" }}
                         w={{ base: "100%", md: "auto" }}
                     >
                         {!loading && !error && scorers.length > 0 && (
-                            <HStack gap="3" justify={{ base: "flex-start", md: "flex-end" }}>
+                            <>
                                 <SummaryTile label="Strijelaca" value={scorers.length} />
                                 <SummaryTile label="Ukupno golova" value={totalGoals} />
-                            </HStack>
+                            </>
                         )}
-                        <Box position="relative" w={{ base: "100%", md: "280px" }}>
+                        {/* Green-accented search so it reads as an ACTION, not a
+                            passive grey box - brand-tinted border + icon, green
+                            focus ring. */}
+                        <Box position="relative" w={{ base: "100%", md: "240px" }}>
                             <Box
                                 position="absolute"
                                 left="3"
                                 top="50%"
                                 transform="translateY(-50%)"
-                                color="fg.muted"
+                                color="pitch.500"
                                 pointerEvents="none"
                             >
                                 <FiSearch />
@@ -105,9 +107,17 @@ export default function StatsPage() {
                                 placeholder="Pretraži igrača…"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
+                                borderColor="pitch.500"
+                                borderWidth="1.5px"
+                                bg="brand.subtle"
+                                _hover={{ borderColor: "pitch.600" }}
+                                _focusVisible={{
+                                    borderColor: "pitch.600",
+                                    boxShadow: "0 0 0 1px var(--chakra-colors-pitch-600)",
+                                }}
                             />
                         </Box>
-                    </VStack>
+                    </HStack>
                 }
             />
 

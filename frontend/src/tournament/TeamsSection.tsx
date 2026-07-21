@@ -10,7 +10,6 @@ import {
     Menu,
     Portal,
     Spinner,
-    Stack,
     Text,
     VStack,
     chakra,
@@ -152,11 +151,38 @@ function JerseyColorPicker({
                     opacity={busy ? 0.6 : 1}
                 >
                     {team.jerseyColor || team.shortsColor ? (
-                        <KitSwatch jersey={team.jerseyColor} shorts={team.shortsColor} size={13} />
+                        // Both kit colours as two adjacent, clearly bordered
+                        // chips (dres + hlače) instead of the old tiny split
+                        // speck. Each has an adaptive `border.emphasized` outline
+                        // so white/black kits stay visible on either panel.
+                        <HStack gap="1" flexShrink={0}>
+                            {team.jerseyColor && (
+                                <Box
+                                    w="16px"
+                                    h="16px"
+                                    rounded="sm"
+                                    bg={team.jerseyColor}
+                                    borderWidth="1px"
+                                    borderColor="border.emphasized"
+                                    title="Dres"
+                                />
+                            )}
+                            {team.shortsColor && (
+                                <Box
+                                    w="16px"
+                                    h="16px"
+                                    rounded="sm"
+                                    bg={team.shortsColor}
+                                    borderWidth="1px"
+                                    borderColor="border.emphasized"
+                                    title="Hlače"
+                                />
+                            )}
+                        </HStack>
                     ) : (
                         <Box
-                            w="13px"
-                            h="17px"
+                            w="16px"
+                            h="16px"
                             rounded="sm"
                             borderWidth="1px"
                             borderStyle="dashed"
@@ -336,6 +362,12 @@ export default function TeamsSection(props: TeamsSectionProps) {
     // mutations) is kept intact so we can flip this back to `true`
     // without rebuilding the flow once the backend lands.
     const showSelfRegisterButton = false
+
+    // Organiser add-team actions (Uvezi više / Dodaj ekipu) - available only
+    // while registration is still open (not started / locked / drawn). Kept in
+    // one flag so the actions row below the list can be hidden wholesale.
+    const canAddTeams = !tournamentLocked && !tournamentAlready && !drawGenerated && canEdit
+    const showTeamActions = showSelfRegisterButton || canAddTeams
 
     // Master-detail selection
     const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
@@ -571,6 +603,10 @@ export default function TeamsSection(props: TeamsSectionProps) {
     /* ---------- The LEFT list (teams) ---------- */
     const teamListPane = (
         <VStack align="stretch" gap="4">
+            {/* The team list LEADS this column - no leading actions row - so the
+                first team card top-aligns with the sidebar nav and the roster
+                pane (both start at the very top). The add-team actions and the
+                team count sit BELOW the list instead. */}
             {teams.length === 0 ? (
                 <Panel>
                     <EmptyState
@@ -578,7 +614,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         title="Još nema ekipa"
                         description={
                             canEdit
-                                ? 'Dodaj prvu ekipu klikom na "Dodaj ekipu" iznad.'
+                                ? 'Dodaj prvu ekipu klikom na "Dodaj ekipu" ispod.'
                                 : "Organizator još nije dodao ekipe."
                         }
                     />
@@ -605,6 +641,78 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         </Box>
                     )}
                 </>
+            )}
+
+            {/* Registration / add-team actions, right-aligned. Kept BELOW the
+                list (they used to lead the column, which pushed the first team
+                card down and misaligned this column against the sidebar and the
+                roster pane). Hidden once registration freezes. */}
+            {showTeamActions && (
+                <HStack justify="flex-end" align="center" gap="2" wrap="wrap">
+                    <HStack gap="2" wrap="wrap">
+                        {showSelfRegisterButton && (
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                colorPalette="brand"
+                                onClick={onSelfRegisterClick}
+                            >
+                                <FiPlus />
+                                {userAlreadyRegistered
+                                    ? "Prijavi još jednu ekipu"
+                                    : "Prijavi ekipu za turnir"}
+                            </Button>
+                        )}
+                        {/* Once the tournament has started, registration is
+                             frozen - the button is hidden entirely. Adding a
+                             team persists immediately (PUT) and opens it for
+                             renaming, so there's no separate "Spremi promjene". */}
+                        {canAddTeams && (
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorPalette="brand"
+                                    onClick={() => setBulkTeamsOpen(true)}
+                                    disabled={atCapacity}
+                                    title="Uvezi više ekipa odjednom"
+                                >
+                                    <FiPlus /> Uvezi više
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    colorPalette="brand"
+                                    onClick={handleAddTeam}
+                                    disabled={atCapacity}
+                                    title={
+                                        atCapacity
+                                            ? `Maksimalan broj ekipa (${capacity})`
+                                            : "Dodaj novu ekipu"
+                                    }
+                                >
+                                    <FiPlus /> Dodaj ekipu
+                                </Button>
+                            </>
+                        )}
+                    </HStack>
+                </HStack>
+            )}
+
+            {/* Team count - pinned at the very bottom of the column. */}
+            {teams.length > 0 && (
+                <HStack justify="flex-end" gap="2" align="baseline" pt="1">
+                    <Text fontSize="13px" color="fg.muted">
+                        {capacity != null
+                            ? `${teams.length} / ${capacity}`
+                            : `${teams.length} ekipa`}
+                    </Text>
+                    {overCapacity && (
+                        <Badge variant="subtle" colorPalette="red">
+                            +{teams.length - capacity!} preko
+                        </Badge>
+                    )}
+                </HStack>
             )}
         </VStack>
     )
@@ -646,72 +754,6 @@ export default function TeamsSection(props: TeamsSectionProps) {
 
     return (
         <VStack align="stretch" gap="5">
-            <Panel p={{ base: "4", md: "5" }}>
-                <HStack justify="space-between" align="center" gap="3" wrap="wrap">
-                    <HStack gap="2" align="baseline">
-                        <Text fontSize="sm" color="fg.muted" fontWeight="medium">
-                            Prijavljeno
-                        </Text>
-                        <Text fontSize="lg" fontWeight="bold" color="fg.ink">
-                            {capacity != null ? `${teams.length} / ${capacity}` : teams.length}
-                        </Text>
-                        {overCapacity && (
-                            <Badge variant="subtle" colorPalette="red">
-                                +{teams.length - capacity!} preko
-                            </Badge>
-                        )}
-                    </HStack>
-
-                    <HStack gap="2" wrap="wrap">
-                        {showSelfRegisterButton && (
-                            <Button
-                                size="sm"
-                                variant="solid"
-                                colorPalette="brand"
-                                onClick={onSelfRegisterClick}
-                            >
-                                <FiPlus />
-                                {userAlreadyRegistered
-                                    ? "Prijavi još jednu ekipu"
-                                    : "Prijavi ekipu za turnir"}
-                            </Button>
-                        )}
-                        {/* Once the tournament has started, registration is
-                             frozen - the button is hidden entirely. Adding a
-                             team persists immediately (PUT) and opens it for
-                             renaming, so there's no separate "Spremi promjene". */}
-                        {!tournamentLocked && !tournamentAlready && !drawGenerated && canEdit && (
-                            <>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorPalette="brand"
-                                    onClick={() => setBulkTeamsOpen(true)}
-                                    disabled={atCapacity}
-                                    title="Uvezi više ekipa odjednom"
-                                >
-                                    <FiPlus /> Uvezi više
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="solid"
-                                    colorPalette="brand"
-                                    onClick={handleAddTeam}
-                                    disabled={atCapacity}
-                                    title={
-                                        atCapacity
-                                            ? `Maksimalan broj ekipa (${capacity})`
-                                            : "Dodaj novu ekipu"
-                                    }
-                                >
-                                    <FiPlus /> Dodaj ekipu
-                                </Button>
-                            </>
-                        )}
-                    </HStack>
-                </HStack>
-            </Panel>
-
             {/* Bulk team import - one team name per line. */}
             <BulkImportDialog
                 open={bulkTeamsOpen}
@@ -1044,13 +1086,14 @@ function RosterPanel({
     return (
         <Panel p={{ base: "4", md: "5" }}>
             <VStack align="stretch" gap="4">
-                <Stack
-                    direction={{ base: "column", md: "row" }}
-                    justify="space-between"
-                    align={{ base: "stretch", md: "center" }}
-                    gap="3"
-                >
-                    <HStack gap="3" align="center" minW="0" flex="1">
+                {/* Two stacked rows so the title never collides with the
+                    action buttons in the now-narrower content column:
+                    Row 1 is the (wrapping, never-truncated) team name with
+                    the roster size beneath it; Row 2 is a wrapping button
+                    row that always sits below the title. */}
+                <VStack align="stretch" gap="3">
+                    {/* Row 1: back button + avatar + team name + roster size. */}
+                    <HStack gap="3" align="flex-start" minW="0">
                         <IconButton
                             aria-label="Natrag na ekipe"
                             size="sm"
@@ -1084,32 +1127,50 @@ function RosterPanel({
                                     fontWeight="semibold"
                                 />
                             ) : (
-                                <HStack gap="1.5" align="center" minW="0">
-                                    <KitSwatch jersey={team.jerseyColor} shorts={team.shortsColor} size={14} />
-                                    <Text fontWeight="semibold" lineHeight="short" truncate>
+                                <HStack gap="2" align="flex-start" minW="0">
+                                    {/* Kit chip enlarged to a clearly legible
+                                        size with an adaptive `border.emphasized`
+                                        outline + rounded corners, so a white kit
+                                        stays visible on the light panel and a
+                                        black kit on the dark one (was a tiny
+                                        speck before). */}
+                                    <Box pt="0.5" flexShrink={0}>
+                                        <KitSwatch
+                                            jersey={team.jerseyColor}
+                                            shorts={team.shortsColor}
+                                            size={20}
+                                            borderColor="border.emphasized"
+                                            rounded="md"
+                                        />
+                                    </Box>
+                                    {/* Full team name - wraps instead of
+                                        truncating so nothing is hidden in the
+                                        narrower desktop column. */}
+                                    <Text fontWeight="semibold" lineHeight="short" wordBreak="break-word">
                                         {team.name || "-"}
                                     </Text>
                                 </HStack>
                             )}
-                            <HStack gap="2" align="center" mt="0.5">
-                                <Text fontSize="xs" color="fg.muted">
-                                    Sastav igrača · {players.length}
-                                </Text>
-                                {/* Jersey-colour picker - organizer only. Its own
-                                    endpoint, so it works regardless of edit mode
-                                    and never races the teams-list save. */}
-                                {canEdit && (
-                                    <JerseyColorPicker
-                                        uuid={uuid}
-                                        team={team}
-                                        onTeamUpdated={onTeamUpdated}
-                                    />
-                                )}
-                            </HStack>
+                            <Text fontSize="xs" color="fg.muted" mt="0.5">
+                                Sastav igrača · {players.length}
+                            </Text>
                         </Box>
                     </HStack>
+
+                    {/* Row 2: wrapping action row. Colour picker, edit toggle,
+                        delete (edit mode only), bulk import and add player -
+                        each keeps its exact handler/appearance, just laid out
+                        in a row that can wrap under the title. */}
                     {canEdit && (
-                        <HStack gap="2" flexShrink={0} wrap="wrap" justify={{ base: "flex-start", md: "flex-end" }}>
+                        <HStack gap="2" wrap="wrap">
+                            {/* Jersey-colour picker - organizer only. Its own
+                                endpoint, so it works regardless of edit mode
+                                and never races the teams-list save. */}
+                            <JerseyColorPicker
+                                uuid={uuid}
+                                team={team}
+                                onTeamUpdated={onTeamUpdated}
+                            />
                             {/* Uredi / Gotovo toggle. Hidden while the
                                  "add player" form is open so the action
                                  surface stays focused on confirming the
@@ -1169,7 +1230,7 @@ function RosterPanel({
                             )}
                         </HStack>
                     )}
-                </Stack>
+                </VStack>
 
                 {/* Bulk player import - one player per line, optional ", broj". */}
                 <BulkImportDialog

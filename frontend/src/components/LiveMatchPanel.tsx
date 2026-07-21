@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Box, Button, chakra, Flex, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react"
 import { FiEdit2, FiMinus, FiMoreHorizontal, FiPause, FiPlay, FiPlus, FiX } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
+import { LuTimer, LuTimerOff } from "react-icons/lu"
 
 import {
     endFirstHalf,
@@ -101,6 +102,8 @@ export default function LiveMatchPanel({
     match,
     onChanged,
     selector,
+    headerAction,
+    onClockArgs,
 }: {
     uuid: string
     kind: "group" | "knockout"
@@ -108,6 +111,23 @@ export default function LiveMatchPanel({
     onChanged: () => Promise<void> | void
     /** The styled match-selector node (built by the host, which owns the list). */
     selector?: React.ReactNode
+    /** Optional right-aligned action (e.g. "Puni zapisnik") rendered at the top
+     *  of the console header, above the match selector. */
+    headerAction?: React.ReactNode
+    /** Lifts THIS console's own clock truth up to a host (e.g. the fullscreen
+     *  zapisnik header) so its clock ticks from the exact same instants and
+     *  freezes together on pause. Called with the current local clockArgs while
+     *  the match is LIVE + TIMER, and with null when it isn't (or on unmount). */
+    onClockArgs?: (
+        args: {
+            liveStartedAt: string | null | undefined
+            firstHalfEndedAt: string | null
+            secondHalfStartedAt: string | null
+            livePausedAt: string | null
+            halfLengthMin: number | null
+            halfCount: number | null
+        } | null,
+    ) => void
 }) {
     const matchId = match.matchId
     const isKnockout = kind === "knockout"
@@ -159,6 +179,10 @@ export default function LiveMatchPanel({
     const [savingScore, setSavingScore] = useState(false)
     const [showDirectScore, setShowDirectScore] = useState(false)
     const [pendingScore, setPendingScore] = useState<{ s1: number; s2: number } | null>(null)
+    // Result-only entry done IN PLACE on the big pre-match scoreboard (scheduled
+    // branch): the two entered scores live here, seeded from the stored score.
+    const [directS1, setDirectS1] = useState<number>(match.score1 ?? 0)
+    const [directS2, setDirectS2] = useState<number>(match.score2 ?? 0)
     const [overflow, setOverflow] = useState(false)
 
     // Keep the local live instants in sync when the parent refetches the match.
@@ -189,6 +213,17 @@ export default function LiveMatchPanel({
     const liveScore = useMemo(
         () => scoreFromEvents(events ?? [], match.team1Id, match.team2Id),
         [events, match.team1Id, match.team2Id],
+    )
+    // Any recorded penalty-shootout kick (PENALTY_GOAL / PENALTY_MISSED) means
+    // the završnica shootout is underway (or already recorded). While that's the
+    // case regulation goal entry must be blocked: a mis-tap on the normal "Gol"
+    // button would create a plain GOAL event that wrongly counts as a scorer's
+    // goal AND bumps the match score. Penalties are entered ONLY through the
+    // guided shootout recorder (which stores PENALTY_* events that never count
+    // as goals). Cards/fouls stay available.
+    const penaltyInProgress = useMemo(
+        () => (events ?? []).some((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED"),
+        [events],
     )
     // Show the event-derived score once events are loaded; otherwise the stored
     // score (avoids a result-only match flashing 0:0).
@@ -228,6 +263,31 @@ export default function LiveMatchPanel({
         halfLengthMin,
         halfCount,
     }
+    // Lift the console's OWN clock instants up to a host (fullscreen zapisnik
+    // header) whenever the match is LIVE + TIMER, so the header ticks from the
+    // exact same instants (incl. the optimistic livePausedAt) and freezes the
+    // instant this console pauses - no drift from a separate live-matches poll.
+    // Depends on each field so pause/resume/half transitions re-fire at once.
+    useEffect(() => {
+        if (!onClockArgs) return
+        if (isLive && isTimer) {
+            onClockArgs({
+                liveStartedAt: match.liveStartedAt,
+                firstHalfEndedAt,
+                secondHalfStartedAt,
+                livePausedAt,
+                halfLengthMin,
+                halfCount,
+            })
+        } else {
+            onClockArgs(null)
+        }
+        return () => onClockArgs(null)
+    }, [
+        onClockArgs, isLive, isTimer, match.liveStartedAt,
+        firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount,
+    ])
+
     const phase = isTimer && isLive ? matchPhase(clockArgs) : null
     const clk = isTimer && isLive ? clockState(clockArgs) : null
     const hasClock = isTimer && halfLengthMin != null && halfLengthMin > 0
@@ -328,6 +388,34 @@ export default function LiveMatchPanel({
             setPauseBusy(false)
         }
     }
+
+    // SPACEBAR toggles pause/resume of the running timer - a scorekeeper
+    // shortcut for the Zapisnik tab and the fullscreen zapisnik mode alike
+    // (both render this panel). Deliberately inert while typing in an
+    // input/textarea/select/contenteditable, while focus sits on any
+    // button/link (Space "clicks" those - we'd double-fire), on key
+    // auto-repeat, and whenever pause/resume isn't actually available
+    // (no half running, or a pause call already in flight). No dependency
+    // array: the listener re-binds each render so it always closes over
+    // the CURRENT phase/paused/busy state - one cheap window listener.
+    useEffect(() => {
+        if (!isLive || !isTimer) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.code !== "Space") return
+            if (e.repeat) return
+            const el = e.target as HTMLElement | null
+            if (el) {
+                const tag = el.tagName
+                if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return
+                if (el.closest?.("button, a, [role='button'], [role='menuitem']")) return
+            }
+            if (!canPauseResume || pauseBusy) return
+            e.preventDefault()
+            void (paused ? handleResume() : handlePause())
+        }
+        window.addEventListener("keydown", onKey)
+        return () => window.removeEventListener("keydown", onKey)
+    })
 
     async function handleFinish() {
         // A level knockout match can't end as a draw - go to penalties.
@@ -433,41 +521,84 @@ export default function LiveMatchPanel({
     // Current half for the fouls counters (2nd once it has started).
     const currentHalf: 1 | 2 = secondHalfStartedAt ? 2 : 1
 
+    // Result-only editing is IN PLACE on the big pre-match scoreboard: the score
+    // badges become +/- steppers and a "Spremi rezultat" button appears. Only in
+    // the scheduled branch, and never while the penalty shootout handoff is up.
+    const editingScore = isScheduled && showDirectScore && !shootout
+
     return (
         <VStack align="stretch" gap="0">
-            {/* Main card. */}
-            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" p={{ base: "4", md: "6" }}>
-                {/* Match selector (built by the host). */}
-                <Text
-                    textAlign="center"
-                    fontSize="2xs"
-                    fontWeight={800}
-                    letterSpacing="wider"
-                    textTransform="uppercase"
-                    color="fg.muted"
-                    mb="2.5"
-                >
-                    Utakmica za vođenje
-                </Text>
+            {/* Main card. A stable minimum height (desktop) so switching matches
+                or going pre-match↔live - both remount this panel by design - no
+                longer makes the console box jump between the shorter pre-match
+                layout and the taller live one. */}
+            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" px={{ base: "4", md: "6" }} pb={{ base: "4", md: "6" }} pt="3" minH={{ base: "auto", md: "440px" }} display="flex" flexDirection="column">
+                {/* Optional host action (e.g. "Puni zapisnik"), right-aligned at
+                    the top of the console; wraps rather than overflowing on
+                    narrow screens. */}
+                {headerAction && (
+                    <Flex justify="flex-end" wrap="wrap" mb="2">
+                        {headerAction}
+                    </Flex>
+                )}
+                {/* Match selector (built by the host) - no label above it; the
+                    selector's own "● UŽIVO · A – B · …" text says it all. */}
                 <Flex justify="center">{selector}</Flex>
 
                 {/* ===== PRE-MATCH / FINISHED scoreboard ===== */}
+                {/* Fills the remaining card height and vertically CENTRES the
+                    pre-match block (scoreboard + status + start buttons) so the
+                    shorter pre-match layout reads as a calm centred panel inside
+                    the card's min-height instead of top-stacked over dead space.
+                    A finished match stays top-aligned (it also carries a
+                    timeline below). */}
                 {!isLive && (
-                    <VStack align="stretch" gap="0" mt="5">
+                    <VStack align="stretch" gap="0" mt="5" flex="1" justifyContent={isScheduled ? "center" : "flex-start"}>
                         {/* Scoreboard - a 1fr/auto/1fr grid so the score stays
                             truly centred no matter how uneven the two team names
                             are; long names wrap instead of pushing the score off. */}
-                        <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap={{ base: "2.5", md: "4" }} mb="2" w="full">
+                        <Box
+                            display="grid"
+                            gridTemplateColumns="1fr auto 1fr"
+                            alignItems="center"
+                            gap={{ base: "2.5", md: "4" }}
+                            // Extra clearance while editing: the −/+ pairs hang
+                            // absolutely BELOW the score badges (so the row
+                            // itself never shifts) and need room before the
+                            // next block.
+                            mb={editingScore ? "12" : "2"}
+                            w="full"
+                        >
                             <HStack gap="2" justify="flex-end" minW="0">
                                 <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={13} />
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={HOME} textAlign="right" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team1Name ?? "-"}
                                 </Text>
                             </HStack>
-                            <HStack gap={{ base: "2.5", md: "3.5" }} flexShrink={0}>
-                                <ScoreBadge value={score.s1} color={HOME} />
+                            <HStack gap={{ base: "1.5", md: "2.5" }} flexShrink={0}>
+                                {editingScore ? (
+                                    <ScoreStepper
+                                        value={directS1}
+                                        color={HOME}
+                                        disabled={savingScore}
+                                        onDec={() => setDirectS1((n) => Math.max(0, n - 1))}
+                                        onInc={() => setDirectS1((n) => n + 1)}
+                                    />
+                                ) : (
+                                    <ScoreBadge value={score.s1} color={HOME} />
+                                )}
                                 <Text fontSize="2xl" fontWeight={800} color="fg.subtle">:</Text>
-                                <ScoreBadge value={score.s2} color={AWAY} />
+                                {editingScore ? (
+                                    <ScoreStepper
+                                        value={directS2}
+                                        color={AWAY}
+                                        disabled={savingScore}
+                                        onDec={() => setDirectS2((n) => Math.max(0, n - 1))}
+                                        onInc={() => setDirectS2((n) => n + 1)}
+                                    />
+                                ) : (
+                                    <ScoreBadge value={score.s2} color={AWAY} />
+                                )}
                             </HStack>
                             <HStack gap="2" justify="flex-start" minW="0">
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={AWAY} textAlign="left" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
@@ -476,57 +607,88 @@ export default function LiveMatchPanel({
                                 <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={13} />
                             </HStack>
                         </Box>
-                        <Text textAlign="center" color="fg.muted" fontSize="sm" fontWeight={500} mb="4">
-                            {isScheduled ? "Utakmica još nije pokrenuta." : "Utakmica je završena."}
-                        </Text>
+                        {/* Status line only for a FINISHED match - the scheduled
+                            "još nije pokrenuta" note was redundant next to the
+                            start buttons right below. */}
+                        {isFinished && (
+                            <Text textAlign="center" color="fg.muted" fontSize="sm" fontWeight={500} mb="4">
+                                Utakmica je završena.
+                            </Text>
+                        )}
 
-                        {/* SCHEDULED - how to record + result-only sub-mode. */}
+                        {/* SCHEDULED - how to record + result-only sub-mode. All
+                            three start options sit on ONE row (wraps on narrow)
+                            and share the same outlined shape, each with its own
+                            icon: mjerač (⏱), bez mjerača (⏱✕), samo rezultat (✎).
+                            The two "Uživo" starters hide while the result-only
+                            form is open, leaving just its toggle. */}
                         {isScheduled && (
                             <>
-                                {/* How to record - hidden while the result-only form is open. */}
-                                {!showDirectScore && (
-                                    <HStack gap="3" justify="center" wrap="wrap" mb="3">
-                                        <Button
-                                            bg={HOME}
-                                            color="white"
-                                            _hover={{ bg: HOME, opacity: 0.9 }}
-                                            fontWeight={800}
-                                            size="lg"
-                                            loading={starting}
-                                            onClick={() => handleStart("TIMER")}
-                                        >
-                                            Uživo – s mjeračem vremena
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            fontWeight={700}
-                                            size="lg"
-                                            loading={starting}
-                                            onClick={() => handleStart("SIMPLE")}
-                                        >
-                                            Uživo – bez mjerača (vlastiti sat)
-                                        </Button>
-                                    </HStack>
-                                )}
-
-                                {/* Result-only toggle - also cancels a pending
-                                    shootout so closing the form never leaves the
-                                    shootout panel orphaned. */}
-                                <Flex justify="center">
+                                <HStack gap="3" justify="center" wrap="wrap" mb="3">
+                                    {!showDirectScore && (
+                                        <>
+                                            <Button
+                                                bg={HOME}
+                                                color="white"
+                                                _hover={{ bg: HOME, opacity: 0.9 }}
+                                                fontWeight={800}
+                                                size="lg"
+                                                loading={starting}
+                                                onClick={() => handleStart("TIMER")}
+                                            >
+                                                <LuTimer /> Uživo – s mjeračem vremena
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                fontWeight={700}
+                                                size="lg"
+                                                loading={starting}
+                                                onClick={() => handleStart("SIMPLE")}
+                                            >
+                                                <LuTimerOff /> Uživo – bez mjerača (vlastiti sat)
+                                            </Button>
+                                        </>
+                                    )}
+                                    {/* Result-only toggle - also cancels a pending
+                                        shootout so closing the form never leaves the
+                                        shootout panel orphaned. */}
                                     <Button
-                                        variant="plain"
-                                        size="sm"
+                                        variant="outline"
+                                        size="lg"
                                         fontWeight={700}
                                         color="fg.ink"
                                         onClick={() => {
-                                            setShowDirectScore((v) => !v)
+                                            setShowDirectScore((v) => {
+                                                const next = !v
+                                                // Seed the in-place steppers from the stored score
+                                                // each time the editor opens.
+                                                if (next) {
+                                                    setDirectS1(match.score1 ?? 0)
+                                                    setDirectS2(match.score2 ?? 0)
+                                                }
+                                                return next
+                                            })
                                             setShootout(false)
                                             setPendingScore(null)
                                         }}
                                     >
                                         <FiEdit2 /> {showDirectScore ? "Odustani od unosa rezultata" : "Unesi samo rezultat"}
                                     </Button>
-                                </Flex>
+                                    {/* Save sits in the SAME row as Odustani while
+                                        editing. Same contract (handleSaveDirectScore):
+                                        a level knockout score hands off to penalties. */}
+                                    {editingScore && (
+                                        <Button
+                                            size="lg"
+                                            colorPalette="pitch"
+                                            fontWeight={800}
+                                            loading={savingScore}
+                                            onClick={() => handleSaveDirectScore(directS1, directS2)}
+                                        >
+                                            <FiEdit2 /> Spremi rezultat
+                                        </Button>
+                                    )}
+                                </HStack>
 
                                 {/* Result-only panel. A level knockout score hands
                                     off to the penalty shootout RIGHT HERE - the
@@ -551,18 +713,6 @@ export default function LiveMatchPanel({
                                         />
                                     </Box>
                                 )}
-                                {showDirectScore && !shootout && (
-                                    <Box mt="3">
-                                        <DirectScoreEditor
-                                            team1Name={match.team1Name}
-                                            team2Name={match.team2Name}
-                                            initialS1={match.score1 ?? 0}
-                                            initialS2={match.score2 ?? 0}
-                                            saving={savingScore}
-                                            onSave={handleSaveDirectScore}
-                                        />
-                                    </Box>
-                                )}
                             </>
                         )}
 
@@ -584,56 +734,57 @@ export default function LiveMatchPanel({
 
                 {/* ===== LIVE ===== */}
                 {isLive && (
-                    <VStack align="stretch" gap="0" mt="5">
-                        {/* Timer block. The timer + half label are truly centred;
-                            the pause/play button is absolutely positioned to the
-                            RIGHT of the timer so it never shifts it off-centre. */}
-                        <VStack gap="1.5" align="center" mb="5">
-                            {isTimer && clk ? (
-                                <Box position="relative" display="inline-flex" alignItems="center" justifyContent="center">
+                    <VStack align="stretch" gap="0" mt="2">
+                        {/* Timer block - only for TIMER matches. The timer + half
+                            label are truly centred; the pause/play button is
+                            absolutely positioned to the RIGHT of the timer so it
+                            never shifts it off-centre. A "bez mjerača" match has
+                            no clock UI at all (the minute is typed per event
+                            below), so this whole block is skipped for it. */}
+                        {isTimer && (
+                            <VStack gap="1.5" align="center" mb="3">
+                                {clk && (
+                                    <Box position="relative" display="inline-flex" alignItems="center" justifyContent="center">
+                                        <Text
+                                            fontFamily="mono"
+                                            fontSize={{ base: "38px", md: "44px" }}
+                                            fontWeight={800}
+                                            lineHeight="1"
+                                            fontVariantNumeric="tabular-nums"
+                                            color={clk.paused ? "fg.muted" : clk.endingSoon ? "accent.amber" : HOME}
+                                        >
+                                            {clk.display}
+                                        </Text>
+                                        {canPauseResume && (
+                                            <Box position="absolute" left="100%" ml="3" top="50%" transform="translateY(-50%)">
+                                                <IconButton
+                                                    aria-label={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                                    title={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                                    variant={paused ? "solid" : "outline"}
+                                                    colorPalette={paused ? "brand" : "gray"}
+                                                    rounded="full"
+                                                    size="lg"
+                                                    loading={pauseBusy}
+                                                    onClick={paused ? handleResume : handlePause}
+                                                >
+                                                    {paused ? <FiPlay size={22} /> : <FiPause size={22} />}
+                                                </IconButton>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                )}
+                                {halfLabel && (
                                     <Text
-                                        fontFamily="mono"
-                                        fontSize={{ base: "44px", md: "52px" }}
+                                        fontSize="2xs"
                                         fontWeight={800}
-                                        lineHeight="1"
-                                        fontVariantNumeric="tabular-nums"
-                                        color={clk.paused ? "fg.muted" : clk.endingSoon ? "accent.amber" : HOME}
+                                        letterSpacing="wider"
+                                        color={paused && canPauseResume ? "accent.amber" : "fg.muted"}
                                     >
-                                        {clk.display}
+                                        {halfLabel}
                                     </Text>
-                                    {canPauseResume && (
-                                        <Box position="absolute" left="100%" ml="3" top="50%" transform="translateY(-50%)">
-                                            <IconButton
-                                                aria-label={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
-                                                title={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
-                                                variant={paused ? "solid" : "outline"}
-                                                colorPalette={paused ? "brand" : "gray"}
-                                                rounded="full"
-                                                size="lg"
-                                                loading={pauseBusy}
-                                                onClick={paused ? handleResume : handlePause}
-                                            >
-                                                {paused ? <FiPlay size={22} /> : <FiPause size={22} />}
-                                            </IconButton>
-                                        </Box>
-                                    )}
-                                </Box>
-                            ) : (
-                                <Text fontSize="md" fontWeight={800} color={HOME}>
-                                    Bez mjerača — minuta se upisuje ručno
-                                </Text>
-                            )}
-                            {halfLabel && (
-                                <Text
-                                    fontSize="2xs"
-                                    fontWeight={800}
-                                    letterSpacing="wider"
-                                    color={paused && canPauseResume ? "accent.amber" : "fg.muted"}
-                                >
-                                    {halfLabel}
-                                </Text>
-                            )}
-                        </VStack>
+                                )}
+                            </VStack>
+                        )}
 
                         {shootout ? (
                             <PenaltyShootout
@@ -668,6 +819,7 @@ export default function LiveMatchPanel({
                                     onAddEvent={addEvent}
                                     sentOffPlayerIds={sentOffIds}
                                     yellowCardedPlayerIds={yellowIds}
+                                    penaltyInProgress={penaltyInProgress}
                                 />
 
                                 {/* Flow controls: the primary phase button + ⋯ menu. */}
@@ -717,33 +869,41 @@ export default function LiveMatchPanel({
                     </Flex>
                 )}
 
-                {/* ===== TIMELINE (shared) ===== */}
-                <Text
-                    textAlign="center"
-                    fontSize="2xs"
-                    fontWeight={800}
-                    letterSpacing="wider"
-                    textTransform="uppercase"
-                    color="fg.muted"
-                    mt="6"
-                    mb="2"
-                >
-                    Tijek utakmice
-                </Text>
-                {!eventsLoaded && events.length === 0 ? (
-                    <Text textAlign="center" fontSize="sm" color="fg.muted">Učitavanje…</Text>
-                ) : events.length === 0 ? (
-                    <Text textAlign="center" fontSize="sm" color="fg.muted" fontWeight={500}>
-                        {isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : "Još nema zabilježenih događaja."}
-                    </Text>
-                ) : (
-                    <CenterTimeline
-                        events={events}
-                        team1Id={match.team1Id}
-                        halfLengthMin={halfLengthMin}
-                        canDelete={!isFinished}
-                        onUndo={(ev) => deleteEvent(ev)}
-                    />
+                {/* ===== TIMELINE (shared) ===== The whole block is skipped for a
+                    not-yet-started match with no events - an empty "Tijek utakmice
+                    · Još nema događaja" on a scheduled match is just noise. It
+                    appears once the match is LIVE / FINISHED, or the instant any
+                    event exists. */}
+                {(!isScheduled || events.length > 0) && (
+                    <>
+                        <Text
+                            textAlign="center"
+                            fontSize="2xs"
+                            fontWeight={800}
+                            letterSpacing="wider"
+                            textTransform="uppercase"
+                            color="fg.muted"
+                            mt="6"
+                            mb="2"
+                        >
+                            Tijek utakmice
+                        </Text>
+                        {!eventsLoaded && events.length === 0 ? (
+                            <Text textAlign="center" fontSize="sm" color="fg.muted">Učitavanje…</Text>
+                        ) : events.length === 0 ? (
+                            <Text textAlign="center" fontSize="sm" color="fg.muted" fontWeight={500}>
+                                {isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : "Još nema zabilježenih događaja."}
+                            </Text>
+                        ) : (
+                            <CenterTimeline
+                                events={events}
+                                team1Id={match.team1Id}
+                                halfLengthMin={halfLengthMin}
+                                canDelete={!isFinished}
+                                onUndo={(ev) => deleteEvent(ev)}
+                            />
+                        )}
+                    </>
                 )}
 
                 {isFinished && (
@@ -799,6 +959,60 @@ function ScoreBadge({ value, color }: { value: number; color: string }) {
     )
 }
 
+/* ── In-place score stepper. The badge keeps EXACTLY the ScoreBadge footprint
+   (so toggling edit mode moves nothing on the scoreboard - team names stay
+   put); the − / + pair hangs absolutely positioned BELOW the badge, out of
+   the layout flow. The caller adds bottom clearance for the hanging pair. */
+function ScoreStepper({
+    value,
+    color,
+    disabled,
+    onDec,
+    onInc,
+}: {
+    value: number
+    color: string
+    disabled?: boolean
+    onDec: () => void
+    onInc: () => void
+}) {
+    return (
+        <Box position="relative" display="inline-flex">
+            <ScoreBadge value={value} color={color} />
+            <HStack
+                gap="1.5"
+                position="absolute"
+                top="calc(100% + 6px)"
+                left="50%"
+                transform="translateX(-50%)"
+            >
+                <IconButton
+                    aria-label="Smanji rezultat"
+                    variant="outline"
+                    rounded="full"
+                    size="sm"
+                    bg="bg.panel"
+                    disabled={value <= 0 || disabled}
+                    onClick={onDec}
+                >
+                    <FiMinus />
+                </IconButton>
+                <IconButton
+                    aria-label="Povećaj rezultat"
+                    variant="outline"
+                    rounded="full"
+                    size="sm"
+                    bg="bg.panel"
+                    disabled={disabled}
+                    onClick={onInc}
+                >
+                    <FiPlus />
+                </IconButton>
+            </HStack>
+        </Box>
+    )
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    PairingEntry - the handoff's "1 · ODABERI IGRAČA" + "2 · ODABERI RADNJU"
    entry model: pick a player and an action in EITHER order; the event commits
@@ -841,6 +1055,7 @@ function PairingEntry({
     onAddEvent,
     sentOffPlayerIds,
     yellowCardedPlayerIds,
+    penaltyInProgress,
 }: {
     uuid: string
     matchId: number
@@ -855,13 +1070,17 @@ function PairingEntry({
     onAddEvent: (payload: CreateMatchEventRequest, display: OptimisticDisplay) => void
     sentOffPlayerIds: Set<number>
     yellowCardedPlayerIds: Set<number>
+    /** True once a penalty shootout has kicks recorded on this match. Regulation
+     *  goal actions (Gol / Auto-gol) are then blocked so they can't leak into
+     *  the scorer stats; cards + fouls stay available. */
+    penaltyInProgress: boolean
 }) {
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [pendingPlayer, setPendingPlayer] = useState<PendingPlayer | null>(null)
     const [pendingAction, setPendingAction] = useState<MatchEventType | null>(null)
     const [minute, setMinute] = useState<string>("0")
     // While true (TIMER) the "Min" field auto-follows the running clock; a
-    // manual edit turns it off, "Sada" turns it back on.
+    // manual edit turns it off, "Sada" / "Prati mjerač" turn it back on.
     const [autoMinute, setAutoMinute] = useState(true)
 
     // Fouls - offline-first, one hook instance for the whole match.
@@ -890,7 +1109,8 @@ function PairingEntry({
     }, [uuid, team1Id, team2Id])
 
     // Auto-follow the live match minute (TIMER) until the organizer types a
-    // manual value; "Sada" resumes it.
+    // manual value; "Sada" / "Prati mjerač" resume it (autoMinute is a dep, so
+    // flipping it back to true re-runs this and re-syncs on the spot).
     useEffect(() => {
         if (!isTimer || !autoMinute) return
         const sync = () => setMinute(String(liveMatchMinute(clockArgs)))
@@ -907,6 +1127,15 @@ function PairingEntry({
     const minuteNum = parseInt(minute, 10)
     const minuteValid = Number.isFinite(minuteNum) && minuteNum >= 0
 
+    // Big −/+ steppers around the minute input. A manual bump turns OFF the
+    // auto-follow (same as typing), and stays within the input's own validation
+    // (minute >= 0; there's no upper bound in the current logic, so + is open).
+    function bumpMinute(delta: number) {
+        const cur = Number.isFinite(minuteNum) ? minuteNum : 0
+        setMinute(String(Math.max(0, cur + delta)))
+        setAutoMinute(false)
+    }
+
     /** Beneficiary side for an event committed by `committingTeam`: that team,
      *  except an own goal counts for (shows on) the OTHER side. */
     function sideFor(committingTeam: number, type: MatchEventType): number {
@@ -915,8 +1144,14 @@ function PairingEntry({
         return committingTeam === team1Id ? team2Id : team1Id
     }
 
+    // Gol / Auto-gol are the only regulation goal actions; they're locked while
+    // a penalty shootout is being recorded (see penaltyInProgress).
+    const isGoalAction = (type: MatchEventType) => type === "GOAL" || type === "OWN_GOAL"
+
     function commit(pp: PendingPlayer, type: MatchEventType) {
         if (!minuteValid) return
+        // Penali su u tijeku - regulation goals can't be entered here.
+        if (penaltyInProgress && isGoalAction(type)) return
         // A sent-off player can't affect play (named goals/cards).
         if (pp.playerId != null && sentOffPlayerIds.has(pp.playerId)) return
         const side = sideFor(pp.team, type)
@@ -942,6 +1177,8 @@ function PairingEntry({
     }
 
     function selectAction(type: MatchEventType) {
+        // Regulation goals are locked during a penalty shootout.
+        if (penaltyInProgress && isGoalAction(type)) return
         if (pendingPlayer) commit(pendingPlayer, type)
         else setPendingAction(type)
     }
@@ -962,7 +1199,7 @@ function PairingEntry({
     return (
         <Box borderWidth="1px" borderColor="border" rounded="2xl" p={{ base: "3", md: "4" }}>
             <Eyebrow>1 · Odaberi igrača</Eyebrow>
-            <Box display="grid" gridTemplateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={{ base: "4", sm: "3.5" }} mb="4">
+            <Box display="grid" gridTemplateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={{ base: "3", md: "5" }} mb="4">
                 <RosterColumn
                     teamName={team1Name}
                     teamId={team1Id}
@@ -998,6 +1235,16 @@ function PairingEntry({
                 auto-minute has to be correctable BEFORE the action tap. */}
             <Eyebrow>2 · Minuta</Eyebrow>
             <Flex align="center" gap="2.5" mb="4" wrap="wrap">
+                <IconButton
+                    aria-label="Manje minuta"
+                    size="lg"
+                    variant="outline"
+                    rounded="full"
+                    disabled={minuteNum <= 0}
+                    onClick={() => bumpMinute(-1)}
+                >
+                    <FiMinus />
+                </IconButton>
                 <Input
                     type="number"
                     min={0}
@@ -1010,25 +1257,67 @@ function PairingEntry({
                     value={minute}
                     onChange={(e) => { setMinute(e.target.value); setAutoMinute(false) }}
                 />
+                <IconButton
+                    aria-label="Više minuta"
+                    size="lg"
+                    variant="outline"
+                    rounded="full"
+                    onClick={() => bumpMinute(1)}
+                >
+                    <FiPlus />
+                </IconButton>
+                {/* "Sada" = ONE-SHOT stamp of the current clock minute; the
+                    field stays manual afterwards. Resuming continuous
+                    auto-follow is the separate "Prati mjerač" button below,
+                    so the two controls no longer do the same thing. */}
                 {isTimer && (
                     <Button
                         size="md"
-                        variant={autoMinute ? "solid" : "outline"}
+                        variant="outline"
                         colorPalette="brand"
-                        onClick={() => setAutoMinute(true)}
-                        title="Vrati minutu na automatsko praćenje mjerača"
+                        onClick={() => {
+                            setMinute(String(liveMatchMinute(clockArgs)))
+                            setAutoMinute(false)
+                        }}
+                        title="Upiši trenutnu minutu mjerača (ostaje ručno)"
                     >
                         Sada
                     </Button>
                 )}
-                {isTimer && (
+                {/* Auto state just says so; the manual state offers the way BACK
+                    to continuous auto-follow instead of a dead-end label. */}
+                {isTimer && (autoMinute ? (
                     <Text fontSize="xs" color="fg.muted" fontWeight={600}>
-                        {autoMinute ? "Prati mjerač automatski" : "Ručno upisana minuta"}
+                        Prati mjerač automatski
                     </Text>
-                )}
+                ) : (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette="brand"
+                        fontWeight={700}
+                        onClick={() => { setMinute(String(liveMatchMinute(clockArgs))); setAutoMinute(true) }}
+                        title="Nastavi pratiti mjerač - minuta se opet broji sama"
+                    >
+                        <LuTimer /> Prati mjerač
+                    </Button>
+                ))}
             </Flex>
 
             <Eyebrow>3 · Odaberi radnju</Eyebrow>
+            {penaltyInProgress && (
+                <Box
+                    rounded="lg"
+                    px="3"
+                    py="2"
+                    mb="2.5"
+                    css={{ background: tint(CARD_YELLOW, 12) }}
+                >
+                    <Text fontSize="xs" fontWeight={700} color="accent.amber" lineHeight="1.35">
+                        Penali su u tijeku - golovi se unose u penal zapisu.
+                    </Text>
+                </Box>
+            )}
             <Box display="grid" gridTemplateColumns="repeat(4, 1fr)" gap="2" mb="3.5">
                 {ACTIONS.map((a) => (
                     <ActionButton
@@ -1036,6 +1325,7 @@ function PairingEntry({
                         type={a.type}
                         label={a.label}
                         selected={pendingAction === a.type}
+                        disabled={penaltyInProgress && isGoalAction(a.type)}
                         onClick={() => selectAction(a.type)}
                     />
                 ))}
@@ -1094,14 +1384,25 @@ function RosterColumn({
     const deveterci = Math.max(0, foulsCount - 4)
 
     return (
-        <VStack align="stretch" gap="2.5" minW="0">
+        <VStack
+            align="stretch"
+            gap="2.5"
+            minW="0"
+            borderWidth="1px"
+            borderColor="border"
+            borderTopWidth="3px"
+            borderTopColor={jerseyColor ?? color}
+            rounded="xl"
+            p={{ base: "3", md: "4" }}
+            bg="bg.panel"
+        >
             <HStack gap="2.5" minW="0">
                 {/* The team's two-tone kit chip when it has a colour, else the
                     fixed home/away identity square. */}
                 {jerseyColor || shortsColor
                     ? <KitSwatch jersey={jerseyColor} shorts={shortsColor} size={15} />
                     : <Box w="15px" h="15px" rounded="sm" bg={color} flexShrink={0} />}
-                <Text fontSize="xl" fontWeight={800} color="fg.ink" truncate minW="0">{teamName ?? "-"}</Text>
+                <Text fontSize={{ base: "xl", md: "2xl" }} fontWeight={800} color="fg.ink" truncate minW="0">{teamName ?? "-"}</Text>
             </HStack>
 
             {/* Fouls block (amber). */}
@@ -1235,11 +1536,13 @@ function ActionButton({
     type,
     label,
     selected,
+    disabled,
     onClick,
 }: {
     type: MatchEventType
     label: string
     selected: boolean
+    disabled?: boolean
     onClick: () => void
 }) {
     const accent =
@@ -1268,10 +1571,12 @@ function ActionButton({
             borderWidth={selected ? "2px" : "1px"}
             borderColor={selected ? accent : "border"}
             bg={selected ? tint(accent, 12) : "bg.panel"}
-            cursor="pointer"
-            _hover={{ borderColor: accent }}
+            opacity={disabled ? 0.4 : 1}
+            cursor={disabled ? "not-allowed" : "pointer"}
+            _hover={disabled ? undefined : { borderColor: accent }}
             transition="border-color 0.12s, background 0.12s"
-            onClick={onClick}
+            disabled={disabled}
+            onClick={disabled ? undefined : onClick}
         >
             <Box display="flex" alignItems="center" justifyContent="center" minH="20px">{icon}</Box>
             <Text fontSize="xs" fontWeight={800} color="fg.ink">{label}</Text>

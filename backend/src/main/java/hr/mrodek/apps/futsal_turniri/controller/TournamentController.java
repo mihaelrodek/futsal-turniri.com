@@ -1001,6 +1001,26 @@ public class TournamentController {
 
     @Inject hr.mrodek.apps.futsal_turniri.repository.TournamentSubscriptionRepository subRepo;
     @Inject hr.mrodek.apps.futsal_turniri.repository.MatchSubscriptionRepository matchSubRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.PushSubscriptionRepository pushSubRepo;
+
+    /**
+     * Anonymous follows are keyed by the browser's Web Push endpoint. We only
+     * accept one if a {@link hr.mrodek.apps.futsal_turniri.model.PushSubscription}
+     * with that endpoint already exists - that proves the caller's browser
+     * genuinely holds the subscription (the endpoint is minted by the push
+     * service and handed back to that browser), which is possession enough for
+     * this threat model. Endpoint URLs are not strong secrets, so the worst a
+     * leaked endpoint enables is toggling that browser's own tournament follow
+     * on/off - there is no account to hijack and push delivery itself is
+     * unaffected. Logged-in follows are unaffected (they never take this path).
+     */
+    private boolean pushEndpointExists(String endpoint) {
+        return endpoint != null && !endpoint.isBlank()
+                && pushSubRepo.findByEndpoint(endpoint).isPresent();
+    }
+
+    /** Optional body for anonymous (endpoint-keyed) subscribe calls. */
+    public record SubscribeEndpointRequest(String endpoint) {}
 
     /* ── Per-match push subscriptions ──────────────────────────────────────
      * Same shape as the per-tournament bell, but scoped to a single match so
@@ -1011,32 +1031,50 @@ public class TournamentController {
 
     @GET
     @Path("/{uuid}/matches/{matchId}/subscription")
-    @io.quarkus.security.Authenticated
     public Response getMatchSubscription(
-            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId,
+            @QueryParam("endpoint") String endpoint) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        boolean subscribed;
+        if (myUid != null && !myUid.isBlank()) {
+            subscribed = matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isPresent();
+        } else if (endpoint != null && !endpoint.isBlank()) {
+            subscribed = matchSubRepo.findByEndpointAndMatchId(endpoint, match.getId()).isPresent();
+        } else {
+            subscribed = false;
         }
-        boolean subscribed = matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isPresent();
         return Response.ok(java.util.Map.of("subscribed", subscribed)).build();
     }
 
     @POST
     @Path("/{uuid}/matches/{matchId}/subscribe")
-    @io.quarkus.security.Authenticated
     @Transactional
     public Response subscribeMatch(
-            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId,
+            SubscribeEndpointRequest body) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        if (myUid != null && !myUid.isBlank()) {
+            if (matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isEmpty()) {
+                var s = new hr.mrodek.apps.futsal_turniri.model.MatchSubscription();
+                s.setUserUid(myUid);
+                s.setMatch(match);
+                matchSubRepo.persist(s);
+            }
+            return Response.status(Response.Status.CREATED).build();
         }
-        if (matchSubRepo.findByUserUidAndMatchId(myUid, match.getId()).isEmpty()) {
+        // Anonymous - identity is the browser's push endpoint.
+        String endpoint = body != null ? body.endpoint() : null;
+        if (endpoint == null || endpoint.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("Missing endpoint").build();
+        }
+        if (!pushEndpointExists(endpoint)) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("Unknown push endpoint").build();
+        }
+        if (matchSubRepo.findByEndpointAndMatchId(endpoint, match.getId()).isEmpty()) {
             var s = new hr.mrodek.apps.futsal_turniri.model.MatchSubscription();
-            s.setUserUid(myUid);
+            s.setPushEndpoint(endpoint);
             s.setMatch(match);
             matchSubRepo.persist(s);
         }
@@ -1045,84 +1083,104 @@ public class TournamentController {
 
     @DELETE
     @Path("/{uuid}/matches/{matchId}/subscribe")
-    @io.quarkus.security.Authenticated
     @Transactional
     public Response unsubscribeMatch(
-            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId) {
+            @PathParam("uuid") String uuid, @PathParam("matchId") Long matchId,
+            @QueryParam("endpoint") String endpoint) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        if (myUid != null && !myUid.isBlank()) {
+            matchSubRepo.deleteByUserUidAndMatchId(myUid, match.getId());
+        } else if (endpoint != null && !endpoint.isBlank()) {
+            matchSubRepo.deleteByEndpointAndMatchId(endpoint, match.getId());
         }
-        matchSubRepo.deleteByUserUidAndMatchId(myUid, match.getId());
         return Response.noContent().build();
     }
 
     @GET
     @Path("/{uuid}/subscription")
-    @io.quarkus.security.Authenticated
-    public Response getSubscription(@PathParam("uuid") String uuid) {
+    public Response getSubscription(
+            @PathParam("uuid") String uuid, @QueryParam("endpoint") String endpoint) {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        boolean subscribed;
+        if (myUid != null && !myUid.isBlank()) {
+            subscribed = subRepo.findByUserUidAndTournamentId(myUid, t.getId()).isPresent();
+        } else if (endpoint != null && !endpoint.isBlank()) {
+            subscribed = subRepo.findByEndpointAndTournamentId(endpoint, t.getId()).isPresent();
+        } else {
+            subscribed = false;
         }
-        boolean subscribed = subRepo.findByUserUidAndTournamentId(myUid, t.getId()).isPresent();
         return Response.ok(java.util.Map.of("subscribed", subscribed)).build();
     }
 
     @POST
     @Path("/{uuid}/subscribe")
-    @io.quarkus.security.Authenticated
     @Transactional
-    public Response subscribe(@PathParam("uuid") String uuid) {
+    public Response subscribe(@PathParam("uuid") String uuid, SubscribeEndpointRequest body) {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        if (myUid != null && !myUid.isBlank()) {
+            if (subRepo.findByUserUidAndTournamentId(myUid, t.getId()).isEmpty()) {
+                var s = new hr.mrodek.apps.futsal_turniri.model.TournamentSubscription();
+                s.setUserUid(myUid);
+                s.setTournament(t);
+                subRepo.persist(s);
+
+                // Confirmation email to the follower (their address is on the token).
+                // Fire-and-forget; no-op when SMTP is unconfigured or no email claim.
+                try {
+                    Object emailClaim = jwt.getClaim("email");
+                    String email = emailClaim != null ? emailClaim.toString() : null;
+                    if (email != null && !email.isBlank()) {
+                        String url = emailService.baseUrl() + "/turniri/"
+                                + (t.getSlug() != null ? t.getSlug() : t.getUuid());
+                        String html = emailService.shell(
+                                "Pratiš turnir",
+                                "<p>Od sada pratiš <strong>" + EmailService.escapeHtml(t.getName())
+                                        + "</strong>. Javit ćemo ti obavijesti o turniru (npr. konačni rezultat).</p>",
+                                url, "Otvori turnir");
+                        emailService.sendHtml(email, "Pratiš turnir - " + t.getName(), html);
+                    }
+                } catch (Exception ignored) {
+                    // best-effort - the subscription is already saved
+                }
+            }
+            return Response.status(Response.Status.CREATED).build();
         }
-        if (subRepo.findByUserUidAndTournamentId(myUid, t.getId()).isEmpty()) {
+        // Anonymous - identity is the browser's push endpoint. No confirmation
+        // email (we have no address for a not-logged-in follower).
+        String endpoint = body != null ? body.endpoint() : null;
+        if (endpoint == null || endpoint.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("Missing endpoint").build();
+        }
+        if (!pushEndpointExists(endpoint)) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("Unknown push endpoint").build();
+        }
+        if (subRepo.findByEndpointAndTournamentId(endpoint, t.getId()).isEmpty()) {
             var s = new hr.mrodek.apps.futsal_turniri.model.TournamentSubscription();
-            s.setUserUid(myUid);
+            s.setPushEndpoint(endpoint);
             s.setTournament(t);
             subRepo.persist(s);
-
-            // Confirmation email to the follower (their address is on the token).
-            // Fire-and-forget; no-op when SMTP is unconfigured or no email claim.
-            try {
-                Object emailClaim = jwt.getClaim("email");
-                String email = emailClaim != null ? emailClaim.toString() : null;
-                if (email != null && !email.isBlank()) {
-                    String url = emailService.baseUrl() + "/turniri/"
-                            + (t.getSlug() != null ? t.getSlug() : t.getUuid());
-                    String html = emailService.shell(
-                            "Pratiš turnir",
-                            "<p>Od sada pratiš <strong>" + EmailService.escapeHtml(t.getName())
-                                    + "</strong>. Javit ćemo ti obavijesti o turniru (npr. konačni rezultat).</p>",
-                            url, "Otvori turnir");
-                    emailService.sendHtml(email, "Pratiš turnir - " + t.getName(), html);
-                }
-            } catch (Exception ignored) {
-                // best-effort - the subscription is already saved
-            }
         }
         return Response.status(Response.Status.CREATED).build();
     }
 
     @DELETE
     @Path("/{uuid}/subscribe")
-    @io.quarkus.security.Authenticated
     @Transactional
-    public Response unsubscribe(@PathParam("uuid") String uuid) {
+    public Response unsubscribe(
+            @PathParam("uuid") String uuid, @QueryParam("endpoint") String endpoint) {
         var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
         String myUid = jwt != null ? jwt.getSubject() : null;
-        if (myUid == null || myUid.isBlank()) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+        if (myUid != null && !myUid.isBlank()) {
+            subRepo.deleteByUserUidAndTournamentId(myUid, t.getId());
+        } else if (endpoint != null && !endpoint.isBlank()) {
+            subRepo.deleteByEndpointAndTournamentId(endpoint, t.getId());
         }
-        subRepo.deleteByUserUidAndTournamentId(myUid, t.getId());
         return Response.noContent().build();
     }
 

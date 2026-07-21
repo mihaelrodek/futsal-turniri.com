@@ -876,22 +876,21 @@ function DetailsReadView({
                 <SectionCard
                     icon={FiGrid}
                     title="QR kod"
+                    padding="16px"
                 >
-                    <VStack align="stretch" gap="3">
-                        <Flex justify="center">
-                            <chakra.img
-                                src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
-                                alt={`QR kod za turnir ${t.name}`}
-                                w="200px"
-                                h="200px"
-                                rounded="lg"
-                                borderWidth="1px"
-                                borderColor="border"
-                                bg="white"  
-                                p="2.5"
-                                loading="lazy"
-                            />
-                        </Flex>
+                    <VStack align="center" gap="2">
+                        <chakra.img
+                            src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
+                            alt={`QR kod za turnir ${t.name}`}
+                            w="200px"
+                            h="200px"
+                            rounded="lg"
+                            borderWidth="1px"
+                            borderColor="border"
+                            bg="white"
+                            p="2.5"
+                            loading="lazy"
+                        />
                         <chakra.a
                             href={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
                             download={`qr-${t.slug ?? t.uuid}.png`}
@@ -902,13 +901,13 @@ function DetailsReadView({
                             bg="pitch.500"
                             color="white"
                             fontWeight={600}
-                            fontSize="14px"
+                            fontSize="13px"
                             px="4"
-                            py="2.5"
+                            py="2"
                             rounded="lg"
                             _hover={{ bg: "pitch.600" }}
                         >
-                            <FiDownload size={15} /> Preuzmi QR
+                            <FiDownload size={14} /> Preuzmi QR
                         </chakra.a>
                     </VStack>
                 </SectionCard>

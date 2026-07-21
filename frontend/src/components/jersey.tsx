@@ -97,10 +97,20 @@ export function KitSwatch({
     jersey,
     shorts,
     size = 12,
+    borderColor = "blackAlpha.400",
+    rounded = "2px",
 }: {
     jersey?: string | null
     shorts?: string | null
     size?: number
+    /** Border colour token/value. Defaults to `blackAlpha.400` so every
+     *  existing caller renders identically; pass a theme token like
+     *  `border.emphasized` when the chip must stay visible on both light and
+     *  dark panels (e.g. a white kit on a light panel, black on dark). */
+    borderColor?: string
+    /** Corner rounding. Defaults to `2px` (unchanged for existing callers);
+     *  larger header chips can pass e.g. `md` for a softer, more legible shape. */
+    rounded?: string
 }) {
     if (!jersey && !shorts) return null
     const h = Math.round(size * 1.3)
@@ -113,10 +123,10 @@ export function KitSwatch({
             flexDirection="column"
             w={`${size}px`}
             h={`${h}px`}
-            rounded="2px"
+            rounded={rounded}
             overflow="hidden"
             borderWidth="1px"
-            borderColor="blackAlpha.400"
+            borderColor={borderColor}
             flexShrink={0}
             title="Boja dresa / hlača"
             aria-hidden

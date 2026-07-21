@@ -934,56 +934,52 @@ function PromoHero({ data }: { data: PromoSlide }) {
 
 /* ──────────────────────────────────────────────────────────────────────────
    Home hero carousel - the top slot on the listing page. A swipeable (touch +
-   mouse) carousel over the live content and the two promo slides. Live content
-   always leads, in priority order: the live-stream hero (when the admin banner
-   is streaming), then the zapisnik-scored live scoreboard (when a match is in
-   progress), then the promo slides (organiser + follower). While anything is
-   live the carousel pins to that live content and auto-cycles only among the
-   live slides - never into the promos; with nothing live the two promos
-   auto-advance every 5s. Snaps on drag release, shows paging dots. The
-   live/promo slides share HERO_MIN_H / flex-fill so paging never reflows the
-   page; the taller stream hero sets the height while it leads.
+   mouse) carousel over the live scoreboard slide and the two promo slides.
+   Live content always leads, so the zapisnik-scored live scoreboard (when a
+   match is in progress) is never buried behind the promos. While it's present
+   the carousel pins to it and never auto-cycles into the promos - manual
+   swipe/dots still reach them; with nothing live the two promos auto-advance
+   every 5s. Snaps on drag release, shows paging dots. The live/promo slides
+   share HERO_MIN_H / flex-fill so paging never reflows the page.
+   NOTE - the admin live-stream banner is NOT part of this carousel: when it's
+   streaming, the page renders <StreamHero> alone in the hero slot instead of
+   mounting this component at all (see the render branch below), so the stream
+   is the sole focus with no rotating banners underneath it.
    ────────────────────────────────────────────────────────────────────── */
 
-function HomeHero({ match, stream }: { match: LiveMatch | null; stream?: React.ReactNode }) {
-    // Slide order, live content first so a live hero is never buried behind the
-    // promos: the live-stream hero (when streaming), then the zapisnik-scored
-    // live scoreboard (when a match is in progress), then the two always-present
-    // promo slides. `stream` is a ready-built StreamHero passed from the page
-    // (null when not streaming); the scoreboard slide is the featured match.
-    const streamSlide = stream ?? null
+function HomeHero({ match }: { match: LiveMatch | null }) {
+    // Slide order, live content first so a live hero is never buried behind
+    // the promos: the zapisnik-scored live scoreboard (when a match is in
+    // progress), then the two always-present promo slides.
     const liveSlide = match ? <LiveHero key="live" match={match} /> : null
-    const liveSlides = [streamSlide, liveSlide].filter(Boolean) as React.ReactNode[]
     const promos = PROMO_SLIDES.map((p) => <PromoHero key={p.kicker} data={p} />)
-    const slides = [...liveSlides, ...promos]
-    const liveCount = liveSlides.length
+    const slides = liveSlide ? [liveSlide, ...promos] : promos
+    const liveCount = liveSlide ? 1 : 0
     const count = slides.length
     const [idx, setIdx] = useState(0)
     const active = idx % count
     const go = (n: number) => setIdx(((n % count) + count) % count)
 
     // Autoplay every 5s. With no live content the promos rotate as before. With
-    // live content present the carousel never rotates into the promos: it pins
-    // to the single live slide, or cycles just the two live slides (stream then
-    // scoreboard) when both exist. Manual swiping to the promos still works;
-    // autoplay simply won't take the viewer there (the guard also stays
-    // defensive - there are always the two promos behind).
+    // the live scoreboard present the carousel never rotates into the promos:
+    // it just pins to that single live slide. Manual swiping to the promos
+    // still works; autoplay simply won't take the viewer there (the guard also
+    // stays defensive - there are always the two promos behind).
     const [paused, setPaused] = useState(false)
     useEffect(() => {
         // How many leading slides autoplay may cycle through: only the live
-        // ones while any are live, otherwise all (promo) slides.
+        // one while it's present, otherwise all (promo) slides.
         const cycleLen = liveCount > 0 ? liveCount : count
         if (cycleLen < 2 || paused) return
         const id = setInterval(() => setIdx((i) => (i + 1) % cycleLen), 5000)
         return () => clearInterval(id)
     }, [count, liveCount, paused])
 
-    // Keep the active slide sensible as the live set changes underneath us
-    // (stream flips on, a match ends, promos-only <-> live): snap back to the
-    // first slide. With live content that pins the hero on the top-priority
-    // live slide (stream first, else the scoreboard); with none it just
-    // re-seeds the promo rotation. Also clamps away a now-out-of-range index
-    // when the slide count shrinks.
+    // Keep the active slide sensible as the live set changes underneath us (a
+    // match starts or ends, promos-only <-> live): snap back to the first
+    // slide. With live content that pins the hero on the scoreboard slide;
+    // with none it just re-seeds the promo rotation. Also clamps away a
+    // now-out-of-range index when the slide count shrinks.
     useEffect(() => {
         setIdx(0)
     }, [liveCount])
@@ -2125,12 +2121,14 @@ export default function TournamentsPage() {
         <VStack align="stretch" gap="4">
             <HelpFab />
             {/* Stream mode drives the hero slot: STREAMING → the video hero
-                leads the carousel; ADS → sponsor banner; PAUSED → "pauziran"
-                placeholder; OFF → the normal promo/live carousel. While a match
-                is live (streaming and/or zapisnik-scored) the carousel pins to
-                that live content and never auto-cycles into the promo banners -
-                the ordering and pinning live in HomeHero. ADS / PAUSED still
-                take over the whole hero slot (no carousel). */}
+                takes over the ENTIRE slot alone - no carousel, no promo
+                slides, no live-scoreboard slide (the stream panel already
+                shows the match timeline itself); ADS → sponsor banner; PAUSED
+                → "pauziran" placeholder - these also take over the whole slot.
+                OFF (nothing live to stream) → the normal promo/live carousel,
+                which still pins to a live scoreboard match and never
+                auto-cycles into the promo banners (ordering/pinning live in
+                HomeHero). */}
             {streamState === "ADS" ? (
                 <StreamPausedBanner
                     mode="ads"
@@ -2139,23 +2137,18 @@ export default function TournamentsPage() {
                 />
             ) : streamState === "PAUSED" ? (
                 <StreamPausedBanner mode="paused" />
-            ) : (
-                <HomeHero
-                    match={liveHeroMatch}
-                    stream={
-                        streamBannerLive ? (
-                            <StreamHero
-                                url={streamBanner!.url!}
-                                match={streamMatch}
-                                tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
-                                tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
-                                viewers={streamViewers}
-                                onEnterTheater={enterTheater}
-                                centerOverlay={streamOverlay}
-                            />
-                        ) : null
-                    }
+            ) : streamBannerLive ? (
+                <StreamHero
+                    url={streamBanner!.url!}
+                    match={streamMatch}
+                    tournamentName={streamBanner?.tournamentName ?? streamMatch?.tournamentName ?? null}
+                    tournamentUuid={streamBanner?.tournamentUuid ?? streamMatch?.tournamentUuid ?? null}
+                    viewers={streamViewers}
+                    onEnterTheater={enterTheater}
+                    centerOverlay={streamOverlay}
                 />
+            ) : (
+                <HomeHero match={liveHeroMatch} />
             )}
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}

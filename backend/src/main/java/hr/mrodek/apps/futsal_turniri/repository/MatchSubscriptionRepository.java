@@ -30,4 +30,16 @@ public class MatchSubscriptionRepository implements AppRepository<MatchSubscript
         if (userUid == null || userUid.isBlank() || matchId == null) return;
         delete("userUid = ?1 and match.id = ?2", userUid, matchId);
     }
+
+    /* ── Anonymous follows: keyed by the browser's push endpoint ──────────── */
+
+    public Optional<MatchSubscription> findByEndpointAndMatchId(String endpoint, Long matchId) {
+        if (endpoint == null || endpoint.isBlank() || matchId == null) return Optional.empty();
+        return find("pushEndpoint = ?1 and match.id = ?2", endpoint, matchId).firstResultOptional();
+    }
+
+    public void deleteByEndpointAndMatchId(String endpoint, Long matchId) {
+        if (endpoint == null || endpoint.isBlank() || matchId == null) return;
+        delete("pushEndpoint = ?1 and match.id = ?2", endpoint, matchId);
+    }
 }

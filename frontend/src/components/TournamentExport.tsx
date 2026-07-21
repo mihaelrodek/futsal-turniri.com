@@ -9,6 +9,7 @@ import type { Bracket, BracketMatch } from "../types/bracket"
 import type { ScheduledMatch } from "../types/schedule"
 import type { MatchEventDto, MatchEventType } from "../types/matchEvents"
 import { fetchMatchEvents } from "../api/matchEvents"
+import type { ScorerDto } from "../api/stats"
 import { showError, showSuccess } from "../toaster"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -2768,9 +2769,201 @@ function triggerDownload(dataUrl: string, filename: string) {
  *  (used between the per-page JPG saves). */
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/* ── Top-scorers poster ("Najbolji strijelci") ──────────────────────────────
+   Same page furniture as every sibling poster (the PosterPage shell supplies
+   the tournament-name header, branded QR, watermark and footer). ONE portrait
+   A4 page: a "NAJBOLJI STRIJELCI" heading over the TOP-10 list.
+
+   Ranking is STANDARD COMPETITION ("1224") on `goals` (the Statistika section's
+   ACTIVE-scope tally): tied players share a position and the next position
+   skips (e.g. 7,7 -> 2,2, next is 4). The list is capped at 10 rows so it
+   always fits a single sheet (see rankScorers). Top-3 are highlighted BY RANK
+   (not by index) - a tie that puts 4+ players into ranks 1-3 highlights all of
+   them - with the gold/silver/bronze medallion + a larger, bolder row.
+   `goalsAll` is surfaced as a small "s grupama N" line only when it differs from
+   `goals`, mirroring exactly what StatsSection's ScorerRow shows (which happens
+   only when the scope isn't ALL).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Podium hues - mirror the inline gold/silver/bronze literals in PodiumStrip so
+   the medallions read identically to the bracket poster's 1./2./3. strip. */
+const SCORER_MEDAL = ["#d4a017", "#98a0a6", "#b3763e"]
+
+/** A scorer paired with its precomputed standard-competition rank. */
+type RankedScorer = { scorer: ScorerDto; rank: number }
+
+/** Standard-competition ("1224") ranking of the top 10 by `goals` (desc). The
+ *  caller's list is already goals-sorted (backend), but we re-sort defensively
+ *  so the poster is correct regardless of input order. A hard 10-row cap (not
+ *  "include everyone tied at the boundary") keeps the page a guaranteed single
+ *  A4 sheet - ranks are computed over the displayed rows, so a player tied at
+ *  the 10th boundary but sitting past index 10 is simply not shown. */
+function rankScorers(scorers: ScorerDto[]): RankedScorer[] {
+    const top = [...scorers].sort((a, b) => b.goals - a.goals).slice(0, 10)
+    const ranked: RankedScorer[] = []
+    for (let i = 0; i < top.length; i++) {
+        const rank = i > 0 && top[i].goals === top[i - 1].goals ? ranked[i - 1].rank : i + 1
+        ranked.push({ scorer: top[i], rank })
+    }
+    return ranked
+}
+
+/** One scorer row: rank medallion · player name + (muted) team · big goals.
+ *  `rank <= 3` upgrades the row to the podium treatment (medal colour + a
+ *  larger, bolder layout). */
+function ScorerPosterRow({ scorer, rank }: RankedScorer) {
+    const podium = rank <= 3
+    const medal = podium ? SCORER_MEDAL[rank - 1] : null
+    // Full-tournament tally shown only when it differs from the counted one -
+    // identical gate to StatsSection.ScorerRow (true only when scope !== ALL).
+    const showAll = scorer.goalsAll !== scorer.goals
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                padding: podium ? "11px 20px" : "9px 20px",
+                background: C.white,
+                border: `1px solid ${C.line}`,
+                borderRadius: "12px",
+            }}
+        >
+            {/* Rank medallion - podium ranks get the solid medal disc. */}
+            <div
+                style={{
+                    width: podium ? "38px" : "32px",
+                    height: podium ? "38px" : "32px",
+                    borderRadius: "9999px",
+                    background: medal ?? C.surface,
+                    border: medal ? "none" : `1px solid ${C.line}`,
+                    color: medal ? C.white : C.inkSoft,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: F_HEAD,
+                    fontSize: podium ? "16px" : "14px",
+                    fontWeight: 800,
+                    flexShrink: 0,
+                }}
+            >
+                {rank}
+            </div>
+            {/* Name + team. */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                    style={{
+                        fontFamily: F_HEAD,
+                        fontSize: podium ? "19px" : "16px",
+                        fontWeight: podium ? 800 : 700,
+                        letterSpacing: "-0.01em",
+                        color: C.ink,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                    }}
+                >
+                    {scorer.playerName}
+                </div>
+                {scorer.teamName ? (
+                    <div
+                        style={{
+                            fontSize: podium ? "12.5px" : "12px",
+                            fontWeight: 600,
+                            color: C.muted,
+                            marginTop: "2px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                        }}
+                    >
+                        {scorer.teamName}
+                    </div>
+                ) : null}
+            </div>
+            {/* Goals - big and bold, right-aligned (ball glyph mirrors the app). */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                    <BallGlyph color={C.green} size={podium ? 17 : 14} />
+                    <span
+                        style={{
+                            fontFamily: F_HEAD,
+                            fontSize: podium ? "27px" : "22px",
+                            fontWeight: 800,
+                            letterSpacing: "-0.02em",
+                            lineHeight: 1,
+                            color: C.ink,
+                        }}
+                    >
+                        {scorer.goals}
+                    </span>
+                </div>
+                {showAll ? (
+                    <span
+                        style={{
+                            fontFamily: F_MONO,
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            color: C.muted,
+                            marginTop: "3px",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        s grupama {scorer.goalsAll}
+                    </span>
+                ) : null}
+            </div>
+        </div>
+    )
+}
+
+/** The top-scorers poster body - the "NAJBOLJI STRIJELCI" heading (mirrors the
+ *  group poster's "Utakmice · Grupa X" heading treatment) over the ranked rows. */
+function ScorersPosterBody({ scorers }: { scorers: ScorerDto[] }) {
+    const ranked = rankScorers(scorers)
+    return (
+        <div>
+            {/* Heading + hairline rule (same lockup as GroupMatchesSection). */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+                <span
+                    style={{
+                        fontFamily: F_MONO,
+                        fontSize: "14px",
+                        fontWeight: 800,
+                        letterSpacing: "0.1em",
+                        color: C.green,
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                    }}
+                >
+                    Najbolji strijelci
+                </span>
+                <span style={{ flex: 1, height: "1px", background: C.line }} />
+            </div>
+            {ranked.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {ranked.map(({ scorer, rank }) => (
+                        <ScorerPosterRow key={scorer.playerId} scorer={scorer} rank={rank} />
+                    ))}
+                </div>
+            ) : (
+                <div style={{ fontFamily: F_BODY, fontSize: "15px", color: C.muted, paddingTop: "8px" }}>
+                    Još nema postignutih golova.
+                </div>
+            )}
+        </div>
+    )
+}
+
+/** Top-scorers poster pages - always a single portrait A4 page (the top-10
+ *  list fits comfortably). */
+function buildScorersPages(scorers: ScorerDto[]): ReactNode[] {
+    return [<ScorersPosterBody scorers={scorers} />]
+}
+
 /* ── Export dialog ─────────────────────────────────────────────────────── */
 
-type ExportKind = "groups" | "schedule" | "bracket" | "match"
+type ExportKind = "groups" | "schedule" | "bracket" | "match" | "scorers"
 
 /** Schedule status-filter pills (second pill row). "upcoming" keeps everything
  *  that isn't FINISHED (SCHEDULED / LIVE / no status), "finished" only FINISHED. */
@@ -2798,6 +2991,7 @@ export function ExportDialog({
     matches,
     bracket,
     match,
+    scorers,
     initialScope,
 }: {
     open: boolean
@@ -2817,6 +3011,10 @@ export function ExportDialog({
     /** Required for kind="match" - the single match blown up to a poster. Its
      *  events are fetched here (same endpoint the page's panel uses). */
     match?: MatchExportData
+    /** Required for kind="scorers" - the tournament's top-scorers list (already
+     *  the Statistika section's active-scope tally). Ranked on the poster with
+     *  standard-competition ("1224") ranking and capped at the top 10. */
+    scorers?: ScorerDto[]
     /** Scope to preselect on open (e.g. "g:5" for a single group); resets to
      *  it every time the dialog reopens. Defaults to "all". */
     initialScope?: string
@@ -2950,6 +3148,10 @@ export function ExportDialog({
             // Single shape → the scope pill row stays hidden (no scope/status).
             return [{ id: "all", label: "Utakmica" }]
         }
+        if (kind === "scorers") {
+            // Single shape → the scope pill row stays hidden.
+            return [{ id: "all", label: "Strijelci" }]
+        }
         if (kind === "groups") {
             return [
                 { id: "all", label: "Sve grupe" },
@@ -2993,6 +3195,8 @@ export function ExportDialog({
         pageBodies = buildBracketPages(bracket)
     } else if (kind === "match") {
         pageBodies = buildMatchPages(match, matchEvents)
+    } else if (kind === "scorers") {
+        pageBodies = buildScorersPages(scorers ?? [])
     } else if (kind === "groups") {
         const single = activeScope !== "all"
         const shown = single ? (groups ?? []).filter((g) => `g:${g.id}` === activeScope) : groups ?? []
@@ -3043,7 +3247,7 @@ export function ExportDialog({
     }
     const pageCount = pageBodies.length
 
-    const suffix = kind === "groups" ? "grupe" : kind === "bracket" ? "zavrsnica-bracket" : "raspored"
+    const suffix = kind === "groups" ? "grupe" : kind === "bracket" ? "zavrsnica-bracket" : kind === "scorers" ? "strijelci" : "raspored"
     const baseName =
         kind === "match"
             ? `${slugify(meta.tournamentName)}-utakmica-${slugify(match?.team1Name ?? "")}-${slugify(match?.team2Name ?? "")}`
@@ -3055,7 +3259,9 @@ export function ExportDialog({
                 ? "Preuzmi završnicu"
                 : kind === "match"
                     ? "Preuzmi utakmicu"
-                    : "Preuzmi raspored"
+                    : kind === "scorers"
+                        ? "Preuzmi strijelce"
+                        : "Preuzmi raspored"
 
     async function handleDownload(fmt: "pdf" | "jpg") {
         // The mounted page nodes, in order. Block capture while the QR is still

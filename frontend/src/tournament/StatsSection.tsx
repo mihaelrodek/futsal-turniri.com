@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, NativeSelect, Text, VStack } from "@chakra-ui/react"
-import { FiAward, FiTarget } from "react-icons/fi"
+import { FiAward, FiDownload, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
 import { setScorerScope } from "../api/tournaments"
 import type { ScorerScope, TournamentDetails } from "../types/tournaments"
@@ -10,9 +10,11 @@ import { Loader } from "../ui/primitives"
 import {
     AccentStat,
     BallIcon,
+    GhostButton,
     MonoLabel,
     SectionCard,
 } from "../ui/pitch"
+import { ExportDialog, type ExportMeta } from "../components/TournamentExport"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Statistika" section - Pitch theme.
@@ -180,6 +182,7 @@ export default function StatsSection({
     canEdit = false,
     scorerScope,
     onTournamentChanged,
+    exportMeta,
 }: {
     uuid: string
     /** Organizer/admin - shows the "which goals count" picker. */
@@ -188,6 +191,10 @@ export default function StatsSection({
     scorerScope?: ScorerScope | null
     /** Called with the fresh details DTO after the scope is saved. */
     onTournamentChanged?: (t: TournamentDetails) => void
+    /** Tournament meta for the "Preuzmi" poster header/QR. When absent (the
+     *  parent doesn't thread it yet) the poster falls back to a generic name +
+     *  a uuid-based tournament URL - see `effExportMeta`. */
+    exportMeta?: ExportMeta
 }) {
     const queryClient = useQueryClient()
     // Seed from cache so returning to the Statistika tab paints instantly.
@@ -195,6 +202,16 @@ export default function StatsSection({
     const [scorers, setScorers] = useState<ScorerDto[]>(cachedScorers ?? [])
     const [loading, setLoading] = useState(!cachedScorers)
     const [savingScope, setSavingScope] = useState(false)
+    const [exportOpen, setExportOpen] = useState(false)
+
+    // Poster meta. The parent (TournamentDetailsPage) doesn't thread `exportMeta`
+    // into StatsSection yet the way it does for the schedule/groups/bracket tabs,
+    // so fall back to a generic name + a uuid-based public URL (the QR endpoint
+    // accepts the uuid). Coordinator TODO: pass `exportMeta` for the full header.
+    const effExportMeta: ExportMeta = exportMeta ?? {
+        tournamentName: "Futsal turnir",
+        tournamentUrl: `${window.location.origin}/turniri/${uuid}`,
+    }
 
     const scope: ScorerScope = scorerScope ?? "KNOCKOUT"
     // When group goals don't count, every row shows both tallies.
@@ -375,17 +392,37 @@ export default function StatsSection({
                         ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
                         : "Lista strijelaca po broju postignutih golova"
                 }
+                action={
+                    <HStack gap="3" wrap="wrap" justify="flex-end">
+                        {scopeControl}
+                        <GhostButton
+                            px="3.5"
+                            py="2"
+                            fontSize="13px"
+                            icon={<FiDownload size={14} />}
+                            onClick={() => setExportOpen(true)}
+                        >
+                            Preuzmi
+                        </GhostButton>
+                    </HStack>
+                }
             >
-                <VStack align="stretch" gap="3">
-                    {/* Which goals count toward the race - organizer can change it. */}
-                    <Flex justify="flex-end">{scopeControl}</Flex>
-                    <VStack align="stretch" gap="2">
-                        {scorers.map((s, i) => (
-                            <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
-                        ))}
-                    </VStack>
+                <VStack align="stretch" gap="2">
+                    {scorers.map((s, i) => (
+                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
+                    ))}
                 </VStack>
             </SectionCard>
+
+            {/* Branded top-scorers poster (PDF / JPG) - same export system as
+                the schedule / groups / bracket tabs. */}
+            <ExportDialog
+                open={exportOpen}
+                onClose={() => setExportOpen(false)}
+                kind="scorers"
+                meta={effExportMeta}
+                scorers={scorers}
+            />
         </VStack>
     )
 }

@@ -144,6 +144,10 @@ type LiveClockProps = {
     halfCount?: number | null
     /** When true, render the phase label ("Poluvrijeme" / "2. pol." / "Kraj"). */
     showLabel?: boolean
+    /** When true, suppress the "Pauza" word the clock otherwise prints while
+     *  paused (the ⏸ icon + frozen time still show). Lets a caller that renders
+     *  its OWN "PAUZA" label next to the clock avoid a doubled-up "Pauza". */
+    hidePauseLabel?: boolean
     /** Display size: "xs" (inline rows, default) or "md" (live cards). */
     size?: "xs" | "md"
 }
@@ -247,6 +251,7 @@ export function LiveClock({
     halfLengthMin,
     halfCount,
     showLabel,
+    hidePauseLabel,
     size = "xs",
 }: LiveClockProps) {
     const [, setTick] = useState(0)
@@ -271,7 +276,7 @@ export function LiveClock({
             gap="1"
             whiteSpace="nowrap"
         >
-            {(showLabel || st.paused) && st.label && (
+            {(showLabel || (st.paused && !hidePauseLabel)) && st.label && (
                 <Text as="span" color="fg.muted" fontWeight="medium">
                     {st.label}
                 </Text>
@@ -1279,6 +1284,7 @@ export function LiveGoalEntry({
     onAddEvent,
     sentOffPlayerIds,
     yellowCardedPlayerIds,
+    penaltyInProgress = false,
 }: {
     uuid: string
     matchId: number
@@ -1304,6 +1310,13 @@ export function LiveGoalEntry({
     /** Players with a yellow card in this match - shown with a 🟨 marker
      *  next to their name (still selectable). */
     yellowCardedPlayerIds?: Set<number>
+    /** True once a penalty shootout has kicks recorded on this match. Regulation
+     *  goal entry (Gol / Auto-gol) is then blocked so a mis-tap can't create a
+     *  GOAL event that would wrongly count as a scorer's goal + bump the score;
+     *  penalties are entered only through the guided shootout recorder. Cards
+     *  stay available. Defaults false (no change for group matches / callers that
+     *  don't pass it). */
+    penaltyInProgress?: boolean
 }) {
     const isTimer = liveMode === "TIMER"
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
@@ -1371,8 +1384,13 @@ export function LiveGoalEntry({
         return team1Id ?? team2Id
     }
 
+    // Gol / Auto-gol are the regulation goal kinds; blocked while a penalty
+    // shootout is being recorded so they can't leak into the scorer stats.
+    const goalKindBlocked = penaltyInProgress && (kind === "GOAL" || kind === "OWN_GOAL")
+
     async function pick(p: PlayerDto) {
         if (!minuteValid || addingId != null) return
+        if (goalKindBlocked) return // penali su u tijeku
         if (sentOffPlayerIds?.has(p.id)) return // sent off - can't affect play
         const payload: CreateMatchEventRequest = {
             type: kind,
@@ -1410,6 +1428,7 @@ export function LiveGoalEntry({
     // record only). Recorded with teamId instead of playerId.
     async function pickAnon(teamId: number) {
         if (!minuteValid || addingId != null || addingAnon != null) return
+        if (goalKindBlocked) return // penali su u tijeku
         const payload: CreateMatchEventRequest = {
             type: kind,
             playerId: null,
@@ -1473,21 +1492,26 @@ export function LiveGoalEntry({
                 mobile and the four card types always stay on a single line. */}
             <VStack gap="2" align="stretch" mb="2">
                 <HStack gap="1" w="full">
-                    {TYPES.map((t) => (
-                        <Button
-                            key={t.value}
-                            flex="1"
-                            minW="0"
-                            px="1"
-                            size={{ base: "xs", md: "sm" }}
-                            variant={kind === t.value ? "solid" : "outline"}
-                            colorPalette={kind === t.value ? "brand" : "gray"}
-                            onClick={() => setKind(t.value)}
-                            title={t.title}
-                        >
-                            {t.label}
-                        </Button>
-                    ))}
+                    {TYPES.map((t) => {
+                        // Gol / Auto-gol are locked while penalties are being recorded.
+                        const blocked = penaltyInProgress && (t.value === "GOAL" || t.value === "OWN_GOAL")
+                        return (
+                            <Button
+                                key={t.value}
+                                flex="1"
+                                minW="0"
+                                px="1"
+                                size={{ base: "xs", md: "sm" }}
+                                variant={kind === t.value ? "solid" : "outline"}
+                                colorPalette={kind === t.value ? "brand" : "gray"}
+                                disabled={blocked}
+                                onClick={() => setKind(t.value)}
+                                title={blocked ? "Penali su u tijeku - golovi se unose u penal zapisu" : t.title}
+                            >
+                                {t.label}
+                            </Button>
+                        )
+                    })}
                 </HStack>
                 <HStack gap="2">
                     <Text fontSize="xs" color="fg.muted" fontWeight="medium">
@@ -1523,6 +1547,11 @@ export function LiveGoalEntry({
                     Unesi minutu.
                 </Text>
             )}
+            {goalKindBlocked && (
+                <Text fontSize="xs" color="accent.amber" fontWeight={600} mb="2">
+                    Penali su u tijeku - golovi se unose u penal zapisu.
+                </Text>
+            )}
 
             {/* Two rosters side by side - tap a player to record the event. */}
             <Grid templateColumns="1fr 1fr" gap="2">
@@ -1531,7 +1560,7 @@ export function LiveGoalEntry({
                     teamId={team1Id}
                     players={team1Id != null ? rosters[team1Id] ?? [] : []}
                     addingId={addingId}
-                    disabled={!minuteValid}
+                    disabled={!minuteValid || goalKindBlocked}
                     sentOffPlayerIds={sentOffPlayerIds}
                     yellowCardedPlayerIds={yellowCardedPlayerIds}
                     onPick={pick}
@@ -1545,7 +1574,7 @@ export function LiveGoalEntry({
                     teamId={team2Id}
                     players={team2Id != null ? rosters[team2Id] ?? [] : []}
                     addingId={addingId}
-                    disabled={!minuteValid}
+                    disabled={!minuteValid || goalKindBlocked}
                     sentOffPlayerIds={sentOffPlayerIds}
                     yellowCardedPlayerIds={yellowCardedPlayerIds}
                     onPick={pick}

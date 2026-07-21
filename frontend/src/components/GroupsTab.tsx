@@ -300,6 +300,15 @@ function clearDrawDraft(uuid: string) {
     }
 }
 
+/** True when a click / keypress landed on an interactive control inside a
+ *  standings row, so the row-level open handler bows out and lets that control
+ *  do its own thing. `role="button"` is deliberately excluded so it never
+ *  matches the clickable row itself. */
+function isInteractiveClick(e: { target: EventTarget | null }): boolean {
+    const el = e.target as HTMLElement | null
+    return !!el?.closest("button, a, input, select, textarea, label")
+}
+
 export default function GroupsTab({
                                       uuid,
                                       advancePerGroup,
@@ -311,6 +320,8 @@ export default function GroupsTab({
                                       tournamentStarted = false,
                                       onGoToSchedule,
                                       exportMeta,
+                                      subTabs,
+                                      onSelectTeam,
                                   }: {
     uuid: string
     advancePerGroup?: number | null
@@ -338,6 +349,15 @@ export default function GroupsTab({
     onGoToSchedule?: () => void
     /** Tournament meta for the branded "Export grupe" poster. */
     exportMeta?: ExportMeta
+    /** Compact "Grupe / Eliminacija" pill switcher, supplied by the parent
+     *  page (max-content width). Rendered at the LEFT of this tab's top
+     *  action row, next to "Preuzmi" / the owner draw controls, instead of
+     *  its own full-width bar - undefined on KNOCKOUT_ONLY tournaments
+     *  (no group stage → no pills), which keeps that row exactly as before. */
+    subTabs?: ReactNode
+    /** Open the team-info dialog for a clicked standings row. Additive: when
+     *  omitted, rows stay non-interactive (no pointer, no hover). */
+    onSelectTeam?: (teamId: number) => void
 }) {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -1407,9 +1427,25 @@ export default function GroupsTab({
     )
     const started = tournamentStarted || anyMatchPlayed
 
+    // The compact Grupe/Eliminacija pills, alone on their own line - used by
+    // both "no groups yet" branches below so the pills never vanish just
+    // because there happen to be no other top-row actions in these states.
+    // Falls back to `null` (nothing rendered) when the parent has no pills to
+    // give us (KNOCKOUT_ONLY), so these branches stay pixel-identical to
+    // before.
+    const subTabsRow = subTabs ? <Flex align="center" wrap="wrap">{subTabs}</Flex> : null
+
     if (!hasGroups) {
-        if (canEdit && !finishedLocked && drawOpen) return drawPanel
-        return (
+        if (canEdit && !finishedLocked && drawOpen) {
+            if (!subTabsRow) return drawPanel
+            return (
+                <VStack align="stretch" gap="4">
+                    {subTabsRow}
+                    {drawPanel}
+                </VStack>
+            )
+        }
+        const emptyPanel = (
             <Panel>
                 <EmptyState
                     icon={LuShuffle}
@@ -1432,6 +1468,13 @@ export default function GroupsTab({
                     }
                 />
             </Panel>
+        )
+        if (!subTabsRow) return emptyPanel
+        return (
+            <VStack align="stretch" gap="4">
+                {subTabsRow}
+                {emptyPanel}
+            </VStack>
         )
     }
 
@@ -1658,48 +1701,77 @@ export default function GroupsTab({
         )
     }
 
+    // Actions row content - the branded Export is always available (viewers
+    // too); the destructive draw actions stay organizer-only and hidden once
+    // a match has been played.
+    const groupsActions = (
+        <>
+            <GhostButton
+                px="3.5"
+                py="2"
+                fontSize="13px"
+                icon={<FiDownload size={14}/>}
+                onClick={() => {
+                    setExportScope(undefined)
+                    setExportOpen(true)
+                }}
+            >
+                Preuzmi
+            </GhostButton>
+            {canEdit && !started && !finishedLocked && (
+                <>
+                    <GhostButton
+                        px="3.5"
+                        py="2"
+                        fontSize="13px"
+                        danger
+                        icon={<FiRefreshCw size={14}/>}
+                        onClick={openDraw}
+                        disabled={drawing}
+                    >
+                        {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
+                    </GhostButton>
+                    <GhostButton
+                        px="3.5"
+                        py="2"
+                        fontSize="13px"
+                        danger
+                        icon={<FiTrash2 size={14}/>}
+                        onClick={confirmResetGroups}
+                        disabled={drawing || resetting}
+                    >
+                        {resetting ? "Resetiranje…" : "Resetiraj"}
+                    </GhostButton>
+                </>
+            )}
+        </>
+    )
+
     return (
-        <VStack align="stretch" gap="6" py="2">
+        // No top padding: keep the subTabs pill row flush with the top of the
+        // content column so it lines up with the sidebar top - and with the
+        // Eliminacija tab, which shares this identical leading wrapper. `pb`
+        // keeps the tail breathing room without re-introducing a top offset.
+        <VStack align="stretch" gap="6" pb="2">
             {/* No top "Grupe" SectionCard - the group cards below carry
                  their own headings ("Grupa A", "Grupa B", …) which is
-                 already enough context. "Ponovi ždrijeb" lives in a
-                 right-aligned row above the cards; hidden once any
-                 match has been played because re-drawing would wipe
-                 real results. */}
-            {/* Actions row - the branded Export is always available (viewers
-                too); the destructive draw actions stay organizer-only and
-                hidden once a match has been played. */}
-            <Flex justify="flex-end" gap="2" wrap="wrap">
-                <GhostButton
-                    icon={<FiDownload size={14}/>}
-                    onClick={() => {
-                        setExportScope(undefined)
-                        setExportOpen(true)
-                    }}
-                >
-                    Preuzmi
-                </GhostButton>
-                {canEdit && !started && !finishedLocked && (
-                    <>
-                        <GhostButton
-                            danger
-                            icon={<FiRefreshCw size={14}/>}
-                            onClick={openDraw}
-                            disabled={drawing}
-                        >
-                            {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
-                        </GhostButton>
-                        <GhostButton
-                            danger
-                            icon={<FiTrash2 size={14}/>}
-                            onClick={confirmResetGroups}
-                            disabled={drawing || resetting}
-                        >
-                            {resetting ? "Resetiranje…" : "Resetiraj"}
-                        </GhostButton>
-                    </>
-                )}
-            </Flex>
+                 already enough context. "Ponovi ždrijeb" lives in this
+                 top row; hidden once any match has been played because
+                 re-drawing would wipe real results. */}
+            {/* Top row - the compact Grupe/Eliminacija pills (when supplied
+                by the parent) sit on the LEFT, the actions on the RIGHT, so
+                the two no longer stack as separate full-width bands. Wraps
+                on narrow screens (pills first, actions after); nothing
+                overflows. Without `subTabs` (KNOCKOUT_ONLY) this renders
+                exactly as before - right-aligned actions only. */}
+            {subTabs ? (
+                <Flex align="center" justify="space-between" gap="3" wrap="wrap">
+                    <Flex align="center" wrap="wrap">{subTabs}</Flex>
+                    <Flex align="center" gap="2" wrap="wrap">{groupsActions}</Flex>
+                </Flex>
+            ) : (
+                <Flex justify="flex-end" gap="2" wrap="wrap">{groupsActions}</Flex>
+            )}
 
             {/* Branded groups poster (PDF / JPG). */}
             <ExportDialog
@@ -1927,13 +1999,13 @@ export default function GroupsTab({
                         <Box>
                             {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
-                            Mobile keeps UT + P·N·I + GR + BOD; md adds GOL/
-                            Zadnjih 5. */}
+                            Mobile keeps P·N·I + BOD; md adds GOL/Zadnjih 5.
+                            (UT + GR intentionally dropped for a cleaner view.) */}
                             <Box
                                 display="grid"
                                 gridTemplateColumns={{
-                                    base: "22px 1fr 20px 20px 20px 20px 28px 30px",
-                                    md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                    base: "22px 1fr 20px 20px 20px 30px",
+                                    md: "24px 1fr 24px 24px 24px 48px 72px 34px",
                                 }}
                                 gap="1.5"
                                 px={{base: "3", md: "4"}}
@@ -1952,13 +2024,11 @@ export default function GroupsTab({
                                 >
                                     EKIPA
                                 </Text>
-                                <StHead label="UT"/>
                                 <StHead label="P"/>
                                 <StHead label="N"/>
                                 <StHead label="I"/>
-                                <StHead label="GR"/>
                                 <StHead label="GOL" mdOnly/>
-                                <StHead label="ZADNJIH 5" mdOnly align="left"/>
+                                <StHead label="ZADNJIH 3" mdOnly align="left"/>
                                 <StHead label="BOD"/>
                             </Box>
 
@@ -1973,8 +2043,8 @@ export default function GroupsTab({
                                         key={row.teamId}
                                         display="grid"
                                         gridTemplateColumns={{
-                                            base: "22px 1fr 20px 20px 20px 20px 28px 30px",
-                                            md: "24px 1fr 26px 24px 24px 24px 40px 48px 92px 34px",
+                                            base: "22px 1fr 20px 20px 20px 30px",
+                                            md: "24px 1fr 24px 24px 24px 48px 72px 34px",
                                         }}
                                         gap="1.5"
                                         alignItems="center"
@@ -1986,6 +2056,35 @@ export default function GroupsTab({
                                         borderLeftColor={advances ? "pitch.500" : "transparent"}
                                         borderTopWidth={idx === 0 ? "0" : "1px"}
                                         borderTopColor="border"
+                                        cursor={onSelectTeam ? "pointer" : undefined}
+                                        role={onSelectTeam ? "button" : undefined}
+                                        tabIndex={onSelectTeam ? 0 : undefined}
+                                        transition={onSelectTeam ? "background 0.12s" : undefined}
+                                        _hover={
+                                            onSelectTeam
+                                                ? { bg: advances ? "rgba(58,165,107,0.14)" : "bg.surfaceTint" }
+                                                : undefined
+                                        }
+                                        onClick={
+                                            onSelectTeam
+                                                ? (e) => {
+                                                    if (!isInteractiveClick(e)) onSelectTeam?.(row.teamId)
+                                                }
+                                                : undefined
+                                        }
+                                        onKeyDown={
+                                            onSelectTeam
+                                                ? (e) => {
+                                                    if (
+                                                        (e.key === "Enter" || e.key === " ") &&
+                                                        !isInteractiveClick(e)
+                                                    ) {
+                                                        e.preventDefault()
+                                                        onSelectTeam?.(row.teamId)
+                                                    }
+                                                }
+                                                : undefined
+                                        }
                                     >
                                         {/* # */}
                                         <Text
@@ -2004,12 +2103,6 @@ export default function GroupsTab({
                                         <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" lineHeight="1.25" minW="0">
                                             {row.teamName}
                                         </Text>
-                                        {/* UT (odigrano) */}
-                                        <StNum
-                                            value={row.played}
-                                            color={lc("played") ? "accent.red" : undefined}
-                                            weight={lc("played") ? 700 : undefined}
-                                        />
                                         {/* P · N · I */}
                                         <StNum
                                             value={row.won}
@@ -2025,20 +2118,6 @@ export default function GroupsTab({
                                             value={row.lost}
                                             color={lc("lost") ? "accent.red" : undefined}
                                             weight={lc("lost") ? 700 : undefined}
-                                        />
-                                        {/* GR (gol-razlika) - shown on mobile too */}
-                                        <StNum
-                                            weight={lc("goalDiff") ? 700 : 600}
-                                            value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
-                                            color={
-                                                lc("goalDiff")
-                                                    ? "accent.red"
-                                                    : row.goalDiff > 0
-                                                        ? "pitch.500"
-                                                        : row.goalDiff < 0
-                                                            ? "accent.red"
-                                                            : "fg.muted"
-                                            }
                                         />
                                         {/* GOL (dani:primljeni) - md only */}
                                         <StNum
@@ -2060,8 +2139,8 @@ export default function GroupsTab({
                                             {/* Cap at 5 badges total: drop the oldest
                                             finished result while the provisional
                                             live badge is appended, so the strip
-                                            never overflows its 92px track. */}
-                                            {(row.liveForm ? (row.form ?? []).slice(-4) : row.form ?? []).map((res, i) => {
+                                            never overflows its 72px track. */}
+                                            {(row.liveForm ? (row.form ?? []).slice(-2) : (row.form ?? []).slice(-3)).map((res, i) => {
                                                 const isW = res === "W"
                                                 const isL = res === "L"
                                                 return (
@@ -2210,15 +2289,16 @@ export default function GroupsTab({
                             </Box>
                         </Flex>
 
-                        {/* Same column set as the group tables (plus GRP): mobile
-                        shows GRP + UT + P·N·I + GR + BOD, md adds GOL and
-                        Zadnjih 5. Live-modified cells render red, identically
-                        to the group standings. */}
+                        {/* Same trimmed column set as the group tables: mobile
+                        shows P·N·I + BOD, md adds GOL and Zadnjih 5. GRP (group
+                        letter), UT and GR are intentionally dropped here. Live-
+                        modified cells render red, identically to the group
+                        standings. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
-                                md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
+                                base: "22px 1fr 20px 20px 20px 30px",
+                                md: "24px 1fr 24px 24px 24px 48px 72px 34px",
                             }}
                             gap="1.5"
                             px={{base: "3", md: "4"}}
@@ -2232,14 +2312,11 @@ export default function GroupsTab({
                                   fontWeight={700}>
                                 EKIPA
                             </Text>
-                            <StHead label="GRP"/>
-                            <StHead label="UT"/>
                             <StHead label="P"/>
                             <StHead label="N"/>
                             <StHead label="I"/>
-                            <StHead label="GR"/>
                             <StHead label="GOL" mdOnly/>
-                            <StHead label="ZADNJIH 5" mdOnly align="left"/>
+                            <StHead label="ZADNJIH 3" mdOnly align="left"/>
                             <StHead label="BOD"/>
                         </Box>
 
@@ -2251,8 +2328,8 @@ export default function GroupsTab({
                                     key={tr.standing.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "22px 1fr 20px 20px 20px 20px 20px 28px 30px",
-                                        md: "24px 1fr 36px 26px 24px 24px 24px 40px 48px 92px 34px",
+                                        base: "22px 1fr 20px 20px 20px 30px",
+                                        md: "24px 1fr 24px 24px 24px 48px 72px 34px",
                                     }}
                                     gap="1.5"
                                     alignItems="center"
@@ -2263,6 +2340,35 @@ export default function GroupsTab({
                                     borderLeftColor={q ? "pitch.500" : "transparent"}
                                     borderTopWidth={idx === 0 ? "0" : "1px"}
                                     borderTopColor="border"
+                                    cursor={onSelectTeam ? "pointer" : undefined}
+                                    role={onSelectTeam ? "button" : undefined}
+                                    tabIndex={onSelectTeam ? 0 : undefined}
+                                    transition={onSelectTeam ? "background 0.12s" : undefined}
+                                    _hover={
+                                        onSelectTeam
+                                            ? { bg: q ? "rgba(58,165,107,0.14)" : "bg.surfaceTint" }
+                                            : undefined
+                                    }
+                                    onClick={
+                                        onSelectTeam
+                                            ? (e) => {
+                                                if (!isInteractiveClick(e)) onSelectTeam?.(tr.standing.teamId)
+                                            }
+                                            : undefined
+                                    }
+                                    onKeyDown={
+                                        onSelectTeam
+                                            ? (e) => {
+                                                if (
+                                                    (e.key === "Enter" || e.key === " ") &&
+                                                    !isInteractiveClick(e)
+                                                ) {
+                                                    e.preventDefault()
+                                                    onSelectTeam?.(tr.standing.teamId)
+                                                }
+                                            }
+                                            : undefined
+                                    }
                                 >
                                     <Text fontFamily="mono" fontSize="13px" fontWeight={800}
                                           color={q ? "pitch.500" : "fg.muted"} textAlign="center">
@@ -2271,16 +2377,6 @@ export default function GroupsTab({
                                     <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
                                         {tr.standing.teamName}
                                     </Text>
-                                    <Text fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.muted"
-                                          textAlign="center">
-                                        {tr.groupName}
-                                    </Text>
-                                    {/* UT (odigrano) */}
-                                    <StNum
-                                        value={tr.standing.played}
-                                        color={lc("played") ? "accent.red" : undefined}
-                                        weight={lc("played") ? 700 : undefined}
-                                    />
                                     {/* P · N · I */}
                                     <StNum
                                         value={tr.standing.won}
@@ -2297,20 +2393,6 @@ export default function GroupsTab({
                                         color={lc("lost") ? "accent.red" : undefined}
                                         weight={lc("lost") ? 700 : undefined}
                                     />
-                                    {/* GR (gol-razlika) - shown on mobile too */}
-                                    <StNum
-                                        weight={lc("goalDiff") ? 700 : 600}
-                                        value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
-                                        color={
-                                            lc("goalDiff")
-                                                ? "accent.red"
-                                                : tr.standing.goalDiff > 0
-                                                    ? "pitch.500"
-                                                    : tr.standing.goalDiff < 0
-                                                        ? "accent.red"
-                                                        : "fg.muted"
-                                        }
-                                    />
                                     {/* GOL (dani:primljeni) - md only */}
                                     <StNum
                                         value={`${tr.standing.goalsFor}:${tr.standing.goalsAgainst}`}
@@ -2326,8 +2408,8 @@ export default function GroupsTab({
                                         justify="flex-start"
                                     >
                                         {(tr.standing.liveForm
-                                                ? (tr.standing.form ?? []).slice(-4)
-                                                : tr.standing.form ?? []
+                                                ? (tr.standing.form ?? []).slice(-2)
+                                                : (tr.standing.form ?? []).slice(-3)
                                         ).map((res, i) => {
                                             const isW = res === "W"
                                             const isL = res === "L"

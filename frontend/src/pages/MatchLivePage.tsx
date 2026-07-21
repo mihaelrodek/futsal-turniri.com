@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Box, Flex, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
+import { Box, chakra, Flex, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { FiArrowLeft, FiDownload, FiShare2 } from "react-icons/fi"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
 import { fetchTournamentDetails } from "../api/tournaments"
+import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
 import type { TournamentDetails } from "../types/tournaments"
 import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
 import { useQueryClient } from "@tanstack/react-query"
@@ -123,6 +124,16 @@ export default function MatchLivePage() {
     // Fallback poll (paused while the tab is hidden).
     usePolling(loadAll, POLL_MS)
 
+    // Live-stream suggestion: if this tournament currently has an active stream,
+    // surface a pulsing banner in the header that jumps to the immersive /uzivo
+    // view (this page otherwise gives no hint a stream exists). Polled always
+    // while mounted; seeded synchronously from the first-paint hint.
+    const [streamBanner, setStreamBanner] = useState<StreamBanner | null>(() => readStreamBannerHint())
+    const loadStreamBanner = useCallback(() => {
+        fetchStreamBanner().then(setStreamBanner).catch(() => { /* keep last known */ })
+    }, [])
+    usePolling(loadStreamBanner, 30000, true)
+
     // Realtime: refetch the instant the backend pushes a change for THIS match
     // (or a tournament-wide update with no matchId).
     useLiveSocket((msg) => {
@@ -188,9 +199,25 @@ export default function MatchLivePage() {
     const isLive = !!live
     const isFinished = !isLive && scheduled.status === "FINISHED"
     const isScheduled = !isLive && scheduled.status === "SCHEDULED"
+    // A stream is live "for this page" when the banner is STREAMING, linked to
+    // THIS tournament, AND this match is the one currently being played - the
+    // stream is tournament-level (no matchId), so the live match IS the streamed
+    // one; without the isLive gate the pill would also show on finished /
+    // upcoming matches that aren't actually on stream. The route param `uuid`
+    // may be a slug, so also compare the banner's immutable tournamentUuid
+    // against the cached details' real uuid.
+    const streamLiveForThis =
+        isLive &&
+        streamBanner?.state === "STREAMING" &&
+        !!uuid &&
+        (streamBanner?.tournamentUuid === uuid || streamBanner?.tournamentUuid === cachedDetails?.uuid)
     const isTimer = live?.liveMode === "TIMER"
     const score1 = live?.score1 ?? scheduled.score1 ?? 0
     const score2 = live?.score2 ?? scheduled.score2 ?? 0
+    // Equal-width digit boxes for the score row: both sides sized to the LONGER
+    // score's digit count so the colon stays dead-centre ("10 : 5" would
+    // otherwise push it right). Mono + tabular-nums makes 1 digit = 1ch exact.
+    const scoreCh = `${Math.max(String(score1).length, String(score2).length)}ch`
     const team1Name = scheduled.team1Name ?? live?.team1Name ?? "-"
     const team2Name = scheduled.team2Name ?? live?.team2Name ?? "-"
     const jerseyC1 = teamColor(teamColors, scheduled.team1Id)
@@ -277,12 +304,23 @@ export default function MatchLivePage() {
                 borderColor="border"
                 bg="bg.panel"
             >
-                {/* Slim top bar: back · tournament name (→ tournament page) · share. */}
+                {/* Slim top bar: back · tournament name (→ tournament page) · share.
+                    Three clusters on ONE row, all vertically centred against each
+                    other (align="center"). The left and right clusters carry equal
+                    flex so the centre name+stage block sits dead-centre horizontally;
+                    the centre stack owns its own alignment and is centred as a unit,
+                    so the side icons line up with its vertical midpoint (not the top
+                    of the name). minW="0" lets a long name wrap/clamp instead of
+                    pushing the icons out of alignment. */}
                 <Flex align="center" gap="2" mb="2">
-                    <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
-                        <FiArrowLeft />
-                    </IconButton>
-                    <VStack gap="0" flex="1" minW="0" align="center">
+                    {/* Left cluster - back arrow (equal flex to the right cluster). */}
+                    <Flex flex="1" minW="0" justify="flex-start">
+                        <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
+                            <FiArrowLeft />
+                        </IconButton>
+                    </Flex>
+                    {/* Centre cluster - tournament name + stage, centred as one unit. */}
+                    <VStack gap="0" minW="0" align="center">
                         {title && (
                             <Text
                                 as="button"
@@ -304,33 +342,116 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </VStack>
-                    <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
-                        <FiDownload />
-                    </IconButton>
-                    <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
-                        <FiShare2 />
-                    </IconButton>
+                    {/* Right cluster - download + share (equal flex to the left). */}
+                    <Flex flex="1" minW="0" justify="flex-end" gap="2">
+                        <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
+                            <FiDownload />
+                        </IconButton>
+                        <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
+                            <FiShare2 />
+                        </IconButton>
+                    </Flex>
                 </Flex>
 
-                {/* Status line (centred) ABOVE the teams+score row so the
-                    pill/clock never pushes the score off the team-name line. */}
-                <Flex justify="center" align="center" minH="5" mb="1">
+                {/* Live-stream suggestion pill (only while a stream for THIS
+                    tournament is running) → jumps to the immersive /uzivo view.
+                    Renders nothing otherwise, so it never reserves space / shifts
+                    the teams+score row. */}
+                {streamLiveForThis && (
+                    <Flex justify="center" mb="1.5">
+                        <chakra.button
+                            type="button"
+                            onClick={() => navigate(`/turniri/${uuid}/uzivo`)}
+                            display="inline-flex"
+                            alignItems="center"
+                            gap="2"
+                            px="3"
+                            py="1"
+                            rounded="full"
+                            fontSize="12px"
+                            fontWeight={700}
+                            bg="accent.red"
+                            color="white"
+                            cursor="pointer"
+                            css={{ animation: "livePillPulse 1.6s ease-out infinite" }}
+                            _hover={{ bg: "#b91c1c" }}
+                        >
+                            <Box w="6px" h="6px" rounded="full" bg="white" flexShrink={0} css={{ animation: "pitchPulse 1.6s infinite" }} />
+                            Gledaj live stream
+                        </chakra.button>
+                    </Flex>
+                )}
+
+                {/* Teams + score - the team name and the score sit on ONE
+                    horizontal line (grid is vertically centred and the score is
+                    the only thing in the centre cell). */}
+                <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
+                    <HStack gap="2" justify="flex-end" minW="0">
+                        <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={12} />
+                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
+                            {team1Name}
+                        </Text>
+                    </HStack>
+                    {isScheduled ? (
+                        <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
+                            {formatKickoff(scheduled.kickoffAt)}
+                        </Text>
+                    ) : (
+                        /* Both digit boxes get the SAME width - that of the
+                           longer score ("10" vs "5" → both 2ch, tabular mono) -
+                           so the colon sits at the exact centre of the cell no
+                           matter how the digit counts differ. */
+                        <HStack
+                            gap="1.5"
+                            fontFamily="mono"
+                            fontSize="3xl"
+                            fontWeight={800}
+                            fontVariantNumeric="tabular-nums"
+                            lineHeight="1"
+                            color={isLive ? "red.fg" : "fg.ink"}
+                            whiteSpace="nowrap"
+                            flexShrink={0}
+                            justify="center"
+                        >
+                            <Box as="span" w={scoreCh} textAlign="right">{score1}</Box>
+                            <Box as="span">:</Box>
+                            <Box as="span" w={scoreCh} textAlign="left">{score2}</Box>
+                        </HStack>
+                    )}
+                    <HStack gap="2" justify="flex-start" minW="0">
+                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
+                            {team2Name}
+                        </Text>
+                        <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={12} />
+                    </HStack>
+                </Box>
+
+                {/* Status line (centred) BELOW the teams+score row: the running
+                    clock + half/pause label while live, else the plain state.
+                    It sits here (not above) so the clock reads as a caption of
+                    the scoreline; the live-stream pill stays up top. */}
+                <Flex justify="center" align="center" minH="5" mt="2">
                     {isLive ? (
                         <HStack gap="2">
-                            <Box
-                                as="span"
-                                px="2"
-                                py="0.5"
-                                rounded="full"
-                                bg="red.solid"
-                                color="white"
-                                fontSize="2xs"
-                                fontWeight={800}
-                                letterSpacing="wider"
-                                textTransform="uppercase"
-                            >
-                                Uživo
-                            </Box>
+                            {/* The "Uživo" pill is redundant while the pulsing
+                                "Gledaj live stream" pill is shown above -
+                                one red live signal is enough. */}
+                            {!streamLiveForThis && (
+                                <Box
+                                    as="span"
+                                    px="2"
+                                    py="0.5"
+                                    rounded="full"
+                                    bg="red.solid"
+                                    color="white"
+                                    fontSize="2xs"
+                                    fontWeight={800}
+                                    letterSpacing="wider"
+                                    textTransform="uppercase"
+                                >
+                                    Uživo
+                                </Box>
+                            )}
                             {isTimer && (
                                 <LiveClock
                                     liveStartedAt={live?.liveStartedAt}
@@ -349,42 +470,6 @@ export default function MatchLivePage() {
                         </Text>
                     )}
                 </Flex>
-
-                {/* Teams + score - the team name and the score sit on ONE
-                    horizontal line (grid is vertically centred and the score is
-                    the only thing in the centre cell). */}
-                <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
-                    <HStack gap="2" justify="flex-end" minW="0">
-                        <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={12} />
-                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
-                            {team1Name}
-                        </Text>
-                    </HStack>
-                    {isScheduled ? (
-                        <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
-                            {formatKickoff(scheduled.kickoffAt)}
-                        </Text>
-                    ) : (
-                        <Text
-                            fontFamily="mono"
-                            fontSize="3xl"
-                            fontWeight={800}
-                            fontVariantNumeric="tabular-nums"
-                            lineHeight="1"
-                            color={isLive ? "red.fg" : "fg.ink"}
-                            whiteSpace="nowrap"
-                            flexShrink={0}
-                        >
-                            {score1} : {score2}
-                        </Text>
-                    )}
-                    <HStack gap="2" justify="flex-start" minW="0">
-                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
-                            {team2Name}
-                        </Text>
-                        <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={12} />
-                    </HStack>
-                </Box>
 
                 {/* Penalty shootout result under the score (centred). */}
                 {hasPens && (

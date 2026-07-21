@@ -562,7 +562,11 @@ export default function MapPage() {
             <Grid templateColumns={{ base: "1fr", md: "340px 1fr" }} gap="5">
                 {/* Sidebar - desktop only */}
                 <Box display={{ base: "none", md: "block" }}>
-                    <Flex justify="flex-end" align="center" mb="2" minH="20px">
+                    {/* "Poništi odabir" header - centered above the list. Its
+                        fixed height (minH 20px + mb "2" = 28px) is mirrored by
+                        the map column's top offset below so the two columns'
+                        content tops line up. */}
+                    <Flex justify="center" align="center" mb="2" minH="20px">
                         {selectedUuid && (
                             <Box
                                 fontSize="12px"
@@ -603,8 +607,13 @@ export default function MapPage() {
                     </VStack>
                 </Box>
 
-                {/* Map */}
+                {/* Map - on desktop, offset the top by the sidebar's
+                    "Poništi odabir" header height (minH 20px + mb "2" = 28px,
+                    i.e. the "7" spacing token) so the map's top edge lines up
+                    with the first tournament card instead of sitting higher. No
+                    offset on mobile, where the sidebar header is not rendered. */}
                 <Box
+                    mt={{ base: "0", md: "7" }}
                     borderWidth="1px"
                     borderColor="border"
                     rounded="xl"

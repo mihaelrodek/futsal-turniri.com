@@ -25,6 +25,18 @@ public class PushSubscriptionRepository implements AppRepository<PushSubscriptio
     }
 
     /**
+     * Anonymous-scoped delete: only drops the subscription if it is an
+     * ANONYMOUS row ({@code userUid IS NULL}). Used by the public unsubscribe
+     * endpoint for not-logged-in callers so a leaked endpoint URL can't be used
+     * to detach a real user's push delivery (mirrors
+     * {@link #deleteByUserUidAndEndpoint} for the logged-in case).
+     */
+    public void deleteAnonByEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) return;
+        delete("endpoint = ?1 and userUid is null", endpoint);
+    }
+
+    /**
      * Owner-scoped delete: only drops the subscription if the row's
      * {@code userUid} matches the caller. Used by the public unsubscribe
      * endpoint so a leaked endpoint URL alone can't be used to detach

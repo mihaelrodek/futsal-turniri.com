@@ -28,7 +28,13 @@ public class PushSubscription {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_uid", nullable = false, length = 128)
+    /**
+     * Firebase UID of the owner, or {@code null} for an ANONYMOUS
+     * subscription (a not-logged-in browser). Anonymous rows are identified
+     * solely by their unique {@code endpoint}; a later logged-in subscribe of
+     * the same endpoint adopts the row onto that user (fills this in).
+     */
+    @Column(name = "user_uid", length = 128)
     private String userUid;
 
     @Column(nullable = false, columnDefinition = "text", unique = true)

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, Flex, Grid, HStack, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
-import { FiX, FiMaximize, FiClock } from "react-icons/fi"
+import { FiX, FiMaximize, FiClock, FiPlay, FiHome } from "react-icons/fi"
 
 import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
@@ -132,6 +132,76 @@ export function buildStreamOverlay(
     )
 }
 
+/** Per-side goalscorers for the FULLSCREEN player: team 1 down the left edge,
+ *  team 2 down the right, each row "Ime Prezime 12'". StreamPlayer positions
+ *  and auto-hides them; only the content is built here.
+ *
+ *  Which events count (the semantics used across the app): GOAL and OWN_GOAL
+ *  both belong to the team in `teamId` - for an own goal that's the
+ *  BENEFICIARY, while the named player is the one who put it into his own net
+ *  (hence the "(ag)" marker). PENALTY_GOAL / PENALTY_MISSED are shootout kicks
+ *  that never touch the match score, so they are left out entirely.
+ *
+ *  Undefined when nothing is live - the player then draws no columns. */
+export function buildSideScorers(match: LiveMatch | null, events: MatchEventDto[]) {
+    if (!match) return undefined
+    const goals = events
+        .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL")
+        .sort((a, b) => a.minute - b.minute)
+    return {
+        left: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team1Id)} align="left" />,
+        right: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team2Id)} align="right" />,
+    }
+}
+
+/** One side's scorer list as a dark translucent card - the same overlay idiom
+ *  as the scorebug, so it stays legible over any footage (bright pitch, night
+ *  game, snow). Renders NOTHING at all when that side hasn't scored. */
+function ScorerColumn({ goals, align }: { goals: MatchEventDto[]; align: "left" | "right" }) {
+    if (goals.length === 0) return <></>
+    return (
+        // Deliberately SMALL type: this card sits inside the scorebug's 1.6x
+        // fullscreen scale, so 10px renders around 16px on screen - readable
+        // from the couch while a long scorer list still stays compact instead
+        // of eating a third of the picture.
+        <VStack
+            align={align === "left" ? "flex-start" : "flex-end"}
+            gap="0"
+            bg="rgba(15,15,17,0.72)"
+            css={{ backdropFilter: "blur(6px)" }}
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            rounded="md"
+            px="1.5"
+            py="1"
+        >
+            {goals.map((e) => (
+                <Text
+                    key={e.id}
+                    fontSize={{ base: "8px", md: "10px" }}
+                    fontWeight={600}
+                    lineHeight="1.35"
+                    textAlign={align}
+                    css={{ overflowWrap: "anywhere" }}
+                >
+                    {scorerLabel(e)}{" "}
+                    <chakra.span fontFamily="mono" fontVariantNumeric="tabular-nums">
+                        {e.minute}'
+                    </chakra.span>
+                </Text>
+            ))}
+        </VStack>
+    )
+}
+
+/** Scorer name for one goal, worded exactly like the rest of the app: an own
+ *  goal carries the "(ag)" marker (just "Autogol" when nobody is named), and
+ *  an unattributed goal reads "Nepoznati strijelac". */
+function scorerLabel(e: MatchEventDto): string {
+    if (e.type === "OWN_GOAL") return e.playerName != null ? `${e.playerName} (ag)` : "Autogol"
+    return e.playerName ?? "Nepoznati strijelac"
+}
+
 export default function StreamHero({
     url,
     match,
@@ -154,7 +224,8 @@ export default function StreamHero({
     tournamentUuid?: string | null
     /** Live-viewer count for the stream's "👁 N" badge. */
     viewers?: number | null
-    /** When set, shows a "Turnir mode" button that opens the theater view. */
+    /** When set, shows the "Gledaj uživo" primary (and the mobile turnir-mode
+     *  button) that opens the live/theater view. */
     onEnterTheater?: () => void
     /** Admin-toggled media drawn centred over the video (built by
      *  {@link buildStreamOverlay}). */
@@ -165,6 +236,10 @@ export default function StreamHero({
     // Nothing live → feature the tournament's next fixture instead.
     const nextMatch = useNextMatch(uuid, null, !match)
     const scoreBug = buildScoreBug(match, colors, nextMatch)
+    // ONE events poll for the whole hero: the side panel's ticker reads it
+    // (passed down below) and so do the fullscreen scorer columns.
+    const events = useMatchEvents(match?.tournamentUuid ?? null, match?.matchId ?? null)
+    const sideScorers = useMemo(() => buildSideScorers(match, events), [match, events])
 
     return (
         <Box mb="0">
@@ -199,7 +274,13 @@ export default function StreamHero({
                 alignItems="stretch"
             >
                 <Box h={{ lg: ROW_H }} minW="0">
-                    <StreamPlayer url={url} overlay={scoreBug} centerOverlay={centerOverlay} viewers={viewers} />
+                    <StreamPlayer
+                        url={url}
+                        overlay={scoreBug}
+                        centerOverlay={centerOverlay}
+                        viewers={viewers}
+                        sideScorers={sideScorers}
+                    />
                 </Box>
                 <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
                     <StreamSidePanel
@@ -208,6 +289,7 @@ export default function StreamHero({
                         nextMatch={nextMatch}
                         tournamentName={tournamentName}
                         onEnterTheater={onEnterTheater}
+                        events={events}
                     />
                 </Box>
             </Grid>
@@ -219,24 +301,21 @@ export default function StreamHero({
 
 const REGULATION: ReadonlySet<string> = new Set(["GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD"])
 
-/** Ticker state - events fetch + poll, half-split sections, autoscroll ref.
- *  Shared by the standalone MatchTickerPanel (theater) and the tabbed
- *  StreamSidePanel (home hero) so both render identically. */
-function useMatchTicker(
-    match: LiveMatch | null,
-    uuidProp?: string | null,
-    nextMatch?: ScheduledMatch | null,
-) {
-    const uuid = match?.tournamentUuid ?? null
-    const matchId = match?.matchId ?? null
-    const colors = useTeamColors(match?.tournamentUuid ?? uuidProp ?? null)
+/** A live match's events: load on match switch, then poll while it runs
+ *  (visible-tab only). Split out of {@link useMatchTicker} so a parent can
+ *  fetch ONCE and feed several consumers - the home hero polls here and hands
+ *  the same list to both the ticker panel and the fullscreen scorer columns.
+ *  `enabled=false` skips fetching entirely (the consumer was given events). */
+export function useMatchEvents(
+    uuid: string | null,
+    matchId: number | null,
+    enabled = true,
+): MatchEventDto[] {
     const [events, setEvents] = useState<MatchEventDto[]>([])
-    // With nothing live, the panel features the next fixture instead.
-    const showUpcoming = !match && !!nextMatch
 
     // Load on match switch (also clears when the match ends)…
     useEffect(() => {
-        if (!uuid || !matchId) {
+        if (!uuid || !matchId || !enabled) {
             setEvents([])
             return
         }
@@ -245,7 +324,7 @@ function useMatchTicker(
             .then((list) => { if (!cancelled) setEvents(list) })
             .catch(() => { /* silent - next poll retries */ })
         return () => { cancelled = true }
-    }, [uuid, matchId])
+    }, [uuid, matchId, enabled])
 
     // …and keep refreshing while live (visible-tab only).
     usePolling(() => {
@@ -253,7 +332,30 @@ function useMatchTicker(
         fetchMatchEvents(uuid, matchId)
             .then(setEvents)
             .catch(() => { /* silent */ })
-    }, 12_000, !!uuid && !!matchId)
+    }, 12_000, enabled && !!uuid && !!matchId)
+
+    return events
+}
+
+/** Ticker state - events fetch + poll, half-split sections, autoscroll ref.
+ *  Shared by the standalone MatchTickerPanel (theater) and the tabbed
+ *  StreamSidePanel (home hero) so both render identically. */
+function useMatchTicker(
+    match: LiveMatch | null,
+    uuidProp?: string | null,
+    nextMatch?: ScheduledMatch | null,
+    eventsProp?: MatchEventDto[],
+) {
+    const uuid = match?.tournamentUuid ?? null
+    const matchId = match?.matchId ?? null
+    const colors = useTeamColors(match?.tournamentUuid ?? uuidProp ?? null)
+    // A parent that already polls these events passes them in (the home hero
+    // needs them for the fullscreen scorer columns too) - then this hook does
+    // NOT fetch, so there is still exactly one poll per live match.
+    const ownEvents = useMatchEvents(uuid, matchId, eventsProp === undefined)
+    const events = eventsProp ?? ownEvents
+    // With nothing live, the panel features the next fixture instead.
+    const showUpcoming = !match && !!nextMatch
 
     // Fixed-height view - keep the newest event in sight.
     const bodyRef = useRef<HTMLDivElement>(null)
@@ -550,7 +652,7 @@ type PanelMode = "groups" | "bracket"
  *  the tabbed side panel's Tablica tab. */
 function ModeToggle({ mode, onPick }: { mode: PanelMode; onPick: (m: PanelMode) => void }) {
     return (
-        <HStack gap="1" bg="bg.surfaceTint" rounded="full" p="1" borderWidth="1px" borderColor="border">
+        <HStack gap="1" bg="bg.panel" rounded="full" p="1" borderWidth="1px" borderColor="border">
             {(["groups", "bracket"] as PanelMode[]).map((m) => (
                 <chakra.button
                     key={m}
@@ -702,7 +804,7 @@ function GroupTableBody({ d }: { d: GroupTable }) {
                                 fontWeight={800}
                                 flexShrink={0}
                                 cursor="pointer"
-                                bg={active ? "fg.ink" : "bg.surfaceTint"}
+                                bg={active ? "fg.ink" : "bg.panel"}
                                 color={active ? "bg.panel" : "fg.ink"}
                                 borderWidth="1px"
                                 borderColor={active ? "fg.ink" : "border"}
@@ -830,30 +932,41 @@ export function StreamSidePanel({
     nextMatch,
     tournamentName,
     onEnterTheater,
+    events,
 }: {
     match: LiveMatch | null
     uuid?: string | null
     nextMatch?: ScheduledMatch | null
     /** Streamed tournament's name - shown at the top of the panel (lg+). */
     tournamentName?: string | null
-    /** Opens the theater view; renders the "Turnir mode" button when set. */
+    /** Opens the live/theater view; backs the "Gledaj uživo" primary button
+     *  when set. */
     onEnterTheater?: () => void
+    /** Already-polled match events. Pass them when the parent needs the same
+     *  list anyway (the home hero also feeds the fullscreen scorer columns) -
+     *  the ticker then reuses them instead of opening a second poll. Omit and
+     *  the panel fetches its own. */
+    events?: MatchEventDto[]
 }) {
     const [tab, setTab] = useState<"match" | "table">("match")
-    const ticker = useMatchTicker(match, uuid, nextMatch)
+    const ticker = useMatchTicker(match, uuid, nextMatch, events)
     const table = useGroupTable(match, uuid)
 
-    // "Turnir" link → the tournament page. Built from the live match when there
-    // is one, else the tournament uuid, so it works even between games (turnir
-    // mode). It lives in the footer's bottom-right corner now.
+    // "Turnir" button → the tournament page. Built from the live match when
+    // there is one, else the tournament uuid, so it works even between games
+    // (turnir mode). Backs the outline secondary button in the footer.
     const tournamentHref = match?.tournamentSlug ?? match?.tournamentUuid ?? uuid ?? null
 
+    // A touch darker than the page canvas (surfaceTint = pale pitch-green) so
+    // the whole side panel reads as one "stream module", not a plain white
+    // card. Inner segmented controls / group chips flip to white (bg.panel)
+    // below so they still read as raised pills on the tint.
     return (
-        <PanelShell>
+        <PanelShell bg="bg.surfaceTint">
             {/* Header (top), everything centred. Row 1: tournament name (full
                 width, truncated); row 2: the Utakmica/Tablica selector (+ the
-                Skupine/Završnica toggle on the table tab). The turnir-mode
-                button and the "Turnir →" link live in the footer. */}
+                Skupine/Završnica toggle on the table tab). The "Gledaj uživo"
+                primary and "Turnir" buttons live in the footer. */}
             <VStack align="stretch" gap="1" px="2" py="1.5" borderBottomWidth="1px" borderColor="border">
                 {tournamentName && (
                     <Text fontSize="xs" fontWeight={800} color="fg.ink" lineClamp={1} minW="0" textAlign="center">
@@ -861,7 +974,7 @@ export function StreamSidePanel({
                     </Text>
                 )}
                 <HStack justify="center" gap="2" minW="0" wrap="wrap">
-                    <HStack gap="1" bg="bg.surfaceTint" rounded="full" p="1" borderWidth="1px" borderColor="border" flexShrink={0}>
+                    <HStack gap="1" bg="bg.panel" rounded="full" p="1" borderWidth="1px" borderColor="border" flexShrink={0}>
                         {([["match", "Utakmica"], ["table", "Tablica"]] as const).map(([k, label]) => (
                             <chakra.button
                                 key={k}
@@ -897,32 +1010,33 @@ export function StreamSidePanel({
                 <GroupTableBody d={table} />
             </Flex>
 
-            {/* Footer: "Turnir mode" button centred, with the "Turnir →" link
-                pinned to the bottom-right corner (shows on the turnir-mode page
-                too, where there's no mode button). */}
+            {/* Footer actions (SofaScore-style): a prominent solid-green
+                "Gledaj uživo" primary that opens the live / turnir-mode view,
+                and a smaller outline "Turnir" that links to the streamed
+                tournament's page. On the turnir-mode page itself onEnterTheater
+                is absent, so only the tournament link shows. */}
             {(onEnterTheater || tournamentHref) && (
-                <Flex position="relative" align="center" justify="center" px="2" py="1.5" minH="9" borderTopWidth="1px" borderColor="border">
+                <HStack justify="center" gap="2" px="2.5" py="2" borderTopWidth="1px" borderColor="border">
                     {onEnterTheater && (
-                        <Button size="xs" variant="outline" colorPalette="pitch" onClick={onEnterTheater}>
-                            <FiMaximize /> Turnir mode
+                        <Button
+                            size="md"
+                            colorPalette="pitch"
+                            onClick={onEnterTheater}
+                            flex="1"
+                            maxW="240px"
+                            fontWeight={800}
+                        >
+                            <FiPlay /> Uživo
                         </Button>
                     )}
                     {tournamentHref && (
-                        <chakra.a
-                            asChild
-                            position="absolute"
-                            right="2.5"
-                            top="50%"
-                            fontSize="11px"
-                            fontWeight={700}
-                            color="pitch.500"
-                            _hover={{ textDecoration: "underline" }}
-                            css={{ transform: "translateY(-50%)" }}
-                        >
-                            <RouterLink to={`/turniri/${tournamentHref}`}>Turnir →</RouterLink>
-                        </chakra.a>
+                        <Button asChild size="sm" variant="outline" colorPalette="pitch" flexShrink={0}>
+                            <RouterLink to={`/turniri/${tournamentHref}`}>
+                                <FiHome /> Turnir
+                            </RouterLink>
+                        </Button>
                     )}
-                </Flex>
+                </HStack>
             )}
         </PanelShell>
     )
@@ -1229,14 +1343,16 @@ function Cell({
 
 /* ═══════════════════ shared shell ═══════════════════ */
 
-/** Equal-height panel chrome: fixed headers + a scrollable body slot. */
-function PanelShell({ children }: { children: React.ReactNode }) {
+/** Equal-height panel chrome: fixed headers + a scrollable body slot. `bg`
+ *  defaults to the white panel surface; the home-hero side panel passes a
+ *  darker pitch-tinted shade so it reads as part of the stream module. */
+function PanelShell({ children, bg = "bg.panel" }: { children: React.ReactNode; bg?: string }) {
     return (
         <Flex
             direction="column"
             w="full"
             h="full"
-            bg="bg.panel"
+            bg={bg}
             borderWidth="1px"
             borderColor="border"
             rounded="2xl"

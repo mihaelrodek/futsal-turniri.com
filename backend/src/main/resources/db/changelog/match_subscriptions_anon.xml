@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Anonymous per-match follows - the exact mechanical mirror of
+        tournament_subscriptions_anon, scoped to a single match. A not-logged-in
+        browser can opt into the "this match is starting" push. Two row shapes:
+
+          * logged-in follow  -> user_uid set,   push_endpoint NULL
+          * anonymous follow   -> user_uid NULL,  push_endpoint set
+
+        Same XOR check + two partial unique indexes as the tournament table.
+        Existing rows (all logged-in) are untouched.
+    -->
+    <changeSet id="2026-07-20-match-subscriptions-anon" author="mrodek">
+        <dropNotNullConstraint tableName="match_subscriptions"
+                               columnName="user_uid"
+                               columnDataType="varchar(128)"/>
+
+        <addColumn tableName="match_subscriptions">
+            <column name="push_endpoint" type="text"/>
+        </addColumn>
+
+        <!-- Replaced by the two partial unique indexes below. -->
+        <dropUniqueConstraint tableName="match_subscriptions"
+                              constraintName="uq_match_subscriptions_user_match"/>
+
+        <!-- Exactly one identity per row: logged-in (user_uid) XOR anon (endpoint). -->
+        <sql><![CDATA[
+            ALTER TABLE match_subscriptions
+                ADD CONSTRAINT ck_match_subscriptions_identity
+                CHECK ((user_uid IS NOT NULL) <> (push_endpoint IS NOT NULL))
+        ]]></sql>
+
+        <!-- Idempotent (re)subscribe per shape. Postgres partial unique indexes. -->
+        <sql><![CDATA[
+            CREATE UNIQUE INDEX uq_match_subscriptions_user
+                ON match_subscriptions (user_uid, match_id)
+                WHERE user_uid IS NOT NULL
+        ]]></sql>
+        <sql><![CDATA[
+            CREATE UNIQUE INDEX uq_match_subscriptions_endpoint
+                ON match_subscriptions (push_endpoint, match_id)
+                WHERE push_endpoint IS NOT NULL
+        ]]></sql>
+
+        <rollback>
+            <sql>DROP INDEX IF EXISTS uq_match_subscriptions_endpoint</sql>
+            <sql>DROP INDEX IF EXISTS uq_match_subscriptions_user</sql>
+            <sql>ALTER TABLE match_subscriptions
+                 DROP CONSTRAINT IF EXISTS ck_match_subscriptions_identity</sql>
+            <addUniqueConstraint tableName="match_subscriptions"
+                                 columnNames="user_uid, match_id"
+                                 constraintName="uq_match_subscriptions_user_match"/>
+            <dropColumn tableName="match_subscriptions" columnName="push_endpoint"/>
+            <addNotNullConstraint tableName="match_subscriptions"
+                                  columnName="user_uid"
+                                  columnDataType="varchar(128)"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import {
     Badge,
     Box,
@@ -488,6 +488,7 @@ export default function BracketTab({
     format,
     exportMeta,
     onGoToSchedule,
+    subTabs,
 }: {
     uuid: string
     canEdit?: boolean
@@ -508,6 +509,12 @@ export default function BracketTab({
     /** After a position save, jump to the Raspored section (and optionally
      *  auto-open the schedule planner) so the organizer confirms the new times. */
     onGoToSchedule?: (openPlanner: boolean) => void
+    /** Compact "Grupe / Eliminacija" pill switcher, supplied by the parent
+     *  page (max-content width). Rendered at the LEFT of this tab's top
+     *  row, next to the owner draw controls, instead of its own full-width
+     *  bar - undefined on KNOCKOUT_ONLY tournaments (no group stage → no
+     *  pills), which keeps that row exactly as before. */
+    subTabs?: ReactNode
 }) {
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Eliminacija tab (or a
@@ -515,6 +522,18 @@ export default function BracketTab({
     const cachedBracket = queryClient.getQueryData<Bracket>(qk.bracket(uuid))
     const [bracket, setBracket] = useState<Bracket | null>(cachedBracket ?? null)
     const [loading, setLoading] = useState(!cachedBracket)
+    // True once the bracket has been (re)fetched FRESH this mount. The confirm
+    // CTA is gated on it so a stale cached snapshot (confirmedAt momentarily
+    // null on a tab switch) can't flash the "Potvrdi ždrijeb" bar for a frame
+    // before the real, already-confirmed data arrives. `loading` can't do this
+    // - it's false on a cache hit. The confirmed chip stays ungated (painting
+    // it straight from cache is correct).
+    const [bracketReady, setBracketReady] = useState(false)
+    // Once we've ever seen the bracket confirmed, latch it: a transient refetch
+    // that momentarily blanks `confirmedAt` (e.g. on a Grupe<->Eliminacija subtab
+    // switch) must NOT flash the "Potvrdi ždrijeb" CTA back in for a frame.
+    const wasConfirmed = useRef(false)
+    if (bracket?.confirmedAt != null) wasConfirmed.current = true
     const [generating, setGenerating] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [form, setForm] = useState<EditForm>({ s1: "", s2: "", p1: "", p2: "" })
@@ -576,7 +595,7 @@ export default function BracketTab({
         if (!queryClient.getQueryData(qk.bracket(uuid))) setLoading(true)
         queryClient
             .fetchQuery({ queryKey: qk.bracket(uuid), queryFn: () => fetchBracket(uuid), staleTime: 15_000 })
-            .then((b) => { if (!cancelled) setBracket(b) })
+            .then((b) => { if (!cancelled) { setBracket(b); setBracketReady(true) } })
             .catch(() => { if (!cancelled) setBracket(null) })
             .finally(() => { if (!cancelled) setLoading(false) })
         // Schedule is shared with the Grupe + Raspored tabs - one cache entry.
@@ -1520,11 +1539,43 @@ export default function BracketTab({
             ),
         )
 
+    // The compact Grupe/Eliminacija pills, alone on their own line - used by
+    // every "no bracket yet" branch below so the pills never vanish just
+    // because there happen to be no other top-row actions in these states.
+    // Falls back to `null` (nothing rendered) when the parent has no pills to
+    // give us (KNOCKOUT_ONLY), so these branches stay pixel-identical to
+    // before.
+    const subTabsRow = subTabs ? <Flex align="center" wrap="wrap">{subTabs}</Flex> : null
+
     if (!hasBracket) {
-        if (canEdit && !finishedLocked && byeOpen) return byePanel
-        if (canEdit && !finishedLocked && manualOpen && sketchOpen) return sketchPanel
-        if (canEdit && !finishedLocked && manualOpen) return manualBracketPanel
-        return (
+        if (canEdit && !finishedLocked && byeOpen) {
+            if (!subTabsRow) return byePanel
+            return (
+                <VStack align="stretch" gap="4">
+                    {subTabsRow}
+                    {byePanel}
+                </VStack>
+            )
+        }
+        if (canEdit && !finishedLocked && manualOpen && sketchOpen) {
+            if (!subTabsRow) return sketchPanel
+            return (
+                <VStack align="stretch" gap="4">
+                    {subTabsRow}
+                    {sketchPanel}
+                </VStack>
+            )
+        }
+        if (canEdit && !finishedLocked && manualOpen) {
+            if (!subTabsRow) return manualBracketPanel
+            return (
+                <VStack align="stretch" gap="4">
+                    {subTabsRow}
+                    {manualBracketPanel}
+                </VStack>
+            )
+        }
+        const emptyPanel = (
             <Panel p="0">
                 <EmptyState
                     title="Eliminacijska ljestvica još nije generirana"
@@ -1566,6 +1617,13 @@ export default function BracketTab({
                     }
                 />
             </Panel>
+        )
+        if (!subTabsRow) return emptyPanel
+        return (
+            <VStack align="stretch" gap="4">
+                {subTabsRow}
+                {emptyPanel}
+            </VStack>
         )
     }
 
@@ -1701,56 +1759,70 @@ export default function BracketTab({
         )
     }
 
+    // Owner draw controls. Hidden once any match is LIVE/FINISHED
+    // (re-drawing would destroy real results). The "Podijeli bracket"
+    // button now floats at the bottom (below). `false` (not JSX) when
+    // hidden, so the top row below can tell "no controls" apart from
+    // "no pills either" and skip rendering an empty right side.
+    const drawControls = canEdit && !started && !finishedLocked && (
+        <>
+            <GhostButton
+                px="3.5"
+                py="2"
+                fontSize="13px"
+                icon={<FiRefreshCw size={14} />}
+                onClick={openManualBracket}
+                disabled={generating || generatingManual}
+            >
+                Ručni ždrijeb
+            </GhostButton>
+            <GhostButton
+                px="3.5"
+                py="2"
+                fontSize="13px"
+                danger
+                icon={<FiTrash2 size={14} />}
+                onClick={confirmResetBracket}
+                disabled={generating || generatingManual || resetting}
+            >
+                {resetting ? "Resetiranje…" : "Resetiraj"}
+            </GhostButton>
+        </>
+    )
+
     return (
-        <VStack align="stretch" gap="5" py="2">
-            {/* Owner draw controls - right-aligned. Hidden once any match is
-                LIVE/FINISHED (re-drawing would destroy real results). The
-                "Podijeli bracket" button now floats at the bottom (below). */}
-            {canEdit && !started && !finishedLocked && (
-                <Flex justify="flex-end" gap="2" wrap="wrap">
-                    <GhostButton
-                        icon={<FiRefreshCw size={14} />}
-                        onClick={openManualBracket}
-                        disabled={generating || generatingManual}
-                    >
-                        Ručni ždrijeb
-                    </GhostButton>
-                    <GhostButton
-                        danger
-                        icon={<FiTrash2 size={14} />}
-                        onClick={confirmResetBracket}
-                        disabled={generating || generatingManual || resetting}
-                    >
-                        {resetting ? "Resetiranje…" : "Resetiraj"}
-                    </GhostButton>
+        // No top padding: the subTabs pill row must sit flush with the top of
+        // the content column so it lines up with the sidebar top - and with the
+        // Grupe tab, which uses the identical leading wrapper. `pb` keeps the
+        // tail breathing room without re-introducing a top offset.
+        <VStack align="stretch" gap="5" pb="2">
+            {/* Top row - the compact Grupe/Eliminacija pills (when supplied by
+                the parent) sit on the LEFT, the owner draw controls on the
+                RIGHT, so the two no longer stack as separate full-width
+                bands. Wraps on narrow screens (pills first, controls after);
+                nothing overflows. When the controls are hidden (viewer, or a
+                locked bracket) the row still renders the pills alone, so they
+                never disappear. Without `subTabs` (KNOCKOUT_ONLY) this
+                renders exactly as before - right-aligned controls only, or
+                nothing at all once they're hidden. */}
+            {subTabs ? (
+                <Flex align="center" justify="space-between" gap="3" wrap="wrap">
+                    <Flex align="center" wrap="wrap">{subTabs}</Flex>
+                    {drawControls && <Flex align="center" gap="2" wrap="wrap">{drawControls}</Flex>}
                 </Flex>
+            ) : (
+                drawControls && <Flex justify="flex-end" gap="2" wrap="wrap">{drawControls}</Flex>
             )}
 
             {/* Bracket-confirmation state - only for brackets that require it
-                (a group stage feeds the knockout). Three shapes: a subtle green
-                "confirmed" chip once done; a prominent CTA bar once the group
-                stage is over and the organizer can confirm; else a small neutral
-                "not confirmed yet" chip (viewers, or the organizer pre-finish). */}
+                (a group stage feeds the knockout). Once confirmed NOTHING
+                renders here (the old "Ždrijeb potvrđen" chip was just noise);
+                before that, a prominent CTA bar once the group stage is over
+                and the organizer can confirm. Otherwise (viewers, or the
+                organizer pre-finish) nothing renders either. */}
             {bracket.confirmationRequired && (
-                bracket.confirmedAt != null ? (
-                    <Flex justify="flex-end">
-                        <Flex
-                            as="span"
-                            display="inline-flex"
-                            align="center"
-                            gap="1.5"
-                            bg="green.subtle"
-                            color="green.fg"
-                            rounded="full"
-                            px="3"
-                            py="1"
-                            fontSize="xs"
-                            fontWeight={700}
-                        >
-                            <FiCheck size={12} /> Ždrijeb potvrđen
-                        </Flex>
-                    </Flex>
-                ) : groupStageComplete && canEdit && !finishedLocked ? (
+                (bracket.confirmedAt != null || wasConfirmed.current) ? null
+                : bracketReady && groupStageComplete && canEdit && !finishedLocked ? (
                     <Flex
                         align="center"
                         justify="space-between"
@@ -1775,27 +1847,7 @@ export default function BracketTab({
                             <FiCheck /> Potvrdi ždrijeb
                         </Button>
                     </Flex>
-                ) : (
-                    <Flex justify="flex-end">
-                        <Flex
-                            as="span"
-                            display="inline-flex"
-                            align="center"
-                            gap="1.5"
-                            bg="bg.surfaceTint"
-                            color="fg.muted"
-                            borderWidth="1px"
-                            borderColor="border"
-                            rounded="full"
-                            px="3"
-                            py="1"
-                            fontSize="xs"
-                            fontWeight={700}
-                        >
-                            Ždrijeb nije potvrđen
-                        </Flex>
-                    </Flex>
-                )
+                ) : null
             )}
 
             {/* Confirm popup for resetting (wiping) the elimination bracket. */}
@@ -3497,6 +3549,12 @@ export function BracketLiveMatchDialog({
                                         onAddEvent={addEvent}
                                         sentOffPlayerIds={sentOffIds}
                                         yellowCardedPlayerIds={yellowIds}
+                                        // Shootout kicks already recorded (e.g. a
+                                        // cancelled shootout) → block regular goal
+                                        // entry so pens can't be typed in as goals.
+                                        penaltyInProgress={(events ?? []).some(
+                                            (e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED",
+                                        )}
                                     />
                                 )}
 
