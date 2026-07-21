@@ -28,7 +28,7 @@ import {
     FiUserPlus,
     FiUsers,
 } from "react-icons/fi"
-import { FaMedal, FaTrophy } from "react-icons/fa"
+import { FaTrophy } from "react-icons/fa"
 
 import type { TournamentDetails } from "../types/tournaments"
 import type { TeamShort } from "../types/teams"
@@ -59,6 +59,12 @@ import { TeamAvatar } from "./parts"
    approving pending teams, the podium editor on FINISHED. */
 
 /** Croatian count word for a roster size: "1 igrač" / "N igrača". */
+/** Metallic podium colours - same values as TournamentResults, so the trophy
+ *  next to a team card matches the results card in the sidebar. */
+const PODIUM_GOLD = "#f5c842"
+const PODIUM_SILVER = "#c0c5cc"
+const PODIUM_BRONZE = "#cd8654"
+
 function playersWord(n: number): string {
     return n === 1 ? "igrač" : "igrača"
 }
@@ -436,6 +442,20 @@ export default function TeamsSection(props: TeamsSectionProps) {
             norm(p.name) === norm(thirdName)
         const isPodiumTeam = isWinnerTeam || isSecondPlaceTeam || isThirdPlaceTeam
 
+        // Podium cards get a subtle metallic TINT rather than a *.subtle palette
+        // token. yellow/gray/orange.subtle flip into muddy brown / near-black in
+        // dark mode, so the gold/silver/bronze identity is lost. color-mix keeps
+        // a fixed metal hue blended into whatever the panel token currently is,
+        // so the tint tracks the theme (light/dark) yet stays recognisably
+        // metallic. Applied via `css` below because it's a raw CSS value.
+        // Selection (brand) still wins, exactly as in the original precedence.
+        const podiumTint =
+            isWinnerTeam ? `color-mix(in srgb, ${PODIUM_GOLD} 14%, var(--chakra-colors-bg-panel))`
+            : isSecondPlaceTeam ? `color-mix(in srgb, ${PODIUM_SILVER} 14%, var(--chakra-colors-bg-panel))`
+            : isThirdPlaceTeam ? `color-mix(in srgb, ${PODIUM_BRONZE} 14%, var(--chakra-colors-bg-panel))`
+            : null
+        const showPodiumTint = !selected && podiumTint != null
+
         return (
             <Box
                 key={p.id}
@@ -454,9 +474,13 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 borderWidth={selected || isPodiumTeam || isPending ? "2px" : "1px"}
                 borderColor={
                     selected ? "brand.solid"
-                    : isWinnerTeam ? "yellow.solid"
-                    : isSecondPlaceTeam ? "gray.solid"
-                    : isThirdPlaceTeam ? "orange.solid"
+                    // Fixed metallic hexes, NOT palette tokens: yellow/gray/
+                    // orange.solid flip into muddy brown / near-black in dark
+                    // mode, erasing the podium's gold/silver/bronze identity.
+                    // The constants read identically in both themes.
+                    : isWinnerTeam ? PODIUM_GOLD
+                    : isSecondPlaceTeam ? PODIUM_SILVER
+                    : isThirdPlaceTeam ? PODIUM_BRONZE
                     : isPending ? "yellow.solid"
                     : "border"
                 }
@@ -464,13 +488,14 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 p="3"
                 bg={
                     selected ? "brand.subtle"
-                    : isWinnerTeam ? "yellow.subtle"
-                    : isSecondPlaceTeam ? "gray.subtle"
-                    : isThirdPlaceTeam ? "orange.subtle"
+                    // Podium tint comes from `css` (color-mix) below, so the
+                    // token-based bg is skipped for the three podium cards.
+                    : showPodiumTint ? undefined
                     : isPending ? "yellow.subtle"
                     : eliminated ? "bg.subtle"
                     : "bg.panel"
                 }
+                css={showPodiumTint ? { background: podiumTint } : undefined}
                 opacity={!isPodiumTeam && eliminated ? 0.85 : 1}
                 display="flex"
                 flexDirection="column"
@@ -479,19 +504,22 @@ export default function TeamsSection(props: TeamsSectionProps) {
             >
                 <HStack gap="2" align="center">
                     <TeamAvatar name={p.name} eliminated={eliminated && !isPodiumTeam} />
+                    {/* Podium: the same TROPHY for all three places, in the
+                        metallic gold / silver / bronze used by the results
+                        card - not a medal, per design feedback. */}
                     {isWinnerTeam && (
-                        <Box color="yellow.fg" flexShrink={0} title="1. mjesto">
+                        <Box color={PODIUM_GOLD} flexShrink={0} title="1. mjesto">
                             <FaTrophy size={20} />
                         </Box>
                     )}
                     {isSecondPlaceTeam && (
-                        <Box color="gray.fg" flexShrink={0} title="2. mjesto">
-                            <FaMedal size={20} />
+                        <Box color={PODIUM_SILVER} flexShrink={0} title="2. mjesto">
+                            <FaTrophy size={20} />
                         </Box>
                     )}
                     {isThirdPlaceTeam && (
-                        <Box color="orange.fg" flexShrink={0} title="3. mjesto">
-                            <FaMedal size={20} />
+                        <Box color={PODIUM_BRONZE} flexShrink={0} title="3. mjesto">
+                            <FaTrophy size={20} />
                         </Box>
                     )}
                     <Box flex="1" minW="0">
@@ -506,12 +534,11 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             <Text
                                 fontSize="sm"
                                 fontWeight={isPodiumTeam ? "bold" : "medium"}
-                                color={
-                                    isWinnerTeam ? "yellow.fg"
-                                    : isSecondPlaceTeam ? "gray.fg"
-                                    : isThirdPlaceTeam ? "orange.fg"
-                                    : "fg.ink"
-                                }
+                                // fg.ink for ALL places: metallic name text on a
+                                // metallic tint is illegible in dark mode. The
+                                // trophy icon (PODIUM_* coloured) + metal border
+                                // carry the gold/silver/bronze identity instead.
+                                color="fg.ink"
                                 truncate
                             >
                                 {p.name?.trim() ? p.name : "Bez imena"}
@@ -570,7 +597,11 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                 Čeka odobrenje
                             </Badge>
                         )}
-                        {eliminated && (
+                        {/* Podium teams never show "Eliminiran": 2nd/3rd are
+                            technically eliminated, but the badge both read
+                            oddly next to a trophy and made those cards taller
+                            than the winner's. */}
+                        {eliminated && !isPodiumTeam && (
                             <Badge variant="subtle" colorPalette="gray">Eliminiran</Badge>
                         )}
                     </HStack>

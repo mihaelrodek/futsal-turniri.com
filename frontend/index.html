@@ -11,7 +11,14 @@
     <!-- Apple touch icon - 180x180 PNG with white padding so iOS doesn't
          clip the suits when it rounds the corners on the home screen. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- maximum-scale=1 stops iOS Safari's auto-zoom-on-focus, which fires
+         whenever a focused input/textarea has font-size < 16px (see the
+         bulk-import dialog's Textarea, set to 16px on mobile as the actual
+         root-cause fix). Pinch-to-zoom is unaffected - iOS Safari has
+         ignored maximum-scale for user-initiated pinch gestures since
+         iOS 10, so this only blocks the unwanted focus zoom, not manual
+         zooming. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B1522" />
 
     <!-- SPECTO typography:

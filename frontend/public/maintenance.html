@@ -4,18 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0B1522" />
     <!-- Auto-reload every 20 s: the instant the deploy finishes and the flag is
          cleared, the visitor's browser reloads straight into the live app. -->
     <meta http-equiv="refresh" content="20" />
     <title>Nadogradnja u tijeku - Futsal Turniri</title>
     <style>
-        :root { color-scheme: light; }
+        /* SPECTO palette, hardcoded on purpose: during maintenance EVERY request
+           returns this page, so it can load no stylesheet, font or image of its
+           own. Keep these in sync with frontend/src/system.ts:
+             navy canvas #0B1522 / panel #111F31 · brand cyan #2AD4C8 */
+        :root { color-scheme: dark; }
         * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, #0b6b3a 0%, #084a28 100%);
-            color: #fff;
+            font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(120% 90% at 50% 0%, #132A3E 0%, #0B1522 62%);
+            color: #F5F7FA;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -34,21 +39,31 @@
             width: min(300px, 82%);
             margin: 0 auto 30px;
         }
-        /* Soft shadow lifts the logo off the green backdrop - the icon tile is
-           the same brand green as the page, so without this its edge blends in. */
-        .logo svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.28)); }
+        .logo svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.45)); }
         h1 {
             font-size: 26px;
             line-height: 1.2;
             margin: 0 0 12px;
-            letter-spacing: -0.02em;
+            letter-spacing: -0.025em;
+            font-weight: 800;
         }
         p {
             font-size: 15px;
             line-height: 1.6;
             margin: 0 auto;
             max-width: 360px;
-            color: rgba(255, 255, 255, 0.82);
+            color: rgba(245, 247, 250, 0.72);
+        }
+        p + p { margin-top: 10px; }
+        /* Mono eyebrow above the headline - the app's MonoLabel in cyan. */
+        .eyebrow {
+            font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #2AD4C8;
+            margin: 0 0 10px;
         }
         .dots {
             display: inline-flex;
@@ -59,14 +74,17 @@
             width: 9px;
             height: 9px;
             border-radius: 50%;
-            background: rgba(255, 255, 255, 0.55);
+            background: #2AD4C8;
             animation: pulse 1.2s ease-in-out infinite;
         }
         .dots span:nth-child(2) { animation-delay: 0.2s; }
         .dots span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes pulse {
-            0%, 100% { opacity: 0.35; transform: scale(0.85); }
-            50%      { opacity: 1;    transform: scale(1); }
+            0%, 100% { opacity: 0.3; transform: scale(0.85); }
+            50%      { opacity: 1;   transform: scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .dots span { animation: none; opacity: 0.75; }
         }
     </style>
 </head>
@@ -77,27 +95,28 @@
                  frontend/public/logo/logo-horizontal-dark.svg. -->
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 474 112" role="img" aria-label="Futsal Turniri - futsal-turniri.com">
                 <svg x="0" y="0" width="112" height="112" viewBox="0 0 112 112">
-                    <rect x="0" y="0" width="112" height="112" rx="28" fill="#0b6b3a"></rect>
-                    <g stroke="#ffffff" stroke-width="1" opacity="0.35">
+                    <rect x="0" y="0" width="112" height="112" rx="28" fill="#0B1522"></rect>
+                    <g stroke="#2AD4C8" stroke-width="1" opacity="0.45">
                         <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82"></path>
                         <path d="M30 50 H82 M30 62 H82 M30 74 H82"></path>
                     </g>
-                    <path d="M30 82 V38 H82 V82" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linejoin="round"></path>
+                    <path d="M30 82 V38 H82 V82" fill="none" stroke="#2AD4C8" stroke-width="3.6" stroke-linejoin="round"></path>
                     <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
                         <circle cx="50" cy="50" r="46" fill="#fff"></circle>
-                        <g stroke="#0b6b3a" stroke-width="2.3" stroke-linecap="round" fill="none">
+                        <g stroke="#0B1522" stroke-width="2.3" stroke-linecap="round" fill="none">
                             <path d="M50,33 L50,7"></path><path d="M50,33 L50,7" transform="rotate(72 50 50)"></path><path d="M50,33 L50,7" transform="rotate(144 50 50)"></path><path d="M50,33 L50,7" transform="rotate(216 50 50)"></path><path d="M50,33 L50,7" transform="rotate(288 50 50)"></path>
                         </g>
-                        <g fill="#0b6b3a">
+                        <g fill="#0B1522">
                             <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z"></path>
                             <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z"></path><path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)"></path><path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(144 50 50)"></path><path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(216 50 50)"></path><path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(288 50 50)"></path>
                         </g>
                     </svg>
                 </svg>
-                <text x="130" y="55" font-family="'Bricolage Grotesque', Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="-1.2" fill="#ffffff">Futsal <tspan fill="#3aa56b">Turniri</tspan></text>
-                <text x="131" y="87" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" letter-spacing="0.6" fill="#3aa56b">futsal-turniri.com</text>
+                <text x="130" y="55" font-family="'Outfit', 'Inter', Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="-1.2" fill="#ffffff">Futsal <tspan fill="#2AD4C8">Turniri</tspan></text>
+                <text x="131" y="87" font-family="'Geist Mono', 'JetBrains Mono', monospace" font-size="13" font-weight="700" letter-spacing="0.6" fill="#2AD4C8">futsal-turniri.com</text>
             </svg>
         </div>
+        <p class="eyebrow">Nadogradnja</p>
         <h1>Nadogradnja u tijeku</h1>
         <p>
             Radimo na poboljšanjima aplikacije. Stranica će uskoro ponovno biti

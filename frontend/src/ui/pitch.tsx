@@ -264,8 +264,8 @@ export type StatusKind = "live" | "upcoming" | "soon" | "full" | "draft" | "acti
 
 /** Status pill - colored dot + label. Matches the design's `StatusChip` with
  *  six discrete kinds. `live` is solid red with a pulsing dot, all other
- *  upcoming statuses use a white pill with a colored marker for low visual
- *  noise. */
+ *  upcoming statuses use a neutral panel pill with a colored marker for low
+ *  visual noise. */
 export function StatusChip({
     status,
     label,
@@ -275,14 +275,22 @@ export function StatusChip({
     label: string
     size?: "sm" | "md" | "lg"
 }) {
+    // Neutral statuses use semantic tokens (bg.panel / fg.ink /
+    // border.emphasized) instead of a hardcoded white pill: in dark mode a
+    // "#fff" background under fg.ink (near-white) text renders white-on-white
+    // and the label vanishes. bg.panel is white in light mode, so the light
+    // look is unchanged; the token twins keep contrast when the theme flips.
+    // `draft`/`active` invert their fg to a token so navy text lands on the
+    // light face. `live` (solid red) intentionally keeps raw white text per
+    // project decision - red stays red on both themes.
     const map: Record<StatusKind, { bg: string; fg: string; dot: string; border?: string; pulse?: boolean }> = {
         live: { bg: "accent.red", fg: "#fff", dot: "#fff", pulse: true },
-        upcoming: { bg: "#fff", fg: "fg.ink", dot: "pitch.400", border: "border" },
-        soon: { bg: "#fff", fg: "fg.ink", dot: "accent.amber", border: "border" },
-        full: { bg: "#fff", fg: "fg.ink", dot: "fg.muted", border: "border" },
-        draft: { bg: "fg.ink", fg: "#fff", dot: "accent.goal" },
-        active: { bg: "pitch.500", fg: "#fff", dot: "#fff" },
-        finished: { bg: "#fff", fg: "fg.ink", dot: "fg.muted", border: "border" },
+        upcoming: { bg: "bg.panel", fg: "fg.ink", dot: "pitch.400", border: "border.emphasized" },
+        soon: { bg: "bg.panel", fg: "fg.ink", dot: "accent.amber", border: "border.emphasized" },
+        full: { bg: "bg.panel", fg: "fg.ink", dot: "fg.muted", border: "border.emphasized" },
+        draft: { bg: "fg.ink", fg: "bg.canvas", dot: "accent.goal" },
+        active: { bg: "pitch.500", fg: "pitch.contrast", dot: "#fff" },
+        finished: { bg: "bg.panel", fg: "fg.ink", dot: "fg.muted", border: "border.emphasized" },
     }
     const cfg = map[status]
     const dims =
@@ -422,7 +430,11 @@ export function FilterChip({
             border="none"
             cursor="pointer"
             bg={active ? "fg.ink" : "bg.panel"}
-            color={active ? "white" : "fg.soft"}
+            // Active label uses bg.canvas (not "white") so the fg.ink pill /
+            // text pair inverts on both themes: light = dark pill + white-ish
+            // text, dark = light pill + navy text. Plain "white" rendered
+            // white-on-white on the light dark-mode chip.
+            color={active ? "bg.canvas" : "fg.soft"}
             fontSize="12px"
             fontWeight={600}
             boxShadow={active ? "none" : "inset 0 0 0 1px var(--chakra-colors-border)"}
@@ -442,7 +454,12 @@ export function FilterChip({
             {typeof count === "number" ? (
                 <Box
                     as="span"
-                    color={active ? "rgba(255,255,255,0.6)" : "fg.muted"}
+                    // Active count mirrors the label token (bg.canvas) at a
+                    // lower opacity so it reads on both themes - the old
+                    // rgba(255,255,255,.6) was invisible on the light
+                    // dark-mode chip. Inactive keeps the muted grey.
+                    color={active ? "bg.canvas" : "fg.muted"}
+                    opacity={active ? 0.65 : undefined}
                     fontWeight={700}
                 >
                     {count}
@@ -553,7 +570,11 @@ export function AccentStat({
 }
 
 /** Date stamp - top-left overlay on tournament cards. Day-of-week / day /
- *  month-mono triplet inside a translucent white pill. */
+ *  month-mono triplet inside a translucent white pill.
+ *
+ *  All text colours are HARDCODED, not tokens: the pill sits on a poster
+ *  photo and its box stays white in both themes, so token colours that flip
+ *  light in dark mode (fg.ink, fg.muted) rendered white-on-white there. */
 export function DateStamp({
     day,
     dayNum,
@@ -573,11 +594,11 @@ export function DateStamp({
             minW="60px"
             css={{ backdropFilter: "blur(8px)" }}
         >
-            <MonoLabel fontSize="9px">{day}</MonoLabel>
-            <Text fontSize="20px" fontWeight={800} color="fg.ink" lineHeight={1} letterSpacing="-0.03em" mt="0.5">
+            <MonoLabel fontSize="9px" color="#5F7080">{day}</MonoLabel>
+            <Text fontSize="20px" fontWeight={800} color="#1B2836" lineHeight={1} letterSpacing="-0.03em" mt="0.5">
                 {dayNum}
             </Text>
-            <Box as="span" fontFamily="mono" fontSize="9px" color="pitch.500" fontWeight={700} letterSpacing="0.1em">
+            <Box as="span" fontFamily="mono" fontSize="9px" color="#0E8A81" fontWeight={700} letterSpacing="0.1em">
                 {month}
             </Box>
         </Box>
