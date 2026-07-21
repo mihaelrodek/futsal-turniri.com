@@ -8,6 +8,7 @@ import L from "leaflet"
 // here, otherwise tiles render as unstyled <img> stacks at coord 0,0
 // and the map looks completely broken.
 import "leaflet/dist/leaflet.css"
+import { useColorMode } from "../color-mode"
 
 /**
  * Build the same teardrop pin as the /karta page so the picker and the
@@ -73,6 +74,8 @@ export default function LocationMapPicker({
     // keeping it stable means React's <Marker icon=...> prop doesn't
     // trip its reconciler into rebuilding the underlying L.Marker.
     const pinIcon = useMemo(() => makePickerPinIcon(), [])
+    // Drives the basemap style (see the TileLayer below).
+    const { colorMode } = useColorMode()
 
     // Default view: Croatia center + a country-wide zoom so the user
     // sees something familiar before they click. Once a `value` exists
@@ -114,13 +117,21 @@ export default function LocationMapPicker({
                 // +/- control buttons and pinch-zoom on touch work too.
                 scrollWheelZoom
             >
-                {/* CARTO Voyager basemap - matches the /karta page so the
-                    picker and the public map share one visual language
-                    (warm beige land, muted blue water, clean labels)
-                    instead of the harsher raw OSM tile set. */}
+                {/* CARTO basemap - matches the /karta page so the picker and
+                    the public map share one visual language. Voyager (warm
+                    beige land, muted blue water) on the light theme, CARTO's
+                    dark_all on the dark one: the light tiles were a glaring
+                    white slab in an otherwise navy UI. `key` remounts the
+                    layer on a theme switch so the tile cache can't keep
+                    serving the old style. */}
                 <TileLayer
+                    key={colorMode}
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    url={
+                        colorMode === "dark"
+                            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                            : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    }
                 />
                 <ClickHandler onClick={handleClick} />
                 {/* RecenterOnValue keeps the map's view in sync with the

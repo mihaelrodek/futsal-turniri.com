@@ -15,14 +15,7 @@ import {
     Textarea,
     VStack,
 } from "@chakra-ui/react"
-import {
-    FiGift,
-    FiGrid,
-    FiImage,
-    FiInfo,
-    FiPhone,
-    FiX,
-} from "react-icons/fi"
+import { FiImage, FiPhone, FiX } from "react-icons/fi"
 import DatePicker, { registerLocale } from "react-datepicker"
 import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
@@ -436,7 +429,29 @@ export default function CreateTournamentPage() {
     }
 
     return (
-        <chakra.form onSubmit={handleSubmit}>
+        <chakra.form
+            onSubmit={handleSubmit}
+            // DESKTOP: a fixed-height column that never scrolls the PAGE - the
+            // step chips stay on top, the Dalje/Natrag capsule stays at the
+            // bottom, and only the card in between scrolls when a step is
+            // taller than the window.
+            //
+            // Height maths (must sum to exactly 100dvh or the page grows a
+            // scrollbar): NavBar 57 + Container py 28+28 + main's pb 52 (the
+            // sticky-Footer clearance App.tsx always reserves, Footer rendered
+            // or not) = 165px of chrome. Just subtracting 165 left the form
+            // 52px shorter than the visible bottom edge, with dead space under
+            // the capsule. The pair below reclaims it IN FLOW: the form is
+            // 52px taller (- 113) while the negative bottom margin hands those
+            // 52px back to the layout, so the document still sums to 100dvh -
+            // taller form, no page scroll. (An earlier attempt shortened the
+            // subtraction alone, without the compensating margin - that's what
+            // overflowed the page.)
+            display={{ md: "flex" }}
+            flexDirection={{ md: "column" }}
+            h={{ md: "calc(100dvh - 113px)" }}
+            mb={{ md: "-52px" }}
+        >
             {/* Sticky step indicator - stays pinned just under the top nav
                 while the form scrolls, like the nav bar itself. The wrapper
                 is a full-bleed bg.canvas band (negative margins cancel the
@@ -446,14 +461,31 @@ export default function CreateTournamentPage() {
                 zIndex is below the nav (1000) but above page content. */}
             <Box
                 position="sticky"
+                // Flush under the mobile NavBar (53px, 1px tuck). md is
+                // academic - the desktop form is a fixed column with no page
+                // scroll, so the sticky never engages there.
                 top={{ base: "52px", md: "60px" }}
                 zIndex={900}
                 bg="bg.canvas"
                 mx={{ base: "-4", md: "-6" }}
                 px={{ base: "4", md: "6" }}
-                pt="3"
+                // Same trick as the tournament-details sticky bar: the page
+                // Container's top padding (py 5 = 20px on base) used to sit
+                // ABOVE this band, so content visibly slid through that gap
+                // and the stepper "nudged" down 20px before pinning. The
+                // negative margin pulls the band's painted canvas up to the
+                // NavBar's bottom edge and the enlarged padding puts the chips
+                // back exactly where they were - so the whole strip is sticky
+                // from scroll 0 and never moves. Desktop keeps plain pt (no
+                // page scroll to mask there).
+                mt={{ base: "-20px", md: "0" }}
+                pt={{ base: "28px", md: "2" }}
                 pb="1"
-                mb={{ base: 2, md: 3 }}
+                // md trimmed 8px→4px: real savings (not the earlier miscalc)
+                // handed straight to the scrollable card below, since this bar
+                // and the Dalje/Natrag capsule are the only OTHER things in
+                // the fixed-height column competing with it for space.
+                mb={{ base: 2, md: 1 }}
             >
                 <Box
                     bg="bg.panel"
@@ -461,7 +493,7 @@ export default function CreateTournamentPage() {
                     borderColor="border"
                     rounded="xl"
                     px={{ base: "3", md: "4" }}
-                    py="2.5"
+                    py={{ base: "1.5", md: "1" }}
                     css={{ boxShadow: "0 4px 16px rgba(11,21,34,0.06)" }}
                 >
                     <HStack
@@ -540,14 +572,27 @@ export default function CreateTournamentPage() {
                     </HStack>
                 </Box>
             </Box>
-            <VStack align="stretch" gap="4">
-                {/* ===================== Card 1: Basic info + poster ===================== */}
+            {/* The only scrollable region on desktop (flex 1 + minH 0 is what
+                lets a flex child actually shrink and scroll); `pr` keeps the
+                scrollbar off the card's border. */}
+            <VStack
+                align="stretch"
+                gap="3"
+                flex={{ md: "1" }}
+                minH={{ md: "0" }}
+                overflowY={{ md: "auto" }}
+                pr={{ md: "1" }}
+            >
+                {/* ===================== Card 1: Basic info + poster =====================
+                    Headerless on every wizard step: the step chips above already
+                    say which section you're on, so an icon + title inside the
+                    card only repeated them and pushed the form down a screen. */}
                 {step === 1 && (
-                <FormSectionCard
-                    icon={<FiInfo />}
-                    title="Osnovne informacije"
-                >
-                    <VStack align="stretch" gap="4">
+                <FormSectionCard>
+                    {/* gap 3 (not 4) throughout this step: the whole form is
+                        meant to fit one desktop screen without scrolling, and
+                        the row gaps add up faster than any single control. */}
+                    <VStack align="stretch" gap="3">
                         {/* Row 1 - short fields side-by-side on desktop, stacked
                             on mobile. Order is product-driven: organisers think
                             "what's the tournament called", "when is it", "who
@@ -558,7 +603,7 @@ export default function CreateTournamentPage() {
                         <Box
                             display="grid"
                             gridTemplateColumns={{ base: "1fr", md: "1.8fr 1.5fr 1.5fr 0.9fr 0.9fr" }}
-                            gap="4"
+                            gap="3"
                         >
                             <Field.Root required>
                                 <Field.Label>
@@ -664,13 +709,13 @@ export default function CreateTournamentPage() {
                         <Box
                             display="grid"
                             gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
-                            gap="4"
+                            gap="3"
                             alignItems="start"
                         >
                             {/* RIGHT column - Lokacija above the map */}
                             <VStack
                                 align="stretch"
-                                gap="4"
+                                gap="3"
                                 gridColumn={{ md: "2" }}
                                 order={{ base: 0, md: 1 }}
                             >
@@ -693,15 +738,17 @@ export default function CreateTournamentPage() {
                                         onChange("location", p.displayName)
                                         setPickedCoords({ lat: p.lat, lng: p.lng })
                                     }}
-                                    height={{ base: "260px", md: "300px" }}
-                                    minH={{ base: "260px", md: "300px" }}
+                                    height={{ base: "240px", md: "268px" }}
+                                    minH={{ base: "240px", md: "268px" }}
                                 />
                             </VStack>
 
-                            {/* LEFT column - Detalji, then Kontakt */}
+                            {/* LEFT column - Detalji, then Kontakt. This column
+                                (not the map) is what sets the block's height, so
+                                the savings that matter live here. */}
                             <VStack
                                 align="stretch"
-                                gap="4"
+                                gap="3"
                                 gridColumn={{ md: "1" }}
                                 gridRow={{ md: "1" }}
                                 order={{ base: 1, md: 0 }}
@@ -709,40 +756,12 @@ export default function CreateTournamentPage() {
                                 <Field.Root>
                                     <Field.Label>Detalji</Field.Label>
                                     <Textarea
-                                        rows={3}
+                                        rows={2}
                                         resize="none"
                                         placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
                                         value={form.details}
                                         onChange={(e) => onChange("details", e.target.value)}
                                     />
-                                </Field.Root>
-
-                                {/* Sistem igre - quick presets + free text. */}
-                                <Field.Root>
-                                    <Field.Label>Sistem igre</Field.Label>
-                                    <HStack gap="1.5" wrap="wrap" align="center">
-                                        {["3vs3", "4+1", "5+1"].map((sys) => (
-                                            <Button
-                                                key={sys}
-                                                type="button"
-                                                size="sm"
-                                                flexShrink={0}
-                                                variant={form.gameSystem === sys ? "solid" : "outline"}
-                                                colorPalette="pitch"
-                                                onClick={() => onChange("gameSystem", sys)}
-                                            >
-                                                {sys}
-                                            </Button>
-                                        ))}
-                                        <Input
-                                            flex="1"
-                                            minW="120px"
-                                            placeholder="ili upiši ručno"
-                                            value={form.gameSystem}
-                                            onChange={(e) => onChange("gameSystem", e.target.value)}
-                                            maxLength={40}
-                                        />
-                                    </HStack>
                                 </Field.Root>
 
                                 {/* Web stranica organizatora - external link. */}
@@ -815,7 +834,7 @@ export default function CreateTournamentPage() {
                                     beside the tall map instead of leaving a
                                     big gap under the form. */}
                                 <Box>
-                                    <HStack gap="2" mb="2" fontSize="sm" fontWeight="medium">
+                                    <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
                                         <FiImage />
                                         <Text>
                                             Plakat <chakra.span color="fg.muted" fontWeight="normal">(opcionalno)</chakra.span>
@@ -834,8 +853,8 @@ export default function CreateTournamentPage() {
                                         borderWidth="1px"
                                         rounded="md"
                                         overflow="hidden"
-                                        w="120px"
-                                        h="120px"
+                                        w="88px"
+                                        h="88px"
                                     >
                                         <img
                                             src={posterPreviewUrl || form.posterUrl!}
@@ -857,8 +876,8 @@ export default function CreateTournamentPage() {
                                     </Box>
                                 ) : (
                                     <Box
-                                        w="120px"
-                                        h="120px"
+                                        w="88px"
+                                        h="88px"
                                         borderWidth="1px"
                                         borderStyle="dashed"
                                         borderColor="border.subtle"
@@ -868,7 +887,7 @@ export default function CreateTournamentPage() {
                                         justifyContent="center"
                                         color="fg.muted"
                                     >
-                                        <FiImage size={28} />
+                                        <FiImage size={22} />
                                     </Box>
                                 )}
 
@@ -914,13 +933,43 @@ export default function CreateTournamentPage() {
                 )}
                 {/* ===================== Card 2: Format ===================== */}
                 {step === 2 && (
-                <FormSectionCard
-                    icon={<FiGrid />}
-                    title="Format natjecanja"
-                    description="Odaberi kako je turnir strukturiran."
-                >
+                <FormSectionCard>
                     <VStack align="stretch" gap="4">
+                        {/* Sistem igre FIRST (product request): the organiser
+                            picks how the game is played (3vs3 / 4+1 / 5+1)
+                            before how the competition is structured. Moved
+                            from "Osnovno"; the backend field
+                            (form.gameSystem → payload.gameSystem) is
+                            unchanged - only which step edits it moved. */}
                         <Field.Root>
+                            <Field.Label>Sistem igre</Field.Label>
+                            <HStack gap="1.5" wrap="wrap" align="center">
+                                {["3vs3", "4+1", "5+1"].map((sys) => (
+                                    <Button
+                                        key={sys}
+                                        type="button"
+                                        size="sm"
+                                        flexShrink={0}
+                                        variant={form.gameSystem === sys ? "solid" : "outline"}
+                                        colorPalette="pitch"
+                                        onClick={() => onChange("gameSystem", sys)}
+                                    >
+                                        {sys}
+                                    </Button>
+                                ))}
+                                <Input
+                                    flex="1"
+                                    minW="120px"
+                                    placeholder="ili upiši ručno"
+                                    value={form.gameSystem}
+                                    onChange={(e) => onChange("gameSystem", e.target.value)}
+                                    maxLength={40}
+                                />
+                            </HStack>
+                        </Field.Root>
+
+                        <Field.Root>
+                            <Field.Label>Format natjecanja</Field.Label>
                             <RadioGroup.Root
                                 value={form.format}
                                 onValueChange={(v) =>
@@ -977,11 +1026,7 @@ export default function CreateTournamentPage() {
                     the field is empty or set to 0). */}
                 {/* ===================== Card 4: Rewards ===================== */}
                 {step === 3 && (
-                <FormSectionCard
-                    icon={<FiGift />}
-                    title="Nagradni fond"
-                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Nagrade za 1., 2. i 3. mjesto su obavezne; 4. mjesto i napomena su neobavezni."
-                >
+                <FormSectionCard>
                     <VStack align="stretch" gap="3">
                         {/* Column header - mirrors the Mjesto / Iznos / Ostalo
                             table shown on the tournament detail page. */}
@@ -1010,8 +1055,13 @@ export default function CreateTournamentPage() {
                             <Box
                                 key={place}
                                 display="grid"
-                                gridTemplateColumns={{ base: "1fr", md: "60px 140px 1fr" }}
-                                gap="3"
+                                // Phones: the place chip and the amount share ONE
+                                // row (chip hugs its content, amount takes the
+                                // rest); the note drops to its own line via 1fr.
+                                // md+: the original three-column table row.
+                                gridTemplateColumns={{ base: "auto 1fr", md: "60px 140px 1fr" }}
+                                gap={{ base: "2", md: "3" }}
+                                rowGap={{ base: "2", md: "3" }}
                                 alignItems="center"
                             >
                                 <HStack gap="2" minW="0">
@@ -1030,16 +1080,29 @@ export default function CreateTournamentPage() {
                                     >
                                         {label}
                                     </Flex>
-                                    {/* Red asterisk mirrors Field.RequiredIndicator -
-                                        prizes for 1st-3rd place are mandatory. */}
+                                    {/* "mjesto*" - the red asterisk (mirrors
+                                        Field.RequiredIndicator, 1st-3rd prizes
+                                        are mandatory) trails the WORD, so it
+                                        can't read as part of "1.". */}
+                                    <Box display={{ base: "block", md: "none" }} fontSize="sm" color="fg.muted">
+                                        mjesto
+                                        {required && (
+                                            <chakra.span color="red.500" fontWeight={700}>
+                                                *
+                                            </chakra.span>
+                                        )}
+                                    </Box>
+                                    {/* md+ has no "mjesto" word - keep the bare
+                                        asterisk next to the chip as before. */}
                                     {required && (
-                                        <chakra.span color="red.500" fontWeight={700}>
+                                        <chakra.span
+                                            display={{ base: "none", md: "inline" }}
+                                            color="red.500"
+                                            fontWeight={700}
+                                        >
                                             *
                                         </chakra.span>
                                     )}
-                                    <Box display={{ base: "block", md: "none" }} fontSize="sm" color="fg.muted">
-                                        mjesto
-                                    </Box>
                                 </HStack>
                                 <SuffixInput
                                     value={form.rewards[place].amount}
@@ -1048,6 +1111,10 @@ export default function CreateTournamentPage() {
                                     suffix="€"
                                 />
                                 <Input
+                                    // Phones: the note spans the full row under
+                                    // the chip+amount pair - without this it
+                                    // would land in the narrow `auto` column.
+                                    gridColumn={{ base: "1 / -1", md: "auto" }}
                                     value={form.rewards[place].note}
                                     onChange={(e) => setReward(place, "note", e.target.value)}
                                     placeholder="npr. Pehar, Prijelazni pehar, Utješna nagrada…"
@@ -1159,10 +1226,14 @@ export default function CreateTournamentPage() {
                                 overflow="hidden"
                             >
                                 <Flex direction={{ base: "column", md: "row" }} gap="0">
-                                    {/* Poster - left rail on desktop, top on mobile */}
+                                    {/* Poster - left rail on desktop, top on
+                                        mobile. Base height is deliberately a
+                                        slim 96px band: with no poster it was a
+                                        180px void that alone forced the summary
+                                        past one phone screen. */}
                                     <Box
                                         w={{ base: "100%", md: "200px" }}
-                                        h={{ base: "180px", md: "auto" }}
+                                        h={{ base: "96px", md: "auto" }}
                                         minH={{ md: "200px" }}
                                         bg="bg.subtle"
                                         position="relative"
@@ -1193,8 +1264,8 @@ export default function CreateTournamentPage() {
                                     {/* Right column - name + date row + attributes */}
                                     <VStack
                                         align="stretch"
-                                        gap="3"
-                                        p={{ base: "4", md: "5" }}
+                                        gap={{ base: "2", md: "3" }}
+                                        p={{ base: "3", md: "5" }}
                                         flex="1"
                                         minW="0"
                                     >
@@ -1221,12 +1292,18 @@ export default function CreateTournamentPage() {
                                             </Box>
                                         </Box>
 
-                                        {/* Attribute grid - 2 cols desktop, 1 mobile */}
+                                        {/* Attribute grid - 2 cols everywhere.
+                                            One column on phones stacked seven
+                                            ~40px label/value pairs and forced
+                                            the whole summary into a scroll;
+                                            paired up it halves that, and every
+                                            value is short enough to truncate
+                                            gracefully at half width. */}
                                         <Box
                                             display="grid"
-                                            gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
-                                            columnGap="6"
-                                            rowGap="2.5"
+                                            gridTemplateColumns="1fr 1fr"
+                                            columnGap={{ base: "3", md: "6" }}
+                                            rowGap={{ base: "1.5", md: "2.5" }}
                                         >
                                             {attrs.map((a) => (
                                                 <Flex
@@ -1304,8 +1381,14 @@ export default function CreateTournamentPage() {
                     )
                 })()}
 
-                {/* spacer so the sticky bar doesn't cover the last card on short pages */}
-                <Box h="2" />
+                {/* Mobile-only tail room. The capsule is `fixed` there, so it no
+                    longer occupies flow space and would otherwise cover the end
+                    of the last card; ~72px matches its height (buttons + its
+                    own padding). App.tsx's page padding already clears the
+                    bottom NAV below it, not this. On desktop the capsule is a
+                    normal static row under the scroll area, so any gap here
+                    would just be dead space stolen from the card. */}
+                <Box h={{ base: "72px", md: "0" }} />
             </VStack>
 
             {/* ===================== Sticky action bar =====================
@@ -1320,13 +1403,24 @@ export default function CreateTournamentPage() {
                  the mobile bottom nav (≈92px) and the web-only sticky
                  footer (≈52px) on desktop. */}
             <Box
-                position="sticky"
+                // Mobile: FIXED to the viewport, so the capsule sits at exactly
+                // the same height on every step. It used to be `sticky`, which
+                // only pins while the content is taller than the viewport -
+                // on shorter steps it fell back to its static spot at the end
+                // of the flow, so each step parked the buttons somewhere
+                // slightly different. Desktop: static, because there it is the
+                // last row of the fixed-height column and already sits at the
+                // bottom - a sticky/fixed offset would only lift it off.
+                position={{ base: "fixed", md: "static" }}
+                left={{ base: "0", md: "auto" }}
+                right={{ base: "0", md: "auto" }}
                 bottom={{
                     base: "calc(92px + env(safe-area-inset-bottom, 0px))",
-                    md: "64px",
+                    md: "auto",
                 }}
-                mt="4"
-                py="2"
+                mt={{ base: "0", md: "1" }}
+                py={{ base: "2", md: "1" }}
+                flexShrink={{ md: 0 }}
                 zIndex={950}
                 display="flex"
                 justifyContent="center"
@@ -1338,7 +1432,7 @@ export default function CreateTournamentPage() {
                     borderWidth="1px"
                     borderColor="border.emphasized"
                     rounded="full"
-                    p="1.5"
+                    p={{ base: "1.5", md: "1" }}
                     css={{
                         pointerEvents: "auto",
                         boxShadow: "0 8px 28px rgba(11,21,34,0.16)",

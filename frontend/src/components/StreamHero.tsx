@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, Flex, Grid, HStack, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
-import { FiX, FiMaximize, FiClock, FiPlay, FiHome } from "react-icons/fi"
+import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
 
 import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
@@ -243,30 +243,26 @@ export default function StreamHero({
 
     return (
         <Box mb="0">
-            {/* Mobile/tablet only: name + turnir-mode button above the player
-                (the side panel is hidden below lg). On lg+ they move INTO the
-                side-panel header, so this row is hidden there and the grid
-                rises to the top. */}
-            {(onEnterTheater || tournamentName) && (
-                <Flex display={{ base: "flex", lg: "none" }} justify="center" align="center" gap={{ base: "2", md: "3" }} wrap="wrap" mb="2.5">
-                    {tournamentName && (
-                        <Text
-                            fontSize={{ base: "sm", md: "md" }}
-                            fontWeight={800}
-                            color="fg.ink"
-                            textAlign="center"
-                            lineClamp={1}
-                            maxW={{ base: "88vw", md: "520px" }}
-                        >
-                            {tournamentName}
-                        </Text>
-                    )}
-                    {onEnterTheater && (
-                        <Button size="sm" variant="outline" colorPalette="pitch" onClick={onEnterTheater}>
-                            <FiMaximize /> Uključi turnir mode
-                        </Button>
-                    )}
-                </Flex>
+            {/* Mobile/tablet only: tournament name above the player (the side
+                panel is hidden below lg, where the name instead moves INTO its
+                header). The "Uživo" CTA is now BELOW the player - see after the
+                Grid - mirroring the desktop side panel, where it's a footer
+                action under the ticker, not a header one. */}
+            {tournamentName && (
+                <Text
+                    display={{ base: "block", lg: "none" }}
+                    fontSize={{ base: "sm", md: "md" }}
+                    fontWeight={800}
+                    color="fg.ink"
+                    textAlign="center"
+                    mb="2.5"
+                    // No line clamp: a long name ("31. Memorijalni turnir Darko
+                    // Puškadija i Zvonimir Pavlić") was cut mid-word at 1 line.
+                    lineHeight="1.3"
+                    css={{ overflowWrap: "anywhere" }}
+                >
+                    {tournamentName}
+                </Text>
             )}
             <Grid
                 templateColumns={{ base: "1fr", lg: "minmax(0, 2.2fr) minmax(0, 0.95fr)" }}
@@ -293,6 +289,23 @@ export default function StreamHero({
                     />
                 </Box>
             </Grid>
+            {/* Mobile/tablet only: same call to action as the desktop side
+                panel's footer - solid cyan "Uživo" with a play glyph - now
+                placed after the video instead of before it. */}
+            {onEnterTheater && (
+                <Flex display={{ base: "flex", lg: "none" }} justify="center" mt="2.5">
+                    <Button
+                        size="md"
+                        colorPalette="pitch"
+                        onClick={onEnterTheater}
+                        fontWeight={800}
+                        w="full"
+                        maxW="240px"
+                    >
+                        <FiPlay /> Uživo
+                    </Button>
+                </Flex>
+            )}
         </Box>
     )
 }
