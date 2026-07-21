@@ -313,14 +313,19 @@ export default function MatchLivePage() {
                     of the name). minW="0" lets a long name wrap/clamp instead of
                     pushing the icons out of alignment. */}
                 <Flex align="center" gap="2" mb="2">
-                    {/* Left cluster - back arrow (equal flex to the right cluster). */}
-                    <Flex flex="1" minW="0" justify="flex-start">
+                    {/* Left cluster - back arrow. Both side clusters are
+                        flexShrink={0} (they were flex="1", which let the centre
+                        keep its full intrinsic width and run UNDER the download
+                        icon on a long tournament name); the centre now takes the
+                        remaining space and wraps inside it instead. */}
+                    <Flex flexShrink={0} justify="flex-start">
                         <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
                             <FiArrowLeft />
                         </IconButton>
                     </Flex>
-                    {/* Centre cluster - tournament name + stage, centred as one unit. */}
-                    <VStack gap="0" minW="0" align="center">
+                    {/* Centre cluster - tournament name + stage, centred as one
+                        unit and strictly bounded by the two icon clusters. */}
+                    <VStack gap="0" flex="1" minW="0" align="center">
                         {title && (
                             <Text
                                 as="button"
@@ -328,8 +333,14 @@ export default function MatchLivePage() {
                                 fontSize="sm"
                                 fontWeight={700}
                                 color="fg"
-                                lineClamp={1}
+                                // Wraps onto a SECOND line before it could reach
+                                // the icons; `anywhere` keeps a single very long
+                                // word from overflowing instead of breaking.
+                                lineClamp={2}
+                                lineHeight="1.25"
+                                textAlign="center"
                                 maxW="full"
+                                css={{ overflowWrap: "anywhere" }}
                                 cursor="pointer"
                                 _hover={{ textDecoration: "underline" }}
                             >
@@ -342,8 +353,8 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </VStack>
-                    {/* Right cluster - download + share (equal flex to the left). */}
-                    <Flex flex="1" minW="0" justify="flex-end" gap="2">
+                    {/* Right cluster - download + share. */}
+                    <Flex flexShrink={0} justify="flex-end" gap="2">
                         <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
                             <FiDownload />
                         </IconButton>

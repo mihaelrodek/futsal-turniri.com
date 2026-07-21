@@ -103,10 +103,13 @@ export default function StatsPage() {
                             </Box>
                             <Input
                                 pl="9"
-                                // Slimmer on phones: ~40px md-size box on base
-                                // (the size recipe carries the matching height +
-                                // padding), reverting to the compact sm on md+.
                                 size={{ base: "md", md: "sm" }}
+                                // Explicit slim height on phones - the md size
+                                // recipe's own 40px+ box still read as a big
+                                // slab next to the summary tiles. py 0 lets the
+                                // text centre in the shorter box.
+                                h={{ base: "36px", md: "32px" }}
+                                py="0"
                                 // iOS Safari auto-zooms the whole page when a
                                 // focused input's font-size is < 16px. Pin base
                                 // to 16px to stop that jump; md+ keeps the sm

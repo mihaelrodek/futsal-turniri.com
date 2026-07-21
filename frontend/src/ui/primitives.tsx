@@ -11,6 +11,7 @@ import {
     Spinner,
     Text,
     type BoxProps,
+    type CardRootProps,
     type FlexProps,
 } from "@chakra-ui/react"
 import type { ElementType, ReactNode } from "react"
@@ -87,30 +88,42 @@ export function FormSectionCard({
     title,
     description,
     children,
+    ...rest
 }: {
     icon?: ReactNode
-    title: string
+    /** Omit (together with `icon`/`description`) to drop the header band
+     *  entirely - the create wizard does this because its step chips already
+     *  name the section, so a title inside the card only repeats them and
+     *  costs vertical space. */
+    title?: string
     description?: string
     children: ReactNode
-}) {
+} & CardRootProps) {
+    const hasHeader = !!(title || icon || description)
     return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Header pb="2" pt="4" px={{ base: "4", md: "5" }}>
-                <HStack gap="2.5" align="center">
-                    {icon && (
-                        <Box color="blue.500" display="flex" alignItems="center">
-                            {icon}
-                        </Box>
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm" {...rest}>
+            {/* Tight header/body padding: the create + edit forms are long, and
+                these paddings repeat per card - trimming them is the cheapest
+                vertical saving that costs no legibility. */}
+            {hasHeader && (
+                <Card.Header pb="1.5" pt="3" px={{ base: "4", md: "5" }}>
+                    <HStack gap="2.5" align="center">
+                        {icon && (
+                            <Box color="blue.500" display="flex" alignItems="center">
+                                {icon}
+                            </Box>
+                        )}
+                        {title && <Card.Title fontSize="md">{title}</Card.Title>}
+                    </HStack>
+                    {description && (
+                        <Card.Description fontSize="sm" color="fg.muted" mt="1">
+                            {description}
+                        </Card.Description>
                     )}
-                    <Card.Title fontSize="md">{title}</Card.Title>
-                </HStack>
-                {description && (
-                    <Card.Description fontSize="sm" color="fg.muted" mt="1">
-                        {description}
-                    </Card.Description>
-                )}
-            </Card.Header>
-            <Card.Body pt="3" pb="4" px={{ base: "4", md: "5" }}>
+                </Card.Header>
+            )}
+            {/* No header ⇒ the body owns the top padding. */}
+            <Card.Body pt={hasHeader ? "2.5" : "3"} pb="3" px={{ base: "4", md: "5" }}>
                 {children}
             </Card.Body>
         </Card.Root>

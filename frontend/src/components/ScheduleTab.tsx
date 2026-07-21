@@ -826,46 +826,63 @@ function MatchCompactRow({
             borderColor={isLive || isNext ? "red.emphasized" : "border"}
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
-            <Flex align="center" gap="3">
-                {/* Time / score pill - mono, fixed min-width so the team names
-                    line up straight down the list regardless of the content.
+            <Flex align="center" gap="2.5">
+                {/* LEFT column - the time/score pill with the stage tag directly
+                    under it. Both are narrow and fixed-width so the two team
+                    names to the right always start at the same x down the list.
                     Multi-day floor = the widest content, "DD.MM. HH:MM" (12 mono
-                    chars, `ch` tracks this Box's own font) + the 2×10px padding -
+                    chars, `ch` tracks this Box's own font) + the 2×8px padding -
                     the slight negative letter-spacing keeps the date's natural
                     width just UNDER the floor, so live/score pills and date
                     pills all render at exactly the same width. */}
-                <Box
-                    fontFamily="mono"
-                    fontSize="sm"
-                    fontWeight={scoreboard ? 800 : 600}
-                    letterSpacing="-0.02em"
-                    color={isLive ? "red.fg" : isFinished ? "fg.ink" : "fg.muted"}
-                    bg={isLive ? "red.subtle" : "bg.surfaceTint"}
-                    px="2.5"
-                    py="1"
-                    rounded="lg"
-                    minW={multiDay ? "calc(12ch + 20px)" : "64px"}
-                    textAlign="center"
-                    fontVariantNumeric="tabular-nums"
-                    flexShrink={0}
-                >
-                    {pillText}
-                </Box>
-
-                {/* Teams (bold, one truncated line) + the stage/group tag. Each
-                    team keeps its muted colouring for undecided knockout slots. */}
-                <Box flex="1" minW="0">
-                    <Text fontSize="sm" fontWeight={700} truncate>
-                        <chakra.span color={t1Muted ? "fg.muted" : "fg.ink"}>{t1Name}</chakra.span>
-                        <chakra.span color="fg.subtle" fontWeight={500} px="1.5">
-                            vs
-                        </chakra.span>
-                        <chakra.span color={t2Muted ? "fg.muted" : "fg.ink"}>{t2Name}</chakra.span>
-                    </Text>
-                    <Flex mt="1" minW="0">
+                <VStack gap="1" flexShrink={0} align="stretch">
+                    <Box
+                        fontFamily="mono"
+                        // Smaller than the team names on purpose: the names are
+                        // what a reader scans for, the score is the detail.
+                        fontSize="13px"
+                        fontWeight={scoreboard ? 800 : 600}
+                        letterSpacing="-0.02em"
+                        color={isLive ? "red.fg" : isFinished ? "fg.ink" : "fg.muted"}
+                        bg={isLive ? "red.subtle" : "bg.surfaceTint"}
+                        px="2"
+                        py="1"
+                        rounded="lg"
+                        minW={multiDay ? "calc(12ch + 16px)" : "58px"}
+                        textAlign="center"
+                        fontVariantNumeric="tabular-nums"
+                    >
+                        {pillText}
+                    </Box>
+                    <Flex justify="center" minW="0">
                         <StageBadge stage={match.stage} groupName={match.groupName} />
                     </Flex>
-                </Box>
+                </VStack>
+
+                {/* Teams - ONE PER LINE. Squeezed onto a single "A vs B" line
+                    they truncated to nothing on a phone; stacked, each name gets
+                    the full remaining width. Muted colouring is preserved for
+                    undecided knockout slots. */}
+                <VStack flex="1" minW="0" gap="0.5" align="stretch">
+                    <Text
+                        fontSize="sm"
+                        fontWeight={700}
+                        lineHeight="1.25"
+                        truncate
+                        color={t1Muted ? "fg.muted" : "fg.ink"}
+                    >
+                        {t1Name}
+                    </Text>
+                    <Text
+                        fontSize="sm"
+                        fontWeight={700}
+                        lineHeight="1.25"
+                        truncate
+                        color={t2Muted ? "fg.muted" : "fg.ink"}
+                    >
+                        {t2Name}
+                    </Text>
+                </VStack>
 
                 {(showCalBtn || showBell) && (
                     <HStack gap="0.5" flexShrink={0}>
@@ -1067,6 +1084,22 @@ export default function ScheduleTab({
             return "list"
         }
     })
+    // Phones only offer "list" + "grid-sm": the full-detail "grid" rows need
+    // desktop width to be readable, so its toggle button is hidden below md and
+    // a stored "grid" preference (or one set on a wide screen, then resized)
+    // falls back to "list" - otherwise a phone could get stuck in a view with
+    // no way back out.
+    useEffect(() => {
+        if (typeof window === "undefined" || !window.matchMedia) return
+        // Chakra's md breakpoint is 48em; below it we're in the phone layout.
+        const mq = window.matchMedia("(max-width: 47.99em)")
+        const apply = () => {
+            if (mq.matches) setViewMode((v) => (v === "grid" ? "list" : v))
+        }
+        apply()
+        mq.addEventListener("change", apply)
+        return () => mq.removeEventListener("change", apply)
+    }, [])
     useEffect(() => {
         try {
             localStorage.setItem(VIEW_KEY, viewMode)
@@ -1854,12 +1887,17 @@ export default function ScheduleTab({
                 icon={<FiList size={14} />}
                 label="Lista"
             />
-            <ViewToggleButton
-                active={viewMode === "grid"}
-                onClick={() => setViewMode("grid")}
-                icon={<FiMenu size={14} />}
-                label="Veliki prikaz"
-            />
+            {/* Desktop only - the full-detail rows are unreadable at phone
+                width, so phones are offered just Lista + Mali prikaz (the
+                effect above also un-sticks a stored "grid" down there). */}
+            <Box display={{ base: "none", md: "contents" }}>
+                <ViewToggleButton
+                    active={viewMode === "grid"}
+                    onClick={() => setViewMode("grid")}
+                    icon={<FiMenu size={14} />}
+                    label="Veliki prikaz"
+                />
+            </Box>
             <ViewToggleButton
                 active={viewMode === "grid-sm"}
                 onClick={() => setViewMode("grid-sm")}
@@ -1868,6 +1906,13 @@ export default function ScheduleTab({
             />
         </HStack>
     )
+
+    /** True when the header renders the filter row at all. On phones the prikaz
+     *  toggle rides along on that row's tail (next to "Svi dani"); with no
+     *  filters to show it stays in the actions row instead, so it can never
+     *  disappear entirely. */
+    const hasFilters = allTeamCount > 1 || allGroupCount > 1 || multiDay
+
     return (
         // No top padding: the first row (format chip) must sit flush with the
         // content-column top so it aligns with the sidebar card's top edge -
@@ -2108,7 +2153,7 @@ export default function ScheduleTab({
                                 back to equal "1 1 0" shares (with the per-select
                                 maxW caps below) and nowrap keeps everything on the
                                 single original row. */}
-                            {(allTeamCount > 1 || allGroupCount > 1 || multiDay) && (
+                            {hasFilters && (
                                 <Flex
                                     align="center"
                                     gap="2"
@@ -2167,7 +2212,12 @@ export default function ScheduleTab({
                                     {multiDay && (
                                         <NativeSelect.Root
                                             size="sm"
-                                            flex={{ base: "1 1 60%", lg: "1 1 0" }}
+                                            // 50% (not 60%) so this select still
+                                            // can't join the ekipe+skupine row
+                                            // (80% + 50% > 100%) yet leaves room
+                                            // for the broom AND the prikaz toggle
+                                            // beside it on the second row.
+                                            flex={{ base: "1 1 50%", lg: "1 1 0" }}
                                             minW="0"
                                             maxW={{ lg: "200px" }}
                                         >
@@ -2207,23 +2257,36 @@ export default function ScheduleTab({
                                     >
                                         <FaBroom size={13} />
                                     </IconButton>
+
+                                    {/* PHONES: the prikaz toggle finishes the
+                                        filters' last row (right of "Svi dani"),
+                                        so the row below is left to Preuzmi /
+                                        Uredi alone. On lg it moves back into the
+                                        right cluster - see below. */}
+                                    <Box display={{ base: "block", lg: "none" }} ml="auto">
+                                        {viewToggle}
+                                    </Box>
                                 </Flex>
                             )}
 
                             {/* Right cluster - prikaz toggle then the schedule
                                 actions (Termini završnice · Uredi format · Uredi
                                 raspored · Preuzmi). Base: its own row under the
-                                filters, toggle left / actions right. lg+: pushed
-                                to the right edge of the single header row. */}
+                                filters holding ONLY the actions (the toggle sits
+                                up in the filter row); with no filters at all the
+                                toggle stays here so it never disappears. lg+:
+                                pushed to the right edge of the single header row. */}
                             <Flex
                                 align="center"
                                 gap="2"
                                 wrap={{ base: "wrap", lg: "nowrap" }}
-                                justify={{ base: "space-between", lg: "flex-end" }}
+                                justify={{ base: hasFilters ? "flex-end" : "space-between", lg: "flex-end" }}
                                 ml={{ lg: "auto" }}
                                 flexShrink={0}
                             >
-                                {viewToggle}
+                                <Box display={hasFilters ? { base: "none", lg: "block" } : undefined}>
+                                    {viewToggle}
+                                </Box>
                                 {scheduleControls}
                             </Flex>
                         </Flex>

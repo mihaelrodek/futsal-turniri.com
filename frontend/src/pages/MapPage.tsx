@@ -29,6 +29,7 @@ import { useUserLocation } from "../hooks/useUserLocation"
 import { haversineKm } from "../utils/distance"
 import { GhostButton, MonoLabel, PulseDot } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { useColorMode } from "../color-mode"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MapPage - "Pitch" theme /karta.
@@ -229,6 +230,14 @@ function circleBoxCorners(center: [number, number], radiusKm: number): [number, 
 }
 
 const MAP_RADIUS_MAX_KM = 100
+
+/** Desktop height shared by the map and the tournament list, derived from the
+ *  viewport so the whole /karta screen fits WITHOUT page scroll: 100dvh minus
+ *  the chrome above and below it - navbar (57) + container padding (28 top,
+ *  52 bottom for the sticky footer) + the filter strip (60) + the gap and the
+ *  map's top offset (40) + a small margin. Measured against the real layout,
+ *  not guessed. The list then scrolls inside itself, as before. */
+const MAP_DESKTOP_H = "calc(100dvh - 265px)"
 
 /** Pin colour legend - rendered in the filter bar on desktop and as a small
  *  overlay pill on the map itself on phones (where the bar is a single row). */
@@ -439,6 +448,8 @@ export default function MapPage() {
     const defaultZoom = 7
 
     const radiusDisabled = !userPos
+    // Drives the basemap style (see the TileLayer further down).
+    const { colorMode } = useColorMode()
 
     function selectTournament(uuid: string) {
         // Toggle off when tapping the already-selected entry - gives the user
@@ -454,7 +465,11 @@ export default function MapPage() {
                 button into the radius row so the whole control bar is
                 one strip flush with the page top. Legend + button collapse
                 to the right side on desktop; everything wraps on mobile. */}
-            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p={{ base: "2.5", md: "4" }}>
+            {/* Padding is deliberately tight on md+ too: this strip plus the
+                navbar is all the chrome above the map, and every pixel here is
+                a pixel the map loses from the first screen (see the viewport
+                calc on the map box below). */}
+            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p={{ base: "2.5", md: "3" }}>
                 <Flex
                     // Phones: ONE row (radius + value + a round location button)
                     // so the whole map fits the first screen - the legend moves
@@ -493,11 +508,14 @@ export default function MapPage() {
                                 </Slider.Control>
                             </Slider.Root>
                         </Box>
-                        <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW={{ base: "42px", md: "50px" }} textAlign="right">
+                        {/* Max radius reads "∞ km" rather than "Sve" so the whole
+                            scale keeps ONE shape - "12 km" … "∞ km" - instead of
+                            switching to a word at the far end. */}
+                        <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW={{ base: "48px", md: "56px" }} textAlign="right">
                             {radiusDisabled
                                 ? "-"
                                 : radiusKm >= MAP_RADIUS_MAX_KM
-                                    ? "Sve"
+                                    ? "∞ km"
                                     : `${radiusKm} km`}
                         </Box>
                     </HStack>
@@ -537,13 +555,18 @@ export default function MapPage() {
                                 {geoStatus === "granted" ? <FiEyeOff size={15} /> : <FiNavigation size={15} />}
                             </IconButton>
                         </Box>
+                        {/* Compact paddings: this button is the tallest thing in
+                            the strip, so its height sets the whole bar's. */}
                         <Box display={{ base: "none", md: "block" }}>
                             {geoStatus === "granted" ? (
-                                <GhostButton icon={<FiEyeOff size={14} />} onClick={hideLocation}>
+                                <GhostButton px="3" py="1.5" fontSize="13px" icon={<FiEyeOff size={14} />} onClick={hideLocation}>
                                     Sakrij lokaciju
                                 </GhostButton>
                             ) : (
                                 <GhostButton
+                                    px="3"
+                                    py="1.5"
+                                    fontSize="13px"
                                     icon={<FiNavigation size={14} />}
                                     onClick={requestLocation}
                                     disabled={geoStatus === "asking"}
@@ -618,7 +641,10 @@ export default function MapPage() {
                             </Box>
                         )}
                     </Flex>
-                    <VStack align="stretch" gap="2" maxH="700px" overflowY="auto" pr="1">
+                    {/* Same viewport-derived height as the map so the two columns
+                        end level and neither pushes the page into a scroll; the
+                        list keeps scrolling inside itself. */}
+                    <VStack align="stretch" gap="2" maxH={{ base: "700px", md: MAP_DESKTOP_H }} overflowY="auto" pr="1">
                         {placed.length === 0 ? (
                             <Box
                                 bg="bg.panel"
@@ -662,8 +688,8 @@ export default function MapPage() {
                     // own chrome is accounted for) and a smaller floor, so the
                     // map ends above the bottom nav on a first paint instead of
                     // forcing a scroll.
-                    h={{ base: "58dvh", md: "70vh" }}
-                    minH={{ base: "380px", md: "560px" }}
+                    h={{ base: "58dvh", md: MAP_DESKTOP_H }}
+                    minH={{ base: "380px", md: "360px" }}
                     bg="bg.muted"
                     position="relative"
                 >
@@ -673,9 +699,22 @@ export default function MapPage() {
                         scrollWheelZoom
                         style={{ height: "100%", width: "100%" }}
                     >
+                        {/* Basemap follows the app theme: CARTO Voyager (warm
+                            beige land, muted blue water) on light, CARTO
+                            dark_all on dark - the light tiles were a glaring
+                            white slab in an otherwise navy UI. `key` remounts
+                            the layer on a theme switch so no cached tiles of
+                            the previous style survive. Leaflet's own chrome
+                            (zoom buttons, popup, attribution) is themed in
+                            system.ts. */}
                         <TileLayer
+                            key={colorMode}
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                            url={
+                                colorMode === "dark"
+                                    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                                    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                            }
                         />
 
                         {placed.map((t) => {

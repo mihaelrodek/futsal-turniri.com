@@ -54,6 +54,56 @@ const config = defineConfig({
             isolation: "isolate",
             zIndex: "0",
         },
+        // CARTO's dark_all basemap is almost neutral BLACK, which read as a
+        // hole punched in the navy UI. Tinting the tile pane pushes it into the
+        // app's navy family (land ≈ #2b364e, water ≈ #171d2a) without swapping
+        // to a keyed tile provider: sepia() colourises the near-grey tiles,
+        // hue-rotate() swings that warm cast round to blue, saturate() gives it
+        // body and brightness() lifts it off pure black. Filtering the PANE (not
+        // each tile) avoids visible seams between tiles, and markers / popups
+        // live in sibling panes so they keep their true colours.
+        ".dark .leaflet-tile-pane": {
+            filter: "sepia(1) hue-rotate(182deg) saturate(1.9) brightness(1.32)",
+        },
+        // Leaflet's own chrome (zoom buttons, popup bubble, attribution bar)
+        // ships hardcoded white; on the dark theme it punched three bright
+        // holes into the map and the popup's Chakra content - which uses
+        // fg.ink, light in dark mode - went white-on-white. next-themes puts
+        // `class="dark"` on <html>, so these only apply in dark mode.
+        //
+        // `!important` is NOT decoration here: Chakra emits globalCss inside
+        // `@layer base`, while leaflet.css is unlayered - and unlayered author
+        // styles beat layered ones no matter how specific the layered selector
+        // is. Flipping the declarations to important reverses that (important
+        // layered beats normal unlayered), which is the only way to win short
+        // of shipping a separate unlayered stylesheet.
+        ".dark .leaflet-bar a": {
+            background: "var(--chakra-colors-bg-panel) !important",
+            color: "var(--chakra-colors-fg-ink) !important",
+            borderBottomColor: "var(--chakra-colors-border) !important",
+        },
+        ".dark .leaflet-bar a:hover": {
+            background: "var(--chakra-colors-bg-muted) !important",
+        },
+        ".dark .leaflet-bar a.leaflet-disabled": {
+            background: "var(--chakra-colors-bg-muted) !important",
+            color: "var(--chakra-colors-fg-subtle) !important",
+        },
+        ".dark .leaflet-popup-content-wrapper, .dark .leaflet-popup-tip": {
+            background: "var(--chakra-colors-bg-panel) !important",
+            color: "var(--chakra-colors-fg-ink) !important",
+            boxShadow: "0 6px 24px rgba(0, 0, 0, 0.5) !important",
+        },
+        ".dark .leaflet-popup-close-button": {
+            color: "var(--chakra-colors-fg-muted) !important",
+        },
+        ".dark .leaflet-control-attribution": {
+            background: "rgba(11, 21, 34, 0.78) !important",
+            color: "var(--chakra-colors-fg-muted) !important",
+        },
+        ".dark .leaflet-control-attribution a": {
+            color: "var(--chakra-colors-pitch-fg) !important",
+        },
         // NB: the `pitchPulse` keyframes used by PulseDot / StatusChip /
         // FilterChip / LiveNavItem live in index.html. Chakra v3's
         // `globalCss` type rejects raw @keyframes blocks, so they're
