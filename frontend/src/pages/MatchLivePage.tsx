@@ -11,6 +11,8 @@ import { ExportDialog, type ExportMeta, type MatchExportData } from "../componen
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
+import { useRawMatchEvents } from "../components/StreamHero"
+import { useBroadcastDelayMs, useTick, visibleScore } from "../hooks/useBroadcastDelay"
 import { useTeamColors, teamColor, teamShorts, KitSwatch } from "../components/jersey"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
@@ -212,8 +214,19 @@ export default function MatchLivePage() {
         !!uuid &&
         (streamBanner?.tournamentUuid === uuid || streamBanner?.tournamentUuid === cachedDetails?.uuid)
     const isTimer = live?.liveMode === "TIMER"
-    const score1 = live?.score1 ?? scheduled.score1 ?? 0
-    const score2 = live?.score2 ?? scheduled.score2 ?? 0
+    const rawScore1 = live?.score1 ?? scheduled.score1 ?? 0
+    const rawScore2 = live?.score2 ?? scheduled.score2 ?? 0
+    // Broadcast hold: the timeline below already withholds a just-scored goal
+    // until the stream reaches it, so the score above it has to wait too -
+    // otherwise the number spoils the goal the viewer hasn't seen yet. Goals
+    // still on hold are subtracted from the real score; no stream = no change.
+    const bcDelayMs = useBroadcastDelayMs(uuid ?? null)
+    // RAW on purpose: we need the goals that are still withheld in order to
+    // subtract them - the delayed list has them removed already.
+    const bcEvents = useRawMatchEvents(uuid ?? null, scheduled.matchId ?? null, bcDelayMs > 0)
+    const bcNow = useTick(bcDelayMs > 0)
+    const score1 = visibleScore(rawScore1, scheduled.team1Id, bcEvents, bcDelayMs, bcNow) ?? rawScore1
+    const score2 = visibleScore(rawScore2, scheduled.team2Id, bcEvents, bcDelayMs, bcNow) ?? rawScore2
     // Equal-width digit boxes for the score row: both sides sized to the LONGER
     // score's digit count so the colon stays dead-centre ("10 : 5" would
     // otherwise push it right). Mono + tabular-nums makes 1 digit = 1ch exact.

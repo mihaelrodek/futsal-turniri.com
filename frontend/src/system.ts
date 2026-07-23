@@ -334,6 +334,12 @@ const config = defineConfig({
                     subtle: { value: { base: "#E3F7F5", _dark: "#0F2E35" } },
                     emphasized: { value: { base: "{colors.pitch.300}", _dark: "#1C5F62" } },
                     focusRing: { value: { base: "{colors.pitch.500}", _dark: "#2AD4C8" } },
+                    // Tile behind the logo mark - a light #EDF0F3 badge in BOTH
+                    // themes so the teal net mark reads as a small app-icon
+                    // everywhere: it pops on the white light canvas and, on the
+                    // dark navy canvas, the pale tile is the intended contrast
+                    // backing (not a bare mark on navy). The mark art is pitch.500.
+                    logoTile: { value: "#EDF0F3" },
                 },
                 // Status accents - slightly brighter in dark so they keep
                 // their pop on the deep navy surfaces. Referenced directly

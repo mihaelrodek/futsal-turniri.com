@@ -30,7 +30,8 @@ public final class QrCodeRenderer {
 
     private static final Color FG = new Color(0x0E, 0x1F, 0x15); // near-black ink
     private static final Color BG = Color.WHITE;
-    private static final Color PITCH = new Color(0x0B, 0x6B, 0x3A);
+    private static final Color TILE = new Color(0xED, 0xF0, 0xF3); // light badge tile
+    private static final Color TEAL = new Color(0x17, 0xA7, 0x9D); // brand teal (pitch.500)
     private static final Color WHITE = Color.WHITE;
 
     private QrCodeRenderer() {}
@@ -71,8 +72,9 @@ public final class QrCodeRenderer {
 
     /**
      * Brand mark in the centre: a white rounded "knockout" of ~24% of the QR,
-     * then the green tile with the goal-frame + ball (same mark as the OG
-     * card). EC-H means the obscured centre modules are recoverable.
+     * then the light tile with the teal goal-frame + ball (same mark as the
+     * in-app Logo / app icon). EC-H means the obscured centre modules are
+     * recoverable, so scannability is preserved.
      */
     private static void drawCenterMark(Graphics2D g, int size) {
         int markSize = Math.round(size * 0.24f);
@@ -86,13 +88,13 @@ public final class QrCodeRenderer {
                 x - pad, y - pad, markSize + 2f * pad, markSize + 2f * pad,
                 markSize * 0.35f, markSize * 0.35f));
 
-        // Green rounded tile.
-        g.setColor(PITCH);
+        // Light rounded tile.
+        g.setColor(TILE);
         g.fill(new RoundRectangle2D.Float(x, y, markSize, markSize, markSize * 0.28f, markSize * 0.28f));
 
-        // Goal frame (upside-down U) in white.
+        // Goal frame (upside-down U) in teal.
         float s = markSize;
-        g.setColor(WHITE);
+        g.setColor(TEAL);
         g.setStroke(new BasicStroke(Math.max(2f, s * 0.05f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         float gx = x + s * 0.26f;
         float gy = y + s * 0.30f;
@@ -102,13 +104,18 @@ public final class QrCodeRenderer {
         g.drawLine(Math.round(gx), Math.round(gy), Math.round(gx + gw), Math.round(gy));
         g.drawLine(Math.round(gx + gw), Math.round(gy), Math.round(gx + gw), Math.round(gy + gh));
 
-        // Ball - white circle + small green pentagon, bottom-centre.
+        // Ball - white circle with a teal outline + small teal pentagon,
+        // bottom-centre. The outline is what makes the white ball read on the
+        // light tile.
         float ballR = s * 0.18f;
         float bcx = x + s / 2f;
         float bcy = y + s * 0.66f;
+        Ellipse2D.Float ball = new Ellipse2D.Float(bcx - ballR, bcy - ballR, ballR * 2, ballR * 2);
         g.setColor(WHITE);
-        g.fill(new Ellipse2D.Float(bcx - ballR, bcy - ballR, ballR * 2, ballR * 2));
-        g.setColor(PITCH);
+        g.fill(ball);
+        g.setColor(TEAL);
+        g.setStroke(new BasicStroke(Math.max(1.5f, s * 0.035f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(ball);
         int[] px = new int[5];
         int[] py = new int[5];
         for (int i = 0; i < 5; i++) {

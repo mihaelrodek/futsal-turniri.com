@@ -173,6 +173,7 @@ export default function TournamentLivePage() {
                                 overlay={scoreBug}
                                 centerOverlay={buildStreamOverlay(banner?.overlayUrl, banner?.overlayMediaType)}
                                 viewers={viewers}
+                                tournamentUuid={uuid}
                             />
                         </Box>
                     </Flex>

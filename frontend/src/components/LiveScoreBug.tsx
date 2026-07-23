@@ -2,18 +2,6 @@ import { Flex, Text } from "@chakra-ui/react"
 import { PulseDot } from "../ui/pitch"
 import { KitSwatch } from "./jersey"
 
-/* ──────────────────────────────────────────────────────────────────────────
-   LiveScoreBug - a TV-broadcast-style score overlay for the current live
-   match: [live] TEAM 1 | score : score | TEAM 2, with each side accented by
-   its jersey colour. Dark, semi-transparent, blurred so it reads over any
-   video / display. Used as an overlay on the home stream player (and its
-   fullscreen) and pinned to the top of the fullscreen tournament display.
-
-   Full team names are kept (no abbreviations): the font shrinks with the
-   longer name and names wrap to two lines so a long one like
-   "DŠR Žarovnica & MH System & Bueno Caffe" stays legible.
-   ────────────────────────────────────────────────────────────────────────── */
-
 export default function LiveScoreBug({
     team1Name,
     team2Name,
@@ -31,15 +19,11 @@ export default function LiveScoreBug({
     team2Name: string | null
     score1: number
     score2: number
-    /** Jersey (dres) colour per side - the top of the two-tone accent bar. */
     color1?: string | null
     color2?: string | null
-    /** Shorts (hlače) colour per side - the bottom of the accent bar. */
     shorts1?: string | null
     shorts2?: string | null
-    /** Show the pulsing live marker (default true). */
     live?: boolean
-    /** "md" for the video overlay, "lg" for the fullscreen display. */
     size?: "md" | "lg"
     /** Overrides the "score1 : score2" centre (e.g. an upcoming match's kickoff
      *  time). */
@@ -134,10 +118,6 @@ export default function LiveScoreBug({
     )
 }
 
-/** Compact kit silhouette beside a team name: the shared "shirt over shorts"
- *  icon in the two kit colours. The scorebug sits on a dark, blurred panel, so
- *  the jersey falls back to a faint white (matching the old placeholder bar) and
- *  the outline uses `whiteAlpha` so a dark kit still reads on the dark bug. */
 function KitBar({ jersey, shorts, lg }: { jersey?: string | null; shorts?: string | null; lg: boolean }) {
     const fallback = "rgba(255,255,255,0.38)"
     return (

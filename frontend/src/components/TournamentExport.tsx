@@ -74,6 +74,11 @@ const C = {
     muted: "#5F7080",
     greenWash: "rgba(42,212,200,0.12)",
     zebra: "rgba(42,212,200,0.10)",
+    /* Qualifying-row highlight - deep navy from the SPECTO palette (NOT a
+       green), so advancing teams read as a premium dark mark distinct from the
+       teal accent used elsewhere on the poster. */
+    qualify: "#0B1522",
+    qualifyWash: "rgba(11,21,34,0.06)",
     /* Semantic success green (win/goal markers only - see file header note). */
     win: "#16A34A",
     /* Live accent (only place a non-brand hue appears on the poster). */
@@ -237,26 +242,27 @@ function matchKickoffLine(iso: string | null): string | null {
 
 /* ── brand marks (inlined SVG - no network fetch, canvas-safe) ─────────── */
 
-/** Full brand mark (green tile + goal + ball) - footer / header lockup. */
+/** Full brand mark (light tile + teal goal + ball) - footer / header lockup.
+ *  Matches the in-app Logo / app icon: #EDF0F3 tile + #17A79D teal art. */
 function BrandMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <rect x="0" y="0" width="112" height="112" rx="28" fill="#0B1522" />
-            <g stroke="#ffffff" strokeWidth="1" opacity="0.35">
+            <rect x="0" y="0" width="112" height="112" rx="28" fill="#EDF0F3" />
+            <g stroke="#17A79D" strokeWidth="1" opacity="0.6">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
             </g>
-            <path d="M30 82 V38 H82 V82" fill="none" stroke="#ffffff" strokeWidth="3.6" strokeLinejoin="round" />
+            <path d="M30 82 V38 H82 V82" fill="none" stroke="#17A79D" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" fill="#fff" />
-                <g stroke="#2AD4C8" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <circle cx="50" cy="50" r="46" fill="#fff" stroke="#17A79D" strokeWidth="2.6" />
+                <g stroke="#17A79D" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#2AD4C8">
+                <g fill="#17A79D">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -269,25 +275,25 @@ function BrandMark({ size }: { size: number }) {
     )
 }
 
-/** Monochrome navy mark (no tile) - the huge background watermark. */
+/** Monochrome teal mark (no tile) - the huge background watermark. */
 function WatermarkMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <g stroke="#0B1522" strokeWidth="1.4" opacity="0.6">
+            <g stroke="#17A79D" strokeWidth="1.4" opacity="0.6">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
             </g>
-            <path d="M30 82 V38 H82 V82" fill="none" stroke="#0B1522" strokeWidth="3.6" strokeLinejoin="round" />
+            <path d="M30 82 V38 H82 V82" fill="none" stroke="#17A79D" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" fill="none" stroke="#0B1522" strokeWidth="2.6" />
-                <g stroke="#0B1522" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <circle cx="50" cy="50" r="46" fill="none" stroke="#17A79D" strokeWidth="2.6" />
+                <g stroke="#17A79D" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#0B1522">
+                <g fill="#17A79D">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -969,7 +975,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                 const grText = gd > 0 ? `+${gd}` : String(gd)
                 const qualifies = advance > 0 && i < advance
                 const rowBg = qualifies
-                    ? C.greenWash
+                    ? C.qualifyWash
                     : advance > 0
                         ? "transparent"
                         : i % 2 === 0
@@ -985,7 +991,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: big ? "10px" : "8px",
-                            borderLeft: `3px solid ${qualifies ? C.green : "transparent"}`,
+                            borderLeft: `3px solid ${qualifies ? C.qualify : "transparent"}`,
                             background: rowBg,
                         }}
                     >
@@ -996,7 +1002,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                                 fontFamily: F_MONO,
                                 fontSize: `${numFont}px`,
                                 fontWeight: 700,
-                                color: C.green,
+                                color: qualifies ? C.qualify : C.green,
                             }}
                         >
                             {i + 1}
@@ -1273,8 +1279,8 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: "10px",
-                            borderLeft: `3px solid ${q ? C.green : "transparent"}`,
-                            background: q ? C.greenWash : "transparent",
+                            borderLeft: `3px solid ${q ? C.qualify : "transparent"}`,
+                            background: q ? C.qualifyWash : "transparent",
                         }}
                     >
                         <span
@@ -1284,7 +1290,7 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                                 fontFamily: F_MONO,
                                 fontSize: `${numFont}px`,
                                 fontWeight: 700,
-                                color: C.green,
+                                color: q ? C.qualify : C.green,
                             }}
                         >
                             {row.rank}

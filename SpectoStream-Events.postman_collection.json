@@ -1,0 +1,411 @@
+{
+  "info": {
+    "name": "SpectoStream Events API",
+    "description": "Slanje eventa utakmice u SpectoStream s vanjskog sustava.\n\nPostavi collection varijable: `baseUrl`, `apiKey` (sps_...), `streamId`.\n\nSvi zahtjevi koriste `Authorization: Bearer {{apiKey}}`. `idempotency_key` se generira automatski ({{$guid}}) — u produkciji koristite deterministički ključ (npr. `<matchId>-<tip>-<redniBroj>`) da retry ne stvori duplikat.\n\nDetalji: docs/integrations/events-api.md",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{apiKey}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://stream.safeflow.hr", "type": "string" },
+    { "key": "apiKey", "value": "sps_REPLACE_ME", "type": "string" },
+    { "key": "streamId", "value": "REPLACE_ME", "type": "string" },
+    { "key": "adminUser", "value": "admin", "type": "string" },
+    { "key": "adminPass", "value": "", "type": "string" },
+    { "key": "sessionToken", "value": "", "type": "string" },
+    { "key": "apiKeyId", "value": "", "type": "string" },
+    { "key": "tournamentId", "value": "00000000-0000-4000-8000-000000000001", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const isEvents = pm.request.method === 'POST' && /\\/events$/.test(pm.request.url.getPath());",
+          "if (isEvents) {",
+          "  pm.test('status je 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+          "  const body = pm.response.json();",
+          "  pm.test('event zaprimljen', () => pm.expect(body).to.have.property('event'));",
+          "  if (body.duplicate) console.warn('duplicate=true — isti idempotency_key vec poslan');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup (interno testiranje — NE slati vanjskom timu)",
+      "description": "Pokreni redom 0.1 → 0.2 → 0.3. Automatski popunjava {{sessionToken}}, {{apiKey}}, {{apiKeyId}} i {{streamId}}. Prije toga u Variables upiši {{adminPass}} (portal lozinka).",
+      "item": [
+        {
+          "name": "0.1 login (portal admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('sessionToken', pm.response.json().token);",
+                  "console.log('sessionToken spremljen');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["v1", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUser}}\",\n  \"password\": \"{{adminPass}}\"\n}"
+            },
+            "description": "Portal login — sprema session token (ssn_...) u {{sessionToken}}. Vrijedi 30 dana."
+          }
+        },
+        {
+          "name": "0.2 kreiraj API key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('key kreiran', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('apiKey', body.key);",
+                  "pm.collectionVariables.set('apiKeyId', body.id);",
+                  "console.log('apiKey spremljen:', body.key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/api-keys", "host": ["{{baseUrl}}"], "path": ["v1", "api-keys"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"postman-test-{{$guid}}\"\n}"
+            },
+            "description": "Kreira API key (sps_...) i sprema ga u {{apiKey}} — key se vraća u plaintextu SAMO ovdje. Svi ostali zahtjevi u kolekciji ga koriste automatski."
+          }
+        },
+        {
+          "name": "0.3 upsert testni turnir (dobij streamId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('turnir ok', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('streamId', body.stream.id);",
+                  "console.log('streamId:', body.stream.id);",
+                  "console.log('RTMP server:', body.stream.urls.obs_server);",
+                  "console.log('RTMP stream key:', body.stream.urls.obs_stream_key);",
+                  "console.log('embed:', body.embed_snippet);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman test turnir\"\n}"
+            },
+            "description": "Upsert turnira (koristi {{apiKey}}, kao i vanjski web) — automatski provisionira stream i sprema {{streamId}}. Idempotentno: slobodno ponovi."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Utakmica",
+      "item": [
+        {
+          "name": "match_start",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"match_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"home_name\": \"VK Mladost\",\n    \"home_short\": \"MLA\",\n    \"away_name\": \"VK Jug\",\n    \"away_short\": \"JUG\"\n  }\n}"
+            },
+            "description": "Početak utakmice — resetira rezultat na 0:0. OBAVEZNO prije svih ostalih eventa te utakmice. home_name/away_name 1-100 znakova, home_short/away_short 1-6 znakova."
+          }
+        },
+        {
+          "name": "period_start",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"period_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"period\": 1,\n    \"clock_seconds\": 0\n  }\n}"
+            },
+            "description": "Početak perioda — sat kreće od clock_seconds, teče od occurred_at. Zato occurred_at OBAVEZNO slati točno."
+          }
+        },
+        {
+          "name": "period_end",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"period_end\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {}\n}"
+            },
+            "description": "Kraj perioda — sat staje, status = break."
+          }
+        },
+        {
+          "name": "match_end",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"match_end\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {}\n}"
+            },
+            "description": "Kraj utakmice — sat staje, status = ended."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Igra",
+      "item": [
+        {
+          "name": "goal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"goal\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\",\n    \"player_name\": \"I. Horvat\",\n    \"clock_seconds\": 143\n  }\n}"
+            },
+            "description": "Gol — team je 'home' ili 'away' (+1 na rezultat). player_name i clock_seconds su opcionalni, samo za prikaz."
+          }
+        },
+        {
+          "name": "goal_cancelled",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"goal_cancelled\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\"\n  }\n}"
+            },
+            "description": "Poništen gol — -1 na rezultat tima (ne ide ispod 0)."
+          }
+        },
+        {
+          "name": "exclusion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"exclusion\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"away\",\n    \"player_name\": \"M. Kovač\"\n  }\n}"
+            },
+            "description": "Isključenje 2 min — automatski istječe 2 minute od occurred_at."
+          }
+        },
+        {
+          "name": "clock_sync",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"clock_sync\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"clock_seconds\": 245\n  }\n}"
+            },
+            "description": "Korekcija sata na točnu vrijednost (u sekundama) — koristiti kad se overlay sat razlikuje od semafora."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Prikaz (ne mijenja rezultat/sat)",
+      "item": [
+        {
+          "name": "card",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"card\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"away\",\n    \"player_name\": \"P. Perić\",\n    \"color\": \"yellow\"\n  }\n}"
+            },
+            "description": "Karton — payload je slobodan objekt, koristi se samo za prikaz."
+          }
+        },
+        {
+          "name": "substitution",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"substitution\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\",\n    \"player_in\": \"A. Anić\",\n    \"player_out\": \"B. Babić\"\n  }\n}"
+            },
+            "description": "Zamjena — payload je slobodan objekt, samo za prikaz."
+          }
+        },
+        {
+          "name": "lineup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"lineup\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\",\n    \"players\": [\"I. Horvat\", \"A. Anić\", \"B. Babić\"]\n  }\n}"
+            },
+            "description": "Postava — payload je slobodan objekt, samo za prikaz."
+          }
+        },
+        {
+          "name": "custom_message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"custom_message\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"text\": \"Pozdrav s bazena!\"\n  }\n}"
+            },
+            "description": "Slobodna poruka za overlay."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Stream",
+      "item": [
+        {
+          "name": "stream_start",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"stream_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"payload\": {}\n}"
+            },
+            "description": "Kamera je počela emitirati — neovisno o utakmici."
+          }
+        },
+        {
+          "name": "stream_end",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"stream_end\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"payload\": {}\n}"
+            },
+            "description": "Kamera je prestala emitirati."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Provjera stanja (javno, bez auth-a)",
+      "item": [
+        {
+          "name": "GET state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status je 200', () => pm.response.to.have.status(200));",
+                  "console.log(JSON.stringify(pm.response.json().match, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/state", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "state"] },
+            "description": "Rekonstruirano stanje utakmice IZ PERSPEKTIVE GLEDATELJA — eventi se ovdje vide tek nakon isteka odgode (delay_offset_ms). Za smoke-test: pošalji event, pričekaj odgodu, provjeri promjenu."
+          }
+        },
+        {
+          "name": "GET state (admin — bez odgode)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status je 200', () => pm.response.to.have.status(200));",
+                  "console.log(JSON.stringify(pm.response.json().match, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/state", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "state"] },
+            "description": "Isti endpoint sa session tokenom — admin vidi evente ODMAH, bez odgode. Idealno za brzu provjeru da je event sjeo (traži 0.1 login)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Cleanup (interno — obriši testne podatke)",
+      "description": "Nakon testiranja: obriši testni stream i turnir te revociraj testni API key. Sve traži {{sessionToken}} (0.1 login).",
+      "item": [
+        {
+          "name": "obriši testni stream",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}"] }
+          }
+        },
+        {
+          "name": "obriši testni turnir",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}"] }
+          }
+        },
+        {
+          "name": "revociraj testni API key",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/api-keys/{{apiKeyId}}/revoke", "host": ["{{baseUrl}}"], "path": ["v1", "api-keys", "{{apiKeyId}}", "revoke"] }
+          }
+        }
+      ]
+    }
+  ]
+}

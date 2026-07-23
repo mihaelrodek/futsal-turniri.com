@@ -482,7 +482,7 @@ function StreamSection({ uuid }: { uuid: string }) {
                 // hug the player at up to 760px; maxW="full" keeps it from
                 // overflowing a narrow content column (e.g. tablet width).
                 <Box w={{ base: "full", md: "760px" }} maxW="full" mx="auto">
-                    <StreamPlayer url={url} viewers={viewers} />
+                    <StreamPlayer url={url} viewers={viewers} tournamentUuid={uuid} />
                 </Box>
             )}
         </Box>

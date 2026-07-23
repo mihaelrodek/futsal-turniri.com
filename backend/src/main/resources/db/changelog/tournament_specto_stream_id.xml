@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        External SpectoStream stream id for a tournament's live overlay. Set
+        when the organizer links the tournament (the PUT /v1/tournaments/{uuid}
+        upsert returns it) and cleared on unlink. NULL = not linked, which is the
+        permanent state for every tournament that never enables streaming.
+        Nullable, no DEFAULT: every existing tournament stays unlinked.
+    -->
+    <changeSet id="2026-07-22-tournament-specto-stream-id" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="specto_stream_id" type="varchar(64)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

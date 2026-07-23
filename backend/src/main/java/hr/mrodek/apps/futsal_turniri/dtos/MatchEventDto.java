@@ -21,5 +21,10 @@ public record MatchEventDto(
         String assistPlayerName,
         /** Echoes the client idempotency key so the frontend can reconcile an
          *  optimistic (offline) event with its persisted server row. */
-        String clientEventId
+        String clientEventId,
+        /** Wall-clock moment the event was recorded (server time). Public
+         *  viewers use it to hold an event back until the broadcast catches
+         *  up: the stream runs a few seconds behind, so revealing a goal the
+         *  instant it is entered spoils it before the video shows it. */
+        java.time.OffsetDateTime createdAt
 ) {}

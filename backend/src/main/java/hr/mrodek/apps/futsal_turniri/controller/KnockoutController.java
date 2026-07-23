@@ -54,6 +54,8 @@ public class KnockoutController {
     @Inject JsonWebToken jwt;
     @Inject TournamentEditorRepository editorRepo;
     @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.MatchesRepository matchesRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.integrations.spectostream.SpectoStreamService specto;
 
     /** Throws 403 if the current user is not an admin, the tournament's
      *  creator, or a granted co-editor.
@@ -217,6 +219,15 @@ public class KnockoutController {
         Tournaments t = assertCanEdit(uuid);
         knockoutService.recordResult(t.getId(), matchId, body);
         if (t.getUuid() != null) liveBroadcaster.liveUpdate(t.getUuid().toString(), matchId);
+        // Knockout matches are FINISHED here, not via TournamentController's
+        // /finish (which rejects them with 409) - without this the overlay of a
+        // timer-run knockout match would stay stuck "live" forever. Same
+        // TIMER-only gate as every other specto hook; fire-and-forget.
+        matchesRepo.findByIdOptional(matchId).ifPresent(m -> {
+            if (m.getLiveMode() == hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode.TIMER) {
+                specto.matchEnd(t, matchId);
+            }
+        });
         return knockoutService.bracket(t.getId());
     }
 }

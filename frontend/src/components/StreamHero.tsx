@@ -8,6 +8,7 @@ import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
 import { PulseDot } from "../ui/pitch"
 import { usePolling } from "../hooks/usePolling"
+import { useBroadcastDelayMs, useTick, withinBroadcast } from "../hooks/useBroadcastDelay"
 import { fetchMatchEvents } from "../api/matchEvents"
 import { fetchGroups } from "../api/groups"
 import { fetchBracket } from "../api/bracket"
@@ -276,6 +277,7 @@ export default function StreamHero({
                         centerOverlay={centerOverlay}
                         viewers={viewers}
                         sideScorers={sideScorers}
+                        tournamentUuid={uuid}
                     />
                 </Box>
                 <Box display={{ base: "none", lg: "flex" }} h={ROW_H} minW="0">
@@ -319,7 +321,13 @@ const REGULATION: ReadonlySet<string> = new Set(["GOAL", "OWN_GOAL", "YELLOW_CAR
  *  fetch ONCE and feed several consumers - the home hero polls here and hands
  *  the same list to both the ticker panel and the fullscreen scorer columns.
  *  `enabled=false` skips fetching entirely (the consumer was given events). */
-export function useMatchEvents(
+/**
+ * The match's events EXACTLY as stored - no broadcast hold. Callers that need
+ * to know what is still being withheld (e.g. to subtract held-back goals from
+ * the score) must use this; anything that renders events to a viewer wants
+ * {@link useMatchEvents} instead.
+ */
+export function useRawMatchEvents(
     uuid: string | null,
     matchId: number | null,
     enabled = true,
@@ -348,6 +356,23 @@ export function useMatchEvents(
     }, 12_000, enabled && !!uuid && !!matchId)
 
     return events
+}
+
+/**
+ * Viewer-facing events: same list, but holding back anything the broadcast
+ * hasn't reached, so the ticker and the fullscreen scorer columns can't reveal
+ * a goal before the video does. Zero delay (no live SpectoStream) returns the
+ * list exactly as fetched.
+ */
+export function useMatchEvents(
+    uuid: string | null,
+    matchId: number | null,
+    enabled = true,
+): MatchEventDto[] {
+    const events = useRawMatchEvents(uuid, matchId, enabled)
+    const delayMs = useBroadcastDelayMs(uuid)
+    const now = useTick(delayMs > 0 && events.length > 0)
+    return useMemo(() => withinBroadcast(events, delayMs, now), [events, delayMs, now])
 }
 
 /** Ticker state - events fetch + poll, half-split sections, autoscroll ref.

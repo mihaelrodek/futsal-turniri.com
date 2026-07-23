@@ -61,4 +61,5 @@
     <include file="db/changelog/push_subscriptions_user_uid_nullable.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/tournament_subscriptions_anon.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_subscriptions_anon.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/tournament_specto_stream_id.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>
