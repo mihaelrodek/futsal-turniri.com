@@ -192,18 +192,30 @@ public class KnockoutService {
         // Skip bye rows: they are never played, so a slot of theirs (only
         // possible on data created before byes were excluded from the
         // schedule) would shift every real match's reserved time by one.
-        List<java.time.OffsetDateTime> reservedKickoffs = matchesRepo.getEntityManager()
+        // Projected as (stage, kickoffAt) pairs and grouped BY STAGE below: each
+        // round keeps its own block of slots. Re-applying per stage - instead of
+        // one flat chronological list poured back in stage order - is what lets a
+        // CUSTOM round order survive materialization (e.g. an osmina the
+        // organizer scheduled before the šesnaestina keeps its earlier slots
+        // instead of being silently normalized back to stage order).
+        List<Object[]> reservedRows = matchesRepo.getEntityManager()
                 .createQuery(
-                        "select m.kickoffAt from Matches m "
+                        "select m.stage, m.kickoffAt from Matches m "
                                 + "where m.tournament = ?1 and m.stage <> ?2 "
                                 + "and m.kickoffAt is not null "
                                 + "and not (m.status = ?3 and (m.team1 is null or m.team2 is null)) "
                                 + "order by m.kickoffAt",
-                        java.time.OffsetDateTime.class)
+                        Object[].class)
                 .setParameter(1, t)
                 .setParameter(2, MatchStage.GROUP)
                 .setParameter(3, MatchStatus.FINISHED)
                 .getResultList();
+        Map<MatchStage, List<java.time.OffsetDateTime>> reservedKickoffs = new EnumMap<>(MatchStage.class);
+        for (Object[] row : reservedRows) {
+            reservedKickoffs
+                    .computeIfAbsent((MatchStage) row[0], k -> new ArrayList<>())
+                    .add((java.time.OffsetDateTime) row[1]);
+        }
 
         // Capture any position-pairing sources the organizer set on the skeleton
         // BEFORE the bulk-delete below wipes those rows - the same scalar-
@@ -332,22 +344,36 @@ public class KnockoutService {
 
     /**
      * Re-apply kickoff slots that a multi-day schedule reserved on the knockout
-     * placeholders, in bracket play order (earlier rounds first; third place
-     * before the final). Keeps the schedule's day split after the real bracket
+     * placeholders. Keeps the schedule's day split after the real bracket
      * replaces the skeleton. No-op when nothing was reserved.
+     *
+     * <p><b>Per stage, not one flat list.</b> Each round's reserved slots go back
+     * onto that same round's matches, so a round keeps exactly the times it was
+     * given. That is what preserves a CUSTOM round order (an osmina the organizer
+     * dragged before the šesnaestina keeps its earlier slots); pouring one
+     * chronological list back in stage order would silently re-sort the rounds.
      */
-    private void applyReservedKickoffs(Tournaments t, List<java.time.OffsetDateTime> reserved) {
+    private void applyReservedKickoffs(Tournaments t,
+                                       Map<MatchStage, List<java.time.OffsetDateTime>> reserved) {
         if (reserved == null || reserved.isEmpty()) return;
         List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
         // BYEs are never played and never appear in the schedule - handing them
         // a reserved slot would leave a real match without one (the skeleton
         // reserves exactly the number of REAL knockout matches).
         ko.removeIf(Matches::isKnockoutBye);
-        ko.sort(Comparator
-                .comparingInt((Matches m) -> knockoutStageRank(m.getStage()))
-                .thenComparingLong(m -> m.getId() != null ? m.getId() : 0L));
-        for (int i = 0; i < ko.size() && i < reserved.size(); i++) {
-            ko.get(i).setKickoffAt(reserved.get(i));
+        Map<MatchStage, List<Matches>> byStage = new EnumMap<>(MatchStage.class);
+        for (Matches m : ko) {
+            byStage.computeIfAbsent(m.getStage(), k -> new ArrayList<>()).add(m);
+        }
+        for (Map.Entry<MatchStage, List<Matches>> e : byStage.entrySet()) {
+            List<java.time.OffsetDateTime> slots = reserved.get(e.getKey());
+            if (slots == null || slots.isEmpty()) continue;
+            List<Matches> ms = e.getValue();
+            // Stable within the round - same id order the labels/feeders use.
+            ms.sort(Comparator.comparingLong(m -> m.getId() != null ? m.getId() : 0L));
+            for (int i = 0; i < ms.size() && i < slots.size(); i++) {
+                ms.get(i).setKickoffAt(slots.get(i));
+            }
         }
     }
 
@@ -580,10 +606,10 @@ public class KnockoutService {
             String l1 = null, l2 = null, p1 = null, p2 = null;
             if (node.stage == MatchStage.THIRD_PLACE) {
                 if (semis.size() >= 1) {
-                    l1 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(0).indexInStage;
+                    l1 = "L " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(0).indexInStage;
                 }
                 if (semis.size() >= 2) {
-                    l2 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(1).indexInStage;
+                    l2 = "L " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(1).indexInStage;
                 }
             } else if (node.roundOne) {
                 if (crossApplies) {
@@ -597,10 +623,10 @@ public class KnockoutService {
                 }
             } else {
                 if (node.feeder1 != null) {
-                    l1 = "Pobj. " + stageAbbrev(node.feeder1.stage) + node.feeder1.indexInStage;
+                    l1 = "W " + stageAbbrev(node.feeder1.stage) + node.feeder1.indexInStage;
                 }
                 if (node.feeder2 != null) {
-                    l2 = "Pobj. " + stageAbbrev(node.feeder2.stage) + node.feeder2.indexInStage;
+                    l2 = "W " + stageAbbrev(node.feeder2.stage) + node.feeder2.indexInStage;
                 }
             }
             out.add(new SlotLabels(l1, l2, p1, p2));
@@ -1792,11 +1818,11 @@ public class KnockoutService {
                 // Third place is fed (in recordResult) by the two semi-final
                 // losers: lower-id semi-final → slot 1, the other → slot 2.
                 if (s1Null && !s1HasSource && semis.size() >= 1) {
-                    l1 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
+                    l1 = "L " + stageAbbrev(MatchStage.SEMIFINAL)
                             + indexInStage.get(semis.get(0).getId());
                 }
                 if (s2Null && !s2HasSource && semis.size() >= 2) {
-                    l2 = "Por. " + stageAbbrev(MatchStage.SEMIFINAL)
+                    l2 = "L " + stageAbbrev(MatchStage.SEMIFINAL)
                             + indexInStage.get(semis.get(1).getId());
                 }
             } else {
@@ -1805,10 +1831,10 @@ public class KnockoutService {
                 Matches f1 = feederSlot1.get(m.getId());
                 Matches f2 = feederSlot2.get(m.getId());
                 if (s1Null && !s1HasSource && f1 != null) {
-                    l1 = "Pobj. " + stageAbbrev(f1.getStage()) + indexInStage.get(f1.getId());
+                    l1 = "W " + stageAbbrev(f1.getStage()) + indexInStage.get(f1.getId());
                 }
                 if (s2Null && !s2HasSource && f2 != null) {
-                    l2 = "Pobj. " + stageAbbrev(f2.getStage()) + indexInStage.get(f2.getId());
+                    l2 = "W " + stageAbbrev(f2.getStage()) + indexInStage.get(f2.getId());
                 }
             }
             if (l1 != null || l2 != null || p1 != null || p2 != null) {
@@ -1849,12 +1875,12 @@ public class KnockoutService {
         return true;
     }
 
-    /** Short Croatian abbreviation for a knockout stage, used in feeder labels
-     *  ("Pobj. ČF1", "Por. PF2"). */
+    /** Short knockout-stage code, used in feeder labels ("W Š1", "W O2",
+     *  "W ČF1", "L PF2"): Š = šesnaestina (R32), O = osmina (R16), ČF, PF, F. */
     private static String stageAbbrev(MatchStage s) {
         return switch (s) {
-            case ROUND_OF_32 -> "1/16";
-            case ROUND_OF_16 -> "OF";
+            case ROUND_OF_32 -> "Š";
+            case ROUND_OF_16 -> "O";
             case QUARTERFINAL -> "ČF";
             case SEMIFINAL -> "PF";
             case FINAL -> "F";

@@ -419,19 +419,15 @@ public class SchedulingService {
                             "Schedule changed since the preview - sketch it again");
                 }
             }
-            // Stage order must survive the permutation (groups before the
-            // knockout, quarterfinals before semis, third place before the
-            // final). The UI enforces this; reject direct API calls that
-            // don't - the bracket generator later re-applies reserved slots
-            // in stage order and would silently revert a cross-stage swap.
-            int prevRank = -1;
-            for (Integer idx : order) {
-                int rank = stageRank(ordered.get(idx).getStage());
-                if (rank < prevRank) {
-                    throw new BadRequestException("Invalid match order - stage order must be kept");
-                }
-                prevRank = rank;
-            }
+            // Rounds MAY be reordered (e.g. an osmina played before the
+            // šesnaestina when its teams are already known through byes/groups),
+            // so no stage-order check here. This is safe because the bracket
+            // generator now re-applies reserved slots PER STAGE
+            // (KnockoutService.applyReservedKickoffs) instead of pouring one
+            // chronological list back in stage order - a custom round order
+            // therefore survives materialization instead of being silently
+            // reverted. Whether the teams are actually decided in time is the
+            // organizer's call; the sketch shows them the consequence.
             OffsetDateTime[] assigned = new OffsetDateTime[ordered.size()];
             for (int j = 0; j < order.size(); j++) {
                 assigned[order.get(j)] = times.get(j);

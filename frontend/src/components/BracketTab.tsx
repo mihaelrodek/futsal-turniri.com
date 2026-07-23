@@ -58,6 +58,7 @@ import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { ExportDialog, isMultiDay, kickoffLabel, type ExportMeta } from "./TournamentExport"
+import { buildKoMatchCodes } from "../utils/knockoutCodes"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Library data-shape adapter.
@@ -759,6 +760,13 @@ export default function BracketTab({
        happened the last two times I added a `useMemo` / `useEffect`
        below the gate. Keep them all above. */
     const safeRounds = bracket?.rounds ?? []
+    // Per-match knockout codes ("Š1", "O2", "ČF1"), numbered exactly like the
+    // backend's feeder labels, so the "W O2" a later round shows resolves to the
+    // card tagged "O2".
+    const koCodes = useMemo(
+        () => buildKoMatchCodes(safeRounds.flatMap((r) => r.matches)),
+        [safeRounds],
+    )
     const libraryMatches = useMemo(
         () => bracketToLibraryMatches(safeRounds),
         [safeRounds],
@@ -1735,6 +1743,7 @@ export default function BracketTab({
                 <Box flex="1" minW="0" ref={isFinalCard ? finalCardRef : undefined}>
                     <MatchCard
                         match={original}
+                        code={koCodes.get(original.matchId) ?? null}
                         canEdit={canEdit}
                         isFinal={isFinalCard}
                         isOnDeck={original.matchId === onDeckId}
@@ -2350,6 +2359,9 @@ function ConfirmBracketDialog({
    ────────────────────────────────────────────────────────────────────────── */
 type MatchCardProps = {
     match: BracketMatch
+    /** Short knockout code for THIS match ("Š1", "O2", "ČF1") - the tag later
+     *  rounds reference as "W O2". Null for the final / 3rd place / groups. */
+    code?: string | null
     /** Owner / admin only - controls visibility of every mutating action
      *  (result entry, start-live, open-live management). When false the
      *  card is purely informational. */
@@ -2385,6 +2397,7 @@ type MatchCardProps = {
 
 function MatchCard({
     match: m,
+    code = null,
     canEdit,
     editing,
     form,
@@ -2425,8 +2438,10 @@ function MatchCard({
     // back to the round name when no kickoff is set yet. On a multi-day
     // tournament the kickoff carries the short day+date, else just HH:mm.
     const kick = m.kickoffAt ? (multiDay ? kickoffLabel(m.kickoffAt, true) : fmtKick(m.kickoffAt)) : null
+    // The match's own code ("O2") leads the header so the "W O2" a later round
+    // shows can be traced back to this card.
     const headerLabel =
-        [isFinal ? "FINALE" : isThirdPlace ? "ZA 3. MJESTO" : null, kick]
+        [code, isFinal ? "FINALE" : isThirdPlace ? "ZA 3. MJESTO" : null, kick]
             .filter(Boolean)
             .join(" · ") || (STAGE_SHORT[m.stage] ?? "UTAKMICA")
 

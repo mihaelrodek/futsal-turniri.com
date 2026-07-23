@@ -6,6 +6,7 @@ import {
     Dialog,
     Flex,
     HStack,
+    IconButton,
     Input,
     Popover,
     Portal,
@@ -13,10 +14,10 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiCheck, FiChevronLeft, FiClock, FiPlus, FiX } from "react-icons/fi"
+import { FiCalendar, FiCheck, FiChevronLeft, FiChevronRight, FiClock, FiPlus, FiX } from "react-icons/fi"
 import { LuCalendarClock, LuGripVertical } from "react-icons/lu"
 import { fetchPlanInfo, generateMultiDaySchedule, previewSchedule } from "../api/schedule"
-import type { Schedule, ScheduleConfig, SchedulePlanInfo, SchedulePlanRequest, SchedulePreview } from "../types/schedule"
+import type { Schedule, ScheduleConfig, ScheduledMatch, SchedulePlanInfo, SchedulePlanRequest, SchedulePreview } from "../types/schedule"
 import { MonoLabel } from "../ui/pitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -329,6 +330,7 @@ export default function MultiDaySchedulePlanner({
     startAt,
     koOnly = false,
     autoSketch = false,
+    existingMatches,
     onClose,
     onGenerated,
 }: {
@@ -337,6 +339,10 @@ export default function MultiDaySchedulePlanner({
     cfg: ScheduleConfig
     /** Tournament start ISO - seeds the default date + first-kickoff time. */
     startAt?: string | null
+    /** The already-scheduled matches (from the Raspored). In "Uredi raspored"
+     *  (autoSketch) mode they seed the day distribution so editing keeps the
+     *  saved multi-day split instead of collapsing everything onto day 0. */
+    existingMatches?: ScheduledMatch[]
     /** Knockout-only mode ("Raspored završnice"): plan only the knockout
      *  matches; the group kickoffs are left untouched. */
     koOnly?: boolean
@@ -445,6 +451,59 @@ export default function MultiDaySchedulePlanner({
         })
     }, [total, rows.length])
 
+    // "Uredi raspored" (autoSketch): reconstruct the day distribution from the
+    // EXISTING schedule so editing shows the WHOLE generated schedule (all
+    // matches), spread across the days they actually fall on - instead of
+    // collapsing everything onto day 0.
+    //
+    // Waits for `total` (the remaining-match count) so the day allocation can be
+    // forced to cover EVERY remaining match: dated matches set the multi-day
+    // shape, and the last day absorbs whatever the date grouping didn't account
+    // for (undated knockout-skeleton matches, or any count mismatch). Without
+    // this the planner would report "N matches don't fit". The user only wants
+    // the full schedule shown + editable; the exact day boundaries don't matter
+    // (they can re-drag). FINISHED/LIVE keep their own times and never re-plan,
+    // so they're excluded. koOnly → knockout matches only. Runs once.
+    const seededFromExistingRef = useRef(false)
+    useEffect(() => {
+        if (!autoSketch || seededFromExistingRef.current) return
+        if (!infoLoaded || total <= 0) return
+        const relevant = (existingMatches ?? []).filter(
+            (m) => m.status !== "FINISHED" && m.status !== "LIVE" && !!m.kickoffAt && (koOnly ? m.stage !== "GROUP" : true),
+        )
+        if (relevant.length === 0) return // nothing dated → single-day default (seed above)
+        const byDate = new Map<string, ScheduledMatch[]>()
+        for (const m of relevant) {
+            const d = new Date(m.kickoffAt as string)
+            const key = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+            const list = byDate.get(key)
+            if (list) list.push(m)
+            else byDate.set(key, [m])
+        }
+        const dates = [...byDate.keys()].sort()
+        const counts = dates.map((date) => (byDate.get(date) as ScheduledMatch[]).length)
+        // Force the allocation to cover every remaining match so nothing "doesn't
+        // fit" - the last day soaks up the difference (undated matches / mismatch).
+        const diff = total - counts.reduce((a, b) => a + b, 0)
+        counts[counts.length - 1] = Math.max(0, counts[counts.length - 1] + diff)
+        setFrom(dates[0])
+        setTo(dates[dates.length - 1])
+        setRows(
+            dates.map((date, i) => {
+                const ms = byDate.get(date) as ScheduledMatch[]
+                const firstStart = ms
+                    .map((m) => {
+                        const d = new Date(m.kickoffAt as string)
+                        return `${p(d.getHours())}:${p(d.getMinutes())}`
+                    })
+                    .sort()[0]
+                return { date, matches: String(counts[i]), firstStart }
+            }),
+        )
+        seededFromExistingRef.current = true
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoSketch, existingMatches, koOnly, infoLoaded, total])
+
     const allocated = useMemo(
         () => rows.reduce((s, r) => s + (parseInt(r.matches || "0", 10) || 0), 0),
         [rows],
@@ -493,6 +552,54 @@ export default function MultiDaySchedulePlanner({
         () => hasPause || [...stageCounts.values()].some((c) => c > 1),
         [hasPause, stageCounts],
     )
+
+    /** Contiguous stage blocks in the CURRENT sketch order - one entry per round,
+     *  listed in the order it is played. Pauses are transparent (they belong to
+     *  the block they sit in), mirroring matchStageBlock. */
+    const stageBlocks = useMemo(() => {
+        const rows = sketchRows
+        const out: { stage: string; lo: number; hi: number }[] = []
+        if (!rows) return out
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i]
+            if (r.kind !== "match") continue
+            const [lo, hi] = matchStageBlock(rows, i)
+            out.push({ stage: r.stage, lo, hi })
+            i = hi
+        }
+        return out
+    }, [sketchRows])
+
+    /** Move a whole round earlier (-1) / later (+1) by swapping it with the
+     *  adjacent round. Rounds are contiguous runs that tile the list, so this is
+     *  a straight range swap - the fixed time slots stay put and the two rounds
+     *  simply trade places in the play order. The backend accepts the crossed
+     *  stage order, and the bracket generator now re-applies reserved slots per
+     *  stage, so the new order survives a later regeneration. */
+    function moveStageBlock(bi: number, dir: -1 | 1) {
+        setSketchRows((prev) => {
+            if (!prev) return prev
+            const blocks: { lo: number; hi: number }[] = []
+            for (let i = 0; i < prev.length; i++) {
+                const r = prev[i]
+                if (r.kind !== "match") continue
+                const [lo, hi] = matchStageBlock(prev, i)
+                blocks.push({ lo, hi })
+                i = hi
+            }
+            const a = blocks[bi]
+            const b = blocks[bi + dir]
+            if (!a || !b) return prev
+            const first = dir === 1 ? a : b
+            const second = dir === 1 ? b : a
+            return [
+                ...prev.slice(0, first.lo),
+                ...prev.slice(second.lo, second.hi + 1),
+                ...prev.slice(first.lo, first.hi + 1),
+                ...prev.slice(second.hi + 1),
+            ]
+        })
+    }
 
     /** The first (earliest) knockout stage in the sketch - its teams come
      *  straight from the group phase; later rounds depend on earlier knockout
@@ -869,9 +976,59 @@ export default function MultiDaySchedulePlanner({
                                                 <LuGripVertical size={13} />
                                             </Box>{" "}
                                             za promjenu redoslijeda - satnica ostaje ista, mijenja se
-                                            koja se utakmica kada igra. Redoslijed faza se ne može
-                                            mijenjati (npr. četvrtfinale uvijek ostaje prije polufinala).
+                                            koja se utakmica kada igra. Cijelu fazu pomakni strelicama
+                                            ispod (npr. osmina prije šesnaestine).
                                         </Text>
+                                    )}
+                                    {stageBlocks.length > 1 && (
+                                        <Box>
+                                            <MonoLabel mb="1.5" display="block">REDOSLIJED FAZA</MonoLabel>
+                                            <HStack gap="1.5" wrap="wrap">
+                                                {stageBlocks.map((b, bi) => (
+                                                    <HStack
+                                                        key={`${b.stage}-${b.lo}`}
+                                                        gap="0.5"
+                                                        bg="bg.surfaceTint"
+                                                        rounded="full"
+                                                        pl="2.5"
+                                                        pr="1"
+                                                        py="0.5"
+                                                    >
+                                                        <Text
+                                                            fontFamily="mono"
+                                                            fontSize="10px"
+                                                            fontWeight={700}
+                                                            letterSpacing="0.06em"
+                                                            textTransform="uppercase"
+                                                            color="fg.muted"
+                                                            whiteSpace="nowrap"
+                                                        >
+                                                            {STAGE_LABEL[b.stage] ?? b.stage}
+                                                        </Text>
+                                                        <IconButton
+                                                            aria-label="Pomakni fazu ranije"
+                                                            size="2xs"
+                                                            variant="ghost"
+                                                            rounded="full"
+                                                            disabled={bi === 0}
+                                                            onClick={() => moveStageBlock(bi, -1)}
+                                                        >
+                                                            <FiChevronLeft />
+                                                        </IconButton>
+                                                        <IconButton
+                                                            aria-label="Pomakni fazu kasnije"
+                                                            size="2xs"
+                                                            variant="ghost"
+                                                            rounded="full"
+                                                            disabled={bi === stageBlocks.length - 1}
+                                                            onClick={() => moveStageBlock(bi, 1)}
+                                                        >
+                                                            <FiChevronRight />
+                                                        </IconButton>
+                                                    </HStack>
+                                                ))}
+                                            </HStack>
+                                        </Box>
                                     )}
                                     {preview.unscheduled > 0 && (
                                         <Box bg="accent.red" color="white" rounded="md" px="3" py="2" fontSize="sm">
