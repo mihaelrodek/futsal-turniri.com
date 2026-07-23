@@ -880,7 +880,11 @@ function DetailsReadView({
                 >
                     <VStack align="center" gap="2">
                         <chakra.img
-                            src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
+                            // ?v bust: the QR PNG is cached hard (max-age 86400 +
+                            // s-maxage + the SW), so a design change (green →
+                            // teal mark) would otherwise stay stale for a day.
+                            // Bump this version whenever the rendered QR changes.
+                            src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png?v=3`}
                             alt={`QR kod za turnir ${t.name}`}
                             w="200px"
                             h="200px"
@@ -892,7 +896,7 @@ function DetailsReadView({
                             loading="lazy"
                         />
                         <chakra.a
-                            href={`/api/tournaments/${t.slug ?? t.uuid}/qr.png`}
+                            href={`/api/tournaments/${t.slug ?? t.uuid}/qr.png?v=3`}
                             download={`qr-${t.slug ?? t.uuid}.png`}
                             display="inline-flex"
                             alignItems="center"

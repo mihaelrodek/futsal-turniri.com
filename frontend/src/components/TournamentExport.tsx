@@ -64,7 +64,11 @@ export type ExportMeta = {
    win/goal markers (winner names, positive goal-diff, goal glyphs) so the
    brand recolor doesn't wash out match-result meaning. */
 const C = {
-    green: "#0B6D66",
+    /* Brand ACCENT - the app's main dark-theme surface #111F31 (bg.panel, the
+       navbar colour): group letter tiles, "N prolaze" chips, hairline rules,
+       rank numbers, headers. The qualifying-row MARK stays cyan (greenMid) -
+       see the tables below. */
+    green: "#111F31",
     greenMid: "#2AD4C8",
     ink: "#1B2836",
     inkSoft: "#3D4C5B",
@@ -74,11 +78,6 @@ const C = {
     muted: "#5F7080",
     greenWash: "rgba(42,212,200,0.12)",
     zebra: "rgba(42,212,200,0.10)",
-    /* Qualifying-row highlight - deep navy from the SPECTO palette (NOT a
-       green), so advancing teams read as a premium dark mark distinct from the
-       teal accent used elsewhere on the poster. */
-    qualify: "#0B1522",
-    qualifyWash: "rgba(11,21,34,0.06)",
     /* Semantic success green (win/goal markers only - see file header note). */
     win: "#16A34A",
     /* Live accent (only place a non-brand hue appears on the poster). */
@@ -208,7 +207,9 @@ function qrEndpoint(tournamentUrl: string | null | undefined): string | null {
     if (!tournamentUrl) return null
     const seg = tournamentUrl.replace(/\/+$/, "").split("/").pop()
     if (!seg) return null
-    return `/api/tournaments/${encodeURIComponent(seg)}/qr.png`
+    // ?v bust: the QR PNG is cached hard (max-age 86400 + s-maxage + the SW), so
+    // a design change stays stale for a day otherwise. Bump on any QR change.
+    return `/api/tournaments/${encodeURIComponent(seg)}/qr.png?v=3`
 }
 
 /** Stage/group tag for a schedule row. */
@@ -452,7 +453,7 @@ function PosterPage({
                                         <div
                                             style={{
                                                 fontFamily: F_HEAD,
-                                                fontSize: "12px",
+                                                fontSize: "14px",
                                                 fontWeight: 800,
                                                 letterSpacing: "0.01em",
                                                 color: C.green,
@@ -461,7 +462,7 @@ function PosterPage({
                                                 maxWidth: "128px",
                                             }}
                                         >
-                                            Skeniraj i otvori turnir
+                                            Skeniraj QR kod i otvori turnir
                                         </div>
                                     </>
                                 ) : (
@@ -975,7 +976,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                 const grText = gd > 0 ? `+${gd}` : String(gd)
                 const qualifies = advance > 0 && i < advance
                 const rowBg = qualifies
-                    ? C.qualifyWash
+                    ? C.greenWash
                     : advance > 0
                         ? "transparent"
                         : i % 2 === 0
@@ -991,7 +992,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: big ? "10px" : "8px",
-                            borderLeft: `3px solid ${qualifies ? C.qualify : "transparent"}`,
+                            borderLeft: `3px solid ${qualifies ? C.greenMid : "transparent"}`,
                             background: rowBg,
                         }}
                     >
@@ -1002,7 +1003,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                                 fontFamily: F_MONO,
                                 fontSize: `${numFont}px`,
                                 fontWeight: 700,
-                                color: qualifies ? C.qualify : C.green,
+                                color: C.green,
                             }}
                         >
                             {i + 1}
@@ -1279,8 +1280,8 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: "10px",
-                            borderLeft: `3px solid ${q ? C.qualify : "transparent"}`,
-                            background: q ? C.qualifyWash : "transparent",
+                            borderLeft: `3px solid ${q ? C.greenMid : "transparent"}`,
+                            background: q ? C.greenWash : "transparent",
                         }}
                     >
                         <span
@@ -1290,7 +1291,7 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                                 fontFamily: F_MONO,
                                 fontSize: `${numFont}px`,
                                 fontWeight: 700,
-                                color: q ? C.qualify : C.green,
+                                color: C.green,
                             }}
                         >
                             {row.rank}
