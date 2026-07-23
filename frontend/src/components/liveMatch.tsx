@@ -4,6 +4,7 @@ import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTras
 import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
 import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
+import { useBroadcastDelayMs, useTick, withinBroadcast } from "../hooks/useBroadcastDelay"
 import { ConfirmDialog } from "../ui/primitives"
 import { useTeamColors, TeamKitChip } from "./jersey"
 import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
@@ -912,6 +913,11 @@ export function GoalscorersPanel({
     fouls?: TimelineFouls | null
 }) {
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
+    // Broadcast-delay hold (see the filter at render time below). The 1s tick
+    // only runs while a delay is actually in force, so non-streamed matches
+    // keep their old, completely static render.
+    const broadcastDelayMs = useBroadcastDelayMs(tournamentUuid)
+    const tickNow = useTick(broadcastDelayMs > 0 && state.status === "done")
 
     const load = useCallback(
         (silent = false) => {
@@ -989,7 +995,12 @@ export function GoalscorersPanel({
     }
 
     if (state.status === "done") {
-        const { events, t1Id } = state
+        const { t1Id } = state
+        // Broadcast hold: while this tournament streams through SpectoStream the
+        // video runs a few seconds behind, so an event entered "now" must not
+        // appear here until the viewer's picture reaches it. No stream (or an
+        // event with no timestamp) = no hold, i.e. the original behaviour.
+        const events = withinBroadcast(state.events, broadcastDelayMs, tickNow)
 
         // Regulation events (goals/cards) sit on the minute-sorted timeline;
         // penalty-shootout kicks get their own marked "Penali" section below.

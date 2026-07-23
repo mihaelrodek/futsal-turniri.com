@@ -64,7 +64,11 @@ export type ExportMeta = {
    win/goal markers (winner names, positive goal-diff, goal glyphs) so the
    brand recolor doesn't wash out match-result meaning. */
 const C = {
-    green: "#0B6D66",
+    /* Brand ACCENT - the app's main dark-theme surface #111F31 (bg.panel, the
+       navbar colour): group letter tiles, "N prolaze" chips, hairline rules,
+       rank numbers, headers. The qualifying-row MARK stays cyan (greenMid) -
+       see the tables below. */
+    green: "#111F31",
     greenMid: "#2AD4C8",
     ink: "#1B2836",
     inkSoft: "#3D4C5B",
@@ -203,7 +207,9 @@ function qrEndpoint(tournamentUrl: string | null | undefined): string | null {
     if (!tournamentUrl) return null
     const seg = tournamentUrl.replace(/\/+$/, "").split("/").pop()
     if (!seg) return null
-    return `/api/tournaments/${encodeURIComponent(seg)}/qr.png`
+    // ?v bust: the QR PNG is cached hard (max-age 86400 + s-maxage + the SW), so
+    // a design change stays stale for a day otherwise. Bump on any QR change.
+    return `/api/tournaments/${encodeURIComponent(seg)}/qr.png?v=3`
 }
 
 /** Stage/group tag for a schedule row. */
@@ -237,26 +243,27 @@ function matchKickoffLine(iso: string | null): string | null {
 
 /* ── brand marks (inlined SVG - no network fetch, canvas-safe) ─────────── */
 
-/** Full brand mark (green tile + goal + ball) - footer / header lockup. */
+/** Full brand mark (light tile + teal goal + ball) - footer / header lockup.
+ *  Matches the in-app Logo / app icon: #EDF0F3 tile + #17A79D teal art. */
 function BrandMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <rect x="0" y="0" width="112" height="112" rx="28" fill="#0B1522" />
-            <g stroke="#ffffff" strokeWidth="1" opacity="0.35">
+            <rect x="0" y="0" width="112" height="112" rx="28" fill="#EDF0F3" />
+            <g stroke="#17A79D" strokeWidth="1" opacity="0.6">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
             </g>
-            <path d="M30 82 V38 H82 V82" fill="none" stroke="#ffffff" strokeWidth="3.6" strokeLinejoin="round" />
+            <path d="M30 82 V38 H82 V82" fill="none" stroke="#17A79D" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" fill="#fff" />
-                <g stroke="#2AD4C8" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <circle cx="50" cy="50" r="46" fill="#fff" stroke="#17A79D" strokeWidth="2.6" />
+                <g stroke="#17A79D" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#2AD4C8">
+                <g fill="#17A79D">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -269,25 +276,25 @@ function BrandMark({ size }: { size: number }) {
     )
 }
 
-/** Monochrome navy mark (no tile) - the huge background watermark. */
+/** Monochrome teal mark (no tile) - the huge background watermark. */
 function WatermarkMark({ size }: { size: number }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width={size} height={size}>
-            <g stroke="#0B1522" strokeWidth="1.4" opacity="0.6">
+            <g stroke="#17A79D" strokeWidth="1.4" opacity="0.6">
                 <path d="M42 38 V82 M54 38 V82 M66 38 V82 M78 38 V82" />
                 <path d="M30 50 H82 M30 62 H82 M30 74 H82" />
             </g>
-            <path d="M30 82 V38 H82 V82" fill="none" stroke="#0B1522" strokeWidth="3.6" strokeLinejoin="round" />
+            <path d="M30 82 V38 H82 V82" fill="none" stroke="#17A79D" strokeWidth="3.6" strokeLinejoin="round" />
             <svg x="39" y="60" width="34" height="34" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" fill="none" stroke="#0B1522" strokeWidth="2.6" />
-                <g stroke="#0B1522" strokeWidth="2.3" strokeLinecap="round" fill="none">
+                <circle cx="50" cy="50" r="46" fill="none" stroke="#17A79D" strokeWidth="2.6" />
+                <g stroke="#17A79D" strokeWidth="2.3" strokeLinecap="round" fill="none">
                     <path d="M50,33 L50,7" />
                     <path d="M50,33 L50,7" transform="rotate(72 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(144 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(216 50 50)" />
                     <path d="M50,33 L50,7" transform="rotate(288 50 50)" />
                 </g>
-                <g fill="#0B1522">
+                <g fill="#17A79D">
                     <path d="M50,34 L65.22,45.06 L59.41,62.94 L40.59,62.94 L34.78,45.06 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" />
                     <path d="M61.41,85.71 L50,94 L38.59,85.71 L42.95,72.29 L57.05,72.29 Z" transform="rotate(72 50 50)" />
@@ -446,7 +453,7 @@ function PosterPage({
                                         <div
                                             style={{
                                                 fontFamily: F_HEAD,
-                                                fontSize: "12px",
+                                                fontSize: "14px",
                                                 fontWeight: 800,
                                                 letterSpacing: "0.01em",
                                                 color: C.green,
@@ -455,7 +462,7 @@ function PosterPage({
                                                 maxWidth: "128px",
                                             }}
                                         >
-                                            Skeniraj i otvori turnir
+                                            Skeniraj QR kod i otvori turnir
                                         </div>
                                     </>
                                 ) : (
@@ -985,7 +992,7 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: big ? "10px" : "8px",
-                            borderLeft: `3px solid ${qualifies ? C.green : "transparent"}`,
+                            borderLeft: `3px solid ${qualifies ? C.greenMid : "transparent"}`,
                             background: rowBg,
                         }}
                     >
@@ -1273,7 +1280,7 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                             boxSizing: "border-box",
                             padding: `${rowPadV}px ${rowPadH}px`,
                             borderRadius: "10px",
-                            borderLeft: `3px solid ${q ? C.green : "transparent"}`,
+                            borderLeft: `3px solid ${q ? C.greenMid : "transparent"}`,
                             background: q ? C.greenWash : "transparent",
                         }}
                     >

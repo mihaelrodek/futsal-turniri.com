@@ -4,7 +4,6 @@ import {
     Button,
     Dialog,
     HStack,
-    Image,
     Portal,
     Text,
     VStack,
@@ -12,6 +11,7 @@ import {
 import { FiDownload, FiX } from "react-icons/fi"
 import { useInstallPrompt } from "../hooks/useInstallPrompt"
 import IosInstallSteps from "./IosInstallSteps"
+import { LogoMark } from "./Logo"
 
 /**
  * One-time coach mark that nudges first-time visitors toward the install
@@ -110,14 +110,7 @@ export default function FirstRunInstallPrompt() {
                         <Dialog.Body py="5" px={{ base: "4", md: "6" }}>
                             <VStack align="stretch" gap="4">
                                 <HStack gap="3" align="center">
-                                    <Image
-                                        src="/icon-192.png"
-                                        alt="Futsal Turniri"
-                                        h="56px"
-                                        w="56px"
-                                        rounded="2xl"
-                                        flexShrink={0}
-                                    />
+                                    <LogoMark size={56} title="Futsal Turniri" />
                                     <Box flex="1">
                                         <Text fontWeight="semibold" fontSize="md">
                                             Instaliraj Futsal Turniri

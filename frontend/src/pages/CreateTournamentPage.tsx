@@ -1196,25 +1196,6 @@ export default function CreateTournamentPage() {
 
                     return (
                         <VStack align="stretch" gap="3">
-                            {/* Header strip - kicker + title row */}
-                            <HStack
-                                justify="space-between"
-                                gap="3"
-                                fontFamily="mono"
-                                fontSize="11px"
-                                fontWeight={800}
-                                letterSpacing="0.15em"
-                                color="pitch.600"
-                            >
-                                <Box>PREGLED · KAKO ĆE IZGLEDATI</Box>
-                                {missingRequired.length === 0 ? (
-                                    <Box color="pitch.500">✓ SPREMNO</Box>
-                                ) : (
-                                    <Box color="accent.red">
-                                        NEDOSTAJE {missingRequired.length}
-                                    </Box>
-                                )}
-                            </HStack>
 
                             {/* Card mock - poster + headline */}
                             <Box

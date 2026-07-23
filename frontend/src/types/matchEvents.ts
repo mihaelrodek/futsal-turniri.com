@@ -56,6 +56,10 @@ export type MatchEventDto = {
      *  created through the offline-aware path; used to reconcile an optimistic
      *  (offline) event with its persisted server row. */
     clientEventId?: string | null
+    /** Server wall-clock time the event was recorded (ISO-8601). Drives the
+     *  broadcast-delay hold on public timelines - see hooks/useBroadcastDelay.
+     *  Optional: optimistic (offline) rows have none until they sync. */
+    createdAt?: string | null
 }
 
 /** Request body for creating a new match event. */

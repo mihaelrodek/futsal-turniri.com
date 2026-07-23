@@ -319,6 +319,10 @@ public class Tournaments {
     @Column(name = "featured_at")
     private OffsetDateTime featuredAt;
 
+    // External SpectoStream stream id; null = tournament not linked.
+    @Column(name = "specto_stream_id", length = 64)
+    private String spectoStreamId;
+
     @PrePersist
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();     // 👈 generate server-side

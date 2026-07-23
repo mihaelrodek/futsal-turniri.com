@@ -160,6 +160,15 @@ services:
       MAIL_SMTP_LOGIN: ${MAIL_SMTP_LOGIN:-}
       MAIL_SMTP_KEY: ${MAIL_SMTP_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-Futsal Turniri <obavijesti@futsal-turniri.com>}
+
+      # SpectoStream (live broadcast overlay). There is NO localhost instance:
+      # local dev and prod both talk to the same hosted platform, so the URL is
+      # identical in every environment and only the key comes from .env.prod.
+      # Without these the container would fall back to the defaults compiled
+      # into application.properties, which carry no usable key.
+      SPECTO_BASE_URL: ${SPECTO_BASE_URL:-https://stream.safeflow.hr}
+      SPECTO_API_KEY: ${SPECTO_API_KEY:-}
+      SPECTO_ENABLED: ${SPECTO_ENABLED:-true}
     networks:
       - futsal_internal
 

@@ -3,6 +3,8 @@ import { Box, Flex, HStack, Text, VStack, chakra } from "@chakra-ui/react"
 import { FiMaximize, FiMinimize, FiEye, FiRefreshCw } from "react-icons/fi"
 
 import { PulseDot } from "../ui/pitch"
+import SpectoEmbed from "./SpectoEmbed"
+import { useSpectoStreamId } from "../hooks/useSpectoStreamId"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StreamPlayer - the site-wide live-camera player (Veo & co.) shown in the
@@ -82,6 +84,7 @@ export default function StreamPlayer({
     centerOverlay,
     viewers,
     sideScorers,
+    tournamentUuid,
 }: {
     url: string
     /** Optional display-only overlay (e.g. a live scorebug) pinned to the top
@@ -99,7 +102,13 @@ export default function StreamPlayer({
      *  fade back in on the next mouse move / tap. Non-interactive, and
      *  completely inert outside fullscreen. */
     sideScorers?: { left: React.ReactNode; right: React.ReactNode }
+    /** When this tournament is linked to SpectoStream, the platform's OWN
+     *  player (video + its built-in scoreboard overlay) replaces everything
+     *  below. Our player, scorebug, fullscreen scorer columns and reconnect
+     *  logic all stay in place, unused, ready to switch back to. */
+    tournamentUuid?: string | null
 }) {
+    const spectoStreamId = useSpectoStreamId(tournamentUuid)
     const { kind, src } = useMemo(() => classifyStreamUrl(url), [url])
 
     const wrapRef = useRef<HTMLDivElement>(null)
@@ -384,6 +393,22 @@ export default function StreamPlayer({
     }
 
     const isVideoTag = kind === "hls" || kind === "file"
+
+    // SpectoStream takes over the whole slot when the tournament is linked: its
+    // player already draws the score, clock, goals and cards we'd otherwise
+    // paint ourselves, so rendering both would double every element. Everything
+    // below stays exactly as it was - flip this off (unlink the tournament) and
+    // the app's own player + scorebug come straight back.
+    if (spectoStreamId) {
+        return (
+            <SpectoEmbed
+                streamId={spectoStreamId}
+                rounded={isFs ? undefined : "2xl"}
+                h="full"
+                css={{ aspectRatio: "16 / 9" }}
+            />
+        )
+    }
 
     return (
         <Box

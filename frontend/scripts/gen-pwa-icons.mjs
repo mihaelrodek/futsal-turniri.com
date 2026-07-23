@@ -22,7 +22,10 @@ import { dirname, resolve } from "node:path"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pub = resolve(__dirname, "..", "public")
-const GREEN = { r: 11, g: 107, b: 58, alpha: 1 } // #0b6b3a brand green
+// Light #EDF0F3 - the mark's own tile colour. The maskable / apple-touch / push
+// icons composite the mark over this so their rounded corners bleed the same
+// light tile, matching the tile inside mark-green.svg and the in-app Logo.
+const TILE = { r: 237, g: 240, b: 243, alpha: 1 } // #EDF0F3
 const svg = readFileSync(resolve(pub, "logo", "mark-green.svg"))
 
 // Rasterise the SVG at a high density, then resize down for a crisp result.
@@ -36,21 +39,21 @@ async function transparent(size, out) {
     console.log("wrote", out, `${size}x${size}`)
 }
 
-// The mark already carries the green rounded square; compositing it over a
-// solid green canvas fills the transparent corners → a full-bleed opaque icon
+// The mark already carries the light rounded square; compositing it over a
+// solid light canvas fills the transparent corners → a full-bleed opaque icon
 // (correct for maskable, apple-touch and notification icons).
-async function squareGreen(size, out) {
+async function squareTile(size, out) {
     const mark = await render(size).toBuffer()
-    await sharp({ create: { width: size, height: size, channels: 4, background: GREEN } })
+    await sharp({ create: { width: size, height: size, channels: 4, background: TILE } })
         .composite([{ input: mark }])
         .png()
         .toFile(resolve(pub, out))
-    console.log("wrote", out, `${size}x${size}`, "(opaque green)")
+    console.log("wrote", out, `${size}x${size}`, "(opaque tile)")
 }
 
 await transparent(192, "icon-192.png")
 await transparent(512, "icon-512.png")
-await squareGreen(512, "icon-512-maskable.png")
-await squareGreen(180, "apple-touch-icon.png")
-await squareGreen(512, "futsal-turniri-symbol.png")
+await squareTile(512, "icon-512-maskable.png")
+await squareTile(180, "apple-touch-icon.png")
+await squareTile(512, "futsal-turniri-symbol.png")
 console.log("done")

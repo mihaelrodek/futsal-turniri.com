@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
-import { Box, Container, Flex, Spinner, Text } from '@chakra-ui/react'
+import { Box, Container, Flex, Text } from '@chakra-ui/react'
 import NavBar from './components/NavBar'
+import { LogoMark } from './components/Logo'
 // Footer is temporarily hidden (see the commented render below) - the
 // component itself stays in src/components/Footer.tsx.
 // import Footer from './components/Footer'
@@ -77,8 +78,13 @@ const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournament
  *  finally mounts. */
 function RouteLoading() {
     return (
-        <Flex direction="column" align="center" justify="center" py="20" gap="3">
-            <Spinner size="lg" color="pitch.500" />
+        <Flex direction="column" align="center" justify="center" py="20" gap="4">
+            {/* Brand mark badge, gently pulsing - the same teal-on-light-tile
+                mark used everywhere, so the loading/upgrade screen matches the
+                header logo in both themes. */}
+            <Box css={{ animation: "pitchPulse 1.4s ease-in-out infinite" }}>
+                <LogoMark size={64} />
+            </Box>
             <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
         </Flex>
     )

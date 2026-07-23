@@ -86,6 +86,11 @@ public class TournamentController {
      *  refetch instantly instead of waiting for their poll. */
     @Inject hr.mrodek.apps.futsal_turniri.realtime.LiveBroadcaster liveBroadcaster;
 
+    /** SpectoStream broadcast-overlay integration. Every event call is async
+     *  fire-and-forget and a no-op unless the tournament is linked AND the
+     *  integration is configured, so these hooks never affect the response. */
+    @Inject hr.mrodek.apps.futsal_turniri.integrations.spectostream.SpectoStreamService specto;
+
     /** Public base URL (e.g. https://futsal-turniri.com) - used to build the
      *  tournament link the QR code encodes. */
     @org.eclipse.microprofile.config.inject.ConfigProperty(
@@ -2109,6 +2114,22 @@ public class TournamentController {
         }
 
         notifyLive(match);
+        // SpectoStream: after the start has fully succeeded, open the match and
+        // kick off period 1 on the overlay. TIMER matches only (a SIMPLE match
+        // isn't tracked); async fire-and-forget. Names mirror the live DTO.
+        if (t != null && spectoDrives(match)) {
+            specto.matchStart(t, matchId,
+                    match.getTeam1() != null ? match.getTeam1().getName() : null,
+                    match.getTeam2() != null ? match.getTeam2().getName() : null);
+            specto.periodStart(t, matchId, 1, 0);
+            // Arm the whistle: the overlay clock stops itself at the half length
+            // instead of running on until the organizer taps "završi 1. pol.".
+            long halfSecs = spectoHalfSeconds(match);
+            if (halfSecs > 0) {
+                specto.schedulePeriodEnd(t, matchId, 1, halfSecs,
+                        match.getLiveStartedAt().toInstant().plusSeconds(halfSecs));
+            }
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2166,6 +2187,10 @@ public class TournamentController {
         }
 
         notifyLive(match);
+        // SpectoStream: the match is over - close it on the overlay. TIMER only;
+        // async fire-and-forget. (Knockout matches finish via the bracket result
+        // endpoint, not here, so a knockout TIMER match is closed there.)
+        if (t != null && spectoDrives(match)) specto.matchEnd(t, matchId);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2207,6 +2232,9 @@ public class TournamentController {
         match.setFouls2Second(0);
 
         notifyLive(match);
+        // The match no longer has a clock, so nothing may still be waiting to
+        // stop one: drop any armed auto-end before it fires into the void.
+        specto.cancelPeriodEnd(matchId);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2345,6 +2373,11 @@ public class TournamentController {
                     .entity("Match is not LIVE").build();
         }
 
+        // Play time elapsed in the half, measured BEFORE the pause marker is
+        // cleared below - a half ended while paused stopped at the pause, not now.
+        java.time.OffsetDateTime firstHalfStopped =
+                match.getLivePausedAt() != null ? match.getLivePausedAt() : java.time.OffsetDateTime.now();
+
         if (match.getFirstHalfEndedAt() == null) {
             match.setFirstHalfEndedAt(java.time.OffsetDateTime.now());
         }
@@ -2363,6 +2396,25 @@ public class TournamentController {
         }
 
         notifyLive(match);
+        // SpectoStream: the 1st half is over - stop the overlay clock (period 1).
+        // The automatic timer has almost certainly frozen it at the half length
+        // already; this repeats that event (same idempotency key, so it's a
+        // no-op) and matters only when the timer never ran - after a restart, or
+        // because the organizer blew the whistle EARLY, which is the one case
+        // where the true stop is "now" rather than the boundary. TIMER only.
+        if (t != null && spectoDrives(match)) {
+            long halfSecs = spectoHalfSeconds(match);
+            var kickoff = match.getLiveStartedAt();
+            if (halfSecs > 0 && kickoff != null) {
+                long played = Math.max(0, java.time.Duration.between(kickoff, firstHalfStopped).getSeconds());
+                long shown = Math.min(played, halfSecs);
+                specto.periodEndExact(t, matchId, 1, shown,
+                        kickoff.toInstant().plusSeconds(shown));
+            } else {
+                specto.cancelPeriodEnd(matchId);
+                specto.periodEnd(t, matchId);
+            }
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2408,6 +2460,18 @@ public class TournamentController {
         }
 
         notifyLive(match);
+        // SpectoStream: 2nd half kicks off. The overlay clock is CUMULATIVE like
+        // this app's own - the 2nd half of a 2x10 resumes at 10:00 and runs to
+        // 20:00, it does not restart at 0 - so period 2 opens at the half length
+        // and its end is armed one half later. TIMER only; fire-and-forget.
+        if (t != null && spectoDrives(match)) {
+            long halfSecs = spectoHalfSeconds(match);
+            specto.periodStart(t, matchId, 2, halfSecs);
+            if (halfSecs > 0) {
+                specto.schedulePeriodEnd(t, matchId, 2, 2 * halfSecs,
+                        match.getSecondHalfStartedAt().toInstant().plusSeconds(halfSecs));
+            }
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2437,6 +2501,15 @@ public class TournamentController {
             match.setLivePausedAt(java.time.OffsetDateTime.now());
         }
         notifyLive(match);
+        // SpectoStream: freeze the overlay clock while the live clock is paused.
+        // Disarm the auto-end first - a paused clock must not hit its boundary
+        // while it isn't running; resume re-arms it with the pause absorbed.
+        // TIMER only; async fire-and-forget.
+        Tournaments pt = match.getTournament();
+        if (pt != null && spectoDrives(match)) {
+            specto.cancelPeriodEnd(matchId);
+            specto.periodEnd(pt, matchId);
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2476,6 +2549,35 @@ public class TournamentController {
             match.setLivePausedAt(null);
         }
         notifyLive(match);
+        // SpectoStream: restart the overlay clock at the CUMULATIVE match second.
+        // resume() has just shifted this half's start forward by the pause, so
+        // (now - halfStart) is the play time elapsed within the half - the same
+        // quantity the live DTO clock renders - and the 2nd half adds a full
+        // first half on top. Period 2 once the 2nd half has started, else 1.
+        // TIMER only; async fire-and-forget.
+        Tournaments rt = match.getTournament();
+        if (rt != null && spectoDrives(match)) {
+            boolean secondHalf = match.getSecondHalfStartedAt() != null;
+            int period = secondHalf ? 2 : 1;
+            java.time.OffsetDateTime halfStart =
+                    secondHalf ? match.getSecondHalfStartedAt() : match.getLiveStartedAt();
+            long halfSecs = spectoHalfSeconds(match);
+            // Cumulative, like the app's clock: the 2nd half's elapsed time sits
+            // on top of a full first half. Clamped to the boundary so a resume
+            // after the whistle can't briefly show 10:03 before snapping back.
+            long base = secondHalf ? halfSecs : 0;
+            long elapsedSeconds = halfStart != null
+                    ? Math.max(0, java.time.Duration.between(halfStart, java.time.OffsetDateTime.now()).getSeconds())
+                    : 0;
+            if (halfSecs > 0) elapsedSeconds = Math.min(elapsedSeconds, halfSecs);
+            specto.periodStart(rt, matchId, period, base + elapsedSeconds);
+            // Re-arm the boundary. resume() has already shifted halfStart forward
+            // by the pause, so halfStart + halfSecs is still the true whistle.
+            if (halfSecs > 0 && halfStart != null) {
+                specto.schedulePeriodEnd(rt, matchId, period, base + halfSecs,
+                        halfStart.toInstant().plusSeconds(halfSecs));
+            }
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2646,6 +2748,31 @@ public class TournamentController {
             }
         }
 
+        // SpectoStream: mirror the event onto the overlay after the persist +
+        // score recompute (commit-safe point). TIMER matches only; async
+        // fire-and-forget. GOAL/OWN_GOAL credit the side whose score rose; cards
+        // carry the carded player's side. PENALTY_* are shootout kicks and must
+        // never touch the overlay score, so they are skipped.
+        if (spectoDrives(match)) {
+            Tournaments st = match.getTournament();
+            if (st != null) {
+                switch (type) {
+                    case GOAL, OWN_GOAL -> {
+                        String pn = event.getPlayer() != null ? event.getPlayer().getName() : null;
+                        if (type == MatchEventType.OWN_GOAL && pn != null) pn = pn + " (ag)";
+                        specto.goal(st, event.getId(), spectoSide(match, spectoEventTeam(event)), pn);
+                    }
+                    case YELLOW_CARD -> specto.card(st, event.getId(),
+                            spectoSide(match, spectoEventTeam(event)),
+                            event.getPlayer() != null ? event.getPlayer().getName() : null, "yellow");
+                    case RED_CARD -> specto.card(st, event.getId(),
+                            spectoSide(match, spectoEventTeam(event)),
+                            event.getPlayer() != null ? event.getPlayer().getName() : null, "red");
+                    default -> { /* PENALTY_GOAL / PENALTY_MISSED: never on the overlay */ }
+                }
+            }
+        }
+
         notifyLive(match);
         return Response.status(Response.Status.CREATED)
                 .entity(matchEventMapper.toDto(event))
@@ -2678,6 +2805,11 @@ public class TournamentController {
 
         boolean wasGoal = event.getType() == MatchEventType.GOAL
                 || event.getType() == MatchEventType.OWN_GOAL;
+        // SpectoStream: capture the credited side + event id BEFORE the row is
+        // deleted (its lazy team/player are still loadable here), so the overlay
+        // can decrement the same side that must now lose the goal.
+        String cancelSide = wasGoal ? spectoSide(match, spectoEventTeam(event)) : null;
+        long cancelEventId = event.getId();
         matchEventRepo.delete(event);
 
         if (wasGoal) {
@@ -2685,6 +2817,13 @@ public class TournamentController {
         }
 
         notifyLive(match);
+        // SpectoStream: cancel the goal on the overlay (its score just decreased).
+        // TIMER matches only; async fire-and-forget. Cards / PENALTY_* have no
+        // overlay score to undo, so only real goals are cancelled.
+        if (wasGoal && spectoDrives(match)) {
+            Tournaments st = match.getTournament();
+            if (st != null) specto.goalCancelled(st, cancelEventId, cancelSide);
+        }
         return Response.noContent().build();
     }
 
@@ -2711,6 +2850,58 @@ public class TournamentController {
         Long t1 = match.getTeam1() != null ? match.getTeam1().getId() : null;
         Long t2 = match.getTeam2() != null ? match.getTeam2().getId() : null;
         return Objects.equals(teamId, t1) || Objects.equals(teamId, t2);
+    }
+
+    /* ── SpectoStream overlay helpers ──────────────────────────────────────
+       The broadcast overlay only tracks TIMER-run (live-clock) matches: a
+       SIMPLE "result only" match never opens a match on the overlay, so none
+       of its lifecycle/score/card events must be forwarded. All specto hooks
+       gate on {@link #spectoDrives}. */
+
+    /** True when a match drives the SpectoStream overlay (TIMER live-clock). */
+    private static boolean spectoDrives(Matches m) {
+        return m != null && m.getLiveMode() == MatchLiveMode.TIMER;
+    }
+
+    /**
+     * Length of ONE half of this match in seconds (knockout override honoured),
+     * or 0 when the tournament has no half length configured.
+     *
+     * <p>This is what the overlay is missing on its own: SpectoStream is told
+     * when a period starts but never how long it runs, so without this its clock
+     * would sail past the whistle. Everything the overlay is sent - the 2nd
+     * half's starting value, the boundary instant, the frozen end value - is
+     * derived from this one number, and 0 means "free-running clock": no
+     * boundary, no auto-end, exactly the pre-existing behaviour.
+     *
+     * <p>The value is CUMULATIVE on the overlay, matching this app's own clock:
+     * 1st half 0 → halfSecs, 2nd half halfSecs → 2x halfSecs. See
+     * {@code clockState} in the frontend's liveMatch.tsx.
+     */
+    private static long spectoHalfSeconds(Matches m) {
+        Tournaments t = m != null ? m.getTournament() : null;
+        if (t == null) return 0;
+        Integer min = t.halfLengthForStage(m.getStage());
+        return (min != null && min > 0) ? min * 60L : 0;
+    }
+
+    /** Express a team as the overlay side: {@code "home"} = the match's team1
+     *  side, {@code "away"} = team2 (or any team that isn't team1). */
+    private static String spectoSide(Matches match, Teams team) {
+        Long team1Id = match.getTeam1() != null ? match.getTeam1().getId() : null;
+        Long teamId = team != null ? team.getId() : null;
+        return (team1Id != null && Objects.equals(teamId, team1Id)) ? "home" : "away";
+    }
+
+    /** The team an event is attributed to on the overlay, mirroring
+     *  {@link #recomputeScoreFromGoals}: an OWN_GOAL credits the beneficiary
+     *  stored on the event (the side whose score rises); a GOAL or a card is
+     *  attributed to the acting player's team, or - when the actor is
+     *  anonymous - the side stored on the event. */
+    private static Teams spectoEventTeam(MatchEvent ev) {
+        if (ev.getType() == MatchEventType.OWN_GOAL) return ev.getTeam();
+        Player actor = ev.getPlayer();
+        return (actor != null && actor.getTeam() != null) ? actor.getTeam() : ev.getTeam();
     }
 
     /**

@@ -82,6 +82,7 @@ import OverviewSection from "../tournament/OverviewSection"
 import { POSTER_ACCEPT, POSTER_MAX_MB } from "../tournament/OverviewSection"
 import TeamsSection from "../tournament/TeamsSection"
 import LiveControlTab from "../components/LiveControlTab"
+import SpectoStreamCard from "../components/SpectoStreamCard"
 import StatsSection from "../tournament/StatsSection"
 import {
     DeleteTeamDialog,
@@ -1523,6 +1524,15 @@ export default function TournamentDetailsPage() {
                         editPickedCoords={editPickedCoords}
                         setEditPickedCoords={setEditPickedCoords}
                     />
+                )}
+
+                {/* SpectoStream (live-stream overlay) organizer panel - Detalji
+                    tab only, hidden while the edit form is open so the two
+                    organizer surfaces don't stack. Viewers never see it. */}
+                {section === "details" && canEdit && !editingDetails && (
+                    <Box mt="2">
+                        <SpectoStreamCard uuid={t.uuid} />
+                    </Box>
                 )}
 
                 {section === "live" && canEdit && (

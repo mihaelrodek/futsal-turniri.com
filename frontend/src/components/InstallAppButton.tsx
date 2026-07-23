@@ -4,7 +4,6 @@ import {
     Dialog,
     HStack,
     IconButton,
-    Image,
     Portal,
     Text,
     VStack,
@@ -12,6 +11,7 @@ import {
 import { FiDownload } from "react-icons/fi"
 import { useInstallPrompt } from "../hooks/useInstallPrompt"
 import IosInstallSteps from "./IosInstallSteps"
+import { LogoMark } from "./Logo"
 
 /**
  * Compact icon-only install affordance. Renders a circular IconButton with
@@ -121,14 +121,7 @@ export function InstallAppButton({
                         <Dialog.Content maxW={{ base: "92%", md: "md" }}>
                             <Dialog.Header>
                                 <HStack gap="3" align="center">
-                                    <Image
-                                        src="/icon-192.png"
-                                        alt="Futsal Turniri"
-                                        h="40px"
-                                        w="40px"
-                                        rounded="xl"
-                                        flexShrink={0}
-                                    />
+                                    <LogoMark size={40} title="Futsal Turniri" />
                                     <Dialog.Title>Instaliraj Futsal Turniri</Dialog.Title>
                                 </HStack>
                             </Dialog.Header>

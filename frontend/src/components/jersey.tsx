@@ -4,18 +4,6 @@ import { useQuery } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { fetchTeamJerseyColors, type TeamKit } from "../api/tournaments"
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Kit (dres + hlače) colour helpers, shared by every "tijek utakmice" surface.
-
-   useTeamColors fetches the tournament's {teamId: {jersey, shorts}} map ONCE
-   (cached by react-query, keyed on the tournament) so the stream ticker, the
-   live match page, the timeline modal and the Zapisnik console all reuse the
-   same fetch. KitSwatch renders a small two-tone chip (jersey over shorts) next
-   to a team name so viewers can tell the sides apart at a glance.
-   ────────────────────────────────────────────────────────────────────────── */
-
-/** Team kit colours for a tournament ({@code teamId → {jersey, shorts}}). Empty
- *  until loaded / when no team has a colour. Accepts a uuid or slug. */
 export function useTeamColors(uuid: string | null | undefined): Record<string, TeamKit> {
     const { data } = useQuery({
         queryKey: qk.teamColors(uuid ?? "none"),
@@ -99,22 +87,12 @@ const KIT_SHIRT_PATH =
 const KIT_SHORTS_PATH =
     "M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z"
 
-/** Resolve a KitSwatch border token to something usable as an SVG `stroke`.
- *  Chakra v3 doesn't resolve colour *tokens* on raw <path> elements (unlike a
- *  Box `borderColor`), so map a dotted token (`blackAlpha.400`,
- *  `border.emphasized`, `whiteAlpha.500`, …) to its generated CSS custom
- *  property and pass raw colours (hex/rgb/hsl/var/keyword) straight through. */
 function kitStroke(token: string): string {
     return /^(#|rgb|hsl|var\(|transparent|currentcolor)/i.test(token)
         ? token
         : `var(--chakra-colors-${token.replace(/\./g, "-")})`
 }
 
-/** Kit silhouette: a flat "shirt over shorts" icon in the team's colours - the
- *  shirt filled with the jersey (dres) colour, the shorts with the shorts
- *  (hlače) colour. Falls back to a single colour when only one is set (the whole
- *  kit takes it) and renders nothing when the team has no colour. `size` is the
- *  width; height stays ~1.3× so the footprint matches the old two-tone chip. */
 export function KitSwatch({
     jersey,
     shorts,
@@ -125,15 +103,7 @@ export function KitSwatch({
     jersey?: string | null
     shorts?: string | null
     size?: number
-    /** Border/outline colour token/value. Defaults to `blackAlpha.400` so every
-     *  existing caller renders identically; pass a theme token like
-     *  `border.emphasized` (or a `whiteAlpha.*` on dark surfaces) when the
-     *  outline must stay visible on both light and dark panels (a white kit on a
-     *  light card, a black kit on a dark one). */
     borderColor?: string
-    /** Corner rounding of the bounding box. Kept for API compatibility; the
-     *  silhouette itself is shaped by the SVG (rounded joins), so this now only
-     *  rounds the invisible box. Defaults to `2px`. */
     rounded?: string
 }) {
     if (!jersey && !shorts) return null
