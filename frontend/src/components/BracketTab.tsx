@@ -1037,11 +1037,11 @@ export default function BracketTab({
     const boardMatchCount = boardN / 2
 
     function openManualBracket() {
-        // Standard bracket seeding of the board items (qualifiers, or the group /
-        // best-third positions in position mode): top seed vs bottom seed, so the
-        // byes land distributed across the bracket instead of stacking the free
-        // slots at the top.
-        setSlots(standardSeedSlots(boardItems.map((t) => t.id), boardN))
+        // Open EMPTY - a manual draw should start blank so the organizer arranges
+        // the pairs themselves (drag teams / positions into the slots). The
+        // "Automatski poredaj" button still fills a standard seeding on demand,
+        // and "Automatski" does the fully-random draw.
+        setSlots(new Array(boardN).fill(null))
         setSketchOpen(false)
         setManualOpen(true)
     }

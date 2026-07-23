@@ -919,144 +919,152 @@ function DetailsReadView({
 
             {/* ── Right column: ekipe/kotizacija/detalji + lokacija + nagrade ── */}
             <VStack align="stretch" gap="3">
-                {/* Lijevo: kompaktni Ekipe + Kotizacija pa Lokacija · Desno: Detalji */}
-                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap="3" alignItems="stretch">
-                    {/* Left: ekipe/kotizacija (compact) + lokacija below */}
-                    <VStack align="stretch" gap="3">
-                        <Grid templateColumns="1fr 1fr" gap="3">
-                            <AccentStat
-                                accent="var(--chakra-colors-accent-amber)"
-                                icon={<FiUsers size={12} />}
-                                label="EKIPE"
-                                value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
-                                hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
-                            />
-                            {typeof t.entryPrice === "number" ? (
-                                <AccentStat
-                                    accent="var(--chakra-colors-accent-goal)"
-                                    icon={<FiDollarSign size={12} />}
-                                    label="KOTIZACIJA"
-                                    value={fmtMoney(t.entryPrice)}
-                                />
-                            ) : (
-                                <Box />
-                            )}
-                        </Grid>
-                        {/* Sistem igre + Web stranica - between Ekipe/Kotizacija and Lokacija. */}
-                        {t.gameSystem && (
+                {/* Meta row: EKIPE · KOTIZACIJA · SISTEM IGRE · LOKACIJA - lokacija
+                    sits to the RIGHT of the stat tiles (its own compact tile), so a
+                    long "Detalji" text can no longer stretch it. Detalji is full-width
+                    BELOW. Mobile: ekipe+kotizacija 2-up, then sistem + lokacija each
+                    full-width. `alignItems="start"` keeps every tile its natural
+                    height (no stretching). */}
+                <Grid
+                    templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1.8fr" }}
+                    gap="3"
+                    alignItems="start"
+                >
+                    <AccentStat
+                        accent="var(--chakra-colors-accent-amber)"
+                        icon={<FiUsers size={12} />}
+                        label="EKIPE"
+                        value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
+                        hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
+                    />
+                    {typeof t.entryPrice === "number" ? (
+                        <AccentStat
+                            accent="var(--chakra-colors-accent-goal)"
+                            icon={<FiDollarSign size={12} />}
+                            label="KOTIZACIJA"
+                            value={fmtMoney(t.entryPrice)}
+                        />
+                    ) : (
+                        <Box display={{ base: "none", md: "block" }} />
+                    )}
+                    {t.gameSystem ? (
+                        <Box gridColumn={{ base: "1 / -1", md: "auto" }}>
                             <AccentStat
                                 accent="var(--chakra-colors-pitch-500)"
                                 icon={<FiGrid size={12} />}
                                 label="SISTEM IGRE"
                                 value={t.gameSystem}
                             />
-                        )}
-                        {t.websiteUrl && (
-                            <chakra.a
-                                href={/^https?:\/\//i.test(t.websiteUrl) ? t.websiteUrl : `https://${t.websiteUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                display="flex"
-                                alignItems="center"
-                                gap="2"
-                                bg="bg.panel"
-                                borderWidth="1px"
-                                borderColor="border"
-                                rounded="xl"
-                                px="4"
-                                py="3"
-                                color="pitch.500"
-                                fontSize="14px"
-                                fontWeight={600}
-                                textDecoration="none"
-                                _hover={{ bg: "bg.surfaceTint", textDecoration: "none" }}
-                            >
-                                <FiExternalLink /> Web stranica organizatora
-                            </chakra.a>
-                        )}
-                        {t.location && (
-                            <Box
-                                bg="bg.panel"
-                                borderWidth="1px"
-                                borderColor="border"
-                                rounded="xl"
-                                p="5"
-                                flex="1"
-                                display="flex"
-                                flexDirection="column"
-                            >
-                                <HStack gap="3" align="start">
-                                    <Flex
-                                        w="36px"
-                                        h="36px"
-                                        rounded="lg"
-                                        bg="bg.surfaceTint"
-                                        align="center"
-                                        justify="center"
-                                        color="pitch.500"
-                                        flexShrink={0}
-                                    >
-                                        <FiMapPin size={16} />
-                                    </Flex>
-                                    <Box minW="0">
-                                        <Text fontSize="15px" fontWeight={700} color="fg.ink">
-                                            Lokacija
-                                        </Text>
-                                        <Text fontSize="13px" color="fg.muted">
-                                            {t.location}
-                                        </Text>
-                                    </Box>
-                                </HStack>
-                                <chakra.a
-                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.location)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    display="inline-flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                    gap="1.5"
-                                    bg="bg.surfaceTint"
-                                    color="pitch.500"
-                                    px="3.5"
-                                    py="2.5"
-                                    rounded="full"
-                                    fontSize="13px"
-                                    fontWeight={600}
-                                    textDecoration="none"
-                                    mt="auto"
-                                    pt="4"
-                                    w="fit-content"
-                                    _hover={{ bg: "pitch.100", textDecoration: "none" }}
-                                >
-                                    <FiExternalLink /> Otvori u kartama
-                                </chakra.a>
-                            </Box>
-                        )}
-                    </VStack>
-
-                    {/* Right: Detalji - opisni tekst iznad strukture formata */}
-                    {(t.details || t.format || (t.additionalOptions?.length ?? 0) > 0) ? (
-                        <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
-                            <HStack color="fg.muted" gap="1.5" mb="3">
-                                <FiInfo size={13} />
-                                <MonoLabel>DETALJI I FORMAT</MonoLabel>
-                            </HStack>
-                            {t.details && <DetailsText text={t.details} />}
-                            {t.format && <FormatSketch format={t.format} />}
-                            {t.additionalOptions && t.additionalOptions.length > 0 && (
-                                <HStack wrap="wrap" gap="1.5" mt="3">
-                                    {t.additionalOptions.map((opt) => (
-                                        <Badge key={opt} variant="solid" colorPalette="pitch" size="sm">
-                                            {opt}
-                                        </Badge>
-                                    ))}
-                                </HStack>
-                            )}
                         </Box>
                     ) : (
-                        <Box />
+                        <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
+                    )}
+                    {t.location ? (
+                        <Box
+                            gridColumn={{ base: "1 / -1", md: "auto" }}
+                            bg="bg.panel"
+                            borderWidth="1px"
+                            borderColor="border"
+                            rounded="xl"
+                            p="5"
+                            display="flex"
+                            flexDirection="column"
+                        >
+                            <HStack gap="3" align="start">
+                                <Flex
+                                    w="36px"
+                                    h="36px"
+                                    rounded="lg"
+                                    bg="bg.surfaceTint"
+                                    align="center"
+                                    justify="center"
+                                    color="pitch.500"
+                                    flexShrink={0}
+                                >
+                                    <FiMapPin size={16} />
+                                </Flex>
+                                <Box minW="0">
+                                    <Text fontSize="15px" fontWeight={700} color="fg.ink">
+                                        Lokacija
+                                    </Text>
+                                    <Text fontSize="13px" color="fg.muted">
+                                        {t.location}
+                                    </Text>
+                                </Box>
+                            </HStack>
+                            <chakra.a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.location)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                display="inline-flex"
+                                alignItems="center"
+                                justifyContent="center"
+                                gap="1.5"
+                                bg="bg.surfaceTint"
+                                color="pitch.500"
+                                px="3.5"
+                                py="2.5"
+                                rounded="full"
+                                fontSize="13px"
+                                fontWeight={600}
+                                textDecoration="none"
+                                mt="3"
+                                w="fit-content"
+                                _hover={{ bg: "pitch.100", textDecoration: "none" }}
+                            >
+                                <FiExternalLink /> Otvori u kartama
+                            </chakra.a>
+                        </Box>
+                    ) : (
+                        <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
                     )}
                 </Grid>
+
+                {/* Web stranica organizatora - full-width row (optional). */}
+                {t.websiteUrl && (
+                    <chakra.a
+                        href={/^https?:\/\//i.test(t.websiteUrl) ? t.websiteUrl : `https://${t.websiteUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        display="flex"
+                        alignItems="center"
+                        gap="2"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="xl"
+                        px="4"
+                        py="3"
+                        color="pitch.500"
+                        fontSize="14px"
+                        fontWeight={600}
+                        textDecoration="none"
+                        _hover={{ bg: "bg.surfaceTint", textDecoration: "none" }}
+                    >
+                        <FiExternalLink /> Web stranica organizatora
+                    </chakra.a>
+                )}
+
+                {/* Detalji i format - full width, below the meta row. */}
+                {(t.details || t.format || (t.additionalOptions?.length ?? 0) > 0) && (
+                    <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
+                        <HStack color="fg.muted" gap="1.5" mb="3">
+                            <FiInfo size={13} />
+                            <MonoLabel>DETALJI I FORMAT</MonoLabel>
+                        </HStack>
+                        {t.details && <DetailsText text={t.details} />}
+                        {t.format && <FormatSketch format={t.format} />}
+                        {t.additionalOptions && t.additionalOptions.length > 0 && (
+                            <HStack wrap="wrap" gap="1.5" mt="3">
+                                {t.additionalOptions.map((opt) => (
+                                    <Badge key={opt} variant="solid" colorPalette="pitch" size="sm">
+                                        {opt}
+                                    </Badge>
+                                ))}
+                            </HStack>
+                        )}
+                    </Box>
+                )}
 
                 {/* Nagradni fond - Mjesto / Iznos / Ostalo table. */}
                 {rewardRows.length > 0 && (

@@ -30,6 +30,7 @@ import {
     type AdminUserDto,
 } from "../api/admin"
 import { hideTournament, unhideTournament } from "../api/tournaments"
+import SpectoStreamCard from "./SpectoStreamCard"
 import {
     FiAlertTriangle,
     FiDownload,
@@ -399,6 +400,15 @@ export default function AdminDashboardTab() {
                         if (next === "deleted") setSelectedTournamentId(null)
                     }}
                 />
+            )}
+
+            {/* Live-stream overlay (SpectoStream) - moved here from the
+                tournament's Detalji tab; provisions the SELECTED tournament's
+                OBS camera + overlay. Parked in the admin dashboard for now. */}
+            {selectedTournament?.uuid && (
+                <Box mt="4">
+                    <SpectoStreamCard uuid={selectedTournament.uuid} />
+                </Box>
             )}
 
             {/* "Daj prava" dialog - grant editor rights to one or more people.
