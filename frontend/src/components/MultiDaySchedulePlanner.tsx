@@ -451,55 +451,72 @@ export default function MultiDaySchedulePlanner({
         })
     }, [total, rows.length])
 
-    // "Uredi raspored" (autoSketch): reconstruct the day distribution from the
-    // EXISTING schedule so editing shows the WHOLE generated schedule (all
-    // matches), spread across the days they actually fall on - instead of
-    // collapsing everything onto day 0.
+    // "Uredi raspored" (autoSketch): reconstruct the day plan from the EXISTING
+    // schedule so editing shows the whole generated schedule with its real
+    // per-day times - instead of collapsing everything onto day 0.
     //
-    // Waits for `total` (the remaining-match count) so the day allocation can be
-    // forced to cover EVERY remaining match: dated matches set the multi-day
-    // shape, and the last day absorbs whatever the date grouping didn't account
-    // for (undated knockout-skeleton matches, or any count mismatch). Without
-    // this the planner would report "N matches don't fit". The user only wants
-    // the full schedule shown + editable; the exact day boundaries don't matter
-    // (they can re-drag). FINISHED/LIVE keep their own times and never re-plan,
-    // so they're excluded. koOnly → knockout matches only. Runs once.
+    // Plan days are SESSIONS, not calendar dates. A day whose first kickoff is
+    // late evening spills past midnight (23:05, 23:35, 00:05, …) - those
+    // after-midnight matches belong to the PREVIOUS plan day even though their
+    // calendar date is the next one. Grouping by calendar date lumped them in
+    // with the next evening's matches and re-laid the whole "day" out from
+    // 00:05, which is exactly the corruption being fixed here. So: sort all
+    // remaining matches chronologically and start a new plan day only at a gap
+    // of >= 6h (overnight); each session is dated by its FIRST match, whose
+    // time is the day's firstStart - the back-to-back layout then reproduces
+    // the real times, midnight spill included.
+    //
+    // Waits for `total` (remaining-match count) so the allocation can be forced
+    // to cover EVERY remaining match: the last day absorbs what the dated
+    // grouping didn't account for (undated knockout-skeleton rows), otherwise
+    // the planner reports "N matches don't fit". FINISHED/LIVE keep their own
+    // times and never re-plan, so they're excluded. koOnly → knockout matches
+    // only. Runs once.
     const seededFromExistingRef = useRef(false)
     useEffect(() => {
         if (!autoSketch || seededFromExistingRef.current) return
         if (!infoLoaded || total <= 0) return
-        const relevant = (existingMatches ?? []).filter(
-            (m) => m.status !== "FINISHED" && m.status !== "LIVE" && !!m.kickoffAt && (koOnly ? m.stage !== "GROUP" : true),
-        )
+        const relevant = (existingMatches ?? [])
+            .filter(
+                (m) => m.status !== "FINISHED" && m.status !== "LIVE" && !!m.kickoffAt && (koOnly ? m.stage !== "GROUP" : true),
+            )
+            .sort((a, b) => new Date(a.kickoffAt as string).getTime() - new Date(b.kickoffAt as string).getTime())
         if (relevant.length === 0) return // nothing dated → single-day default (seed above)
-        const byDate = new Map<string, ScheduledMatch[]>()
+
+        // Split into sessions on a >= 6h gap. Short user-added pauses stay
+        // inside their session; only an overnight break starts a new day.
+        const GAP_NEW_DAY_MS = 6 * 60 * 60 * 1000
+        const sessions: ScheduledMatch[][] = []
         for (const m of relevant) {
-            const d = new Date(m.kickoffAt as string)
-            const key = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-            const list = byDate.get(key)
-            if (list) list.push(m)
-            else byDate.set(key, [m])
+            const cur = sessions[sessions.length - 1]
+            const prevAt = cur ? new Date(cur[cur.length - 1].kickoffAt as string).getTime() : null
+            const at = new Date(m.kickoffAt as string).getTime()
+            if (prevAt != null && at - prevAt < GAP_NEW_DAY_MS) cur.push(m)
+            else sessions.push([m])
         }
-        const dates = [...byDate.keys()].sort()
-        const counts = dates.map((date) => (byDate.get(date) as ScheduledMatch[]).length)
-        // Force the allocation to cover every remaining match so nothing "doesn't
-        // fit" - the last day soaks up the difference (undated matches / mismatch).
-        const diff = total - counts.reduce((a, b) => a + b, 0)
-        counts[counts.length - 1] = Math.max(0, counts[counts.length - 1] + diff)
-        setFrom(dates[0])
-        setTo(dates[dates.length - 1])
-        setRows(
-            dates.map((date, i) => {
-                const ms = byDate.get(date) as ScheduledMatch[]
-                const firstStart = ms
-                    .map((m) => {
-                        const d = new Date(m.kickoffAt as string)
-                        return `${p(d.getHours())}:${p(d.getMinutes())}`
-                    })
-                    .sort()[0]
-                return { date, matches: String(counts[i]), firstStart }
-            }),
-        )
+
+        // One DayRow per session, dated + timed by its first match. Two sessions
+        // on the same calendar date (a long intra-day break) merge into one row
+        // - the date-range effect keys rows by date, so duplicates can't exist.
+        const rowsByDate = new Map<string, { date: string; count: number; firstStart: string }>()
+        for (const s of sessions) {
+            const d = new Date(s[0].kickoffAt as string)
+            const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+            const firstStart = `${p(d.getHours())}:${p(d.getMinutes())}`
+            const existing = rowsByDate.get(date)
+            if (existing) existing.count += s.length
+            else rowsByDate.set(date, { date, count: s.length, firstStart })
+        }
+        const dayRows = [...rowsByDate.values()].sort((a, b) => a.date.localeCompare(b.date))
+
+        // Force the allocation to cover every remaining match so nothing
+        // "doesn't fit" - the last day soaks up the difference.
+        const diff = total - dayRows.reduce((s, r) => s + r.count, 0)
+        dayRows[dayRows.length - 1].count = Math.max(0, dayRows[dayRows.length - 1].count + diff)
+
+        setFrom(dayRows[0].date)
+        setTo(dayRows[dayRows.length - 1].date)
+        setRows(dayRows.map((r) => ({ date: r.date, matches: String(r.count), firstStart: r.firstStart })))
         seededFromExistingRef.current = true
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoSketch, existingMatches, koOnly, infoLoaded, total])

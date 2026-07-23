@@ -1481,6 +1481,31 @@ const SCHED_ROW_PX = 52
 const SCHED_HEADER_PX = 50
 const SCHED_FIRST_PX = 760
 const SCHED_REST_PX = 880
+/** Shaved off every page budget so estimate noise can only ever leave a page
+ *  slightly emptier - never overflow it. A missing row is unacceptable
+ *  (matches were silently clipped by the fixed A4 overflow); a bit of white
+ *  space at the foot of a page is fine. */
+const SCHED_SAFETY_PX = 24
+const SCHED_REST_SAFE_PX = SCHED_REST_PX - SCHED_SAFETY_PX
+
+/**
+ * First-page body budget for THIS tournament. SCHED_FIRST_PX was calibrated
+ * for a header whose height the ~167px QR lockup dominates; a LONG title wraps
+ * to 3-4 lines at 42px and pushes the left column taller than the QR column,
+ * growing the whole header and eating body room 1:1 - which used to clip the
+ * day's last match row off the bottom of page 1. Estimate the left column's
+ * real height (title lines at ~22 chars/line, organizer row, date•location
+ * line at ~60 chars/line) and subtract however much it exceeds the QR lockup,
+ * plus the global safety margin.
+ */
+function scheduleFirstPx(meta: ExportMeta): number {
+    const titleLines = Math.min(4, Math.max(1, Math.ceil(meta.tournamentName.length / 22)))
+    const metaChars = 20 + (meta.location?.length ?? 0) // "24. srpnja 2026.  •  " + location
+    const metaLines = Math.min(3, Math.max(1, Math.ceil(metaChars / 60)))
+    const leftPx = titleLines * 44 + (meta.organizerName ? 30 : 0) + metaLines * 20 + 6
+    const excess = Math.max(0, leftPx - 167)
+    return SCHED_FIRST_PX - excess - SCHED_SAFETY_PX
+}
 
 /** Conservative wrapped-line estimate for a team name in a poster row's name
  *  cell. `perLine` is the chars-per-line for that layout (24 for the day-
@@ -1527,7 +1552,7 @@ function paginateGroupFixtureRows(rows: PosterMatchRow[]): PosterMatchRow[][] {
     let usedPx = SCHED_HEADER_PX
     for (const row of rows) {
         const rowPx = groupFixtureRowPx(row)
-        if (page.length > 0 && usedPx + rowPx > SCHED_REST_PX) {
+        if (page.length > 0 && usedPx + rowPx > SCHED_REST_SAFE_PX) {
             pages.push(page)
             page = []
             usedPx = SCHED_HEADER_PX
@@ -1547,8 +1572,8 @@ function paginateGroupFixtureRows(rows: PosterMatchRow[]): PosterMatchRow[][] {
  *  day header. */
 function paginateScheduleSections(
     sections: ScheduleSection[],
-    firstPx = SCHED_FIRST_PX,
-    restPx = SCHED_REST_PX,
+    firstPx = SCHED_FIRST_PX - SCHED_SAFETY_PX,
+    restPx = SCHED_REST_SAFE_PX,
 ): ScheduleSection[][] {
     const pages: ScheduleSection[][] = []
     let pageSecs: ScheduleSection[] = []
@@ -1652,8 +1677,10 @@ function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
 }
 
 /** Build the schedule poster page bodies - day sections paginated under the row
- *  budget. Empty schedule → one placeholder page. */
-function buildSchedulePages(matches: ScheduledMatch[]): ReactNode[] {
+ *  budget. Page 1's budget shrinks with THIS tournament's real header height
+ *  (long wrapped titles) so the day's last row can never clip off the page.
+ *  Empty schedule → one placeholder page. */
+function buildSchedulePages(matches: ScheduledMatch[], meta: ExportMeta): ReactNode[] {
     const sections = buildScheduleSections(matches)
     if (sections.length === 0) {
         return [
@@ -1662,7 +1689,7 @@ function buildSchedulePages(matches: ScheduledMatch[]): ReactNode[] {
             </div>,
         ]
     }
-    return paginateScheduleSections(sections).map((secs) => <ScheduleSections sections={secs} />)
+    return paginateScheduleSections(sections, scheduleFirstPx(meta)).map((secs) => <ScheduleSections sections={secs} />)
 }
 
 /* ── Bracket poster (two-sided vertical "Završnica") ────────────────────────
@@ -3257,7 +3284,7 @@ export function ExportDialog({
             shown = shown.filter((m) => m.status !== "FINISHED")
             statusSuffix = "-nadolazece"
         }
-        pageBodies = buildSchedulePages(shown)
+        pageBodies = buildSchedulePages(shown, meta)
     }
     const pageCount = pageBodies.length
 
