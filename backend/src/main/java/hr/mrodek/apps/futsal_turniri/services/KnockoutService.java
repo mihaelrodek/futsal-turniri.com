@@ -1678,8 +1678,8 @@ public class KnockoutService {
      * Predicted-pairing labels (and, for a finished group, resolved team names)
      * for every knockout slot of the tournament, keyed by match id. Loads the
      * tournament's knockout matches itself; use the same query as
-     * {@link #bracket} so the two produce identical labels. Empty map for
-     * KNOCKOUT_ONLY - that format is never labeled.
+     * {@link #bracket} so the two produce identical labels. KNOCKOUT_ONLY gets
+     * feeder labels only ("W O2", "L PF1" - no group positions to predict).
      */
     public Map<Long, SlotLabels> knockoutSlotLabels(Tournaments t) {
         List<Matches> ko = matchesRepo.list(
@@ -1724,7 +1724,7 @@ public class KnockoutService {
      */
     private Map<Long, SlotLabels> computeSlotLabels(Tournaments t, List<Matches> ko) {
         Map<Long, SlotLabels> out = new HashMap<>();
-        if (ko.isEmpty() || t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) return out;
+        if (ko.isEmpty()) return out;
 
         // Bucket by stage (each bucket stays id-ordered, since ko is id-ordered)
         // and pick the entry round = the largest stage present.
@@ -1757,7 +1757,12 @@ public class KnockoutService {
         }
 
         // Round-one classic-cross layout (null unless the shape qualifies).
-        List<GroupDto> groups = groupStageService.standings(t.getId());
+        // KNOCKOUT_ONLY has no groups: skip the standings fetch - round one is
+        // real teams there, and every LATER round still gets its feeder labels
+        // ("W O2", "L PF1") from the nextMatch graph below.
+        List<GroupDto> groups = t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT
+                ? groupStageService.standings(t.getId())
+                : List.of();
         int q = predictedQualifiers(t);
         int n = q >= 2 ? nextPowerOfTwo(q) : 0;
         List<int[]> crossLayout = (entry != null && n >= 2)

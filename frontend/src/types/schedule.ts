@@ -27,7 +27,8 @@ export type ScheduledMatch = {
     team2Id: number | null
     team2Name: string | null
     /** Predicted knockout pairing labels/names shown before a slot's team is
-     *  decided (mirrors BracketMatch). Null for group matches + KNOCKOUT_ONLY. */
+     *  decided (mirrors BracketMatch). Null for group matches; KNOCKOUT_ONLY
+     *  carries feeder labels ("W O2", "L PF1") for later rounds. */
     slot1Label: string | null
     slot2Label: string | null
     slot1PredictedName: string | null

@@ -10,10 +10,11 @@ export type BracketMatch = {
     team2Id: number | null
     team2Name: string | null
     /** Predicted-pairing labels shown before a slot's team is decided:
-     *  `slotNLabel` is the short code ("A1", "D2", "Pobj. ČF1"); once that group
+     *  `slotNLabel` is the short code ("A1", "D2", "W ČF1"); once that group
      *  finishes the real team lands in `teamNName`. `slotNPredictedName` carries
      *  the group-position team name where the backend can already resolve it.
-     *  All null for KNOCKOUT_ONLY brackets (no predictions). */
+     *  KNOCKOUT_ONLY gets feeder labels only ("W O2", "L PF1") - no group
+     *  positions to predict. */
     slot1Label: string | null
     slot2Label: string | null
     slot1PredictedName: string | null
