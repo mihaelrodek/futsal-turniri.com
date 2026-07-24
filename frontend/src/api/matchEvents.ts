@@ -104,10 +104,11 @@ export async function startSecondHalf(
 export async function pauseMatch(
     tournamentUuid: string,
     matchId: number,
+    occurredAt?: string,
 ): Promise<void> {
     await http.post(
         `/tournaments/${tournamentUuid}/matches/${matchId}/pause`,
-        undefined,
+        occurredAt ? { occurredAt } : undefined,
         { silent: true } as any,
     )
 }
@@ -125,6 +126,22 @@ export async function resumeMatch(
         `/tournaments/${tournamentUuid}/matches/${matchId}/resume`,
         undefined,
         { silent: true } as any,
+    )
+}
+
+/**
+ * Show/hide the SpectoStream overlay clock. This only changes the stream
+ * scoreboard display; the match timer in the app keeps running normally.
+ */
+export async function setClockVisibility(
+    tournamentUuid: string,
+    matchId: number,
+    visible: boolean,
+): Promise<void> {
+    await http.post(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/clock-visibility`,
+        { visible },
+        { successMessage: visible ? "Sat je prikazan na streamu." : "Sat je sakriven na streamu." } as any,
     )
 }
 

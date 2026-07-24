@@ -3119,9 +3119,10 @@ export function BracketLiveMatchDialog({
     /** Pause / resume the live clock (optimistic flip + refetch). */
     async function handlePause() {
         setPauseBusy(true)
+        const occurredAt = new Date().toISOString()
         try {
-            await pauseMatch(uuid, matchId)
-            setLivePausedAt(new Date().toISOString())
+            await pauseMatch(uuid, matchId, occurredAt)
+            setLivePausedAt(occurredAt)
             await refreshMatchHalf()
             await onChanged()
         } catch {
@@ -3709,4 +3710,3 @@ export function BracketLiveMatchDialog({
         </>
     )
 }
-

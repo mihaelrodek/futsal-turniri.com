@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Button, chakra, Flex, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react"
-import { FiEdit2, FiMinus, FiMoreHorizontal, FiPause, FiPlay, FiPlus, FiX } from "react-icons/fi"
+import { FiEdit2, FiEye, FiEyeOff, FiMinus, FiMoreHorizontal, FiPause, FiPlay, FiPlus, FiX } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
 import { LuTimer, LuTimerOff } from "react-icons/lu"
 
@@ -10,6 +10,7 @@ import {
     pauseMatch,
     resetMatch,
     resumeMatch,
+    setClockVisibility,
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
@@ -174,6 +175,8 @@ export default function LiveMatchPanel({
     const [starting, setStarting] = useState(false)
     const [phaseBusy, setPhaseBusy] = useState(false)
     const [pauseBusy, setPauseBusy] = useState(false)
+    const [clockVisibilityBusy, setClockVisibilityBusy] = useState(false)
+    const [clockVisibleOnStream, setClockVisibleOnStream] = useState(true)
     const [finishing, setFinishing] = useState(false)
     const [resetting, setResetting] = useState(false)
     const [shootout, setShootout] = useState(false)
@@ -369,9 +372,10 @@ export default function LiveMatchPanel({
      *  so the clock continues exactly where it froze). */
     async function handlePause() {
         setPauseBusy(true)
+        const occurredAt = new Date().toISOString()
         try {
-            await pauseMatch(uuid, matchId)
-            setLivePausedAt(new Date().toISOString())
+            await pauseMatch(uuid, matchId, occurredAt)
+            setLivePausedAt(occurredAt)
             await onChanged()
         } catch {
             /* error toast surfaced by the http interceptor */
@@ -390,6 +394,20 @@ export default function LiveMatchPanel({
             /* error toast surfaced by the http interceptor */
         } finally {
             setPauseBusy(false)
+        }
+    }
+
+    async function toggleStreamClockVisibility() {
+        const next = !clockVisibleOnStream
+        setClockVisibilityBusy(true)
+        setClockVisibleOnStream(next)
+        try {
+            await setClockVisibility(uuid, matchId, next)
+        } catch {
+            setClockVisibleOnStream(!next)
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setClockVisibilityBusy(false)
         }
     }
 
@@ -787,6 +805,16 @@ export default function LiveMatchPanel({
                                         {halfLabel}
                                     </Text>
                                 )}
+                                <Button
+                                    size="xs"
+                                    variant="outline"
+                                    colorPalette={clockVisibleOnStream ? "gray" : "pitch"}
+                                    loading={clockVisibilityBusy}
+                                    onClick={toggleStreamClockVisibility}
+                                >
+                                    {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
+                                    {clockVisibleOnStream ? "Sakrij sat na streamu" : "Prikaži sat na streamu"}
+                                </Button>
                             </VStack>
                         )}
 

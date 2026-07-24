@@ -2496,7 +2496,8 @@ public class TournamentController {
     @Transactional
     public Response pauseMatch(
             @PathParam("uuid") String uuid,
-            @PathParam("matchId") Long matchId
+            @PathParam("matchId") Long matchId,
+            PauseMatchRequest body
     ) {
         Matches match = resolveMatchInTournament(uuid, matchId);
         assertCanEdit(match.getTournament());
@@ -2506,20 +2507,35 @@ public class TournamentController {
             return Response.status(Response.Status.CONFLICT)
                     .entity("Match is not LIVE").build();
         }
+        boolean pausedNow = false;
         if (match.getLivePausedAt() == null) {
-            match.setLivePausedAt(java.time.OffsetDateTime.now());
+            match.setLivePausedAt(parsePauseOccurredAt(body));
+            pausedNow = true;
         }
-        notifyLive(match);
+        if (pausedNow) notifyLive(match);
         // SpectoStream: freeze the overlay clock while the live clock is paused.
         // Disarm the auto-end first - a paused clock must not hit its boundary
         // while it isn't running; resume re-arms it with the pause absorbed.
         // TIMER only; async fire-and-forget.
         Tournaments pt = match.getTournament();
-        if (pt != null && spectoDrives(match)) {
+        if (pausedNow && pt != null && spectoDrives(match)) {
             specto.cancelPeriodEnd(matchId);
-            specto.periodEnd(pt, matchId);
+            specto.periodPause(pt, matchId, match.getLivePausedAt().toInstant());
         }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /** Client click time for pause. If omitted, fall back to server time; if
+     *  present but invalid, reject so SpectoStream doesn't freeze at a fake
+     *  receive-time while the app stores another time. */
+    private static java.time.OffsetDateTime parsePauseOccurredAt(PauseMatchRequest body) {
+        String raw = body == null ? null : body.occurredAt();
+        if (raw == null || raw.isBlank()) return java.time.OffsetDateTime.now();
+        try {
+            return java.time.OffsetDateTime.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new BadRequestException("occurredAt must be an ISO-8601 timestamp.");
+        }
     }
 
     /**
@@ -2588,6 +2604,32 @@ public class TournamentController {
             }
         }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * Show/hide the SpectoStream scoreboard clock. Organizer-or-admin only.
+     * This does not pause the real match clock - it only toggles whether the
+     * overlay renders it. Useful during interruptions when the stream should
+     * keep the scorebug but hide the running time.
+     */
+    @POST
+    @Path("/{uuid}/matches/{matchId}/clock-visibility")
+    @Authenticated
+    public Response setClockVisibility(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId,
+            ClockVisibilityRequest body
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
+
+        boolean visible = body == null || body.visible() == null || body.visible();
+        Tournaments t = match.getTournament();
+        if (t != null && spectoDrives(match)) {
+            specto.clockVisibility(t, matchId, visible);
+        }
+        return Response.accepted().build();
     }
 
     /**

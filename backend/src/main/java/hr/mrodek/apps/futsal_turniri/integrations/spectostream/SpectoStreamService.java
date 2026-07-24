@@ -468,9 +468,9 @@ public class SpectoStreamService {
                 now.toString(), payload);
     }
 
-    /** Freeze the overlay clock right where it is, now — the half-time-style
-     *  break used for an operator PAUSE. Distinct idempotency key per call, so
-     *  a pause never collides with the period's real end. */
+    /** Stop the overlay period immediately. Used only as a fallback for
+     *  free-running/zero-length halves where there is no exact boundary clock
+     *  to sync before ending the period. Operator pause uses period_pause. */
     public void periodEnd(Tournaments t, long matchId) {
         if (!isConfigured()) return;
         String streamId = t.getSpectoStreamId();
@@ -480,6 +480,21 @@ public class SpectoStreamService {
         enqueue(streamId, "period_end",
                 "m" + matchId + "-period_end-" + now.getEpochSecond(),
                 now.toString(), json.createObjectNode());
+    }
+
+    /** Pause the overlay clock at the precise click time. SpectoStream computes
+     *  the frozen clock value from {@code occurredAt}, so the caller passes the
+     *  timestamp captured by the frontend/backend pause path instead of letting
+     *  network latency become the pause moment. */
+    public void periodPause(Tournaments t, long matchId, Instant occurredAt) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        Instant at = occurredAt != null ? occurredAt : Instant.now();
+        enqueue(streamId, "period_pause",
+                "m" + matchId + "-period_pause-" + at.toEpochMilli(),
+                at.toString(), json.createObjectNode());
     }
 
     /**
@@ -717,6 +732,20 @@ public class SpectoStreamService {
 
         enqueue(streamId, "timer_stop", UUID.randomUUID().toString(),
                 Instant.now().toString(), json.createObjectNode());
+    }
+
+    /** Show/hide the match clock on the overlay. The clock keeps running on the
+     *  platform; this only controls whether viewers see it. */
+    public void clockVisibility(Tournaments t, long matchId, boolean visible) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        payload.put("visible", visible);
+        enqueue(streamId, "clock_visibility",
+                "m" + matchId + "-clock_visibility-" + UUID.randomUUID(),
+                Instant.now().toString(), payload);
     }
 
     /** Free-text overlay message. Random idempotency key — every send is new. */
