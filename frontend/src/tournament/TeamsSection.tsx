@@ -882,7 +882,18 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 gap="5"
                 alignItems="start"
             >
-                <Box>{teamListPane}</Box>
+                <Box
+                    position="sticky"
+                    top="85px"
+                    maxH="calc(100dvh - 101px)"
+                    overflowY="auto"
+                    overscrollBehavior="contain"
+                    pr="1"
+                    scrollBehavior="smooth"
+                    css={{ scrollbarGutter: "stable" }}
+                >
+                    {teamListPane}
+                </Box>
                 <Box
                     position="sticky"
                     top="85px"

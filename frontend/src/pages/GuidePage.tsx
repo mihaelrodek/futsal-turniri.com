@@ -737,8 +737,8 @@ export default function GuidePage() {
                         <MiniShot
                             src="/vodic/ekipe.webp"
                             alt="Ekipe turnira s otvorenim sastavom igrača"
-                            width={1400}
-                            height={875}
+                            width={2032}
+                            height={1424}
                         />
                     </FlowStep>
                     <FlowArrow />
@@ -777,8 +777,8 @@ export default function GuidePage() {
                         <MiniShot
                             src="/vodic/raspored.webp"
                             alt="Raspored turnira s terminima i rezultatima"
-                            width={1600}
-                            height={1000}
+                            width={2014}
+                            height={1146}
                         />
                     </FlowStep>
                 </Box>
@@ -827,8 +827,8 @@ export default function GuidePage() {
                         <MiniShot
                             src="/vodic/grupe.webp"
                             alt="Tablice grupa s bodovima, gol-razlikom i formom"
-                            width={1600}
-                            height={1000}
+                            width={2016}
+                            height={1474}
                         />
                     </FlowStep>
                     <FlowArrow />
@@ -842,8 +842,8 @@ export default function GuidePage() {
                         <MiniShot
                             src="/vodic/bracket.webp"
                             alt="Eliminacijska završnica s rezultatima, penalima i prvakom"
-                            width={1400}
-                            height={1845}
+                            width={2008}
+                            height={1582}
                             cropAspect={1.6}
                         />
                     </FlowStep>
@@ -856,8 +856,8 @@ export default function GuidePage() {
                         <MiniShot
                             src="/vodic/statistika.webp"
                             alt="Statistika turnira: najbolji strijelci s brojem golova"
-                            width={1400}
-                            height={875}
+                            width={2076}
+                            height={1522}
                         />
                     </FlowStep>
                 </Box>
