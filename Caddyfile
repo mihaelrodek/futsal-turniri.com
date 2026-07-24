@@ -361,6 +361,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	#   - connect 'self' https: wss:     → the API + WebSocket, Firebase Auth,
 	#     Nominatim geocoding (all browser-side over https).
 	#   - stream.safeflow.hr → SpectoStream player.js + embedded stream player.
+	#   - cdn.jsdelivr.net → hls.js loaded dynamically by SpectoStream player.js.
 	#   - frame-src firebaseapp.com / google → Firebase Auth's hidden iframe +
 	#     Google sign-in; youtube / veo / SpectoStream → the live-stream
 	#     player's embeds (organizer's court camera). Streaming another provider?
@@ -370,7 +371,7 @@ futsal-turniri.com, www.futsal-turniri.com {
 	#     load straight from the camera/CDN host over https.
 	# object-src / base-uri / form-action / frame-ancestors are locked down.
 	@notembed not path /embed/*
-	header @notembed Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://apis.google.com https://*.googletagmanager.com https://stream.safeflow.hr; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com https://www.youtube-nocookie.com https://www.youtube.com https://*.veo.co https://stream.safeflow.hr; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	header @notembed Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://apis.google.com https://*.googletagmanager.com https://stream.safeflow.hr https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com https://www.youtube-nocookie.com https://www.youtube.com https://*.veo.co https://stream.safeflow.hr; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
 	# Smaller-than-default access log to stderr; tweak when you wire up
 	# log aggregation.
