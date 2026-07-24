@@ -131,6 +131,17 @@ futsal-turniri.com, www.futsal-turniri.com {
 		reverse_proxy backend:8085
 	}
 
+	# SpectoStream's official player fetches the public state from its own
+	# origin, but that state currently contains a relative `playback_url`.
+	# player.js then resolves it against the embedding page (this site), so proxy
+	# the resulting path back to Specto. This keeps the frontend embed exactly
+	# as supplied by Specto: <div data-spectostream="..."></div> + player.js.
+	handle /v1/streams/* {
+		reverse_proxy https://stream.safeflow.hr {
+			header_up Host stream.safeflow.hr
+		}
+	}
+
 	# Bare /sitemap.xml → the backend's dynamic sitemap. robots.txt already
 	# points crawlers at /api/sitemap.xml, but the bare root path is the
 	# convention Search Console users type in, so serve it there too.

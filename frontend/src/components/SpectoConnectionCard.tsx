@@ -143,6 +143,10 @@ export default function SpectoConnectionCard() {
             showError("Nedostaje Stream ID", "Upiši ID postojećeg streama s platforme.")
             return
         }
+        if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
+            showError("Neispravan Stream ID", "Upiši samo Stream ID s platforme, bez URL-a ili embed koda.")
+            return
+        }
         if (!tournamentUuid) {
             showError("Nedostaje turnir", "Odaberi turnir kojem se stream pridružuje.")
             return

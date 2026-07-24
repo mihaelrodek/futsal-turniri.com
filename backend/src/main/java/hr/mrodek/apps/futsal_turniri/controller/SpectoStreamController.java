@@ -75,7 +75,9 @@ public class SpectoStreamController {
     public Response publicInfo(@PathParam("uuid") String uuid) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) throw new NotFoundException("Tournament not found");
-        return Response.ok(new SpectoPublicDto(t.getSpectoStreamId())).build();
+        String streamId = t.getSpectoStreamId();
+        return Response.ok(new SpectoPublicDto(
+                streamId != null && isPlainStreamId(streamId) ? streamId : null)).build();
     }
 
     /** Current status - configured + linked + streamId. Organizer-guarded. */
@@ -124,13 +126,17 @@ public class SpectoStreamController {
     public Response link(@PathParam("uuid") String uuid, SpectoLinkRequest body) {
         Tournaments t = resolveAndGuard(uuid);
         String streamId = body == null || body.streamId() == null ? null : body.streamId().trim();
-        if (streamId != null && streamId.length() > 200) {
+        if (streamId != null && !streamId.isEmpty() && !isPlainStreamId(streamId)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Stream ID je predugačak.").build();
+                    .entity("Upiši samo Stream ID, ne URL, embed kod ili HTML.").build();
         }
         specto.linkExisting(t, streamId);
         return Response.ok(new SpectoStatusDto(
                 specto.isConfigured(), t.getSpectoStreamId() != null, t.getSpectoStreamId())).build();
+    }
+
+    private static boolean isPlainStreamId(String streamId) {
+        return streamId.length() <= 200 && streamId.matches("^[A-Za-z0-9][A-Za-z0-9_-]*$");
     }
 
     /** Unlink the tournament from its SpectoStream broadcast (clears the stream

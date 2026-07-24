@@ -29,6 +29,14 @@ export default defineConfig({
                 target: "http://localhost:8087",
                 changeOrigin: true,
             },
+            // SpectoStream's public state response currently returns a relative
+            // `playback_url`. Its own player resolves that URL against the page
+            // that embeds it, so provide that path locally as well. The player
+            // itself remains the official `data-spectostream` embed.
+            "/v1/streams": {
+                target: "https://stream.safeflow.hr",
+                changeOrigin: true,
+            },
             // Realtime live channel (WebSocket). `ws: true` makes Vite proxy the
             // HTTP→WS upgrade through to the backend in dev. The error handler
             // swallows proxy errors so a not-yet-started backend (the WS endpoint
