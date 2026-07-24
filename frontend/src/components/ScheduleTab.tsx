@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import {
     Box,
     Button,
@@ -25,7 +25,6 @@ import { fetchGroups } from "../api/groups"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
-import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { GoalscorersPanel } from "./liveMatch"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
@@ -121,17 +120,17 @@ function numValOrNull(v: string): number | null {
 }
 
 /* -- Stage badge --------------------------------------------------------- */
-function StageBadge({ stage, groupName, code }: { stage: string; groupName?: string | null; code?: string | null }) {
+function StageBadge({ stage, groupName }: { stage: string; groupName?: string | null }) {
     const isGroup = stage === "GROUP"
-    // For group matches show which group ("Grupa A"); knockout keeps its
-    // phase label ("Polufinale", "Finale", …) plus its own short code ("O2")
-    // when it has one - that's the tag a later round references as "W O2".
+    // For group matches show which group ("Grupa A"); knockout just its phase
+    // label ("Polufinale", "Finale", …). The short per-match code ("O2") that
+    // feeder labels reference as "W O2" is deliberately NOT shown here - it
+    // belongs to the bracket, and in the schedule it only crowds the row.
     const base = isGroup
         ? groupName
             ? `Grupa ${groupName}`
             : "Grupa"
         : STAGE_LABEL[stage] ?? stage
-    const label = !isGroup && code ? `${base} · ${code}` : base
     return (
         <Box
             as="span"
@@ -147,7 +146,7 @@ function StageBadge({ stage, groupName, code }: { stage: string; groupName?: str
             flexShrink={0}
             whiteSpace="nowrap"
         >
-            {label}
+            {base}
         </Box>
     )
 }
@@ -320,7 +319,6 @@ function downloadMatchIcs(match: ScheduledMatch, opts: IcsOpts) {
 /* -- Match row ----------------------------------------------------------- */
 function MatchRow({
     match,
-    code,
     tournamentUuid,
     tournamentName,
     tournamentLocation,
@@ -332,9 +330,6 @@ function MatchRow({
     isNext = false,
 }: {
     match: ScheduledMatch
-    /** Short knockout code for this match ("Š1", "O2") - the tag later rounds
-     *  reference as "W O2". Null for group / final / 3rd-place matches. */
-    code?: string | null
     tournamentUuid: string
     /** Half length (min) - splits the expanded timeline into 1./2. poluvrijeme. */
     halfLengthMin?: number | null
@@ -463,7 +458,7 @@ function MatchRow({
                        border + red score box alone - no "UŽIVO" text badge. */
                     <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
                         <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
-                            <StageBadge stage={match.stage} groupName={match.groupName} code={code} />
+                            <StageBadge stage={match.stage} groupName={match.groupName} />
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
@@ -488,7 +483,7 @@ function MatchRow({
                        border (the "Na redu" tag was dropped). */
                     <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
                         <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
-                            <StageBadge stage={match.stage} groupName={match.groupName} code={code} />
+                            <StageBadge stage={match.stage} groupName={match.groupName} />
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
@@ -604,7 +599,6 @@ function MatchRow({
  *  the grid is a viewing layout; editing stays in the list view. */
 function MatchCard({
     match,
-    code,
     multiDay,
     onOpen,
     tournamentUuid,
@@ -615,9 +609,6 @@ function MatchCard({
     isNext = false,
 }: {
     match: ScheduledMatch
-    /** Short knockout code for this match ("Š1", "O2") - the tag later rounds
-     *  reference as "W O2". Null for group / final / 3rd-place matches. */
-    code?: string | null
     /** Multi-day tournament - the kickoff stamp adds the date ("DD.MM. HH:MM"),
      *  matching the list's day-aware time display; single-day shows just HH:MM. */
     multiDay: boolean
@@ -698,7 +689,7 @@ function MatchCard({
                         )}
                     </Flex>
                     <VStack gap="0.5" align="center" minW="0">
-                        <StageBadge stage={match.stage} groupName={match.groupName} code={code} />
+                        <StageBadge stage={match.stage} groupName={match.groupName} />
                         {kickoffLabel ? (
                             <HStack gap="1" fontSize="xs" fontWeight={600} color="fg.muted" fontFamily="mono">
                                 <FiClock size={11} />
@@ -778,7 +769,6 @@ function MatchCard({
  *  fallbacks render muted, exactly like the other two layouts. */
 function MatchCompactRow({
     match,
-    code,
     multiDay,
     onOpen,
     tournamentUuid,
@@ -789,9 +779,6 @@ function MatchCompactRow({
     isNext = false,
 }: {
     match: ScheduledMatch
-    /** Short knockout code for this match ("Š1", "O2") - the tag later rounds
-     *  reference as "W O2". Null for group / final / 3rd-place matches. */
-    code?: string | null
     /** Multi-day tournament - the time pill adds the date ("DD.MM. HH:MM"). */
     multiDay: boolean
     /** Navigate to the match-details page on a body click. */
@@ -870,7 +857,7 @@ function MatchCompactRow({
                         {pillText}
                     </Box>
                     <Flex justify="center" minW="0">
-                        <StageBadge stage={match.stage} groupName={match.groupName} code={code} />
+                        <StageBadge stage={match.stage} groupName={match.groupName} />
                     </Flex>
                 </VStack>
 
@@ -1042,12 +1029,6 @@ export default function ScheduleTab({
     // recently-viewed tournament) paints instantly instead of refetching.
     const cachedSchedule = queryClient.getQueryData<Schedule>(qk.schedule(uuid))
     const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
-    // Per-match knockout codes ("Š1", "O2"), numbered exactly like the backend's
-    // feeder labels so a slot reading "W O2" points at the row tagged "O2".
-    const koCodes = useMemo(
-        () => buildKoMatchCodes(schedule?.matches ?? []),
-        [schedule],
-    )
     const [loading, setLoading] = useState(!cachedSchedule)
     const [generating, setGenerating] = useState(false)
     const [clearing, setClearing] = useState(false)
@@ -1442,7 +1423,6 @@ export default function ScheduleTab({
         const content = (
             <MatchRow
                 match={m}
-                code={koCodes.get(m.matchId) ?? null}
                 tournamentUuid={uuid}
                 tournamentName={tournamentName ?? "Futsal turnir"}
                 tournamentLocation={tournamentLocation}
@@ -1486,7 +1466,6 @@ export default function ScheduleTab({
         >
             <MatchCard
                 match={m}
-                code={koCodes.get(m.matchId) ?? null}
                 multiDay={multiDay}
                 onOpen={openMatch}
                 tournamentUuid={uuid}
@@ -1515,7 +1494,6 @@ export default function ScheduleTab({
         >
             <MatchCompactRow
                 match={m}
-                code={koCodes.get(m.matchId) ?? null}
                 multiDay={multiDay}
                 onOpen={openMatch}
                 tournamentUuid={uuid}
