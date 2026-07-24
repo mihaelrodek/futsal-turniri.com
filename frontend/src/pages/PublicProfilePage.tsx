@@ -51,7 +51,7 @@ import AvatarPreview from "../components/AvatarPreview"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
-import LiveStreamAdminTab from "../components/LiveStreamAdminTab"
+import SpectoConnectionCard from "../components/SpectoConnectionCard"
 import AdminPlayersListTab from "../components/AdminPlayersListTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
@@ -516,8 +516,12 @@ export default function PublicProfilePage() {
             )}
 
             {/* === LIVE STREAM tab - admin-only, on own profile === */}
+            {/* "Live stream" tab now hosts the SpectoStream connection card
+                (attach an EXISTING platform stream to a tournament + preview
+                its player). The old home-page banner admin (LiveStreamAdminTab)
+                was replaced per product request - the component file remains. */}
             {isOwner && isAdmin && profileTab === "live-stream" && (
-                <LiveStreamAdminTab />
+                <SpectoConnectionCard />
             )}
         </VStack>
     )

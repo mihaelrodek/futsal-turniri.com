@@ -225,7 +225,7 @@ public class KnockoutController {
         // TIMER-only gate as every other specto hook; fire-and-forget.
         matchesRepo.findByIdOptional(matchId).ifPresent(m -> {
             if (m.getLiveMode() == hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode.TIMER) {
-                specto.matchEnd(t, matchId);
+                specto.matchEnd(t, matchId, matchesRepo.findNextScheduled(t.getId(), matchId));
             }
         });
         return knockoutService.bracket(t.getId());

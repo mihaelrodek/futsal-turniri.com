@@ -3,7 +3,11 @@ package hr.mrodek.apps.futsal_turniri.integrations.spectostream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import hr.mrodek.apps.futsal_turniri.model.Matches;
+import hr.mrodek.apps.futsal_turniri.model.Player;
+import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
+import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -20,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -91,6 +96,13 @@ public class SpectoStreamService {
 
     private static final Logger LOG = Logger.getLogger(SpectoStreamService.class);
 
+    /** Setting keys backing the admin dashboard's connection form. Whatever is
+     *  stored here WINS over the {@code specto.*} config, so the operator can
+     *  point the integration at another deployment / rotate the key from the UI
+     *  without editing .env and restarting. Blank/absent → fall back to config. */
+    public static final String KEY_BASE_URL = "specto_base_url";
+    public static final String KEY_API_KEY = "specto_api_key";
+
     @ConfigProperty(name = "specto.base-url", defaultValue = "https://stream.safeflow.hr")
     String baseUrl;
 
@@ -106,6 +118,9 @@ public class SpectoStreamService {
 
     @Inject
     ObjectMapper json;
+
+    @Inject
+    AppSettingsRepository settings;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
@@ -148,16 +163,32 @@ public class SpectoStreamService {
         }
     }
 
-    /** True when streaming is enabled AND an API key is present. Off = every
-     *  event send is a silent no-op and {@link #provisionTournament} refuses. */
-    public boolean isConfigured() {
-        return enabled && apiKey.filter(k -> !k.isBlank()).isPresent();
+    /* ── Effective connection settings ──────────────────────────────────────
+       DB setting (admin dashboard) first, {@code specto.*} config as fallback.
+       CALL THESE ON THE REQUEST THREAD ONLY - they hit the database, and the
+       dispatch thread has no persistence context (see the JPA off-thread rule
+       above). Every public entry point resolves them before handing work to
+       `dispatch`, and the resolved strings travel with the job. */
+
+    /** Effective API key: DB setting wins, else {@code specto.api-key}, else "". */
+    private String key() {
+        String v = settings.get(KEY_API_KEY);
+        if (v != null && !v.isBlank()) return v.trim();
+        return apiKey.orElse("");
     }
 
-    /** The key to send, or "" when unset - only ever reached behind
-     *  {@link #isConfigured()}, so an empty value can't hit the wire. */
-    private String key() {
-        return apiKey.orElse("");
+    /** Effective base URL (no trailing slash): DB setting wins, else config. */
+    private String base() {
+        String v = settings.get(KEY_BASE_URL);
+        String raw = (v != null && !v.isBlank()) ? v.trim() : baseUrl;
+        return raw.replaceAll("/+$", "");
+    }
+
+    /** True when streaming is enabled AND an API key is present (from either
+     *  source). Off = every event send is a silent no-op and
+     *  {@link #provisionTournament} refuses. Request thread only. */
+    public boolean isConfigured() {
+        return enabled && !key().isBlank();
     }
 
     /** OBS ingest + playback + embed details returned by the tournament upsert.
@@ -196,7 +227,9 @@ public class SpectoStreamService {
             throw new WebApplicationException("SpectoStream: povezivanje streama nije uspjelo.", 502);
         }
 
-        HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/tournaments/" + uuid))
+        // Resolved once here (request thread - DB reads are safe).
+        final String apiBase = base();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(apiBase + "/v1/tournaments/" + uuid))
                 .timeout(Duration.ofSeconds(5))
                 .header("Authorization", "Bearer " + key())
                 .header("Content-Type", "application/json")
@@ -233,8 +266,8 @@ public class SpectoStreamService {
                 playback = urls.path("playback_hls").asText(null);
             }
             String playbackUrl = playback == null || playback.isBlank()
-                    ? baseUrl + "/v1/streams/" + streamId + "/master.m3u8"
-                    : (playback.startsWith("http") ? playback : baseUrl + playback);
+                    ? apiBase + "/v1/streams/" + streamId + "/master.m3u8"
+                    : (playback.startsWith("http") ? playback : apiBase + playback);
             ProvisionInfo info = new ProvisionInfo(
                     streamId,
                     urls.path("obs_server").asText(null),
@@ -257,23 +290,164 @@ public class SpectoStreamService {
         t.setSpectoStreamId(null);
     }
 
+    /** Attach an EXISTING SpectoStream broadcast by its id, without provisioning
+     *  a new one. For streams created directly on the platform. No upstream call
+     *  — the id is simply recorded, after which the live hooks relay events to it
+     *  and the player mounts. Blank clears the link. */
+    public void linkExisting(Tournaments t, String streamId) {
+        String id = streamId == null ? null : streamId.trim();
+        t.setSpectoStreamId(id == null || id.isEmpty() ? null : id);
+    }
+
+    /* ── Admin connection settings (dashboard form) ─────────────────────────── */
+
+    /** Effective connection settings for the admin form. The key is NEVER
+     *  returned - only whether one is set and where it came from. */
+    public record ConnectionInfo(String baseUrl, boolean apiKeySet, boolean apiKeyFromDb,
+                                 String apiKeyHint, boolean enabled) {}
+
+    /** Current effective connection, for the admin dashboard. Request thread. */
+    public ConnectionInfo connectionInfo() {
+        String dbKey = settings.get(KEY_API_KEY);
+        boolean fromDb = dbKey != null && !dbKey.isBlank();
+        String effective = key();
+        // Last 4 chars only - enough to tell two keys apart, useless if leaked.
+        String hint = effective.isBlank() ? null
+                : (effective.length() <= 4 ? "…" : "…" + effective.substring(effective.length() - 4));
+        return new ConnectionInfo(base(), !effective.isBlank(), fromDb, hint, enabled);
+    }
+
+    /**
+     * Save the connection settings from the admin dashboard. A null/blank
+     * {@code apiKey} LEAVES the stored key untouched (so the form can be saved
+     * without re-typing the secret); pass {@code clearApiKey} to remove it and
+     * fall back to {@code specto.api-key}. Takes effect immediately - no restart.
+     */
+    public void saveConnection(String newBaseUrl, String newApiKey, boolean clearApiKey) {
+        String b = newBaseUrl == null ? null : newBaseUrl.trim().replaceAll("/+$", "");
+        settings.put(KEY_BASE_URL, b == null || b.isEmpty() ? null : b);
+        if (clearApiKey) {
+            settings.put(KEY_API_KEY, null);
+        } else if (newApiKey != null && !newApiKey.isBlank()) {
+            settings.put(KEY_API_KEY, newApiKey.trim());
+        }
+    }
+
+    /** Public HLS manifest for a stream - what the home-page banner plays. */
+    public String embedUrl(String streamId) {
+        return base() + "/v1/streams/" + streamId + "/master.m3u8";
+    }
+
+    /** Whether THIS tournament's stream is the one currently live on the home
+     *  page, plus the values the admin card renders. */
+    public record BroadcastStatus(String streamId, boolean broadcasting, String playbackUrl) {}
+
+    /** Broadcast status for the admin card. Request thread (reads settings). */
+    public BroadcastStatus broadcastStatus(Tournaments t) {
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return new BroadcastStatus(null, false, null);
+        String state = settings.get("stream_banner_state");
+        String bannerTournament = settings.get("stream_banner_tournament");
+        boolean live = "STREAMING".equals(state)
+                && t.getUuid() != null && t.getUuid().toString().equals(bannerTournament);
+        return new BroadcastStatus(streamId, live, embedUrl(streamId));
+    }
+
+    /**
+     * Verify the current settings against the platform: GETs the stream's public
+     * state. Returns null when reachable, else a short Croatian reason. Used by
+     * the dashboard's "connect" button so a bad key/url surfaces immediately
+     * instead of silently swallowing every later event.
+     */
+    public String verify(String streamId) {
+        String id = streamId == null ? null : streamId.trim();
+        if (id == null || id.isEmpty()) return "Stream ID je prazan.";
+        if (!isConfigured()) return "API ključ nije postavljen.";
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(base() + "/v1/streams/" + id + "/state"))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            int code = res.statusCode();
+            if (code == 404) return "Stream s tim ID-om ne postoji.";
+            if (code < 200 || code >= 300) return "Servis je vratio HTTP " + code + ".";
+            return null;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return "Provjera je prekinuta.";
+        } catch (Exception e) {
+            LOG.warnf(e, "SpectoStream: provjera streama %s nije uspjela", id);
+            return "Servis nije dostupan na toj adresi.";
+        }
+    }
+
     // ── Fire-and-forget events ──────────────────────────────────────────────
     // Every method below: no-op when !isConfigured() or the tournament isn't
     // linked; read the stream id on the request thread; never throw; never block.
 
-    /** Start of a match — resets the scoreboard, so it MUST precede its period. */
-    public void matchStart(Tournaments t, long matchId, String homeName, String awayName) {
+    /**
+     * Start of a match — resets the scoreboard, so it MUST precede its period.
+     * Carries each side's kit colours when the organizer set them on the Ekipe
+     * tab, so the overlay draws the real jerseys instead of its defaults.
+     */
+    public void matchStart(Tournaments t, long matchId, Teams home, Teams away) {
         if (!isConfigured()) return;
         String streamId = t.getSpectoStreamId();
         if (streamId == null) return;
 
+        String homeName = home != null ? home.getName() : null;
+        String awayName = away != null ? away.getName() : null;
         ObjectNode payload = json.createObjectNode();
         payload.put("home_name", fullName(homeName));
         payload.put("home_short", shortCode(homeName));
         payload.put("away_name", fullName(awayName));
         payload.put("away_short", shortCode(awayName));
+        putColour(payload, "home_jersey", home != null ? home.getJerseyColor() : null);
+        putColour(payload, "home_shorts", home != null ? home.getShortsColor() : null);
+        putColour(payload, "away_jersey", away != null ? away.getJerseyColor() : null);
+        putColour(payload, "away_shorts", away != null ? away.getShortsColor() : null);
         enqueue(streamId, "match_start", "m" + matchId + "-match_start",
                 Instant.now().toString(), payload);
+    }
+
+    /**
+     * Announce the next fixture on the overlay ("uskoro"): teams, their kit
+     * colours and the kickoff. Sent as the payload of {@code match_end} and
+     * {@code stream_start}, where every {@code next_*} field is optional - an
+     * unknown side (a knockout slot still to be decided) is simply omitted and
+     * the platform falls back to showing nothing.
+     */
+    private void putNextMatch(ObjectNode payload, Matches next) {
+        if (next == null) return;
+        Teams h = next.getTeam1();
+        Teams a = next.getTeam2();
+        if (h != null) {
+            payload.put("next_home_name", fullName(h.getName()));
+            payload.put("next_home_short", shortCode(h.getName()));
+            putColour(payload, "next_home_jersey", h.getJerseyColor());
+            putColour(payload, "next_home_shorts", h.getShortsColor());
+        }
+        if (a != null) {
+            payload.put("next_away_name", fullName(a.getName()));
+            payload.put("next_away_short", shortCode(a.getName()));
+            putColour(payload, "next_away_jersey", a.getJerseyColor());
+            putColour(payload, "next_away_shorts", a.getShortsColor());
+        }
+        if (next.getKickoffAt() != null) {
+            payload.put("next_kickoff_at", next.getKickoffAt().toInstant().toString());
+        }
+    }
+
+    /** Write a kit colour only when it is a usable {@code #RRGGBB} - the API
+     *  rejects anything else, and a rejected event would take the whole
+     *  match_start (scoreboard reset) down with it. */
+    private static void putColour(ObjectNode payload, String field, String colour) {
+        if (colour == null) return;
+        String c = colour.trim();
+        if (!c.matches("^#[0-9a-fA-F]{6}$")) return;
+        payload.put(field, c);
     }
 
     /** Start of a period — the overlay clock runs from occurred_at + clock_seconds. */
@@ -329,7 +503,7 @@ public class SpectoStreamService {
         if (streamId == null) return;
 
         cancelPeriodEnd(matchId);
-        sendPeriodEndExact(streamId, matchId, period, clockSeconds, occurredAt);
+        sendPeriodEndExact(base(), key(), streamId, matchId, period, clockSeconds, occurredAt);
     }
 
     /**
@@ -338,8 +512,9 @@ public class SpectoStreamService {
      * any timer already armed for this match. A boundary already in the past
      * fires immediately.
      *
-     * <p>Reads the stream id on the CALLER's thread (JPA off-thread rule) —
-     * the timer body only ever sees strings.
+     * <p>Reads the stream id AND the connection settings on the CALLER's thread
+     * (JPA off-thread rule) — the timer body only ever sees strings, so it never
+     * touches the database from the clock thread.
      */
     public void schedulePeriodEnd(Tournaments t, long matchId, int period, long clockSeconds, Instant endAt) {
         if (!isConfigured()) return;
@@ -347,6 +522,8 @@ public class SpectoStreamService {
         if (streamId == null) return;
 
         cancelPeriodEnd(matchId);
+        final String apiBase = base();
+        final String apiKeyNow = key();
         long delayMs = Math.max(0, Duration.between(Instant.now(), endAt).toMillis());
         try {
             // The task deliberately does NOT evict its own map entry. It can only
@@ -357,7 +534,7 @@ public class SpectoStreamService {
             // nothing (it is overwritten on re-arm and dropped by every terminal
             // path: period end, match end, reset).
             ScheduledFuture<?> f = clockTimers.schedule(
-                    () -> sendPeriodEndExact(streamId, matchId, period, clockSeconds, endAt),
+                    () -> sendPeriodEndExact(apiBase, apiKeyNow, streamId, matchId, period, clockSeconds, endAt),
                     delayMs, TimeUnit.MILLISECONDS);
             periodEndTimers.put(matchId, f);
         } catch (RejectedExecutionException ree) {
@@ -372,24 +549,63 @@ public class SpectoStreamService {
         if (f != null) f.cancel(false);
     }
 
-    private void sendPeriodEndExact(String streamId, long matchId, int period, long clockSeconds, Instant occurredAt) {
+    /** Runs on the CLOCK thread when armed by {@link #schedulePeriodEnd} - so it
+     *  takes pre-resolved connection settings and never reads the database. */
+    private void sendPeriodEndExact(String apiBase, String apiKeyNow, String streamId,
+                                    long matchId, int period, long clockSeconds, Instant occurredAt) {
         String at = occurredAt.toString();
         ObjectNode sync = json.createObjectNode();
         sync.put("clock_seconds", clockSeconds);
-        enqueue(streamId, "clock_sync", "m" + matchId + "-p" + period + "-end-sync", at, sync);
-        enqueue(streamId, "period_end", "m" + matchId + "-p" + period + "-end", at, json.createObjectNode());
+        enqueueResolved(apiBase, apiKeyNow, streamId, "clock_sync",
+                "m" + matchId + "-p" + period + "-end-sync", at, sync);
+        enqueueResolved(apiBase, apiKeyNow, streamId, "period_end",
+                "m" + matchId + "-p" + period + "-end", at, json.createObjectNode());
     }
 
     /** End of a match — clock freezes, status = ended. Also disarms the
      *  automatic period end: a match finished early must not get a period_end
-     *  minutes later, when the half it never played out would have expired. */
-    public void matchEnd(Tournaments t, long matchId) {
+     *  minutes later, when the half it never played out would have expired.
+     *
+     *  <p>{@code next} (optional) announces the following fixture on the
+     *  overlay until the next {@code match_start}. */
+    public void matchEnd(Tournaments t, long matchId, Matches next) {
         if (!isConfigured()) return;
         String streamId = t.getSpectoStreamId();
         if (streamId == null) return;
 
         cancelPeriodEnd(matchId);
+        ObjectNode payload = json.createObjectNode();
+        putNextMatch(payload, next);
         enqueue(streamId, "match_end", "m" + matchId + "-match_end",
+                Instant.now().toString(), payload);
+    }
+
+    /**
+     * Tell the platform the camera is broadcasting — clears the viewer's
+     * "Uskoro" placeholder. Delivered without the broadcast delay, unlike every
+     * other event. {@code next} (optional) announces the first fixture until a
+     * {@code match_start} arrives. Fired when the admin starts the stream.
+     */
+    public void streamStart(Tournaments t, Matches next) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        putNextMatch(payload, next);
+        // Random key: starting the camera again is a genuinely new event, not a
+        // retry of the previous one (idempotency must not swallow it).
+        enqueue(streamId, "stream_start", UUID.randomUUID().toString(),
+                Instant.now().toString(), payload);
+    }
+
+    /** Tell the platform the camera stopped broadcasting. */
+    public void streamEnd(Tournaments t) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        enqueue(streamId, "stream_end", UUID.randomUUID().toString(),
                 Instant.now().toString(), json.createObjectNode());
     }
 
@@ -436,6 +652,73 @@ public class SpectoStreamService {
                 Instant.now().toString(), payload);
     }
 
+    /**
+     * Push the squads onto the overlay: the platform pops a "sastavi" panel
+     * (number + name per side) for ~10s and keeps them until {@code match_end}.
+     *
+     * <p>Each side is optional and sent ONLY when that team has players - an
+     * omitted side leaves whatever the platform already had, so a half-filled
+     * roster never wipes the other team's list. Players without a shirt number
+     * are still sent (the number is the optional part, the name is not), capped
+     * at the API's 40-per-side limit.
+     */
+    public void lineup(Tournaments t, List<Player> home, List<Player> away) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        boolean any = false;
+        if (home != null && !home.isEmpty()) { putSquad(payload, "home", home); any = true; }
+        if (away != null && !away.isEmpty()) { putSquad(payload, "away", away); any = true; }
+        if (!any) return; // nothing to show - don't spend an event on it
+
+        enqueue(streamId, "lineup", UUID.randomUUID().toString(),
+                Instant.now().toString(), payload);
+    }
+
+    /** One side's squad as the API's {@code [{number, name}]} array. */
+    private void putSquad(ObjectNode payload, String side, List<Player> players) {
+        var arr = payload.putArray(side);
+        int n = 0;
+        for (Player p : players) {
+            if (p.getName() == null || p.getName().isBlank()) continue;
+            if (n++ >= 40) break; // API cap
+            ObjectNode row = arr.addObject();
+            Integer num = p.getNumber();
+            // number is optional, 0-999; skip anything the API would reject.
+            if (num != null && num >= 0 && num <= 999) row.put("number", num);
+            row.put("name", fullName(p.getName()));
+        }
+    }
+
+    /**
+     * Start a standalone countdown on the overlay (e.g. "12 min do početka") -
+     * independent of the match clock. Counts down from {@code seconds} and
+     * freezes at 0:00; a new start replaces any running one. The API accepts
+     * 1-3600 s, so the value is clamped rather than rejected.
+     */
+    public void timerStart(Tournaments t, int seconds) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        payload.put("duration_seconds", Math.max(1, Math.min(3600, seconds)));
+        enqueue(streamId, "timer_start", UUID.randomUUID().toString(),
+                Instant.now().toString(), payload);
+    }
+
+    /** Clear the countdown - the chip disappears. Safe when none is running. */
+    public void timerStop(Tournaments t) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        enqueue(streamId, "timer_stop", UUID.randomUUID().toString(),
+                Instant.now().toString(), json.createObjectNode());
+    }
+
     /** Free-text overlay message. Random idempotency key — every send is new. */
     public void customMessage(Tournaments t, String text) {
         if (!isConfigured()) return;
@@ -451,19 +734,35 @@ public class SpectoStreamService {
     // ── Internals ───────────────────────────────────────────────────────────
 
     /** Hand one event to the dispatch thread. Never blocks; if the executor is
-     *  shutting down the event is dropped rather than surfaced to the caller. */
+     *  shutting down the event is dropped rather than surfaced to the caller.
+     *
+     *  <p>The connection settings are resolved HERE - on the request thread -
+     *  because {@link #base()}/{@link #key()} read the database and the dispatch
+     *  thread has no persistence context. The resolved strings travel with the
+     *  job, so a settings change mid-flight can't strand an in-queue event. */
     private void enqueue(String streamId, String type, String idempotencyKey,
                          String occurredAt, ObjectNode payload) {
+        enqueueResolved(base(), key(), streamId, type, idempotencyKey, occurredAt, payload);
+    }
+
+    /** Queue an event whose connection settings the CALLER already resolved -
+     *  used by the clock-thread timer, which must not read the database. */
+    private void enqueueResolved(String apiBase, String apiKeyNow, String streamId, String type,
+                                 String idempotencyKey, String occurredAt, ObjectNode payload) {
         try {
-            dispatch.execute(() -> sendWithRetry(streamId, type, idempotencyKey, occurredAt, payload));
+            dispatch.execute(() ->
+                    sendWithRetry(apiBase, apiKeyNow, streamId, type, idempotencyKey, occurredAt, payload));
         } catch (RejectedExecutionException ree) {
             LOG.debugf("SpectoStream: dispatch odbijen za event '%s' (stream %s)", type, streamId);
         }
     }
 
     /** Build + POST the event, with one retry after ~1s on IOException/5xx, then
-     *  give up with a WARN. Runs only on the dispatch thread. */
-    private void sendWithRetry(String streamId, String type, String idempotencyKey,
+     *  give up with a WARN. Runs only on the dispatch thread - so it takes the
+     *  base URL + key as parameters (resolved by the caller) and never touches
+     *  the database itself. */
+    private void sendWithRetry(String apiBase, String apiKeyNow,
+                               String streamId, String type, String idempotencyKey,
                                String occurredAt, ObjectNode payload) {
         String bodyJson;
         try {
@@ -478,13 +777,13 @@ public class SpectoStreamService {
             return;
         }
 
-        URI uri = URI.create(baseUrl + "/v1/streams/" + streamId + "/events");
+        URI uri = URI.create(apiBase + "/v1/streams/" + streamId + "/events");
 
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 HttpRequest req = HttpRequest.newBuilder(uri)
                         .timeout(Duration.ofSeconds(5))
-                        .header("Authorization", "Bearer " + key())
+                        .header("Authorization", "Bearer " + apiKeyNow)
                         .header("Content-Type", "application/json")
                         .header("Accept", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8))

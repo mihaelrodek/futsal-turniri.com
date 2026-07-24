@@ -2118,9 +2118,14 @@ public class TournamentController {
         // kick off period 1 on the overlay. TIMER matches only (a SIMPLE match
         // isn't tracked); async fire-and-forget. Names mirror the live DTO.
         if (t != null && spectoDrives(match)) {
-            specto.matchStart(t, matchId,
-                    match.getTeam1() != null ? match.getTeam1().getName() : null,
-                    match.getTeam2() != null ? match.getTeam2().getName() : null);
+            // Teams (not just names) so the overlay gets each side's kit colours.
+            specto.matchStart(t, matchId, match.getTeam1(), match.getTeam2());
+            // Squads right after the scoreboard reset. Dispatch is a single FIFO
+            // thread, so this can't overtake match_start; the platform keeps the
+            // lineups until match_end wipes them.
+            specto.lineup(t,
+                    match.getTeam1() != null ? playerRepo.findByTeam_Id(match.getTeam1().getId()) : null,
+                    match.getTeam2() != null ? playerRepo.findByTeam_Id(match.getTeam2().getId()) : null);
             specto.periodStart(t, matchId, 1, 0);
             // Arm the whistle: the overlay clock stops itself at the half length
             // instead of running on until the organizer taps "završi 1. pol.".
@@ -2190,7 +2195,11 @@ public class TournamentController {
         // SpectoStream: the match is over - close it on the overlay. TIMER only;
         // async fire-and-forget. (Knockout matches finish via the bracket result
         // endpoint, not here, so a knockout TIMER match is closed there.)
-        if (t != null && spectoDrives(match)) specto.matchEnd(t, matchId);
+        if (t != null && spectoDrives(match)) {
+            // Announce what's on next (teams + kit colours + kickoff) so the
+            // overlay shows it until the following match_start.
+            specto.matchEnd(t, matchId, matchesRepo.findNextScheduled(t.getId(), matchId));
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 

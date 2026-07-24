@@ -96,6 +96,141 @@ export async function unlinkSpecto(uuid: string): Promise<void> {
     } as any)
 }
 
+/**
+ * Attach an EXISTING stream (created directly on the platform) to the
+ * tournament by its id - no provisioning. Blank id clears the link.
+ */
+export async function linkSpectoStream(uuid: string, streamId: string): Promise<SpectoStatus> {
+    const { data } = await http.post<SpectoStatus>(
+        `/tournaments/${uuid}/specto/link`,
+        { streamId },
+        { successMessage: "Stream je povezan s turnirom." } as any,
+    )
+    return data
+}
+
+/* ── Admin: site-wide connection settings ───────────────────────────────────
+   The platform URL + API key normally live in the server's .env
+   (`specto.base-url` / `specto.api-key`). Saving them here stores them in the
+   database instead, where they WIN over the config and apply immediately - no
+   restart. The key is WRITE-ONLY: the server never sends it back, only whether
+   one is set, where it came from, and its last four characters. Admin-only. */
+
+/** Effective SpectoStream connection, as reported by the server. */
+export type SpectoConnection = {
+    /** Platform base URL currently in effect. */
+    baseUrl: string
+    /** Whether ANY key is in effect (from the database or .env). */
+    apiKeySet: boolean
+    /** True when the effective key comes from the database (this form), false
+     *  when it falls back to the server's .env config. */
+    apiKeyFromDb: boolean
+    /** Last four characters of the effective key ("…a1b2"), or null. */
+    apiKeyHint: string | null
+    /** The `specto.enabled` master switch. */
+    enabled: boolean
+}
+
+/** Current effective connection settings. */
+export async function fetchSpectoConnection(): Promise<SpectoConnection> {
+    const { data } = await http.get<SpectoConnection>("/specto-admin/connection")
+    return data
+}
+
+/**
+ * Save the connection. Leave `apiKey` empty to KEEP the stored key (so the
+ * form can be saved without re-typing the secret); pass `clearApiKey` to drop
+ * it and fall back to the server's .env value.
+ */
+export async function saveSpectoConnection(body: {
+    baseUrl: string
+    apiKey?: string
+    clearApiKey?: boolean
+}): Promise<SpectoConnection> {
+    const { data } = await http.put<SpectoConnection>("/specto-admin/connection", body, {
+        successMessage: "Postavke streama su spremljene.",
+    } as any)
+    return data
+}
+
+/** Check the saved connection can actually reach a given stream. */
+export async function verifySpectoStream(streamId: string): Promise<{ ok: boolean; reason: string | null }> {
+    const { data } = await http.post<{ ok: boolean; reason: string | null }>(
+        "/specto-admin/verify",
+        { streamId },
+        { silent: true } as any,
+    )
+    return data
+}
+
+/* ── Broadcast on/off (home-page banner + overlay camera state) ─────────── */
+
+/** Whether this tournament's stream is the one currently live on the home page. */
+export type SpectoBroadcast = {
+    streamId: string | null
+    /** True when the home-page banner is STREAMING *and* points at this stream. */
+    broadcasting: boolean
+    /** Public HLS manifest the banner plays. */
+    playbackUrl: string | null
+}
+
+/** Current broadcast status for one tournament. */
+export async function fetchSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
+    const { data } = await http.get<SpectoBroadcast>("/specto-admin/broadcast", {
+        params: { tournamentUuid },
+    })
+    return data
+}
+
+/**
+ * START: tell the platform the camera is live (announcing the next fixture on
+ * the overlay) AND put this stream on the home page.
+ */
+export async function startSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
+    const { data } = await http.post<SpectoBroadcast>(
+        "/specto-admin/broadcast/start",
+        { tournamentUuid },
+        { successMessage: "Stream je pokrenut i prikazuje se na glavnoj." } as any,
+    )
+    return data
+}
+
+/** STOP: camera off on the overlay + take the banner out of STREAMING. */
+export async function stopSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
+    const { data } = await http.post<SpectoBroadcast>(
+        "/specto-admin/broadcast/stop",
+        { tournamentUuid },
+        { successMessage: "Stream je zaustavljen." } as any,
+    )
+    return data
+}
+
+/* ── Lineups + standalone countdown ─────────────────────────────────────── */
+
+/**
+ * Push the squads of the tournament's CURRENT match (the live one, else the
+ * next scheduled) onto the overlay. Rosters come from the Ekipe tab.
+ */
+export async function sendSpectoLineup(tournamentUuid: string): Promise<void> {
+    await http.post("/specto-admin/lineup", { tournamentUuid }, {
+        successMessage: "Sastavi su poslani na stream.",
+    } as any)
+}
+
+/** Start / restart the standalone countdown chip (1-3600 s). */
+export async function startSpectoTimer(tournamentUuid: string, seconds: number): Promise<void> {
+    await http.post("/specto-admin/timer/start", { tournamentUuid, seconds }, {
+        successMessage: "Odbrojavanje je pokrenuto.",
+    } as any)
+}
+
+/** Clear the countdown chip. Also backs "pauza" - the caller restarts it with
+ *  the remaining seconds, since the platform API has no pause of its own. */
+export async function stopSpectoTimer(tournamentUuid: string, silent = false): Promise<void> {
+    await http.post("/specto-admin/timer/stop", { tournamentUuid },
+        (silent ? { silent: true } : { successMessage: "Odbrojavanje je zaustavljeno." }) as any)
+}
+
 /** Push a short text message onto the tournament's live-stream overlay. */
 export async function sendSpectoMessage(uuid: string, text: string): Promise<void> {
     await http.post(

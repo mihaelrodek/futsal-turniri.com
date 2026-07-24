@@ -56,6 +56,9 @@ public class SpectoStreamController {
     /** Body for a manual custom overlay message. */
     public record SpectoMessageRequest(String text) {}
 
+    /** Body for attaching an existing stream by id. */
+    public record SpectoLinkRequest(String streamId) {}
+
     /** Public view: just the stream id a viewer needs to mount the player. */
     public record SpectoPublicDto(String streamId) {}
 
@@ -106,6 +109,28 @@ public class SpectoStreamController {
         // failure, which propagates as-is (and rolls back this transaction).
         SpectoStreamService.ProvisionInfo info = specto.provisionTournament(t);
         return Response.ok(info).build();
+    }
+
+    /**
+     * Attach an EXISTING SpectoStream broadcast by id, without provisioning a
+     * new one - for a stream created directly on the platform. No upstream call
+     * is made: the id is simply recorded, after which the live hooks relay
+     * events to it and viewers' players mount. A blank id clears the link
+     * (same as DELETE). Organizer-guarded.
+     */
+    @POST
+    @Path("/link")
+    @Transactional
+    public Response link(@PathParam("uuid") String uuid, SpectoLinkRequest body) {
+        Tournaments t = resolveAndGuard(uuid);
+        String streamId = body == null || body.streamId() == null ? null : body.streamId().trim();
+        if (streamId != null && streamId.length() > 200) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Stream ID je predugačak.").build();
+        }
+        specto.linkExisting(t, streamId);
+        return Response.ok(new SpectoStatusDto(
+                specto.isConfigured(), t.getSpectoStreamId() != null, t.getSpectoStreamId())).build();
     }
 
     /** Unlink the tournament from its SpectoStream broadcast (clears the stream

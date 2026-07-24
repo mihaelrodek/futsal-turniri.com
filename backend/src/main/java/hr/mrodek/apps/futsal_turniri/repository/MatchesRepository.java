@@ -222,5 +222,31 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
                 .getResultList();
     }
 
-
+    /**
+     * The next SCHEDULED fixture of ONE tournament by kickoff, or null when
+     * none is left. Used to announce "what's on next" on the live-stream
+     * overlay. Both teams are eagerly fetched because the caller reads their
+     * names + kit colours; a knockout slot with an undecided side still
+     * qualifies (the announcement simply omits that team).
+     *
+     * <p>{@code excludeMatchId} drops the match that has just finished - its
+     * status may not have been flushed yet when this runs.
+     */
+    public Matches findNextScheduled(Long tournamentId, Long excludeMatchId) {
+        List<Matches> rows = em.createQuery("""
+                        select m from Matches m
+                        left join fetch m.team1
+                        left join fetch m.team2
+                        where m.tournament.id = :tid
+                          and m.status = hr.mrodek.apps.futsal_turniri.enums.MatchStatus.SCHEDULED
+                          and m.kickoffAt is not null
+                          and (:exclude is null or m.id <> :exclude)
+                        order by m.kickoffAt asc
+                        """, Matches.class)
+                .setParameter("tid", tournamentId)
+                .setParameter("exclude", excludeMatchId)
+                .setMaxResults(1)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.get(0);
+    }
 }
