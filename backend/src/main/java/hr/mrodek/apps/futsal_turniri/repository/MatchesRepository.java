@@ -223,11 +223,13 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
     }
 
     /**
-     * The next SCHEDULED fixture of ONE tournament by kickoff, or null when
-     * none is left. Used to announce "what's on next" on the live-stream
-     * overlay. Both teams are eagerly fetched because the caller reads their
-     * names + kit colours; a knockout slot with an undecided side still
-     * qualifies (the announcement simply omits that team).
+     * The next SCHEDULED fixture of ONE tournament, or null when none is left.
+     * Timed matches win and are ordered by kickoff; if the schedule exists
+     * without concrete times yet, fall back to the first fixture by round/table.
+     * Used to announce "what's on next" on the live-stream overlay. Both teams
+     * are eagerly fetched because the caller reads their names + kit colours; a
+     * knockout slot with an undecided side still qualifies (the announcement
+     * simply omits that team).
      *
      * <p>{@code excludeMatchId} drops the match that has just finished - its
      * status may not have been flushed yet when this runs.
@@ -239,9 +241,13 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
                         left join fetch m.team2
                         where m.tournament.id = :tid
                           and m.status = hr.mrodek.apps.futsal_turniri.enums.MatchStatus.SCHEDULED
-                          and m.kickoffAt is not null
                           and (:exclude is null or m.id <> :exclude)
-                        order by m.kickoffAt asc
+                        order by
+                          case when m.kickoffAt is null then 1 else 0 end asc,
+                          m.kickoffAt asc,
+                          m.round.number asc,
+                          m.tableNo asc nulls last,
+                          m.id asc
                         """, Matches.class)
                 .setParameter("tid", tournamentId)
                 .setParameter("exclude", excludeMatchId)

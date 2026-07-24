@@ -2224,6 +2224,12 @@ public class TournamentController {
         assertCanEdit(match.getTournament());
         assertMatchesMutable(match.getTournament());
 
+        // SpectoStream has no `reset` event (and rejects it). Close the
+        // currently rendered match instead; the next valid `match_start`
+        // automatically resets its scoreboard to 0:0 before period 1 begins.
+        Tournaments tournament = match.getTournament();
+        boolean closeSpectoMatch = tournament != null && spectoDrives(match);
+
         matchEventRepo.deleteByMatch_Id(match.getId());
 
         match.setStatus(MatchStatus.SCHEDULED);
@@ -2246,6 +2252,11 @@ public class TournamentController {
         // The match no longer has a clock, so nothing may still be waiting to
         // stop one: drop any armed auto-end before it fires into the void.
         specto.cancelPeriodEnd(matchId);
+        if (closeSpectoMatch) {
+            // The reset match is scheduled again, so announce it as the next
+            // fixture rather than leaving the old live score on the overlay.
+            specto.matchEnd(tournament, matchId, match);
+        }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
