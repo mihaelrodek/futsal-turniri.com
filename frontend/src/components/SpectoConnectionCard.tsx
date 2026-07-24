@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Box, Button, HStack, Input, NativeSelect, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiCheck, FiClock, FiLink, FiPause, FiPlay, FiRadio, FiSlash, FiSquare, FiUsers } from "react-icons/fi"
+import { FiCheck, FiClock, FiEdit2, FiLink, FiPause, FiPlay, FiRadio, FiSlash, FiSquare, FiUsers } from "react-icons/fi"
 
 import {
     fetchSpectoBroadcast,
@@ -13,6 +13,7 @@ import {
     startSpectoTimer,
     stopSpectoBroadcast,
     stopSpectoTimer,
+    unlinkSpecto,
     verifySpectoStream,
     type SpectoBroadcast,
     type SpectoConnection,
@@ -21,6 +22,12 @@ import { adminListTournaments, type AdminTournamentDto } from "../api/admin"
 import SpectoEmbed from "./SpectoEmbed"
 import { MonoLabel, SectionCard, StatusChip } from "../ui/pitch"
 import { showError } from "../toaster"
+
+type LinkedStream = {
+    tournament: AdminTournamentDto
+    streamId: string
+    broadcast: SpectoBroadcast | null
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    SpectoConnectionCard - the admin "Live stream" tab.
@@ -57,6 +64,8 @@ export default function SpectoConnectionCard() {
     const [tournamentUuid, setTournamentUuid] = useState("")
     /** Whether THIS tournament's stream is the live home-page banner. */
     const [broadcast, setBroadcast] = useState<SpectoBroadcast | null>(null)
+    const [linkedStreams, setLinkedStreams] = useState<LinkedStream[]>([])
+    const [loadingLinkedStreams, setLoadingLinkedStreams] = useState(true)
 
     /* Standalone countdown ("do početka"). The platform API only has
        start/stop, so PAUSE is done client-side: stop the chip and keep the
@@ -73,6 +82,32 @@ export default function SpectoConnectionCard() {
         ? Math.max(0, Math.round((timerEndsAt - Date.now()) / 1000))
         : (timerLeft ?? 0)
 
+    /** The overview is useful before a tournament is selected. */
+    const refreshLinkedStreams = useCallback(async (rows: AdminTournamentDto[]) => {
+        setLoadingLinkedStreams(true)
+        try {
+            const statuses = await Promise.all(
+                rows
+                    .filter((t) => !!t.uuid)
+                    .map(async (t) => ({ tournament: t, status: await fetchSpectoStatus(t.uuid!) })),
+            )
+            const streams = await Promise.all(
+                statuses
+                    .filter((row) => !!row.status.streamId)
+                    .map(async ({ tournament, status }) => ({
+                        tournament,
+                        streamId: status.streamId!,
+                        broadcast: await fetchSpectoBroadcast(tournament.uuid!).catch(() => null),
+                    })),
+            )
+            setLinkedStreams(streams)
+        } catch {
+            /* The editor below remains available if the overview cannot load. */
+        } finally {
+            setLoadingLinkedStreams(false)
+        }
+    }, [])
+
     useEffect(() => {
         let cancelled = false
         fetchSpectoConnection()
@@ -84,10 +119,14 @@ export default function SpectoConnectionCard() {
             .catch(() => { /* interceptor toasts */ })
             .finally(() => { if (!cancelled) setLoading(false) })
         adminListTournaments()
-            .then((rows) => { if (!cancelled) setTournaments(rows) })
+            .then((rows) => {
+                if (cancelled) return
+                setTournaments(rows)
+                void refreshLinkedStreams(rows)
+            })
             .catch(() => { /* interceptor toasts */ })
         return () => { cancelled = true }
-    }, [])
+    }, [refreshLinkedStreams])
 
     // Selecting an already-linked tournament prefills its SAVED stream id,
     // mounts the player and reflects whether it is currently broadcasting - so
@@ -169,6 +208,7 @@ export default function SpectoConnectionCard() {
             await linkSpectoStream(tournamentUuid, id)
             setPreview(id)
             setBroadcast(await fetchSpectoBroadcast(tournamentUuid))
+            await refreshLinkedStreams(tournaments)
         } catch {
             /* interceptor toasts the HTTP error */
         } finally {
@@ -271,6 +311,31 @@ export default function SpectoConnectionCard() {
         }
     }
 
+    /** Opens an existing tournament link in the editor. */
+    function editLinkedStream(link: LinkedStream) {
+        setTournamentUuid(link.tournament.uuid ?? "")
+        setStreamId(link.streamId)
+        setPreview(link.streamId)
+        setBroadcast(link.broadcast)
+    }
+
+    async function disconnectStream() {
+        if (!tournamentUuid || !preview) return
+        if (!window.confirm("Odspojiti stream od ovog turnira?")) return
+        setBusy(true)
+        try {
+            await unlinkSpecto(tournamentUuid)
+            setStreamId("")
+            setPreview(null)
+            setBroadcast(null)
+            await refreshLinkedStreams(tournaments)
+        } catch {
+            /* interceptor toasts the HTTP error */
+        } finally {
+            setBusy(false)
+        }
+    }
+
     if (loading) {
         return (
             <SectionCard icon={FiRadio} title="Live stream - povezivanje">
@@ -301,6 +366,49 @@ export default function SpectoConnectionCard() {
                     kreira. URL i ključ vrijede za cijelu aplikaciju i primjenjuju se
                     odmah, bez restarta; Stream ID se pridružuje odabranom turniru.
                 </Text>
+
+                <Box borderBottomWidth="1px" borderColor="border" pb="4">
+                    <MonoLabel mb="2" display="block">AKTIVNI STREAMOVI NA TURNIRIMA</MonoLabel>
+                    {loadingLinkedStreams ? (
+                        <HStack gap="2" color="fg.muted">
+                            <Spinner size="xs" />
+                            <Text fontSize="sm">Učitavam streamove…</Text>
+                        </HStack>
+                    ) : linkedStreams.length === 0 ? (
+                        <Text fontSize="sm" color="fg.muted">Trenutno nema povezanih streamova.</Text>
+                    ) : (
+                        <VStack align="stretch" gap="2">
+                            {linkedStreams.map((link) => (
+                                <HStack
+                                    key={link.tournament.uuid}
+                                    justify="space-between"
+                                    gap="3"
+                                    p="2.5"
+                                    borderWidth="1px"
+                                    borderColor={link.tournament.uuid === tournamentUuid ? "pitch.400" : "border"}
+                                    bg={link.tournament.uuid === tournamentUuid ? "bg.surfaceTint" : undefined}
+                                    rounded="md"
+                                    wrap="wrap"
+                                >
+                                    <Box minW="0">
+                                        <Text fontSize="sm" fontWeight={700} truncate>{link.tournament.name}</Text>
+                                        <HStack gap="1.5" mt="0.5" color="fg.muted">
+                                            <Text fontSize="xs" fontFamily="mono">{link.streamId}</Text>
+                                            <StatusChip
+                                                size="sm"
+                                                status={link.broadcast?.broadcasting ? "active" : "draft"}
+                                                label={link.broadcast?.broadcasting ? "Uživo" : "Povezan"}
+                                            />
+                                        </HStack>
+                                    </Box>
+                                    <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => editLinkedStream(link)} disabled={busy}>
+                                        <FiEdit2 /> Uredi
+                                    </Button>
+                                </HStack>
+                            ))}
+                        </VStack>
+                    )}
+                </Box>
 
                 <Box>
                     <MonoLabel mb="1.5" display="block">URL PLATFORME</MonoLabel>
@@ -369,8 +477,13 @@ export default function SpectoConnectionCard() {
 
                 <HStack gap="2" wrap="wrap">
                     <Button size="sm" colorPalette="pitch" onClick={connect} loading={busy}>
-                        <FiLink /> Poveži i prikaži
+                        <FiLink /> {preview ? "Spremi izmjene" : "Poveži i prikaži"}
                     </Button>
+                    {preview && (
+                        <Button size="sm" variant="outline" colorPalette="red" onClick={disconnectStream} disabled={busy}>
+                            <FiSlash /> Odspoji stream
+                        </Button>
+                    )}
                     {preview && (
                         <Button size="sm" variant="outline" colorPalette="gray" onClick={() => setPreview(null)} disabled={busy}>
                             Sakrij prikaz

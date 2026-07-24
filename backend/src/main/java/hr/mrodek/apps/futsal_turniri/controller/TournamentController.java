@@ -1829,8 +1829,9 @@ public class TournamentController {
     public List<LiveMatchDto> listLiveMatches() {
         return matchesRepo.findAllLiveMatches()
                 .stream()
-                // Hidden tournaments never stream to the public live widgets.
-                .filter(m -> m.getTournament() == null || !m.getTournament().isHidden())
+                // Hidden tournaments stay visible only to their organisers /
+                // admins, matching the tournament list and detail endpoints.
+                .filter(m -> m.getTournament() == null || canView(m.getTournament()))
                 .map(m -> {
                     var t = m.getTournament();
                     return new LiveMatchDto(
@@ -1884,8 +1885,9 @@ public class TournamentController {
     public List<UpcomingMatchDto> listUpcomingMatches() {
         return matchesRepo.findUpcomingMatches(OffsetDateTime.now().minusHours(1), 40)
                 .stream()
-                // Hidden tournaments never surface on the public upcoming feed.
-                .filter(m -> m.getTournament() == null || !m.getTournament().isHidden())
+                // Hidden tournaments stay visible only to their organisers /
+                // admins, matching the tournament list and detail endpoints.
+                .filter(m -> m.getTournament() == null || canView(m.getTournament()))
                 .map(m -> {
                     var t = m.getTournament();
                     return new UpcomingMatchDto(

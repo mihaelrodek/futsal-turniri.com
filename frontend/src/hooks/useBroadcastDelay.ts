@@ -23,6 +23,10 @@ import { useSpectoStreamId } from "./useSpectoStreamId"
 /** Minimal shape we read from the platform's public stream state. */
 type SpectoState = { delay_offset_ms?: number; stream?: { status?: string } }
 
+/** Used only while Specto's state request is still in flight. A late event is
+ * preferable to revealing a goal before the delayed video reaches it. */
+const INITIAL_STREAM_DELAY_MS = 20_000
+
 /**
  * The tournament's broadcast delay in ms, or 0 when nothing is being broadcast
  * right now. Public + CORS-open on the platform, so it's read straight from
@@ -37,7 +41,7 @@ type SpectoState = { delay_offset_ms?: number; stream?: { status?: string } }
  */
 export function useBroadcastDelayMs(uuid: string | null | undefined): number {
     const streamId = useSpectoStreamId(uuid)
-    const { data } = useQuery({
+    const { data, isPending } = useQuery({
         queryKey: ["spectoDelay", streamId ?? "none"],
         queryFn: async (): Promise<number> => {
             const res = await fetch(`${SPECTO_BASE_URL}/v1/streams/${streamId}/state`)
@@ -51,7 +55,11 @@ export function useBroadcastDelayMs(uuid: string | null | undefined): number {
         staleTime: 15_000,
         refetchInterval: 30_000,
     })
-    return data ?? 0
+    // The player is already mounted once `streamId` exists, while this request
+    // can still be in flight. Returning 0 in that small window lets a newly
+    // fetched goal flash in the site's timeline before Specto's delayed video.
+    // Hold conservatively until the platform supplies its exact calibration.
+    return data ?? (streamId && isPending ? INITIAL_STREAM_DELAY_MS : 0)
 }
 
 /**

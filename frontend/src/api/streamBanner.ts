@@ -91,6 +91,10 @@ export function readStreamBannerHint(): StreamBanner | null {
         const parsed = JSON.parse(raw) as { at?: number; banner?: StreamBanner }
         if (!parsed || typeof parsed.at !== "number") return null
         if (Date.now() - parsed.at > HINT_MAX_AGE_MS) return null
+        // Tournament streams may become hidden after this snapshot was stored.
+        // Let the protected API decide visibility before rendering one, rather
+        // than briefly showing a stale private stream on first paint.
+        if (parsed.banner?.tournamentUuid) return null
         return parsed.banner ?? null
     } catch {
         return null
@@ -100,6 +104,13 @@ export function readStreamBannerHint(): StreamBanner | null {
 /** Persist the latest banner state for the next load's first paint. */
 export function writeStreamBannerHint(banner: StreamBanner): void {
     try {
+        // Never persist a tournament-bound stream. Its access can be restricted
+        // to organisers, whereas this local hint has no server-side permission
+        // check when a browser first paints.
+        if (banner.tournamentUuid) {
+            localStorage.removeItem(HINT_KEY)
+            return
+        }
         localStorage.setItem(HINT_KEY, JSON.stringify({ at: Date.now(), banner }))
     } catch {
         /* quota / private mode - the hint is best-effort */

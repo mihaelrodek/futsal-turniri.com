@@ -7,6 +7,7 @@ import hr.mrodek.apps.futsal_turniri.model.StreamAds;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.StreamAdsRepository;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -19,6 +20,8 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import io.quarkus.security.identity.SecurityIdentity;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 /**
  * Site-wide live-stream banner (the Veo court camera on the HOME page).
@@ -55,6 +58,9 @@ public class StreamBannerController {
     @Inject AppSettingsRepository settings;
     @Inject TournamentsRepository tournamentsRepo;
     @Inject StreamAdsRepository adsRepo;
+    @Inject TournamentEditorRepository editorRepo;
+    @Inject SecurityIdentity identity;
+    @Inject JsonWebToken jwt;
 
     /** Current banner state: {@code {url, live, state, tournamentUuid,
      *  tournamentName}}. Public, never cached. */
@@ -73,6 +79,15 @@ public class StreamBannerController {
             // just resolves to null → the home page finds no live match.
             Tournaments t = tournamentsRepo.findByUuidOrSlug(tUuid).orElse(null);
             if (t != null) {
+                // A hidden tournament's stream is private to its organisers.
+                // Return a normal OFF banner to everyone else so neither the
+                // video URL nor the tournament identity leaks through the
+                // site-wide home-page endpoint.
+                if (t.isHidden() && !canManage(t)) {
+                    return Response.ok(offBanner())
+                            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                            .build();
+                }
                 tUuid = t.getUuid().toString();
                 tName = t.getName();
             }
@@ -88,6 +103,20 @@ public class StreamBannerController {
                         overlay.id(), overlay.url(), overlay.mediaType()))
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .build();
+    }
+
+    private static StreamBannerDto offBanner() {
+        return new StreamBannerDto(
+                null, false, StreamState.OFF.name(), null, null,
+                null, null, null, null, null, null);
+    }
+
+    /** Same organiser rule as the tournament and Specto controllers. */
+    private boolean canManage(Tournaments t) {
+        if (identity != null && identity.hasRole("admin")) return true;
+        String uid = jwt != null ? jwt.getSubject() : null;
+        if (uid == null) return false;
+        return uid.equals(t.getCreatedByUid()) || editorRepo.isEditor(t.getId(), uid);
     }
 
     /** Set the banner url, the mode (state), and the linked tournament

@@ -64,10 +64,10 @@ public class SpectoStreamController {
 
     /**
      * PUBLIC (no auth): the tournament's SpectoStream id, or null when it isn't
-     * linked. Viewers - not just organizers - have to be able to mount the
-     * player, and the id is already public in every embed snippet, so there is
-     * nothing to guard here. Deliberately exposes ONLY the id: the OBS ingest
-     * key stays behind the organizer-guarded provision endpoint.
+     * linked. A hidden tournament deliberately exposes no player to ordinary
+     * viewers; its creator, co-editors and admins retain access. Deliberately
+     * exposes ONLY the id: the OBS ingest key stays behind the organizer-
+     * guarded provision endpoint.
      */
     @GET
     @Path("/public")
@@ -75,6 +75,9 @@ public class SpectoStreamController {
     public Response publicInfo(@PathParam("uuid") String uuid) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
         if (t == null) throw new NotFoundException("Tournament not found");
+        if (t.isHidden() && !canManage(t)) {
+            return Response.ok(new SpectoPublicDto(null)).build();
+        }
         String streamId = t.getSpectoStreamId();
         return Response.ok(new SpectoPublicDto(
                 streamId != null && isPlainStreamId(streamId) ? streamId : null)).build();
