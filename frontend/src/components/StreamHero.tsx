@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Box, Button, Flex, Grid, HStack, Text, VStack, chakra } from "@chakra-ui/react"
+import { Box, Button, Dialog, Flex, Grid, HStack, Portal, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
 import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
@@ -13,6 +13,7 @@ import { fetchMatchEvents } from "../api/matchEvents"
 import { fetchGroups } from "../api/groups"
 import { fetchBracket } from "../api/bracket"
 import { fetchSchedule } from "../api/schedule"
+import { fetchPlayers } from "../api/players"
 import { liveGroupStandings } from "./liveStandings"
 import { useTeamColors, teamColor, teamShorts, TeamKitChip, KitSwatch } from "./jersey"
 import type { MatchEventDto } from "../types/matchEvents"
@@ -21,6 +22,7 @@ import type { Group } from "../types/groups"
 import type { Bracket, BracketMatch } from "../types/bracket"
 import type { ScheduledMatch } from "../types/schedule"
 import type { TeamKit } from "../api/tournaments"
+import type { PlayerDto } from "../types/players"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StreamHero - the home-page hero while the admin's live-stream banner is on.
@@ -237,10 +239,16 @@ export default function StreamHero({
     // Nothing live → feature the tournament's next fixture instead.
     const nextMatch = useNextMatch(uuid, null, !match)
     const scoreBug = buildScoreBug(match, colors, nextMatch)
+    const [mobileLineupsOpen, setMobileLineupsOpen] = useState(false)
+    const mobileLineupFixture = useMemo(
+        () => lineupFixture(match, nextMatch, uuid),
+        [match, nextMatch, uuid],
+    )
     // ONE events poll for the whole hero: the side panel's ticker reads it
     // (passed down below) and so do the fullscreen scorer columns.
     const events = useMatchEvents(match?.tournamentUuid ?? null, match?.matchId ?? null)
     const sideScorers = useMemo(() => buildSideScorers(match, events), [match, events])
+    const mobileLineups = useMatchLineups(mobileLineupFixture)
 
     return (
         <Box mb="0">
@@ -294,20 +302,41 @@ export default function StreamHero({
             {/* Mobile/tablet only: same call to action as the desktop side
                 panel's footer - solid cyan "Uživo" with a play glyph - now
                 placed after the video instead of before it. */}
-            {onEnterTheater && (
-                <Flex display={{ base: "flex", lg: "none" }} justify="center" mt="2.5">
-                    <Button
-                        size="md"
-                        colorPalette="pitch"
-                        onClick={onEnterTheater}
-                        fontWeight={800}
-                        w="full"
-                        maxW="240px"
-                    >
-                        <FiPlay /> Uživo
-                    </Button>
+            {(onEnterTheater || mobileLineupFixture) && (
+                <Flex display={{ base: "flex", lg: "none" }} justify="center" mt="2.5" gap="2" wrap="wrap">
+                    {onEnterTheater && (
+                        <Button
+                            size="md"
+                            colorPalette="pitch"
+                            onClick={onEnterTheater}
+                            fontWeight={800}
+                            flex="1"
+                            maxW="240px"
+                        >
+                            <FiPlay /> Uživo
+                        </Button>
+                    )}
+                    {mobileLineupFixture && (
+                        <Button
+                            size="md"
+                            variant="outline"
+                            colorPalette="pitch"
+                            onClick={() => setMobileLineupsOpen(true)}
+                            fontWeight={800}
+                            flex="1"
+                            maxW="180px"
+                        >
+                            Sastavi
+                        </Button>
+                    )}
                 </Flex>
             )}
+            <MobileLineupsDialog
+                open={mobileLineupsOpen}
+                onClose={() => setMobileLineupsOpen(false)}
+                fixture={mobileLineupFixture}
+                lineups={mobileLineups}
+            />
         </Box>
     )
 }
@@ -682,6 +711,242 @@ function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
     )
 }
 
+/* ═══════════════════ Sastavi live utakmice ═══════════════════ */
+
+type LineupFixture = {
+    tournamentUuid: string | null
+    team1Id: number | null
+    team1Name: string | null
+    team2Id: number | null
+    team2Name: string | null
+}
+
+function lineupFixture(
+    match: LiveMatch | null,
+    nextMatch: ScheduledMatch | null | undefined,
+    fallbackUuid: string | null,
+): LineupFixture | null {
+    if (match) {
+        return {
+            tournamentUuid: match.tournamentUuid,
+            team1Id: match.team1Id ?? null,
+            team1Name: match.team1Name,
+            team2Id: match.team2Id ?? null,
+            team2Name: match.team2Name,
+        }
+    }
+    if (!nextMatch) return null
+    return {
+        tournamentUuid: fallbackUuid,
+        team1Id: nextMatch.team1Id ?? null,
+        team1Name: nextMatch.team1Name,
+        team2Id: nextMatch.team2Id ?? null,
+        team2Name: nextMatch.team2Name,
+    }
+}
+
+function useMatchLineups(fixture: LineupFixture | null) {
+    const uuid = fixture?.tournamentUuid ?? null
+    const team1Id = fixture?.team1Id ?? null
+    const team2Id = fixture?.team2Id ?? null
+    const canLoad = !!uuid && (team1Id != null || team2Id != null)
+    const [lineups, setLineups] = useState<{ team1: PlayerDto[] | null; team2: PlayerDto[] | null }>({
+        team1: null,
+        team2: null,
+    })
+
+    const load = () => {
+        if (!uuid || (team1Id == null && team2Id == null)) {
+            setLineups({ team1: null, team2: null })
+            return
+        }
+        Promise.all([
+            team1Id != null ? fetchPlayers(uuid, team1Id).catch(() => []) : Promise.resolve([]),
+            team2Id != null ? fetchPlayers(uuid, team2Id).catch(() => []) : Promise.resolve([]),
+        ]).then(([team1, team2]) => setLineups({ team1, team2 }))
+    }
+
+    useEffect(() => {
+        let cancelled = false
+        if (!uuid || (team1Id == null && team2Id == null)) {
+            setLineups({ team1: null, team2: null })
+            return
+        }
+        setLineups({ team1: null, team2: null })
+        Promise.all([
+            team1Id != null ? fetchPlayers(uuid, team1Id).catch(() => []) : Promise.resolve([]),
+            team2Id != null ? fetchPlayers(uuid, team2Id).catch(() => []) : Promise.resolve([]),
+        ]).then(([team1, team2]) => {
+            if (!cancelled) setLineups({ team1, team2 })
+        })
+        return () => { cancelled = true }
+    }, [uuid, team1Id, team2Id])
+
+    usePolling(load, 30_000, canLoad)
+    return lineups
+}
+
+type MatchLineups = ReturnType<typeof useMatchLineups>
+
+function MobileLineupsDialog({
+    open,
+    onClose,
+    fixture,
+    lineups,
+}: {
+    open: boolean
+    onClose: () => void
+    fixture: LineupFixture | null
+    lineups: MatchLineups
+}) {
+    return (
+        <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open) onClose() }} placement="center" scrollBehavior="inside">
+            <Portal>
+                <Dialog.Backdrop />
+                <Dialog.Positioner>
+                    <Dialog.Content maxW="92vw" w="420px" maxH="82vh" rounded="xl">
+                        <Dialog.Header>
+                            <Dialog.Title>Sastavi</Dialog.Title>
+                        </Dialog.Header>
+                        <Dialog.Body px="3" pb="3">
+                            <Box h="min(62vh, 430px)" display="flex" flexDirection="column" borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
+                                <StreamLineupsBody fixture={fixture} d={lineups} />
+                            </Box>
+                        </Dialog.Body>
+                    </Dialog.Content>
+                </Dialog.Positioner>
+            </Portal>
+        </Dialog.Root>
+    )
+}
+
+function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: MatchLineups }) {
+    const colors = useTeamColors(fixture?.tournamentUuid)
+    if (!fixture) {
+        return (
+            <Flex flex="1" align="center" justify="center" px="4">
+                <Box textAlign="center">
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Nema aktivne utakmice</Text>
+                    <Text fontSize="xs" color="fg.muted" mt="1">
+                        Sastavi će se prikazati kad utakmica krene.
+                    </Text>
+                </Box>
+            </Flex>
+        )
+    }
+    return (
+        <>
+            <Grid
+                templateColumns="1fr auto 1fr"
+                alignItems="center"
+                gap="2"
+                px="3"
+                py="2"
+                borderBottomWidth="1px"
+                borderColor="border"
+                flexShrink={0}
+            >
+                <HStack gap="1.5" justify="flex-end" minW="0">
+                    <TeamKitChip colors={colors} teamId={fixture.team1Id} size={9} />
+                    <Text fontSize="xs" fontWeight={800} color="fg.ink" textAlign="right" lineClamp={2} minW="0">
+                        {fixture.team1Name ?? "-"}
+                    </Text>
+                </HStack>
+                <Text fontFamily="mono" fontSize="10px" fontWeight={900} color="fg.muted" letterSpacing="0.08em">
+                    SASTAVI
+                </Text>
+                <HStack gap="1.5" justify="flex-start" minW="0">
+                    <Text fontSize="xs" fontWeight={800} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
+                        {fixture.team2Name ?? "-"}
+                    </Text>
+                    <TeamKitChip colors={colors} teamId={fixture.team2Id} size={9} />
+                </HStack>
+            </Grid>
+            <Box flex="1" minH="0" overflowY="auto" px="3" py="3">
+                <Grid templateColumns="minmax(0, 1fr) minmax(0, 1fr)" gap="0" minH="full">
+                    <StreamTeamLineup players={d.team1} align="left" />
+                    <StreamTeamLineup players={d.team2} align="right" withDivider />
+                </Grid>
+            </Box>
+        </>
+    )
+}
+
+function StreamTeamLineup({
+    players,
+    align,
+    withDivider = false,
+}: {
+    players: PlayerDto[] | null
+    align: "left" | "right"
+    withDivider?: boolean
+}) {
+    const sorted = [...(players ?? [])].sort((a, b) => {
+        const an = a.number ?? 10_000
+        const bn = b.number ?? 10_000
+        if (an !== bn) return an - bn
+        return a.name.localeCompare(b.name, "hr")
+    })
+    return (
+        <Box
+            minW="0"
+            px={align === "left" ? "0" : "3"}
+            pr={align === "left" ? "3" : undefined}
+            borderLeftWidth={withDivider ? "1px" : undefined}
+            borderColor="border"
+        >
+            {players == null ? (
+                <Flex minH="80px" align="center" justify="center">
+                    <Text fontSize="xs" color="fg.muted">Učitavanje…</Text>
+                </Flex>
+            ) : sorted.length === 0 ? (
+                <Flex minH="80px" align="center" justify="center" px="2">
+                    <Text fontSize="11px" color="fg.muted" textAlign="center">
+                        Nema unesenih sastava za ekipu.
+                    </Text>
+                </Flex>
+            ) : (
+                <VStack align="stretch" gap="0">
+                    {sorted.map((p) => (
+                        <HStack
+                            key={p.id}
+                            gap="1.5"
+                            py="1.5"
+                            direction={align === "right" ? "row-reverse" : "row"}
+                        >
+                            <Flex
+                                w="22px"
+                                h="22px"
+                                rounded="md"
+                                align="center"
+                                justify="center"
+                                bg="bg.muted"
+                                color="fg.ink"
+                                fontFamily="mono"
+                                fontSize="10px"
+                                fontWeight={900}
+                                flexShrink={0}
+                            >
+                                {p.number ?? "-"}
+                            </Flex>
+                            <HStack gap="1" minW="0" justify={align === "right" ? "flex-end" : "flex-start"} flex="1">
+                                <Text fontSize="11px" fontWeight={800} color="fg.ink" textAlign={align} truncate>
+                                    {p.name}
+                                </Text>
+                                {p.captain && (
+                                    <Box as="span" px="1" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="8px" fontWeight={900}>
+                                        K
+                                    </Box>
+                                )}
+                            </HStack>
+                        </HStack>
+                    ))}
+                </VStack>
+            )}
+        </Box>
+    )
+}
+
 /* ═══════════════════ Tablica skupine ═══════════════════ */
 
 type PanelMode = "groups" | "bracket"
@@ -957,7 +1222,7 @@ export function GroupTablePanel({
     )
 }
 
-/* ═══════════════════ Home-hero side panel (Utakmica | Tablica) ═══════════════════ */
+/* ═══════════════════ Home-hero side panel (Tijek | Sastavi | Tablica) ═══════════════════ */
 
 /** The home-hero side card: a single panel with two tabs. "Utakmica" (default)
  *  holds the live-match ticker; "Tablica" holds the group/bracket standings
@@ -986,8 +1251,13 @@ export function StreamSidePanel({
      *  the panel fetches its own. */
     events?: MatchEventDto[]
 }) {
-    const [tab, setTab] = useState<"match" | "table">("match")
+    const [tab, setTab] = useState<"match" | "lineups" | "table">("match")
     const ticker = useMatchTicker(match, uuid, nextMatch, events)
+    const sideLineupFixture = useMemo(
+        () => lineupFixture(match, nextMatch, uuid ?? null),
+        [match, nextMatch, uuid],
+    )
+    const lineups = useMatchLineups(sideLineupFixture)
     const table = useGroupTable(match, uuid)
 
     // "Turnir" button → the tournament page. Built from the live match when
@@ -1013,7 +1283,7 @@ export function StreamSidePanel({
                 )}
                 <HStack justify="center" gap="2" minW="0" wrap="wrap">
                     <HStack gap="1" bg="bg.panel" rounded="full" p="1" borderWidth="1px" borderColor="border" flexShrink={0}>
-                        {([["match", "Utakmica"], ["table", "Tablica"]] as const).map(([k, label]) => (
+                        {([["match", "Tijek"], ["lineups", "Sastavi"], ["table", "Tablica"]] as const).map(([k, label]) => (
                             <chakra.button
                                 key={k}
                                 type="button"
@@ -1043,6 +1313,9 @@ export function StreamSidePanel({
             {/* Both bodies mounted; only the active one is shown. */}
             <Flex direction="column" flex="1" minH="0" display={tab === "match" ? "flex" : "none"}>
                 <MatchTickerBody match={match} nextMatch={nextMatch} t={ticker} />
+            </Flex>
+            <Flex direction="column" flex="1" minH="0" display={tab === "lineups" ? "flex" : "none"}>
+                <StreamLineupsBody fixture={sideLineupFixture} d={lineups} />
             </Flex>
             <Flex direction="column" flex="1" minH="0" display={tab === "table" ? "flex" : "none"}>
                 <GroupTableBody d={table} />

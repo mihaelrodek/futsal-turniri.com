@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from "react"
 import { Box, Button, HStack, Input, NativeSelect, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiCheck, FiClock, FiEdit2, FiLink, FiPause, FiPlay, FiRadio, FiSlash, FiSquare, FiUsers } from "react-icons/fi"
+import { FiCheck, FiClock, FiEdit2, FiEye, FiEyeOff, FiLink, FiPause, FiPlay, FiPlus, FiRadio, FiSlash, FiSquare, FiUsers, FiX } from "react-icons/fi"
 
 import {
     fetchSpectoBroadcast,
     fetchSpectoConnection,
     fetchSpectoStatus,
+    hideSpectoBroadcast,
     linkSpectoStream,
     saveSpectoConnection,
     sendSpectoLineup,
+    showSpectoBroadcast,
     startSpectoBroadcast,
     startSpectoTimer,
     stopSpectoBroadcast,
@@ -56,6 +58,7 @@ export default function SpectoConnectionCard() {
     const [apiKey, setApiKey] = useState("")
     const [streamId, setStreamId] = useState("")
     const [busy, setBusy] = useState(false)
+    const [formOpen, setFormOpen] = useState(false)
     /** Stream id currently mounted in the preview player (null = nothing). */
     const [preview, setPreview] = useState<string | null>(null)
 
@@ -153,6 +156,7 @@ export default function SpectoConnectionCard() {
         setBusy(true)
         try {
             setBroadcast(await startSpectoBroadcast(tournamentUuid))
+            await refreshLinkedStreams(tournaments)
         } catch {
             /* interceptor toasts */
         } finally {
@@ -166,6 +170,35 @@ export default function SpectoConnectionCard() {
         setBusy(true)
         try {
             setBroadcast(await stopSpectoBroadcast(tournamentUuid))
+            await refreshLinkedStreams(tournaments)
+        } catch {
+            /* interceptor toasts */
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    /** Only show this stream in the home-page hero; do not notify Specto. */
+    async function showOnHome() {
+        if (!tournamentUuid) return
+        setBusy(true)
+        try {
+            setBroadcast(await showSpectoBroadcast(tournamentUuid))
+            await refreshLinkedStreams(tournaments)
+        } catch {
+            /* interceptor toasts */
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    /** Only hide this stream from the home-page hero; do not notify Specto. */
+    async function hideFromHome() {
+        if (!tournamentUuid) return
+        setBusy(true)
+        try {
+            setBroadcast(await hideSpectoBroadcast(tournamentUuid))
+            await refreshLinkedStreams(tournaments)
         } catch {
             /* interceptor toasts */
         } finally {
@@ -313,10 +346,30 @@ export default function SpectoConnectionCard() {
 
     /** Opens an existing tournament link in the editor. */
     function editLinkedStream(link: LinkedStream) {
+        setFormOpen(true)
         setTournamentUuid(link.tournament.uuid ?? "")
         setStreamId(link.streamId)
         setPreview(link.streamId)
         setBroadcast(link.broadcast)
+    }
+
+    /** Start with an empty editor for attaching another existing stream. */
+    function addNewStream() {
+        setFormOpen(true)
+        setTournamentUuid("")
+        setStreamId("")
+        setPreview(null)
+        setBroadcast(null)
+        setApiKey("")
+    }
+
+    function closeEditor() {
+        setFormOpen(false)
+        setTournamentUuid("")
+        setStreamId("")
+        setPreview(null)
+        setBroadcast(null)
+        setApiKey("")
     }
 
     async function disconnectStream() {
@@ -367,8 +420,13 @@ export default function SpectoConnectionCard() {
                     odmah, bez restarta; Stream ID se pridružuje odabranom turniru.
                 </Text>
 
-                <Box borderBottomWidth="1px" borderColor="border" pb="4">
-                    <MonoLabel mb="2" display="block">AKTIVNI STREAMOVI NA TURNIRIMA</MonoLabel>
+                <Box>
+                    <HStack justify="space-between" align="center" gap="3" mb="2" wrap="wrap">
+                        <MonoLabel display="block">AKTIVNI STREAMOVI NA TURNIRIMA</MonoLabel>
+                        <Button size="sm" colorPalette="pitch" onClick={addNewStream} disabled={busy}>
+                            <FiPlus /> Dodaj novi
+                        </Button>
+                    </HStack>
                     {loadingLinkedStreams ? (
                         <HStack gap="2" color="fg.muted">
                             <Spinner size="xs" />
@@ -409,6 +467,23 @@ export default function SpectoConnectionCard() {
                         </VStack>
                     )}
                 </Box>
+
+                {formOpen && (
+                    <Box p="3" bg="bg.panel" borderWidth="1px" borderColor="border.emphasized" rounded="lg">
+                        <VStack align="stretch" gap="4">
+                            <HStack justify="space-between" gap="3" wrap="wrap">
+                                <Box>
+                                    <Text fontSize="sm" fontWeight={800} color="fg.ink">
+                                        {preview ? "Uredi stream" : "Dodaj novi stream"}
+                                    </Text>
+                                    <Text fontSize="xs" color="fg.muted">
+                                        Odaberi turnir i upiši Stream ID s platforme.
+                                    </Text>
+                                </Box>
+                                <Button size="sm" variant="ghost" colorPalette="gray" onClick={closeEditor} disabled={busy}>
+                                    <FiX /> Zatvori
+                                </Button>
+                            </HStack>
 
                 <Box>
                     <MonoLabel mb="1.5" display="block">URL PLATFORME</MonoLabel>
@@ -491,41 +566,73 @@ export default function SpectoConnectionCard() {
                     )}
                 </HStack>
 
-                {/* Emitiranje - the old start/stop pair. "Pokreni" also points the
-                    home-page banner at this stream, so the visitor sees it. */}
+                {/* Emitiranje - full platform start/stop, plus separate silent
+                    home-page visibility controls for cases where the Specto
+                    stream is already running and should only appear/disappear
+                    inside futsal-turniri.com. */}
                 {broadcast?.streamId && (
                     <Box p="3" bg="bg.surfaceTint" rounded="lg" borderWidth="1px" borderColor="border">
-                        <HStack justify="space-between" gap="3" wrap="wrap">
-                            <Box>
-                                <MonoLabel display="block" mb="0.5">EMITIRANJE</MonoLabel>
-                                <Text fontSize="sm" fontWeight={600} color={broadcast.broadcasting ? "accent.red" : "fg.muted"}>
-                                    {broadcast.broadcasting
-                                        ? "UŽIVO na glavnoj stranici"
-                                        : "Zaustavljeno - ne prikazuje se na glavnoj"}
-                                </Text>
-                            </Box>
-                            <HStack gap="2">
-                                <Button
-                                    size="sm"
-                                    colorPalette="pitch"
-                                    onClick={startBroadcast}
-                                    loading={busy}
-                                    disabled={broadcast.broadcasting}
-                                >
-                                    <FiPlay /> Pokreni
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorPalette="gray"
-                                    onClick={stopBroadcast}
-                                    loading={busy}
-                                    disabled={!broadcast.broadcasting}
-                                >
-                                    <FiSquare /> Zaustavi
-                                </Button>
+                        <VStack align="stretch" gap="3">
+                            <HStack justify="space-between" gap="3" wrap="wrap">
+                                <Box>
+                                    <MonoLabel display="block" mb="0.5">EMITIRANJE</MonoLabel>
+                                    <Text fontSize="sm" fontWeight={600} color={broadcast.broadcasting ? "accent.red" : "fg.muted"}>
+                                        {broadcast.broadcasting
+                                            ? "Prikazuje se na glavnoj stranici"
+                                            : "Ne prikazuje se na glavnoj"}
+                                    </Text>
+                                </Box>
+                                <HStack gap="2">
+                                    <Button
+                                        size="sm"
+                                        colorPalette="pitch"
+                                        onClick={startBroadcast}
+                                        loading={busy}
+                                    >
+                                        <FiPlay /> Pokreni + prikaži
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorPalette="gray"
+                                        onClick={stopBroadcast}
+                                        loading={busy}
+                                    >
+                                        <FiSquare /> Zaustavi + sakrij
+                                    </Button>
+                                </HStack>
                             </HStack>
-                        </HStack>
+                            <HStack justify="space-between" gap="3" wrap="wrap" pt="3" borderTopWidth="1px" borderColor="border.subtle">
+                                <Box>
+                                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Samo glavna stranica</Text>
+                                    <Text fontSize="xs" color="fg.muted">
+                                        Ovi gumbi ne šalju stream_start ni stream_end na platformu.
+                                    </Text>
+                                </Box>
+                                <HStack gap="2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorPalette="pitch"
+                                        onClick={showOnHome}
+                                        loading={busy}
+                                        disabled={broadcast.broadcasting}
+                                    >
+                                        <FiEye /> Prikaži na glavnoj
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorPalette="gray"
+                                        onClick={hideFromHome}
+                                        loading={busy}
+                                        disabled={!broadcast.broadcasting}
+                                    >
+                                        <FiEyeOff /> Sakrij s glavne
+                                    </Button>
+                                </HStack>
+                            </HStack>
+                        </VStack>
                     </Box>
                 )}
 
@@ -598,6 +705,9 @@ export default function SpectoConnectionCard() {
                                 {conn?.baseUrl}/v1/streams/{preview}/master.m3u8
                             </Text>
                         </HStack>
+                    </Box>
+                )}
+                        </VStack>
                     </Box>
                 )}
             </VStack>

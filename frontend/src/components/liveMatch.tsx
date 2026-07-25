@@ -1786,7 +1786,7 @@ function PlayerPickColumn({
 /* ──────────────────────────────────────────────────────────────────────────
    PenaltyShootout - guided knockout penalty shootout.
 
-   Rules: best-of-3, teams alternate with team1 first each round. The shootout
+   Rules: best-of-3, teams alternate with the selected first team each round. The shootout
    ends as soon as it's mathematically decided (e.g. 2-0 after two rounds -
    the trailing team can't catch up). Level after 3 each → sudden death: one
    pair of kicks at a time until a complete round ends with a different score.
@@ -1801,7 +1801,7 @@ type PenaltyKick = {
     playerName?: string
 }
 
-function shootoutState(kicks: PenaltyKick[]) {
+function shootoutState(kicks: PenaltyKick[], firstTeam: 1 | 2 | null) {
     let s1 = 0
     let s2 = 0
     let a = 0
@@ -1823,8 +1823,10 @@ function shootoutState(kicks: PenaltyKick[]) {
         decided = true
         winner = s1 > s2 ? 1 : 2
     }
-    // team1 leads each round: their turn when both have taken the same count.
-    const nextTeam: 1 | 2 = a === b ? 1 : 2
+    const otherTeam = firstTeam === 1 ? 2 : 1
+    const firstTaken = firstTeam === 1 ? a : b
+    const otherTaken = otherTeam === 1 ? a : b
+    const nextTeam: 1 | 2 | null = firstTeam == null ? null : firstTaken === otherTaken ? firstTeam : otherTeam
     const round = Math.min(a, b) + 1
     return { s1, s2, a, b, decided, winner, nextTeam, inSudden, round }
 }
@@ -1852,6 +1854,7 @@ export function PenaltyShootout({
 }) {
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kicks, setKicks] = useState<PenaltyKick[]>([])
+    const [firstTeam, setFirstTeam] = useState<1 | 2 | null>(null)
     /** Ids of penalty events that already existed when this shootout was opened
      *  (re-editing a finished match). Cleared and re-recorded on confirm so the
      *  prior history is preserved/edited rather than duplicated. */
@@ -1860,7 +1863,7 @@ export function PenaltyShootout({
     const [shooterId, setShooterId] = useState<string>("")
     const [persisting, setPersisting] = useState(false)
 
-    const st = shootoutState(kicks)
+    const st = shootoutState(kicks, firstTeam)
     const t1 = team1Name ?? "Ekipa 1"
     const t2 = team2Name ?? "Ekipa 2"
     const busy = saving || persisting
@@ -1896,14 +1899,16 @@ export function PenaltyShootout({
                     (e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED",
                 )
                 if (pens.length === 0) return
+                const loadedKicks = pens.map((e) => ({
+                    team: e.teamId === team1Id ? 1 as const : 2 as const,
+                    scored: e.type === "PENALTY_GOAL",
+                    playerId: e.playerId ?? undefined,
+                    playerName: e.playerName ?? undefined,
+                }))
                 setKicks(
-                    pens.map((e) => ({
-                        team: e.teamId === team1Id ? 1 : 2,
-                        scored: e.type === "PENALTY_GOAL",
-                        playerId: e.playerId ?? undefined,
-                        playerName: e.playerName ?? undefined,
-                    })),
+                    loadedKicks,
                 )
+                setFirstTeam(loadedKicks[0]?.team ?? null)
                 setLoadedEventIds(pens.map((e) => e.id))
             } catch {
                 /* error toast surfaced by the http interceptor */
@@ -1913,15 +1918,16 @@ export function PenaltyShootout({
         return () => { cancelled = true }
     }, [uuid, matchId, team1Id])
 
-    const currentTeamId = st.nextTeam === 1 ? team1Id : team2Id
+    const currentTeamId = st.nextTeam == null ? null : st.nextTeam === 1 ? team1Id : team2Id
     const currentRoster = currentTeamId != null ? rosters[currentTeamId] ?? [] : []
 
     function shoot(scored: boolean) {
-        if (st.decided) return
+        if (st.decided || st.nextTeam == null) return
+        const team = st.nextTeam
         const p = currentRoster.find((x) => String(x.id) === shooterId)
         setKicks((prev) => [
             ...prev,
-            { team: st.nextTeam, scored, playerId: p?.id, playerName: p?.name },
+            { team, scored, playerId: p?.id, playerName: p?.name },
         ])
         setShooterId("")
     }
@@ -1986,6 +1992,42 @@ export function PenaltyShootout({
                 </Text>
             </Flex>
 
+            {kicks.length === 0 && (
+                <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5" mb="3">
+                    <Text
+                        fontSize="2xs"
+                        fontWeight={800}
+                        letterSpacing="wider"
+                        textTransform="uppercase"
+                        color="fg.muted"
+                        mb="2"
+                        textAlign="center"
+                    >
+                        Prva puca
+                    </Text>
+                    <HStack gap="2" justify="center" wrap="wrap">
+                        <Button
+                            size="sm"
+                            variant={firstTeam === 1 ? "solid" : "outline"}
+                            colorPalette="brand"
+                            onClick={() => setFirstTeam(1)}
+                            disabled={busy}
+                        >
+                            {t1}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={firstTeam === 2 ? "solid" : "outline"}
+                            colorPalette="brand"
+                            onClick={() => setFirstTeam(2)}
+                            disabled={busy}
+                        >
+                            {t2}
+                        </Button>
+                    </HStack>
+                </Box>
+            )}
+
             {/* Per-team kick lists (team1 top, team2 bottom - same order as the
                 header). Tap a kick to edit its result and shooter. */}
             <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden" mb="3">
@@ -2025,14 +2067,18 @@ export function PenaltyShootout({
             ) : (
                 <VStack gap="2">
                     <Text fontSize="xs" color="fg.muted" textAlign="center">
-                        {st.inSudden ? "Sudden death" : `Serija ${Math.min(st.round, 3)} / 3`} - puca:{" "}
+                        {firstTeam == null ? "Odaberi ekipu koja prva puca penale." : (
+                            <>
+                                {st.inSudden ? "Sudden death" : `Serija ${Math.min(st.round, 3)} / 3`} - puca:{" "}
+                            </>
+                        )}
                         <Box as="span" fontWeight={700} color="fg.ink">
-                            {st.nextTeam === 1 ? t1 : t2}
+                            {st.nextTeam == null ? "" : st.nextTeam === 1 ? t1 : t2}
                         </Box>
                     </Text>
 
                     {/* Optional shooter for this kick. */}
-                    {currentRoster.length > 0 && (
+                    {st.nextTeam != null && currentRoster.length > 0 && (
                         <NativeSelect.Root size="sm">
                             <NativeSelect.Field
                                 value={shooterId}
@@ -2051,10 +2097,10 @@ export function PenaltyShootout({
                     )}
 
                     <HStack gap="2" justify="center" wrap="wrap">
-                        <Button size="sm" colorPalette="brand" onClick={() => shoot(true)} disabled={busy}>
+                        <Button size="sm" colorPalette="brand" onClick={() => shoot(true)} disabled={busy || st.nextTeam == null}>
                             ⚽ Gol
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => shoot(false)} disabled={busy}>
+                        <Button size="sm" variant="outline" onClick={() => shoot(false)} disabled={busy || st.nextTeam == null}>
                             ✗ Promašaj
                         </Button>
                     </HStack>

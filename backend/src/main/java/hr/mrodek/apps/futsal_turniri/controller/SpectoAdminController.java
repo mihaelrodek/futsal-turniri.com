@@ -133,6 +133,39 @@ public class SpectoAdminController {
         return Response.ok(specto.broadcastStatus(t)).build();
     }
 
+    /** Show the linked stream on the home page WITHOUT sending stream_start to
+     *  SpectoStream. Useful when the platform stream is already running and the
+     *  operator only wants to expose it in the app. */
+    @POST
+    @Path("/broadcast/show")
+    @Transactional
+    public Response showBroadcast(BroadcastRequest req) {
+        Tournaments t = resolve(req);
+        if (t == null) return notFound();
+        if (t.getSpectoStreamId() == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Turnir nije povezan sa streamom.").build();
+        }
+        settings.put(KEY_BANNER_URL, specto.embedUrl(t.getSpectoStreamId()));
+        settings.put(KEY_BANNER_TOURNAMENT, t.getUuid().toString());
+        settings.put(KEY_BANNER_STATE, StreamState.STREAMING.name());
+        settings.put(KEY_BANNER_LIVE, "true");
+        return Response.ok(specto.broadcastStatus(t)).build();
+    }
+
+    /** Hide the home-page banner WITHOUT sending stream_end to SpectoStream.
+     *  The tournament link and URL stay saved for a quick re-show. */
+    @POST
+    @Path("/broadcast/hide")
+    @Transactional
+    public Response hideBroadcast(BroadcastRequest req) {
+        Tournaments t = resolve(req);
+        if (t == null) return notFound();
+        settings.put(KEY_BANNER_STATE, StreamState.OFF.name());
+        settings.put(KEY_BANNER_LIVE, "false");
+        return Response.ok(specto.broadcastStatus(t)).build();
+    }
+
     /** STOP broadcasting: camera off on the overlay + take the home-page banner
      *  out of STREAMING (the url is kept so it can be started again). */
     @POST

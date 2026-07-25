@@ -1,12 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Box, chakra, Flex, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Box, chakra, Flex, Grid, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { FiArrowLeft, FiDownload, FiShare2 } from "react-icons/fi"
+import {
+    SingleEliminationBracket,
+    createTheme,
+    type MatchComponentProps,
+    type MatchType,
+} from "@g-loot/react-tournament-brackets"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
 import { fetchTournamentDetails } from "../api/tournaments"
+import { fetchPlayers } from "../api/players"
+import { fetchGroups } from "../api/groups"
+import { fetchBracket } from "../api/bracket"
 import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
-import type { TournamentDetails } from "../types/tournaments"
+import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
@@ -18,6 +27,9 @@ import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
+import type { PlayerDto } from "../types/players"
+import type { Group } from "../types/groups"
+import type { Bracket, BracketMatch } from "../types/bracket"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MatchLivePage - a single match's own "page" (route /turniri/:uuid/utakmica/
@@ -46,6 +58,81 @@ type PosterMetaBits = {
     location: string | null
     startAt: string | null
     slug: string | null
+    format: TournamentFormat | null
+}
+
+type MatchInfoTab = "timeline" | "lineups" | "context"
+
+const matchPageBracketTheme = createTheme({
+    textColor: {
+        main: "#0B1522",
+        highlighted: "#0E8A81",
+        dark: "#3a4046",
+        disabled: "#9ca3af",
+    } as any,
+    matchBackground: {
+        wonColor: "#E3F7F5",
+        lostColor: "#ffffff",
+    },
+    score: {
+        background: {
+            wonColor: "#E3F7F5",
+            lostColor: "#f3f4f6",
+        },
+        text: {
+            highlightedWonColor: "#0E8A81",
+            highlightedLostColor: "#6b7280",
+        },
+    },
+    border: {
+        color: "#e5e7eb",
+        highlightedColor: "#2AD4C8",
+    },
+    roundHeader: {
+        backgroundColor: "#E3F7F5",
+        fontColor: "#0E8A81",
+    },
+    connectorColor: "#C2D9D6",
+    connectorColorHighlight: "#2AD4C8",
+    svgBackground: "transparent",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    transitionTimingFunction: "ease-out",
+    disabledColor: "#9ca3af",
+} as any)
+
+function matchPageBracketToLibraryMatches(rounds: Bracket["rounds"]): MatchType[] {
+    if (rounds.length === 0) return []
+    const out: MatchType[] = []
+    rounds.forEach((round, roundIdx) => {
+        const nextRound = rounds[roundIdx + 1]
+        round.matches.forEach((m, matchIdx) => {
+            const successor = nextRound?.matches[Math.floor(matchIdx / 2)]
+            out.push({
+                id: m.matchId,
+                nextMatchId: successor ? successor.matchId : null,
+                tournamentRoundText: round.title,
+                startTime: "",
+                state: m.status === "FINISHED" ? "DONE" : m.status === "LIVE" ? "RUNNING" : "SCHEDULED",
+                participants: [
+                    {
+                        id: m.team1Id ?? `slot-${m.matchId}-1`,
+                        name: m.team1Name ?? "",
+                        isWinner: m.winnerTeamId != null && m.winnerTeamId === m.team1Id,
+                        status: null,
+                        resultText: m.score1 != null ? String(m.score1) : null,
+                    },
+                    {
+                        id: m.team2Id ?? `slot-${m.matchId}-2`,
+                        name: m.team2Name ?? "",
+                        isWinner: m.winnerTeamId != null && m.winnerTeamId === m.team2Id,
+                        status: null,
+                        resultText: m.score2 != null ? String(m.score2) : null,
+                    },
+                ],
+            })
+        })
+    })
+    return out
 }
 
 export default function MatchLivePage() {
@@ -73,6 +160,7 @@ export default function MatchLivePage() {
         location: t.location ?? null,
         startAt: t.startAt ?? null,
         slug: t.slug ?? null,
+        format: t.format ?? null,
     })
 
     const [schedule, setSchedule] = useState<Schedule | null>(cachedSchedule ?? null)
@@ -81,6 +169,13 @@ export default function MatchLivePage() {
     const [tMeta, setTMeta] = useState<PosterMetaBits | null>(cachedDetails ? toMetaBits(cachedDetails) : null)
     const [exportOpen, setExportOpen] = useState(false)
     const [loading, setLoading] = useState(!cachedSchedule)
+    const [tab, setTab] = useState<MatchInfoTab>("timeline")
+    const [lineups, setLineups] = useState<{ team1: PlayerDto[] | null; team2: PlayerDto[] | null }>({
+        team1: null,
+        team2: null,
+    })
+    const [groups, setGroups] = useState<Group[]>([])
+    const [bracket, setBracket] = useState<Bracket | null>(null)
     // Bumped on every relevant WebSocket live-update so the timeline refetches
     // instantly (GoalscorersPanel refreshSignal).
     const [scorerTick, setScorerTick] = useState(0)
@@ -148,6 +243,47 @@ export default function MatchLivePage() {
         () => schedule?.matches.find((m) => m.matchId === matchId) ?? null,
         [schedule, matchId],
     )
+    const matchEvents = useRawMatchEvents(
+        uuid ?? null,
+        Number.isFinite(matchId) ? matchId : null,
+        !!uuid && Number.isFinite(matchId),
+    )
+
+    useEffect(() => {
+        setLineups({ team1: null, team2: null })
+        if (!uuid || !scheduled) return
+        const tournamentUuid = uuid
+        const team1Id = scheduled.team1Id
+        const team2Id = scheduled.team2Id
+        let cancelled = false
+        async function loadLineups() {
+            const [team1, team2] = await Promise.all([
+                team1Id != null ? fetchPlayers(tournamentUuid, team1Id).catch(() => []) : Promise.resolve([]),
+                team2Id != null ? fetchPlayers(tournamentUuid, team2Id).catch(() => []) : Promise.resolve([]),
+            ])
+            if (!cancelled) setLineups({ team1, team2 })
+        }
+        void loadLineups()
+        return () => { cancelled = true }
+    }, [uuid, scheduled?.team1Id, scheduled?.team2Id])
+
+    useEffect(() => {
+        setGroups([])
+        setBracket(null)
+        if (!uuid) return
+        let cancelled = false
+        Promise.all([
+            fetchGroups(uuid, { silent: true }).catch(() => []),
+            fetchBracket(uuid, { silent: true }).catch(() => null),
+        ]).then(([g, b]) => {
+            if (cancelled) return
+            setGroups(g)
+            setBracket(b)
+            queryClient.setQueryData(qk.groups(uuid), g)
+            if (b) queryClient.setQueryData(qk.bracket(uuid), b)
+        })
+        return () => { cancelled = true }
+    }, [uuid, queryClient])
 
     // Prefer a real "back" (returns to /uzivo, the tournament, wherever they
     // came from); on a cold open (shared link, no history) fall back to the
@@ -223,7 +359,7 @@ export default function MatchLivePage() {
     const bcDelayMs = useBroadcastDelayMs(uuid ?? null)
     // RAW on purpose: we need the goals that are still withheld in order to
     // subtract them - the delayed list has them removed already.
-    const bcEvents = useRawMatchEvents(uuid ?? null, scheduled.matchId ?? null, bcDelayMs > 0)
+    const bcEvents = matchEvents
     const bcNow = useTick(bcDelayMs > 0)
     const score1 = visibleScore(rawScore1, scheduled.team1Id, bcEvents, bcDelayMs, bcNow) ?? rawScore1
     const score2 = visibleScore(rawScore2, scheduled.team2Id, bcEvents, bcDelayMs, bcNow) ?? rawScore2
@@ -242,6 +378,17 @@ export default function MatchLivePage() {
     const phaseLbl = matchPhaseLabel({ stage: scheduled.stage, groupName: scheduled.groupName })
     const title = tournamentName ?? live?.tournamentName ?? null
     const hasPens = scheduled.penalties1 != null && scheduled.penalties2 != null
+    const groupForMatch = scheduled.groupName
+        ? groups.find((g) => g.name === scheduled.groupName) ?? null
+        : null
+    const hasGroupContext = !!groupForMatch && (tMeta?.format ?? cachedDetails?.format ?? null) === "GROUPS_KNOCKOUT"
+    const contextLabel = hasGroupContext ? "Grupa" : "Završnica"
+    const infoTabs: Array<{ key: MatchInfoTab; label: string }> = [
+        { key: "timeline", label: "Tijek utakmice" },
+        { key: "lineups", label: "Sastavi" },
+        { key: "context", label: contextLabel },
+    ]
+    const infoMaxW = tab === "context" && !hasGroupContext ? "1280px" : "640px"
 
     // Poster export - meta from the tournament detail (degrades gracefully when
     // a shared-link open hasn't fetched it yet) + the match itself, reusing the
@@ -317,28 +464,25 @@ export default function MatchLivePage() {
                 borderColor="border"
                 bg="bg.panel"
             >
-                {/* Slim top bar: back · tournament name (→ tournament page) · share.
-                    Three clusters on ONE row, all vertically centred against each
-                    other (align="center"). The left and right clusters carry equal
-                    flex so the centre name+stage block sits dead-centre horizontally;
-                    the centre stack owns its own alignment and is centred as a unit,
-                    so the side icons line up with its vertical midpoint (not the top
-                    of the name). minW="0" lets a long name wrap/clamp instead of
-                    pushing the icons out of alignment. */}
-                <Flex align="center" gap="2" mb="2">
-                    {/* Left cluster - back arrow. Both side clusters are
-                        flexShrink={0} (they were flex="1", which let the centre
-                        keep its full intrinsic width and run UNDER the download
-                        icon on a long tournament name); the centre now takes the
-                        remaining space and wraps inside it instead. */}
-                    <Flex flexShrink={0} justify="flex-start">
+                {/* Slim top bar: side actions are independent of the title. The
+                    title block is pinned to the viewport centre, so download /
+                    share never pull it off-axis. */}
+                <Box position="relative" minH="44px" mb="2">
+                    <Flex position="absolute" left="0" top="50%" transform="translateY(-50%)" zIndex={2}>
                         <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
                             <FiArrowLeft />
                         </IconButton>
                     </Flex>
-                    {/* Centre cluster - tournament name + stage, centred as one
-                        unit and strictly bounded by the two icon clusters. */}
-                    <VStack gap="0" flex="1" minW="0" align="center">
+                    <VStack
+                        gap="0"
+                        position="absolute"
+                        left="50%"
+                        top="50%"
+                        transform="translate(-50%, -50%)"
+                        w="max-content"
+                        maxW={{ base: "calc(100% - 112px)", md: "min(720px, calc(100% - 180px))" }}
+                        align="center"
+                    >
                         {title && (
                             <Text
                                 as="button"
@@ -361,13 +505,12 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                         {phaseLbl && (
-                            <Text fontSize="2xs" color="fg.muted" lineClamp={1} maxW="full">
+                            <Text fontSize="2xs" color="fg.muted" lineClamp={1} maxW="full" textAlign="center">
                                 {phaseLbl}
                             </Text>
                         )}
                     </VStack>
-                    {/* Right cluster - download + share. */}
-                    <Flex flexShrink={0} justify="flex-end" gap="2">
+                    <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
                         <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
                             <FiDownload />
                         </IconButton>
@@ -375,7 +518,7 @@ export default function MatchLivePage() {
                             <FiShare2 />
                         </IconButton>
                     </Flex>
-                </Flex>
+                </Box>
 
                 {/* Live-stream suggestion pill (only while a stream for THIS
                     tournament is running) → jumps to the immersive /uzivo view.
@@ -503,7 +646,7 @@ export default function MatchLivePage() {
                 )}
             </Box>
 
-            {/* SCROLLABLE timeline - the ONLY scrolling region on the page. */}
+            {/* SCROLLABLE match info - the ONLY scrolling region on the page. */}
             <Box
                 flex="1"
                 minH="0"
@@ -515,45 +658,97 @@ export default function MatchLivePage() {
                 pb="6"
                 css={{ WebkitOverflowScrolling: "touch" }}
             >
-                <Box maxW="640px" mx="auto" w="full">
+                <Box maxW={infoMaxW} mx="auto" w="full">
                     <Box bg="bg.panel" rounded="xl" borderWidth="1px" borderColor="border" p="4">
-                        <Text
-                            fontFamily="mono"
-                            fontSize="10px"
-                            fontWeight={800}
-                            letterSpacing="0.12em"
-                            color="fg.muted"
-                            mb="3"
-                            textAlign="center"
+                        <HStack
+                            gap="1"
+                            bg="bg.muted"
+                            rounded="full"
+                            p="1"
+                            mb="4"
+                            overflowX="auto"
+                            justify={{ base: "flex-start", md: "center" }}
+                            position="sticky"
+                            top="0"
+                            zIndex={3}
+                            boxShadow="0 10px 18px rgba(15, 23, 42, 0.08)"
                         >
-                            TIJEK UTAKMICE
-                        </Text>
-                        <GoalscorersPanel
-                            tournamentUuid={uuid!}
-                            matchId={matchId}
-                            team1Id={scheduled.team1Id}
-                            team2Id={scheduled.team2Id}
-                            halfLengthMin={halfLengthMin}
-                            pollMs={isLive ? POLL_MS : undefined}
-                            refreshSignal={scorerTick}
-                            /* Live overlay first (it moves as fouls are given),
-                               falling back to the scheduled record so a FINISHED
-                               match - which has no live overlay - still shows
-                               its accumulated per-half fouls. */
-                            fouls={{
-                                t1First: live?.fouls1First ?? scheduled.fouls1First ?? 0,
-                                t1Second: live?.fouls1Second ?? scheduled.fouls1Second ?? 0,
-                                t2First: live?.fouls2First ?? scheduled.fouls2First ?? 0,
-                                t2Second: live?.fouls2Second ?? scheduled.fouls2Second ?? 0,
-                            }}
-                            emptyNote={
-                                isFinished
-                                    ? "Prikazan samo krajnji rezultat bez strijelca."
-                                    : isScheduled
-                                        ? "Utakmica još nije počela."
-                                        : "Još nema događaja."
-                            }
-                        />
+                            {infoTabs.map((it) => (
+                                <chakra.button
+                                    key={it.key}
+                                    type="button"
+                                    onClick={() => setTab(it.key)}
+                                    display="inline-flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    px="3.5"
+                                    py="1.5"
+                                    rounded="full"
+                                    fontSize="12px"
+                                    fontWeight={800}
+                                    whiteSpace="nowrap"
+                                    flexShrink={0}
+                                    cursor="pointer"
+                                    bg={tab === it.key ? "brand.solid" : "transparent"}
+                                    color={tab === it.key ? "white" : "fg.muted"}
+                                    boxShadow={tab === it.key ? "sm" : undefined}
+                                    _hover={tab === it.key ? undefined : { color: "fg.ink" }}
+                                >
+                                    {it.label}
+                                </chakra.button>
+                            ))}
+                        </HStack>
+
+                        {tab === "timeline" && (
+                            <GoalscorersPanel
+                                tournamentUuid={uuid!}
+                                matchId={matchId}
+                                team1Id={scheduled.team1Id}
+                                team2Id={scheduled.team2Id}
+                                halfLengthMin={halfLengthMin}
+                                pollMs={isLive ? POLL_MS : undefined}
+                                refreshSignal={scorerTick}
+                                /* Live overlay first (it moves as fouls are given),
+                                   falling back to the scheduled record so a FINISHED
+                                   match - which has no live overlay - still shows
+                                   its accumulated per-half fouls. */
+                                fouls={{
+                                    t1First: live?.fouls1First ?? scheduled.fouls1First ?? 0,
+                                    t1Second: live?.fouls1Second ?? scheduled.fouls1Second ?? 0,
+                                    t2First: live?.fouls2First ?? scheduled.fouls2First ?? 0,
+                                    t2Second: live?.fouls2Second ?? scheduled.fouls2Second ?? 0,
+                                }}
+                                emptyNote={
+                                    isFinished
+                                        ? "Prikazan samo krajnji rezultat bez strijelca."
+                                        : isScheduled
+                                            ? "Utakmica još nije počela."
+                                            : "Još nema događaja."
+                                }
+                            />
+                        )}
+
+                        {tab === "lineups" && (
+                            <LineupsPanel
+                                team1Name={team1Name}
+                                team2Name={team2Name}
+                                team1Players={lineups.team1}
+                                team2Players={lineups.team2}
+                                events={matchEvents}
+                            />
+                        )}
+
+                        {tab === "context" && (
+                            hasGroupContext ? (
+                                <GroupContextPanel
+                                    group={groupForMatch}
+                                    team1Id={scheduled.team1Id}
+                                    team2Id={scheduled.team2Id}
+                                />
+                            ) : (
+                                <BracketContextPanel bracket={bracket} matchId={matchId} />
+                            )
+                        )}
                     </Box>
                 </Box>
             </Box>
@@ -582,4 +777,419 @@ function formatKickoff(iso: string | null | undefined): string {
     } catch {
         return "-"
     }
+}
+
+function LineupsPanel({
+    team1Name,
+    team2Name,
+    team1Players,
+    team2Players,
+    events,
+}: {
+    team1Name: string
+    team2Name: string
+    team1Players: PlayerDto[] | null
+    team2Players: PlayerDto[] | null
+    events: ReturnType<typeof useRawMatchEvents>
+}) {
+    return (
+        <Grid templateColumns="minmax(0, 1fr) minmax(0, 1fr)" gap="0">
+            <TeamLineupCard teamName={team1Name} players={team1Players} events={events} align="left" />
+            <TeamLineupCard teamName={team2Name} players={team2Players} events={events} align="right" withDivider />
+        </Grid>
+    )
+}
+
+function TeamLineupCard({
+    teamName,
+    players,
+    events,
+    align,
+    withDivider = false,
+}: {
+    teamName: string
+    players: PlayerDto[] | null
+    events: ReturnType<typeof useRawMatchEvents>
+    align: "left" | "right"
+    withDivider?: boolean
+}) {
+    const sorted = [...(players ?? [])].sort((a, b) => {
+        const an = a.number ?? 10_000
+        const bn = b.number ?? 10_000
+        if (an !== bn) return an - bn
+        return a.name.localeCompare(b.name, "hr")
+    })
+    return (
+        <Box
+            minW="0"
+            px={{ base: "2.5", md: "4" }}
+            borderLeftWidth={withDivider ? "1px" : undefined}
+            borderColor="border"
+        >
+            <Flex
+                minH="40px"
+                pb="2.5"
+                align="center"
+                justify={align === "left" ? "flex-start" : "flex-end"}
+                borderBottomWidth="1px"
+                borderColor="border"
+            >
+                <Text fontSize="sm" fontWeight={900} color="fg.ink" textAlign={align} lineClamp={2}>
+                    {teamName}
+                </Text>
+            </Flex>
+            {players == null ? (
+                <Flex minH="96px" align="center" justify="center" px="2">
+                    <Spinner size="sm" color="brand.solid" />
+                </Flex>
+            ) : sorted.length === 0 ? (
+                <Flex minH="96px" align="center" justify="center" px="2">
+                    <Text fontSize="sm" color="fg.muted" textAlign="center">
+                        Nema unesenih sastava za ekipu.
+                    </Text>
+                </Flex>
+            ) : (
+                <VStack align="stretch" gap="0">
+                    {sorted.map((p) => {
+                        const stat = playerMatchStats(events, p.id)
+                        return (
+                            <Flex
+                                key={p.id}
+                                align="center"
+                                gap="2.5"
+                                py="2.5"
+                                borderTopWidth="1px"
+                                borderColor="border"
+                                direction={align === "right" ? "row-reverse" : "row"}
+                            >
+                                <Flex
+                                    w="34px"
+                                    h="34px"
+                                    rounded="md"
+                                    align="center"
+                                    justify="center"
+                                    bg="bg.muted"
+                                    color="fg.ink"
+                                    fontFamily="mono"
+                                    fontWeight={900}
+                                    flexShrink={0}
+                                >
+                                    {p.number ?? "-"}
+                                </Flex>
+                                <Box minW="0" flex="1" textAlign={align}>
+                                    <HStack gap="1.5" justify={align === "right" ? "flex-end" : "flex-start"} minW="0" wrap="wrap">
+                                        <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>
+                                            {p.name}
+                                        </Text>
+                                        {stat.goals > 0 && <PlayerGoalMark count={stat.goals} />}
+                                        {stat.yellow > 0 && <PlayerCardMark tone="yellow" count={stat.yellow} />}
+                                        {stat.red > 0 && <PlayerCardMark tone="red" count={stat.red} />}
+                                        {p.captain && (
+                                            <Box as="span" px="1.5" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="9px" fontWeight={900}>
+                                                K
+                                            </Box>
+                                        )}
+                                    </HStack>
+                                </Box>
+                            </Flex>
+                        )
+                    })}
+                </VStack>
+            )}
+        </Box>
+    )
+}
+
+function playerMatchStats(events: ReturnType<typeof useRawMatchEvents>, playerId: number) {
+    let goals = 0
+    let yellow = 0
+    let red = 0
+    for (const e of events) {
+        if (e.playerId !== playerId) continue
+        if (e.type === "GOAL" || e.type === "PENALTY_GOAL") goals++
+        else if (e.type === "YELLOW_CARD") yellow++
+        else if (e.type === "RED_CARD") red++
+    }
+    return { goals, yellow, red }
+}
+
+function PlayerGoalMark({ count }: { count: number }) {
+    return (
+        <HStack
+            as="span"
+            gap="0.5"
+            color="fg.ink"
+            fontSize="12px"
+            fontWeight={900}
+            lineHeight="1"
+            flexShrink={0}
+        >
+            <Box as="span" aria-label="Gol">⚽</Box>
+            {count > 1 && <Box as="span">{count}</Box>}
+        </HStack>
+    )
+}
+
+function PlayerCardMark({ tone, count }: { tone: "yellow" | "red"; count: number }) {
+    return (
+        <HStack as="span" gap="0.5" align="center" flexShrink={0}>
+            {Array.from({ length: Math.min(count, 2) }).map((_, i) => (
+                <Box
+                    key={i}
+                    as="span"
+                    aria-label={tone === "yellow" ? "Žuti karton" : "Crveni karton"}
+                    w="8px"
+                    h="12px"
+                    rounded="1px"
+                    bg={tone === "yellow" ? "#facc15" : "#ef4444"}
+                    borderWidth="1px"
+                    borderColor={tone === "yellow" ? "#d4a90d" : "#dc2626"}
+                    boxShadow="xs"
+                />
+            ))}
+            {count > 2 && (
+                <Text as="span" fontSize="10px" fontWeight={900} color="fg.muted" lineHeight="1">
+                    x{count}
+                </Text>
+            )}
+        </HStack>
+    )
+}
+
+function GroupContextPanel({
+    group,
+    team1Id,
+    team2Id,
+}: {
+    group: Group | null
+    team1Id: number | null
+    team2Id: number | null
+}) {
+    if (!group) {
+        return <EmptyContext title="Grupa nije dostupna" note="Grupna faza još nije izvučena." />
+    }
+    return (
+        <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
+            <Grid templateColumns="34px minmax(0,1fr) 34px 34px 34px 34px 58px 42px" gap="1" px="3" py="2" bg="bg.muted">
+                {["#", "Ekipa", "UT", "P", "N", "I", "Gol", "Bod"].map((h, i) => (
+                    <Text
+                        key={h}
+                        fontFamily="mono"
+                        fontSize="10px"
+                        fontWeight={900}
+                        color="fg.muted"
+                        textAlign={i >= 2 ? "right" : "left"}
+                        textTransform="uppercase"
+                    >
+                        {h}
+                    </Text>
+                ))}
+            </Grid>
+            {group.standings.map((row, i) => {
+                const playing = row.teamId === team1Id || row.teamId === team2Id
+                const advancing = i < group.effectiveAdvance
+                return (
+                    <Grid
+                        key={row.teamId}
+                        templateColumns="34px minmax(0,1fr) 34px 34px 34px 34px 58px 42px"
+                        gap="1"
+                        alignItems="center"
+                        px="3"
+                        py="2.5"
+                        borderTopWidth="1px"
+                        borderColor="border"
+                        bg={playing ? "brand.subtle" : undefined}
+                        borderLeftWidth="3px"
+                        borderLeftColor={advancing ? "brand.solid" : "transparent"}
+                    >
+                        <Text fontFamily="mono" fontWeight={900} color={advancing ? "brand.fg" : "fg.muted"}>
+                            {i + 1}
+                        </Text>
+                        <Text fontSize="sm" fontWeight={playing ? 900 : 800} color="fg.ink" truncate>
+                            {row.teamName}
+                        </Text>
+                        <StandingsCell>{row.played}</StandingsCell>
+                        <StandingsCell>{row.won}</StandingsCell>
+                        <StandingsCell>{row.drawn}</StandingsCell>
+                        <StandingsCell>{row.lost}</StandingsCell>
+                        <StandingsCell>{row.goalsFor}:{row.goalsAgainst}</StandingsCell>
+                        <StandingsCell bold>{row.points}</StandingsCell>
+                    </Grid>
+                )
+            })}
+        </Box>
+    )
+}
+
+function StandingsCell({ children, bold = false }: { children: React.ReactNode; bold?: boolean }) {
+    return (
+        <Text fontFamily="mono" fontSize="sm" fontWeight={bold ? 900 : 700} color="fg.ink" textAlign="right">
+            {children}
+        </Text>
+    )
+}
+
+function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; matchId: number }) {
+    const activeRef = useRef<HTMLDivElement | null>(null)
+    const rounds = bracket?.rounds ?? []
+    useEffect(() => {
+        if (!bracket || rounds.length === 0) return
+        const timer = window.setTimeout(() => {
+            activeRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "center",
+            })
+        }, 120)
+        return () => window.clearTimeout(timer)
+    }, [bracket, matchId, rounds.length])
+
+    if (!bracket || rounds.length === 0) {
+        return <EmptyContext title="Završnica nije dostupna" note="Eliminacijska ljestvica još nije generirana." />
+    }
+    const libraryMatches = matchPageBracketToLibraryMatches(rounds)
+    const matchById = new Map<number, BracketMatch>()
+    for (const round of rounds) for (const m of round.matches) matchById.set(m.matchId, m)
+    if (bracket.thirdPlace) matchById.set(bracket.thirdPlace.matchId, bracket.thirdPlace)
+
+    const renderMatch = (props: MatchComponentProps) => {
+        const original = matchById.get(Number(props.match.id))
+        if (!original) return null
+        const active = original.matchId === matchId
+        return (
+            <Box
+                ref={active ? activeRef : undefined}
+                w="100%"
+                h="100%"
+                display="flex"
+                alignItems="center"
+            >
+                <ReadOnlyBracketMatch match={original} active={active} />
+            </Box>
+        )
+    }
+
+    const Bracket: any = SingleEliminationBracket
+    return (
+        <Box overflowX="auto" overflowY="hidden" pb="2">
+            <Box display="inline-block" minW="100%">
+                <Bracket
+                    matches={libraryMatches}
+                    matchComponent={renderMatch}
+                    theme={matchPageBracketTheme}
+                    options={{
+                        style: {
+                            roundHeader: {
+                                isShown: true,
+                                height: 30,
+                                marginBottom: 14,
+                                fontSize: 11,
+                                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                                roundTextGenerator: (roundNumber: number) =>
+                                    bracket.rounds[roundNumber - 1]?.title ?? undefined,
+                            },
+                            width: 230,
+                            boxHeight: 124,
+                            canvasPadding: 16,
+                            spaceBetweenColumns: 58,
+                            spaceBetweenRows: 38,
+                            roundSeparatorWidth: 18,
+                        },
+                    }}
+                />
+                    {bracket.thirdPlace && (
+                    <Box
+                        ref={bracket.thirdPlace.matchId === matchId ? activeRef : undefined}
+                        mt="4"
+                        maxW="230px"
+                    >
+                        <Text fontSize="xs" fontWeight={900} color="fg.muted" mb="2" textTransform="uppercase">
+                            Za 3. mjesto
+                        </Text>
+                        <ReadOnlyBracketMatch
+                            match={bracket.thirdPlace}
+                            active={bracket.thirdPlace.matchId === matchId}
+                        />
+                    </Box>
+                )}
+            </Box>
+        </Box>
+    )
+}
+
+function ReadOnlyBracketMatch({ match, active }: { match: BracketMatch; active: boolean }) {
+    const showScore = match.score1 != null && match.score2 != null
+    return (
+        <Box
+            w="100%"
+            borderWidth="1px"
+            borderColor={active ? "brand.solid" : "border"}
+            borderLeftWidth="3px"
+            rounded="lg"
+            overflow="hidden"
+            bg={active ? "brand.subtle" : "bg.panel"}
+            boxShadow={active ? "sm" : undefined}
+        >
+            <BracketTeamLine
+                name={match.team1Name ?? match.slot1PredictedName ?? match.slot1Label ?? "-"}
+                score={showScore ? match.score1 : null}
+                penalty={match.penalties1}
+                winner={match.winnerTeamId != null && match.winnerTeamId === match.team1Id}
+            />
+            <Box borderTopWidth="1px" borderColor="border" />
+            <BracketTeamLine
+                name={match.team2Name ?? match.slot2PredictedName ?? match.slot2Label ?? "-"}
+                score={showScore ? match.score2 : null}
+                penalty={match.penalties2}
+                winner={match.winnerTeamId != null && match.winnerTeamId === match.team2Id}
+            />
+        </Box>
+    )
+}
+
+function BracketTeamLine({
+    name,
+    score,
+    penalty,
+    winner,
+}: {
+    name: string
+    score: number | null
+    penalty: number | null
+    winner: boolean
+}) {
+    return (
+        <Flex align="center" gap="2" px="2.5" py="2">
+            <Text fontSize="sm" fontWeight={winner ? 900 : 700} color={winner ? "fg.ink" : "fg.muted"} truncate flex="1">
+                {name}
+            </Text>
+            {score != null && (
+                <HStack gap="1" flexShrink={0} align="baseline">
+                    <Text fontFamily="mono" fontSize="sm" fontWeight={900} color={winner ? "brand.fg" : "fg.ink"}>
+                        {score}
+                    </Text>
+                    {penalty != null && (
+                        <Text fontFamily="mono" fontSize="2xs" fontWeight={900} color={winner ? "brand.fg" : "fg.muted"}>
+                            ({penalty})
+                        </Text>
+                    )}
+                </HStack>
+            )}
+        </Flex>
+    )
+}
+
+function EmptyContext({ title, note }: { title: string; note: string }) {
+    return (
+        <Flex minH="180px" align="center" justify="center" textAlign="center" px="4">
+            <Box>
+                <Text fontSize="sm" fontWeight={900} color="fg.ink">
+                    {title}
+                </Text>
+                <Text fontSize="sm" color="fg.muted" mt="1">
+                    {note}
+                </Text>
+            </Box>
+        </Flex>
+    )
 }

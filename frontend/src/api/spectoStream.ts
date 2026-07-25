@@ -195,6 +195,26 @@ export async function startSpectoBroadcast(tournamentUuid: string): Promise<Spec
     return data
 }
 
+/** SHOW: only put this stream on the home page; do not send stream_start. */
+export async function showSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
+    const { data } = await http.post<SpectoBroadcast>(
+        "/specto-admin/broadcast/show",
+        { tournamentUuid },
+        { successMessage: "Stream se prikazuje na glavnoj." } as any,
+    )
+    return data
+}
+
+/** HIDE: only remove it from the home page; do not send stream_end. */
+export async function hideSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
+    const { data } = await http.post<SpectoBroadcast>(
+        "/specto-admin/broadcast/hide",
+        { tournamentUuid },
+        { successMessage: "Stream je sakriven s glavne." } as any,
+    )
+    return data
+}
+
 /** STOP: camera off on the overlay + take the banner out of STREAMING. */
 export async function stopSpectoBroadcast(tournamentUuid: string): Promise<SpectoBroadcast> {
     const { data } = await http.post<SpectoBroadcast>(

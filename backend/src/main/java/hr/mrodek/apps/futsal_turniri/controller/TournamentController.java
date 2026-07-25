@@ -2814,14 +2814,14 @@ public class TournamentController {
 
         // SpectoStream: mirror the event onto the overlay after the persist +
         // score recompute (commit-safe point). TIMER matches only; async
-        // fire-and-forget. GOAL/OWN_GOAL credit the side whose score rose; cards
-        // carry the carded player's side. PENALTY_* are shootout kicks and must
-        // never touch the overlay score, so they are skipped.
+        // fire-and-forget. GOAL/OWN_GOAL credit the side whose score rose;
+        // PENALTY_GOAL is announced as a regular goal during the shootout, while
+        // PENALTY_MISSED stays local. Cards carry the carded player's side.
         if (spectoDrives(match)) {
             Tournaments st = match.getTournament();
             if (st != null) {
                 switch (type) {
-                    case GOAL, OWN_GOAL -> {
+                    case GOAL, OWN_GOAL, PENALTY_GOAL -> {
                         String pn = event.getPlayer() != null ? event.getPlayer().getName() : null;
                         if (type == MatchEventType.OWN_GOAL && pn != null) pn = pn + " (ag)";
                         specto.goal(st, event.getId(), spectoSide(match, spectoEventTeam(event)), pn);
@@ -2832,7 +2832,7 @@ public class TournamentController {
                     case RED_CARD -> specto.card(st, event.getId(),
                             spectoSide(match, spectoEventTeam(event)),
                             event.getPlayer() != null ? event.getPlayer().getName() : null, "red");
-                    default -> { /* PENALTY_GOAL / PENALTY_MISSED: never on the overlay */ }
+                    default -> { /* PENALTY_MISSED: no stream event */ }
                 }
             }
         }
@@ -2867,24 +2867,27 @@ public class TournamentController {
             throw new NotFoundException("Match event not found");
         }
 
-        boolean wasGoal = event.getType() == MatchEventType.GOAL
+        boolean wasScoreGoal = event.getType() == MatchEventType.GOAL
                 || event.getType() == MatchEventType.OWN_GOAL;
+        boolean wasSpectoGoal = wasScoreGoal
+                || event.getType() == MatchEventType.PENALTY_GOAL;
         // SpectoStream: capture the credited side + event id BEFORE the row is
         // deleted (its lazy team/player are still loadable here), so the overlay
         // can decrement the same side that must now lose the goal.
-        String cancelSide = wasGoal ? spectoSide(match, spectoEventTeam(event)) : null;
+        String cancelSide = wasSpectoGoal ? spectoSide(match, spectoEventTeam(event)) : null;
         long cancelEventId = event.getId();
         matchEventRepo.delete(event);
 
-        if (wasGoal) {
+        if (wasScoreGoal) {
             recomputeScoreFromGoals(match);
         }
 
         notifyLive(match);
         // SpectoStream: cancel the goal on the overlay (its score just decreased).
-        // TIMER matches only; async fire-and-forget. Cards / PENALTY_* have no
-        // overlay score to undo, so only real goals are cancelled.
-        if (wasGoal && spectoDrives(match)) {
+        // TIMER matches only; async fire-and-forget. Successful shootout kicks
+        // are also mirrored as goals, so deleting/editing them must undo the
+        // same Specto event. Missed penalties and cards have nothing to cancel.
+        if (wasSpectoGoal && spectoDrives(match)) {
             Tournaments st = match.getTournament();
             if (st != null) specto.goalCancelled(st, cancelEventId, cancelSide);
         }
