@@ -78,6 +78,20 @@ export function classifyStreamUrl(url: string): { kind: StreamKind; src: string 
     return { kind: "iframe", src: url }
 }
 
+/** SpectoStream broadcast endpoints expose HLS as
+ *  /v1/streams/{streamId}/master.m3u8. When the banner already carries that
+ *  URL, mount the platform player immediately instead of briefly painting our
+ *  old HLS player while /specto/public resolves. */
+export function spectoStreamIdFromPlaybackUrl(url: string): string | null {
+    const m = url.match(/\/v1\/streams\/([^/?#]+)/i)
+    if (!m?.[1]) return null
+    try {
+        return decodeURIComponent(m[1])
+    } catch {
+        return m[1]
+    }
+}
+
 export default function StreamPlayer({
     url,
     overlay,
@@ -108,7 +122,9 @@ export default function StreamPlayer({
      *  logic all stay in place, unused, ready to switch back to. */
     tournamentUuid?: string | null
 }) {
-    const spectoStreamId = useSpectoStreamId(tournamentUuid)
+    const spectoStreamIdFromUrl = useMemo(() => spectoStreamIdFromPlaybackUrl(url), [url])
+    const linkedSpectoStreamId = useSpectoStreamId(tournamentUuid)
+    const spectoStreamId = spectoStreamIdFromUrl ?? linkedSpectoStreamId
     const { kind, src } = useMemo(() => classifyStreamUrl(url), [url])
 
     const wrapRef = useRef<HTMLDivElement>(null)
