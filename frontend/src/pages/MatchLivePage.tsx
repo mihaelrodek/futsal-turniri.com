@@ -65,6 +65,12 @@ type PosterMetaBits = {
 
 type MatchInfoTab = "timeline" | "lineups" | "context"
 
+function splitPlayerDisplayName(name: string): { first: string; rest: string } {
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    if (parts.length <= 1) return { first: name.trim(), rest: "" }
+    return { first: parts[0], rest: parts.slice(1).join(" ") }
+}
+
 const matchPageBracketTheme = createTheme({
     textColor: {
         main: "#0B1522",
@@ -891,6 +897,7 @@ function TeamLineupCard({
                 <VStack align="stretch" gap="0">
                     {sorted.map((p) => {
                         const stat = playerMatchStats(events, p.id)
+                        const displayName = splitPlayerDisplayName(p.name)
                         const marks = (
                             <HStack
                                 as="span"
@@ -950,18 +957,37 @@ function TeamLineupCard({
                                 >
                                     {p.number ?? "-"}
                                 </Flex>
-                                <Text
+                                <VStack
                                     gridColumn={2}
                                     gridRow={1}
-                                    fontSize={{ base: "xs", md: "sm" }}
-                                    fontWeight={800}
-                                    color="fg.ink"
+                                    align={align === "right" ? "flex-end" : "flex-start"}
+                                    gap="0"
                                     minW="0"
                                     textAlign={align}
-                                    truncate
                                 >
-                                    {p.name}
-                                </Text>
+                                    <Text
+                                        fontSize={{ base: "xs", md: "sm" }}
+                                        fontWeight={800}
+                                        color="fg.ink"
+                                        lineHeight="1.12"
+                                        lineClamp={1}
+                                        maxW="full"
+                                    >
+                                        {displayName.first || p.name}
+                                    </Text>
+                                    {displayName.rest && (
+                                        <Text
+                                            fontSize={{ base: "xs", md: "sm" }}
+                                            fontWeight={800}
+                                            color="fg.ink"
+                                            lineHeight="1.12"
+                                            lineClamp={1}
+                                            maxW="full"
+                                        >
+                                            {displayName.rest}
+                                        </Text>
+                                    )}
+                                </VStack>
                                 {align === "left" && marks}
                             </Grid>
                         )

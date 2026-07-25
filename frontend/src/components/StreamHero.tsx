@@ -842,7 +842,7 @@ function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: M
     return (
         <>
             <Grid
-                templateColumns="minmax(0, 1fr) minmax(0, 1fr)"
+                templateColumns="minmax(0, 1fr) auto minmax(0, 1fr)"
                 alignItems="center"
                 gap="2"
                 px="1"
@@ -857,6 +857,7 @@ function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: M
                         {fixture.team1Name ?? "-"}
                     </Text>
                 </HStack>
+                <Box w="1px" h="22px" bg="border" rounded="full" />
                 <HStack gap="1.5" justify="flex-start" minW="0">
                     <Text fontSize="xs" fontWeight={800} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
                         {fixture.team2Name ?? "-"}
