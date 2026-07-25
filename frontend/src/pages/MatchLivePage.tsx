@@ -250,6 +250,8 @@ export default function MatchLivePage() {
         Number.isFinite(matchId) ? matchId : null,
         !!uuid && Number.isFinite(matchId),
     )
+    const bcDelayMs = useBroadcastDelayMs(uuid ?? null)
+    const bcNow = useTick(bcDelayMs > 0)
 
     useEffect(() => {
         setLineups({ team1: null, team2: null })
@@ -358,11 +360,9 @@ export default function MatchLivePage() {
     // until the stream reaches it, so the score above it has to wait too -
     // otherwise the number spoils the goal the viewer hasn't seen yet. Goals
     // still on hold are subtracted from the real score; no stream = no change.
-    const bcDelayMs = useBroadcastDelayMs(uuid ?? null)
     // RAW on purpose: we need the goals that are still withheld in order to
     // subtract them - the delayed list has them removed already.
     const bcEvents = matchEvents
-    const bcNow = useTick(bcDelayMs > 0)
     const score1 = visibleScore(rawScore1, scheduled.team1Id, bcEvents, bcDelayMs, bcNow) ?? rawScore1
     const score2 = visibleScore(rawScore2, scheduled.team2Id, bcEvents, bcDelayMs, bcNow) ?? rawScore2
     // Equal-width digit boxes for the score row: both sides sized to the LONGER
@@ -999,12 +999,21 @@ function GroupContextPanel({
     if (!group) {
         return <EmptyContext title="Grupa nije dostupna" note="Grupna faza još nije izvučena." />
     }
+    const gridCols = {
+        base: "minmax(0, 1fr) 28px 28px 28px 42px 42px",
+        md: "34px minmax(0,1fr) 34px 34px 34px 34px 58px 46px 42px",
+    }
     return (
         <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
-            <Grid templateColumns="34px minmax(0,1fr) 34px 34px 34px 34px 58px 42px" gap="1" px="3" py="2" bg="bg.muted">
-                {["#", "Ekipa", "UT", "P", "N", "I", "Gol", "Bod"].map((h, i) => (
+            <Grid templateColumns={gridCols} gap="1" px="3" py="2" bg="bg.muted">
+                {["#", "Ekipa", "UT", "P", "N", "I", "Gol", "GR", "Bod"].map((h, i) => (
                     <Text
                         key={h}
+                        display={
+                            h === "#" || h === "UT" || h === "Gol"
+                                ? { base: "none", md: "block" }
+                                : undefined
+                        }
                         fontFamily="mono"
                         fontSize="10px"
                         fontWeight={900}
@@ -1021,7 +1030,7 @@ function GroupContextPanel({
                 return (
                     <Grid
                         key={row.teamId}
-                        templateColumns="34px minmax(0,1fr) 34px 34px 34px 34px 58px 42px"
+                        templateColumns={gridCols}
                         gap="1"
                         alignItems="center"
                         px="3"
@@ -1032,7 +1041,12 @@ function GroupContextPanel({
                         borderLeftWidth="3px"
                         borderLeftColor={advancing ? "brand.solid" : "transparent"}
                     >
-                        <Text fontFamily="mono" fontWeight={900} color={advancing ? "brand.fg" : "fg.muted"}>
+                        <Text
+                            display={{ base: "none", md: "block" }}
+                            fontFamily="mono"
+                            fontWeight={900}
+                            color={advancing ? "brand.fg" : "fg.muted"}
+                        >
                             {i + 1}
                         </Text>
                         <Text fontSize="sm" fontWeight={advancing ? 900 : 800} color="fg.ink" truncate>
@@ -1042,7 +1056,8 @@ function GroupContextPanel({
                         <StandingsCell>{row.won}</StandingsCell>
                         <StandingsCell>{row.drawn}</StandingsCell>
                         <StandingsCell>{row.lost}</StandingsCell>
-                        <StandingsCell>{row.goalsFor}:{row.goalsAgainst}</StandingsCell>
+                        <StandingsCell display={{ base: "none", md: "block" }}>{row.goalsFor}:{row.goalsAgainst}</StandingsCell>
+                        <StandingsCell>{row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}</StandingsCell>
                         <StandingsCell bold>{row.points}</StandingsCell>
                     </Grid>
                 )
@@ -1051,9 +1066,17 @@ function GroupContextPanel({
     )
 }
 
-function StandingsCell({ children, bold = false }: { children: React.ReactNode; bold?: boolean }) {
+function StandingsCell({
+    children,
+    bold = false,
+    display,
+}: {
+    children: React.ReactNode
+    bold?: boolean
+    display?: any
+}) {
     return (
-        <Text fontFamily="mono" fontSize="sm" fontWeight={bold ? 900 : 700} color="fg.ink" textAlign="right">
+        <Text display={display} fontFamily="mono" fontSize="sm" fontWeight={bold ? 900 : 700} color="fg.ink" textAlign="right">
             {children}
         </Text>
     )

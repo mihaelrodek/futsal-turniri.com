@@ -1991,21 +1991,20 @@ export default function GroupsTab({
                         </Flex>
 
                         {/* v3 compact standings - CSS grid, not <table>.
-                         Columns: # | EKIPA | UT | P | N | I | GR | (GOL |
-                         ZADNJIH 5 md-only) | BOD. LIVE matches count in
+                         Columns: # | EKIPA | P | N | I | (GOL md-only) | GR |
+                         (ZADNJIH 3 md-only) | BOD. LIVE matches count in
                          provisionally - cells they modified render red until
                          the match finishes. Advancing rows get green-tint bg
                          + 3px green left border. */}
                         <Box>
                             {/* Column header - SofaScore-style: each stat its own
                             column, all on one row (no stacking under the name).
-                            Mobile keeps P·N·I + BOD; md adds GOL/Zadnjih 5.
-                            (UT + GR intentionally dropped for a cleaner view.) */}
+                            Mobile keeps P·N·I + GR + BOD; md adds GOL/Zadnjih 3. */}
                             <Box
                                 display="grid"
                                 gridTemplateColumns={{
-                                    base: "22px 1fr 20px 20px 20px 30px",
-                                    md: "24px 1fr 24px 24px 24px 48px 72px 34px",
+                                    base: "22px 1fr 20px 20px 20px 34px 30px",
+                                    md: "24px 1fr 24px 24px 24px 48px 40px 72px 34px",
                                 }}
                                 gap="1.5"
                                 px={{base: "3", md: "4"}}
@@ -2028,6 +2027,7 @@ export default function GroupsTab({
                                 <StHead label="N"/>
                                 <StHead label="I"/>
                                 <StHead label="GOL" mdOnly/>
+                                <StHead label="GR"/>
                                 <StHead label="ZADNJIH 3" mdOnly align="left"/>
                                 <StHead label="BOD"/>
                             </Box>
@@ -2043,8 +2043,8 @@ export default function GroupsTab({
                                         key={row.teamId}
                                         display="grid"
                                         gridTemplateColumns={{
-                                            base: "22px 1fr 20px 20px 20px 30px",
-                                            md: "24px 1fr 24px 24px 24px 48px 72px 34px",
+                                            base: "22px 1fr 20px 20px 20px 34px 30px",
+                                            md: "24px 1fr 24px 24px 24px 48px 40px 72px 34px",
                                         }}
                                         gap="1.5"
                                         alignItems="center"
@@ -2125,6 +2125,11 @@ export default function GroupsTab({
                                             mdOnly
                                             color={lc("goals") ? "accent.red" : undefined}
                                             weight={lc("goals") ? 700 : undefined}
+                                        />
+                                        <StNum
+                                            value={row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                                            color={lc("goalDiff") ? "accent.red" : undefined}
+                                            weight={lc("goalDiff") ? 700 : undefined}
                                         />
                                         {/* Zadnjih 5 - md only. Left-aligned so the
                                         badges line up across rows even when
@@ -2290,15 +2295,15 @@ export default function GroupsTab({
                         </Flex>
 
                         {/* Same trimmed column set as the group tables: mobile
-                        shows P·N·I + BOD, md adds GOL and Zadnjih 5. GRP (group
-                        letter), UT and GR are intentionally dropped here. Live-
+                        shows P·N·I + GR + BOD, md adds GOL and Zadnjih 3. GRP
+                        (group letter) and UT are intentionally dropped here. Live-
                         modified cells render red, identically to the group
                         standings. */}
                         <Box
                             display="grid"
                             gridTemplateColumns={{
-                                base: "22px 1fr 20px 20px 20px 30px",
-                                md: "24px 1fr 24px 24px 24px 48px 72px 34px",
+                                base: "22px 1fr 20px 20px 20px 34px 30px",
+                                md: "24px 1fr 24px 24px 24px 48px 40px 72px 34px",
                             }}
                             gap="1.5"
                             px={{base: "3", md: "4"}}
@@ -2316,6 +2321,7 @@ export default function GroupsTab({
                             <StHead label="N"/>
                             <StHead label="I"/>
                             <StHead label="GOL" mdOnly/>
+                            <StHead label="GR"/>
                             <StHead label="ZADNJIH 3" mdOnly align="left"/>
                             <StHead label="BOD"/>
                         </Box>
@@ -2328,8 +2334,8 @@ export default function GroupsTab({
                                     key={tr.standing.teamId}
                                     display="grid"
                                     gridTemplateColumns={{
-                                        base: "22px 1fr 20px 20px 20px 30px",
-                                        md: "24px 1fr 24px 24px 24px 48px 72px 34px",
+                                        base: "22px 1fr 20px 20px 20px 34px 30px",
+                                        md: "24px 1fr 24px 24px 24px 48px 40px 72px 34px",
                                     }}
                                     gap="1.5"
                                     alignItems="center"
@@ -2399,6 +2405,11 @@ export default function GroupsTab({
                                         mdOnly
                                         color={lc("goals") ? "accent.red" : undefined}
                                         weight={lc("goals") ? 700 : undefined}
+                                    />
+                                    <StNum
+                                        value={tr.standing.goalDiff > 0 ? `+${tr.standing.goalDiff}` : tr.standing.goalDiff}
+                                        color={lc("goalDiff") ? "accent.red" : undefined}
+                                        weight={lc("goalDiff") ? 700 : undefined}
                                     />
                                     {/* Zadnjih 5 - md only, with the red outlined
                                     provisional badge while the team plays. */}

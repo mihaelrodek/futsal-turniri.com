@@ -71,6 +71,7 @@ const C = {
        rank numbers, headers. The qualifying-row MARK stays cyan (greenMid) -
        see the tables below. */
     green: "#111F31",
+    drawTeal: "#17A79D",
     greenMid: "#2AD4C8",
     ink: "#1B2836",
     inkSoft: "#3D4C5B",
@@ -80,7 +81,7 @@ const C = {
     muted: "#5F7080",
     greenWash: "rgba(42,212,200,0.12)",
     zebra: "rgba(42,212,200,0.10)",
-    /* Semantic success green (win/goal markers only - see file header note). */
+    /* Semantic success green (goal / positive-stat markers only - see file header note). */
     win: "#16A34A",
     /* Live accent (only place a non-brand hue appears on the poster). */
     live: "#d64545",
@@ -687,7 +688,7 @@ function PosterTeamName({
                     textAlign: align,
                     fontSize: "15px",
                     fontWeight: winner ? 800 : 600,
-                    color: winner ? C.win : C.ink,
+                    color: winner ? C.drawTeal : C.ink,
                     lineHeight: 1.2,
                     wordBreak: "break-word",
                 }}
