@@ -22,10 +22,12 @@ import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
 import { useRawMatchEvents } from "../components/StreamHero"
 import { useBroadcastDelayMs, useTick, visibleScore } from "../hooks/useBroadcastDelay"
-import { useTeamColors, teamColor, teamShorts, KitSwatch } from "../components/jersey"
+import { useTeamColors, teamColor, teamShorts, teamKit, KitSwatch } from "../components/jersey"
+import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
+import type { TeamKit } from "../api/tournaments"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import type { PlayerDto } from "../types/players"
 import type { Group } from "../types/groups"
@@ -672,20 +674,34 @@ export default function MatchLivePage() {
                 position="relative"
                 zIndex={1}
                 px={{ base: 4, md: 6 }}
-                pt="4"
+                pt="0"
                 pb="6"
                 css={{ WebkitOverflowScrolling: "touch" }}
             >
                 <Box maxW={infoMaxW} mx="auto" w="full">
                     <Box position="relative">
-                        <Box position="sticky" top="0" zIndex={4} bg="bg.canvas" pb="3">
+                        <Box
+                            position="sticky"
+                            top="0"
+                            zIndex={20}
+                            bg="bg.canvas"
+                            pt="4"
+                            pb="3"
+                            mx={{ base: "-4", md: "-6" }}
+                            px={{ base: "4", md: "6" }}
+                            borderBottomWidth="1px"
+                            borderColor="transparent"
+                        >
                             <HStack
                                 gap="1"
                                 bg="bg.muted"
                                 rounded="full"
                                 p="1"
+                                mx="auto"
+                                w="fit-content"
+                                maxW="full"
                                 overflowX="auto"
-                                justify={{ base: "flex-start", md: "center" }}
+                                justify="center"
                                 boxShadow="0 10px 18px rgba(15, 23, 42, 0.08)"
                             >
                                 {infoTabs.map((it) => (
@@ -758,7 +774,7 @@ export default function MatchLivePage() {
                             hasGroupContext ? (
                                 <GroupContextPanel group={groupForMatch} />
                             ) : (
-                                <BracketContextPanel bracket={bracket} matchId={matchId} />
+                                <BracketContextPanel bracket={bracket} matchId={matchId} colors={teamColors} />
                             )
                         )}
                     </Box>
@@ -1043,7 +1059,15 @@ function StandingsCell({ children, bold = false }: { children: React.ReactNode; 
     )
 }
 
-function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; matchId: number }) {
+function BracketContextPanel({
+    bracket,
+    matchId,
+    colors,
+}: {
+    bracket: Bracket | null
+    matchId: number
+    colors: Record<string, TeamKit>
+}) {
     const activeRef = useRef<HTMLDivElement | null>(null)
     const rounds = bracket?.rounds ?? []
     useEffect(() => {
@@ -1062,6 +1086,7 @@ function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; ma
         return <EmptyContext title="Završnica nije dostupna" note="Eliminacijska ljestvica još nije generirana." />
     }
     const libraryMatches = matchPageBracketToLibraryMatches(rounds)
+    const koCodes = buildKoMatchCodes(rounds.flatMap((r) => r.matches))
     const matchById = new Map<number, BracketMatch>()
     for (const round of rounds) for (const m of round.matches) matchById.set(m.matchId, m)
     if (bracket.thirdPlace) matchById.set(bracket.thirdPlace.matchId, bracket.thirdPlace)
@@ -1078,7 +1103,12 @@ function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; ma
                 display="flex"
                 alignItems="center"
             >
-                <ReadOnlyBracketMatch match={original} active={active} />
+                <ReadOnlyBracketMatch
+                    match={original}
+                    active={active}
+                    code={original.knockoutCode ?? koCodes.get(original.matchId) ?? null}
+                    colors={colors}
+                />
             </Box>
         )
     }
@@ -1123,6 +1153,8 @@ function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; ma
                         <ReadOnlyBracketMatch
                             match={bracket.thirdPlace}
                             active={bracket.thirdPlace.matchId === matchId}
+                            code={bracket.thirdPlace.knockoutCode ?? null}
+                            colors={colors}
                         />
                     </Box>
                 )}
@@ -1131,31 +1163,60 @@ function BracketContextPanel({ bracket, matchId }: { bracket: Bracket | null; ma
     )
 }
 
-function ReadOnlyBracketMatch({ match, active }: { match: BracketMatch; active: boolean }) {
+function ReadOnlyBracketMatch({
+    match,
+    active,
+    code,
+    colors,
+}: {
+    match: BracketMatch
+    active: boolean
+    code: string | null
+    colors: Record<string, TeamKit>
+}) {
     const showScore = match.score1 != null && match.score2 != null
+    const headerLabel = code ?? (match.stage === "FINAL" ? "FINALE" : match.stage === "THIRD_PLACE" ? "ZA 3. MJESTO" : null)
     return (
         <Box
             w="100%"
             borderWidth="1px"
-            borderColor={active ? "brand.solid" : "border"}
+            borderColor={active ? "accent.amber" : "border"}
             borderLeftWidth="3px"
             rounded="lg"
             overflow="hidden"
-            bg={active ? "brand.subtle" : "bg.panel"}
-            boxShadow={active ? "sm" : undefined}
+            bg={active ? "yellow.subtle" : "bg.panel"}
+            boxShadow={active ? "0 0 0 2px color-mix(in srgb, var(--chakra-colors-accent-amber) 24%, transparent)" : undefined}
         >
+            {headerLabel && (
+                <Flex
+                    align="center"
+                    minH="24px"
+                    px="2.5"
+                    bg={active ? "yellow.subtle" : "bg.muted"}
+                    borderBottomWidth="1px"
+                    borderColor="border"
+                >
+                    <Text fontFamily="mono" fontSize="11px" fontWeight={900} color={active ? "accent.amber" : "fg.muted"}>
+                        {headerLabel}
+                    </Text>
+                </Flex>
+            )}
             <BracketTeamLine
                 name={match.team1Name ?? match.slot1PredictedName ?? match.slot1Label ?? "-"}
+                slotLabel={match.team1Name == null && match.slot1PredictedName != null ? match.slot1Label : null}
                 score={showScore ? match.score1 : null}
                 penalty={match.penalties1}
                 winner={match.winnerTeamId != null && match.winnerTeamId === match.team1Id}
+                kit={teamKit(colors, match.team1Id)}
             />
             <Box borderTopWidth="1px" borderColor="border" />
             <BracketTeamLine
                 name={match.team2Name ?? match.slot2PredictedName ?? match.slot2Label ?? "-"}
+                slotLabel={match.team2Name == null && match.slot2PredictedName != null ? match.slot2Label : null}
                 score={showScore ? match.score2 : null}
                 penalty={match.penalties2}
                 winner={match.winnerTeamId != null && match.winnerTeamId === match.team2Id}
+                kit={teamKit(colors, match.team2Id)}
             />
         </Box>
     )
@@ -1163,20 +1224,48 @@ function ReadOnlyBracketMatch({ match, active }: { match: BracketMatch; active: 
 
 function BracketTeamLine({
     name,
+    slotLabel,
     score,
     penalty,
     winner,
+    kit,
 }: {
     name: string
+    slotLabel?: string | null
     score: number | null
     penalty: number | null
     winner: boolean
+    kit?: TeamKit
 }) {
+    const jersey = kit?.jersey ?? kit?.shorts ?? "#E8EEF3"
+    const shorts = kit?.shorts ?? kit?.jersey ?? "#DCE4EA"
     return (
-        <Flex align="center" gap="2" px="2.5" py="2">
-            <Text fontSize="sm" fontWeight={winner ? 900 : 700} color={winner ? "fg.ink" : "fg.muted"} truncate flex="1">
-                {name}
-            </Text>
+        <Flex align="center" gap="2" px="2.5" py="2" bg={winner ? "brand.subtle" : "transparent"}>
+            <KitSwatch jersey={jersey} shorts={shorts} size={12} />
+            <HStack gap="1.5" minW="0" flex="1">
+                <Text fontSize="sm" fontWeight={winner ? 900 : 700} color={winner ? "fg.ink" : "fg.muted"} truncate>
+                    {name}
+                </Text>
+                {slotLabel && (
+                    <Box
+                        as="span"
+                        flexShrink={0}
+                        fontFamily="mono"
+                        fontSize="9px"
+                        fontWeight={800}
+                        color="fg.muted"
+                        bg="bg.surfaceTint"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="sm"
+                        px="1"
+                        py="0.5"
+                        lineHeight="1.1"
+                    >
+                        {slotLabel}
+                    </Box>
+                )}
+            </HStack>
             {score != null && (
                 <HStack gap="1" flexShrink={0} align="baseline">
                     <Text fontFamily="mono" fontSize="sm" fontWeight={900} color={winner ? "brand.fg" : "fg.ink"}>

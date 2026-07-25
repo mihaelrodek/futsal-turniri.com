@@ -6,13 +6,19 @@ import java.time.OffsetDateTime;
 public record ScheduledMatchDto(
         Long matchId,
         String stage,
+        /** Stable numbered knockout code ("Š1", "O3", "ČF2", "PF1"). */
+        String knockoutCode,
         /** Group letter (A, B, …) for GROUP-stage matches; null for knockout. */
         String groupName,
         Integer roundNumber,
         Long team1Id,
         String team1Name,
+        String team1JerseyColor,
+        String team1ShortsColor,
         Long team2Id,
         String team2Name,
+        String team2JerseyColor,
+        String team2ShortsColor,
         Integer score1,
         Integer score2,
         OffsetDateTime kickoffAt,

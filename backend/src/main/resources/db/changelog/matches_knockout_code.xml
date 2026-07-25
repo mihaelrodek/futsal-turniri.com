@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Stable public identifier for a knockout match ("Š1", "O3", "ČF2",
+        "PF1"). Older clients derived this from the row id ordering, which made
+        the code unavailable to the schedule and its exports. Persisting it
+        makes the bracket, schedule and feeder labels share one source of truth.
+
+        FINAL and THIRD_PLACE remain null because they are unique fixtures and
+        were never assigned a numbered code in the bracket UI.
+    -->
+    <changeSet id="2026-07-25-matches-knockout-code" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="knockout_code" type="varchar(8)"/>
+        </addColumn>
+
+        <!-- Backfill exactly the numbering the existing bracket used:
+             1-based order by match id inside each tournament + stage. -->
+        <sql>
+            WITH ranked AS (
+                SELECT id,
+                       CASE stage
+                           WHEN 'ROUND_OF_32' THEN 'Š'
+                           WHEN 'ROUND_OF_16' THEN 'O'
+                           WHEN 'QUARTERFINAL' THEN 'ČF'
+                           WHEN 'SEMIFINAL' THEN 'PF'
+                       END
+                       || ROW_NUMBER() OVER (
+                           PARTITION BY tournament_id, stage
+                           ORDER BY id
+                       )::text AS knockout_code
+                FROM matches
+                WHERE stage IN (
+                    'ROUND_OF_32',
+                    'ROUND_OF_16',
+                    'QUARTERFINAL',
+                    'SEMIFINAL'
+                )
+            )
+            UPDATE matches m
+            SET knockout_code = ranked.knockout_code
+            FROM ranked
+            WHERE m.id = ranked.id
+        </sql>
+
+        <addUniqueConstraint
+                tableName="matches"
+                columnNames="tournament_id, knockout_code"
+                constraintName="uk_matches_tournament_knockout_code"/>
+    </changeSet>
+</databaseChangeLog>

@@ -5,6 +5,8 @@ import type { MatchLiveMode } from "./matchEvents"
 export type BracketMatch = {
     matchId: number
     stage: string
+    /** Stable backend-owned knockout code ("Š1", "O3", "ČF2", "PF1"). */
+    knockoutCode?: string | null
     team1Id: number | null
     team1Name: string | null
     team2Id: number | null

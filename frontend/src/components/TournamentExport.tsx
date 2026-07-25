@@ -6,10 +6,12 @@ import { toJpeg, toPng } from "html-to-image"
 import { jsPDF } from "jspdf"
 import type { Group, GroupMatch, GroupStandingRow, ThirdPlacedRow, ThirdPlacedTable } from "../types/groups"
 import type { Bracket, BracketMatch } from "../types/bracket"
+import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import type { ScheduledMatch } from "../types/schedule"
 import type { MatchEventDto, MatchEventType } from "../types/matchEvents"
 import { fetchMatchEvents } from "../api/matchEvents"
 import type { ScorerDto } from "../api/stats"
+import type { TeamKit } from "../api/tournaments"
 import { showError, showSuccess } from "../toaster"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -215,7 +217,8 @@ function qrEndpoint(tournamentUrl: string | null | undefined): string | null {
 /** Stage/group tag for a schedule row. */
 function stageTag(m: ScheduledMatch): string {
     if (m.stage === "GROUP") return m.groupName ? `Grupa ${m.groupName}` : "Grupa"
-    return STAGE_LABEL[m.stage] ?? m.stage
+    const label = STAGE_LABEL[m.stage] ?? m.stage
+    return m.knockoutCode ? `${label} - ${m.knockoutCode}` : label
 }
 
 /** Knockout pairing fallback chain (mirrors ScheduleTab). */
@@ -320,6 +323,7 @@ function PosterPage({
     qrDataUrl,
     nodeRef,
     orientation = "portrait",
+    headerMetaMode = "inline",
     pageIndex,
     pageCount,
     headerExtra,
@@ -332,6 +336,8 @@ function PosterPage({
     nodeRef?: Ref<HTMLDivElement>
     /** Page orientation - portrait (groups / schedule) or landscape (bracket). */
     orientation?: Orientation
+    /** Bracket exports use explicit label rows; other posters keep the compact line. */
+    headerMetaMode?: "inline" | "labels"
     /** 0-based page index (0 → full header) and total page count. */
     pageIndex: number
     pageCount: number
@@ -342,6 +348,11 @@ function PosterPage({
 }) {
     const dateStr = formatDateLong(meta.startAt)
     const metaLine = [dateStr, meta.location].filter(Boolean).join("  •  ")
+    const headerMetaRows = [
+        ["Organizator", meta.organizerName ?? "—"],
+        ["Datum", dateStr ?? "—"],
+        ["Lokacija", meta.location ?? "—"],
+    ] as const
     const page = PAGE_PX[orientation]
     const first = pageIndex === 0
     return (
@@ -407,7 +418,28 @@ function PosterPage({
                                 >
                                     {meta.tournamentName}
                                 </div>
-                                {meta.organizerName ? (
+                                {headerMetaMode === "labels" ? (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginTop: "16px" }}>
+                                        {headerMetaRows.map(([label, value]) => (
+                                            <div
+                                                key={label}
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "baseline",
+                                                    gap: "8px",
+                                                    fontSize: "15px",
+                                                    lineHeight: 1.2,
+                                                    color: C.inkSoft,
+                                                }}
+                                            >
+                                                <span style={{ fontFamily: F_HEAD, fontWeight: 800, color: C.ink }}>
+                                                    {label}:
+                                                </span>
+                                                <span style={{ fontWeight: 600 }}>{value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : meta.organizerName ? (
                                     <div
                                         style={{
                                             fontFamily: F_MONO,
@@ -422,7 +454,7 @@ function PosterPage({
                                         ORGANIZATOR: {meta.organizerName}
                                     </div>
                                 ) : null}
-                                {metaLine ? (
+                                {headerMetaMode === "inline" && metaLine ? (
                                     <div style={{ fontSize: "15px", fontWeight: 600, color: C.inkSoft, marginTop: "6px" }}>
                                         {metaLine}
                                     </div>
@@ -556,6 +588,10 @@ type PosterMatchRow = {
     showDay?: boolean
     t1: string
     t2: string
+    jersey1?: string | null
+    shorts1?: string | null
+    jersey2?: string | null
+    shorts2?: string | null
     score1: number | null
     score2: number | null
     /** Penalty-shootout totals - shown on a second line under the regulation
@@ -566,6 +602,101 @@ type PosterMatchRow = {
      *  Null for a draw / undecided. */
     winner?: 1 | 2 | null
     status: string
+}
+
+const POSTER_KIT_SHIRT_PATH =
+    "M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z"
+const POSTER_KIT_SHORTS_PATH =
+    "M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z"
+
+function PosterKitSwatch({
+    jersey,
+    shorts,
+    size = 12,
+}: {
+    jersey?: string | null
+    shorts?: string | null
+    size?: number
+}) {
+    if (!jersey && !shorts) return null
+    const h = Math.round(size * 1.3)
+    const shirtColor = jersey ?? shorts ?? C.surface
+    const shortsColor = shorts ?? jersey ?? C.surface
+    return (
+        <span style={{ display: "inline-block", width: `${size}px`, height: `${h}px`, flexShrink: 0, lineHeight: 0 }}>
+            <svg viewBox="0 0 20 26" width="100%" height="100%" style={{ display: "block", overflow: "visible" }}>
+                <path
+                    d={POSTER_KIT_SHORTS_PATH}
+                    fill={shortsColor}
+                    stroke="rgba(27,40,54,0.35)"
+                    strokeWidth={0.75}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+                <path
+                    d={POSTER_KIT_SHIRT_PATH}
+                    fill={shirtColor}
+                    stroke="rgba(27,40,54,0.35)"
+                    strokeWidth={0.75}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+            </svg>
+        </span>
+    )
+}
+
+function posterBracketKit(colors: Record<string, TeamKit> | undefined, teamId: number | null | undefined): TeamKit {
+    if (teamId == null) return { jersey: "#E8EEF3", shorts: "#DCE4EA" }
+    const kit = colors?.[String(teamId)]
+    return {
+        jersey: kit?.jersey ?? kit?.shorts ?? "#E8EEF3",
+        shorts: kit?.shorts ?? kit?.jersey ?? "#DCE4EA",
+    }
+}
+
+function PosterTeamName({
+    name,
+    jersey,
+    shorts,
+    align,
+    winner,
+}: {
+    name: string
+    jersey?: string | null
+    shorts?: string | null
+    align: "left" | "right"
+    winner: boolean
+}) {
+    const kit = <PosterKitSwatch jersey={jersey} shorts={shorts} size={12} />
+    return (
+        <span
+            style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: align === "right" ? "flex-end" : "flex-start",
+                gap: "6px",
+            }}
+        >
+            {align === "left" ? kit : null}
+            <span
+                style={{
+                    minWidth: 0,
+                    textAlign: align,
+                    fontSize: "15px",
+                    fontWeight: winner ? 800 : 600,
+                    color: winner ? C.win : C.ink,
+                    lineHeight: 1.2,
+                    wordBreak: "break-word",
+                }}
+            >
+                {name}
+            </span>
+            {align === "right" ? kit : null}
+        </span>
+    )
 }
 
 /** Short "pon 29.06." day label (weekday + date, no time). */
@@ -665,7 +796,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                         background: C.greenWash,
                         padding: "5px 10px",
                         borderRadius: "999px",
-                        width: "118px",
+                        width: "145px",
                         boxSizing: "border-box",
                         textAlign: "center",
                         flexShrink: 0,
@@ -678,35 +809,11 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                 </span>
             ) : null}
             <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: "12px" }}>
-                <span
-                    style={{
-                        flex: 1,
-                        textAlign: "right",
-                        fontSize: "15px",
-                        fontWeight: w1 ? 800 : 600,
-                        color: w1 ? C.win : C.ink,
-                        lineHeight: 1.2,
-                        wordBreak: "break-word",
-                    }}
-                >
-                    {row.t1}
-                </span>
+                <PosterTeamName name={row.t1} jersey={row.jersey1} shorts={row.shorts1} align="right" winner={w1} />
                 <span style={{ fontFamily: F_MONO, fontSize: "12px", fontWeight: 700, color: C.muted, flexShrink: 0 }}>
                     vs
                 </span>
-                <span
-                    style={{
-                        flex: 1,
-                        textAlign: "left",
-                        fontSize: "15px",
-                        fontWeight: w2 ? 800 : 600,
-                        color: w2 ? C.win : C.ink,
-                        lineHeight: 1.2,
-                        wordBreak: "break-word",
-                    }}
-                >
-                    {row.t2}
-                </span>
+                <PosterTeamName name={row.t2} jersey={row.jersey2} shorts={row.shorts2} align="left" winner={w2} />
             </span>
         </div>
     )
@@ -1509,10 +1616,10 @@ function scheduleFirstPx(meta: ExportMeta): number {
 }
 
 /** Conservative wrapped-line estimate for a team name in a poster row's name
- *  cell. `perLine` is the chars-per-line for that layout (24 for the day-
+ *  cell. `perLine` is the chars-per-line for that layout (22 for the day-
  *  sectioned schedule, where the stage pill narrows the cell; ~30 for the
  *  pill-less single-group fixtures list). Clamped to 1-3 lines. */
-function estNameLines(s: string, perLine = 24): number {
+function estNameLines(s: string, perLine = 22): number {
     return Math.min(3, Math.max(1, Math.ceil(s.length / perLine)))
 }
 
@@ -1694,7 +1801,7 @@ function buildSchedulePages(matches: ScheduledMatch[], meta: ExportMeta): ReactN
     return paginateScheduleSections(sections, scheduleFirstPx(meta)).map((secs) => <ScheduleSections sections={secs} />)
 }
 
-/* ── Bracket poster (two-sided vertical "Završnica") ────────────────────────
+/* ── Bracket poster ("Završnica") ───────────────────────────────────────────
    The classic wall-poster layout on a PORTRAIT A3 sheet. Up to 16 teams: the
    left half of the draw flows inward from the far-left column, the right half
    flows inward from the far-right column (mirrored), and the FINALE (+ the
@@ -1737,18 +1844,18 @@ type BracketTierStyle = {
 function twoSidedTier(slots: number): BracketTierStyle {
     if (slots <= 3) {
         // 2-4 teams: one round per side (or final only) - very roomy.
-        return { teamFont: 19, scoreFont: 20, penFont: 14, linePadV: 8, linePadH: 16, lineGap: 12, cardGap: 20, colGap: 20, titleFont: 14, titleMb: 12, thirdLabelFont: 12, cardRadius: 14, lineH: 1.22 }
+        return { teamFont: 17, scoreFont: 18, penFont: 12, linePadV: 7, linePadH: 13, lineGap: 10, cardGap: 18, colGap: 20, titleFont: 14, titleMb: 12, thirdLabelFont: 12, cardRadius: 12, lineH: 1.2 }
     }
     if (slots <= 5) {
         // ~8 teams (QF + SF per side): comfortable.
-        return { teamFont: 17, scoreFont: 18, penFont: 12, linePadV: 7, linePadH: 14, lineGap: 11, cardGap: 16, colGap: 16, titleFont: 13, titleMb: 11, thirdLabelFont: 12, cardRadius: 13, lineH: 1.2 }
+        return { teamFont: 15, scoreFont: 16, penFont: 11, linePadV: 6, linePadH: 12, lineGap: 9, cardGap: 14, colGap: 16, titleFont: 13, titleMb: 11, thirdLabelFont: 11, cardRadius: 11, lineH: 1.18 }
     }
     if (slots <= 7) {
         // ~16 teams (R16 → osmina/ČF/PF per side): medium.
-        return { teamFont: 14, scoreFont: 15, penFont: 10, linePadV: 6, linePadH: 11, lineGap: 9, cardGap: 12, colGap: 11, titleFont: 12, titleMb: 9, thirdLabelFont: 11, cardRadius: 12, lineH: 1.18 }
+        return { teamFont: 12, scoreFont: 13, penFont: 9, linePadV: 5, linePadH: 9, lineGap: 7, cardGap: 10, colGap: 11, titleFont: 12, titleMb: 9, thirdLabelFont: 10, cardRadius: 10, lineH: 1.16 }
     }
     // ~32 teams (R32, 9 slots): dense but the A3 width keeps it legible.
-    return { teamFont: 12, scoreFont: 12, penFont: 9, linePadV: 4, linePadH: 8, lineGap: 6, cardGap: 8, colGap: 7, titleFont: 11, titleMb: 7, thirdLabelFont: 10, cardRadius: 10, lineH: 1.16 }
+    return { teamFont: 11, scoreFont: 12, penFont: 8, linePadV: 4, linePadH: 7, lineGap: 6, cardGap: 8, colGap: 7, titleFont: 11, titleMb: 7, thirdLabelFont: 9, cardRadius: 9, lineH: 1.14 }
 }
 
 /** Available px height for the two-sided bracket body on the A3 PORTRAIT sheet:
@@ -1766,6 +1873,7 @@ function BracketTeamLine({
     score,
     pen,
     winner,
+    kit,
     t,
     nameLines,
     mirror = false,
@@ -1774,31 +1882,57 @@ function BracketTeamLine({
     score: number | null
     pen: number | null
     winner: boolean
+    kit?: TeamKit
     t: BracketTierStyle
     nameLines: number
     /** Right-side column: put the score on the LEFT and right-align the name,
      *  so the two halves of the bracket read as mirror images toward the centre. */
     mirror?: boolean
 }) {
+    const kitNode = kit ? <PosterKitSwatch jersey={kit.jersey} shorts={kit.shorts} size={Math.max(9, Math.min(12, t.teamFont))} /> : null
     return (
-        <div style={{ display: "flex", flexDirection: mirror ? "row-reverse" : "row", alignItems: "center", gap: `${t.lineGap}px`, padding: `${t.linePadV}px ${t.linePadH}px` }}>
+        <div
+            style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: mirror ? "row-reverse" : "row",
+                alignItems: "center",
+                gap: `${t.lineGap}px`,
+                padding: `${t.linePadV}px ${t.linePadH}px`,
+                background: winner ? C.greenWash : "transparent",
+                borderRadius: winner ? `${Math.max(6, t.cardRadius - 3)}px` : undefined,
+                margin: winner ? "3px 5px" : undefined,
+            }}
+        >
             <span
                 style={{
                     flex: 1,
                     minWidth: 0,
-                    fontSize: `${t.teamFont}px`,
-                    fontWeight: winner ? 800 : 600,
-                    color: winner ? C.ink : C.inkSoft,
-                    lineHeight: t.lineH,
-                    textAlign: mirror ? "right" : "left",
-                    overflowWrap: "break-word",
-                    display: "-webkit-box",
-                    WebkitLineClamp: nameLines,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: mirror ? "row-reverse" : "row",
+                    alignItems: "center",
+                    gap: `${Math.max(4, t.lineGap - 2)}px`,
                 }}
             >
-                {name}
+                {kitNode}
+                <span
+                    style={{
+                        minWidth: 0,
+                        fontSize: `${t.teamFont}px`,
+                        fontWeight: winner ? 800 : 600,
+                        color: winner ? C.ink : C.inkSoft,
+                        lineHeight: t.lineH,
+                        textAlign: mirror ? "right" : "left",
+                        overflowWrap: "break-word",
+                        display: "-webkit-box",
+                        WebkitLineClamp: nameLines,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                    }}
+                >
+                    {name}
+                </span>
             </span>
             {score != null ? (
                 <span
@@ -1807,7 +1941,7 @@ function BracketTeamLine({
                         fontFamily: F_MONO,
                         fontSize: `${t.scoreFont}px`,
                         fontWeight: winner ? 800 : 600,
-                        color: winner ? C.win : C.ink,
+                        color: winner ? C.greenMid : C.ink,
                         fontVariantNumeric: "tabular-nums",
                         whiteSpace: "nowrap",
                     }}
@@ -1832,6 +1966,7 @@ function BracketPosterCard({
     t,
     cardH,
     nameLines,
+    teamColors,
     final: isFinal,
     third: isThird,
     mirror = false,
@@ -1841,6 +1976,7 @@ function BracketPosterCard({
     /** Fixed card height (px) - omitted for the 3rd-place box (natural height). */
     cardH: number
     nameLines: number
+    teamColors?: Record<string, TeamKit>
     final?: boolean
     third?: boolean
     /** Right-side column of the two-sided layout - mirrors each team line. */
@@ -1866,12 +2002,47 @@ function BracketPosterCard({
                 boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "center",
             }}
         >
-            <BracketTeamLine name={t1} score={s1} pen={hasPens ? m.penalties1 : null} winner={w1} t={t} nameLines={nameLines} mirror={mirror} />
+            {m.knockoutCode ? (
+                <div
+                    style={{
+                        flexShrink: 0,
+                        fontFamily: F_MONO,
+                        fontSize: `${Math.max(8, t.thirdLabelFont - 1)}px`,
+                        fontWeight: 800,
+                        letterSpacing: "0.08em",
+                        color: C.white,
+                        background: "#17A79D",
+                        borderBottom: "1px solid #0F8F87",
+                        padding: "2px 8px",
+                        lineHeight: 1.2,
+                    }}
+                >
+                    {m.knockoutCode}
+                </div>
+            ) : null}
+            <BracketTeamLine
+                name={t1}
+                score={s1}
+                pen={hasPens ? m.penalties1 : null}
+                winner={w1}
+                kit={posterBracketKit(teamColors, m.team1Id)}
+                t={t}
+                nameLines={nameLines}
+                mirror={mirror}
+            />
             <div style={{ height: "1px", background: C.line, margin: `0 ${t.linePadH}px` }} />
-            <BracketTeamLine name={t2} score={s2} pen={hasPens ? m.penalties2 : null} winner={w2} t={t} nameLines={nameLines} mirror={mirror} />
+            <BracketTeamLine
+                name={t2}
+                score={s2}
+                pen={hasPens ? m.penalties2 : null}
+                winner={w2}
+                kit={posterBracketKit(teamColors, m.team2Id)}
+                t={t}
+                nameLines={nameLines}
+                mirror={mirror}
+            />
             {isThird ? (
                 <div
                     style={{
@@ -1927,6 +2098,7 @@ function BracketSideColumn({
     t,
     cardH,
     nameLines,
+    teamColors,
     mirror,
 }: {
     title: string
@@ -1934,6 +2106,7 @@ function BracketSideColumn({
     t: BracketTierStyle
     cardH: number
     nameLines: number
+    teamColors?: Record<string, TeamKit>
     mirror: boolean
 }) {
     return (
@@ -1949,7 +2122,15 @@ function BracketSideColumn({
                 }}
             >
                 {matches.map((m) => (
-                    <BracketPosterCard key={m.matchId} m={m} t={t} cardH={cardH} nameLines={nameLines} mirror={mirror} />
+                    <BracketPosterCard
+                        key={m.matchId}
+                        m={m}
+                        t={t}
+                        cardH={cardH}
+                        nameLines={nameLines}
+                        teamColors={teamColors}
+                        mirror={mirror}
+                    />
                 ))}
             </div>
         </div>
@@ -1965,7 +2146,7 @@ function splitSides(matches: BracketMatch[]): { left: BracketMatch[]; right: Bra
 
 /** Upper bound on a single card's height - keeps a sparse bracket (few matches
  *  per column) from blowing each card up to an absurd size on the tall A3 page. */
-const BRACKET_MAX_CARD_H = 230
+const BRACKET_MAX_CARD_H = 128
 
 /** Two-sided vertical bracket - the "classic" wall-poster layout. The left half
  *  of the draw flows inward from the far left, the right half flows inward from
@@ -1977,11 +2158,13 @@ function TwoSidedBracketBody({
     cols,
     titles,
     thirdPlace,
+    teamColors,
     bodyH = BRACKET_BODY_H,
 }: {
     cols: BracketMatch[][]
     titles: string[]
     thirdPlace: BracketMatch | null
+    teamColors?: Record<string, TeamKit>
     bodyH?: number
 }) {
     if (cols.length === 0) {
@@ -2024,13 +2207,22 @@ function TwoSidedBracketBody({
         ),
     )
     // Two team lines + a 1px divider share cardH; each line clamps to nameLines.
-    const perTeamH = (cardH - 1) / 2
+    const perTeamH = (cardH - 19) / 2
     const nameLines = Math.max(1, Math.min(3, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH))))
 
     return (
         <div style={{ display: "flex", gap: `${t.colGap}px`, alignItems: "stretch", height: "100%" }}>
             {leftCols.map((c, i) => (
-                <BracketSideColumn key={`l${i}`} title={c.title} matches={c.matches} t={t} cardH={cardH} nameLines={nameLines} mirror={false} />
+                <BracketSideColumn
+                    key={`l${i}`}
+                    title={c.title}
+                    matches={c.matches}
+                    t={t}
+                    cardH={cardH}
+                    nameLines={nameLines}
+                    teamColors={teamColors}
+                    mirror={false}
+                />
             ))}
 
             {/* Centre column: FINALE, with the 3rd-place box under it. Vertically
@@ -2039,16 +2231,25 @@ function TwoSidedBracketBody({
                 <BracketColumnTitle title={titles[finalIdx] ?? "Finale"} t={t} accent />
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: `${t.cardGap + 10}px` }}>
                     {finalMatch ? (
-                        <BracketPosterCard m={finalMatch} t={t} cardH={cardH} nameLines={nameLines} final />
+                        <BracketPosterCard m={finalMatch} t={t} cardH={cardH} nameLines={nameLines} teamColors={teamColors} final />
                     ) : null}
                     {thirdPlace ? (
-                        <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} third />
+                        <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} teamColors={teamColors} third />
                     ) : null}
                 </div>
             </div>
 
             {rightRender.map((c, i) => (
-                <BracketSideColumn key={`r${i}`} title={c.title} matches={c.matches} t={t} cardH={cardH} nameLines={nameLines} mirror />
+                <BracketSideColumn
+                    key={`r${i}`}
+                    title={c.title}
+                    matches={c.matches}
+                    t={t}
+                    cardH={cardH}
+                    nameLines={nameLines}
+                    teamColors={teamColors}
+                    mirror
+                />
             ))}
         </div>
     )
@@ -2063,11 +2264,13 @@ function ColumnsBracketBody({
     cols,
     titles,
     thirdPlace,
+    teamColors,
     bodyH = BRACKET_BODY_H,
 }: {
     cols: BracketMatch[][]
     titles: string[]
     thirdPlace: BracketMatch | null
+    teamColors?: Record<string, TeamKit>
     bodyH?: number
 }) {
     if (cols.length === 0) {
@@ -2090,7 +2293,7 @@ function ColumnsBracketBody({
         30,
         Math.min(BRACKET_MAX_CARD_H, Math.floor((matchesRegionH - (maxMatches - 1) * cardGap) / maxMatches)),
     )
-    const perTeamH = (cardH - 1) / 2
+    const perTeamH = (cardH - 19) / 2
     const nameLines = Math.max(1, Math.min(3, Math.floor((perTeamH - t.linePadV * 2) / (t.teamFont * t.lineH))))
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "18px", height: "100%" }}>
@@ -2100,7 +2303,15 @@ function ColumnsBracketBody({
                         <BracketColumnTitle title={titles[ci] ?? ""} t={t} accent={ci === lastIdx} />
                         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-around", gap: `${cardGap}px` }}>
                             {matches.map((m) => (
-                                <BracketPosterCard key={m.matchId} m={m} t={t} cardH={cardH} nameLines={nameLines} final={ci === lastIdx} />
+                                <BracketPosterCard
+                                    key={m.matchId}
+                                    m={m}
+                                    t={t}
+                                    cardH={cardH}
+                                    nameLines={nameLines}
+                                    teamColors={teamColors}
+                                    final={ci === lastIdx}
+                                />
                             ))}
                         </div>
                     </div>
@@ -2111,7 +2322,7 @@ function ColumnsBracketBody({
                     {cols.map((_, ci) => (
                         <div key={ci} style={{ flex: 1, minWidth: 0 }}>
                             {ci === lastIdx ? (
-                                <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} third />
+                                <BracketPosterCard m={thirdPlace} t={t} cardH={cardH} nameLines={nameLines} teamColors={teamColors} third />
                             ) : null}
                         </div>
                     ))}
@@ -2229,21 +2440,36 @@ function bracketPodium(bracket: Bracket | undefined) {
     )
 }
 
-/** Bracket poster pages. A draw up to 16 teams (≤ 8 first-round matches) fits
- *  ONE two-sided vertical sheet. A bigger draw (R32: 16 first-round matches) is
- *  split across TWO pages - one per bracket half, each a full-width one-sided
- *  funnel ending in the final - so the boxes stay large instead of being crushed
- *  into 9 narrow columns. The final is shown on both halves; the 3rd-place box
+/** Bracket poster pages. Small brackets below osmina finala render as one
+ *  left-to-right funnel. A normal R16 draw fits one two-sided sheet. A bigger
+ *  draw (R32: 16 first-round matches) is split across TWO pages - one per
+ *  bracket half, each a full-width one-sided funnel ending in the final - so
+ *  boxes stay readable. The final is shown on both halves; the 3rd-place box
  *  rides on the second page. */
-function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
-    const rounds = bracket?.rounds ?? []
+function buildBracketPages(bracket: Bracket | undefined, teamColors?: Record<string, TeamKit>): ReactNode[] {
+    const sourceRounds = bracket?.rounds ?? []
+    // Keep exports compatible during a rolling deploy, but prefer the
+    // persisted backend code whenever it is present.
+    const fallbackCodes = buildKoMatchCodes(sourceRounds.flatMap((r) => r.matches))
+    const rounds = sourceRounds.map((round) => ({
+        ...round,
+        matches: round.matches.map((m) =>
+            m.knockoutCode || !fallbackCodes.has(m.matchId)
+                ? m
+                : { ...m, knockoutCode: fallbackCodes.get(m.matchId) },
+        ),
+    }))
     const cols = rounds.map((r) => r.matches)
     const titles = rounds.map((r) => r.title)
     const thirdPlace = bracket?.thirdPlace ?? null
     const firstRound = cols[0]?.length ?? 0
 
-    if (cols.length < 2 || firstRound <= 8) {
-        return [<TwoSidedBracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} />]
+    if (cols.length < 2 || firstRound < 8) {
+        return [<ColumnsBracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} teamColors={teamColors} />]
+    }
+
+    if (firstRound <= 8) {
+        return [<TwoSidedBracketBody cols={cols} titles={titles} thirdPlace={thirdPlace} teamColors={teamColors} />]
     }
 
     const finalIdx = cols.length - 1
@@ -2261,8 +2487,13 @@ function buildBracketPages(bracket: Bracket | undefined): ReactNode[] {
         rightTitles.push(titles[r] ?? "")
     }
     return [
-        <ColumnsBracketBody cols={[...leftCols, finalCol]} titles={[...leftTitles, finalTitle]} thirdPlace={null} />,
-        <ColumnsBracketBody cols={[...rightCols, finalCol]} titles={[...rightTitles, finalTitle]} thirdPlace={thirdPlace} />,
+        <ColumnsBracketBody cols={[...leftCols, finalCol]} titles={[...leftTitles, finalTitle]} thirdPlace={null} teamColors={teamColors} />,
+        <ColumnsBracketBody
+            cols={[...rightCols, finalCol]}
+            titles={[...rightTitles, finalTitle]}
+            thirdPlace={thirdPlace}
+            teamColors={teamColors}
+        />,
     ]
 }
 
@@ -3033,6 +3264,7 @@ export function ExportDialog({
     thirdTable,
     matches,
     bracket,
+    teamColors,
     match,
     scorers,
     initialScope,
@@ -3051,6 +3283,8 @@ export function ExportDialog({
     matches?: ScheduledMatch[]
     /** Required for kind="bracket" - the knockout rounds + 3rd-place fixture. */
     bracket?: Bracket
+    /** Optional team kit colors, used only for bracket / elimination export. */
+    teamColors?: Record<string, TeamKit>
     /** Required for kind="match" - the single match blown up to a poster. Its
      *  events are fetched here (same endpoint the page's panel uses). */
     match?: MatchExportData
@@ -3067,7 +3301,7 @@ export function ExportDialog({
     const pageRefs = useRef<(HTMLDivElement | null)[]>([])
     const [busy, setBusy] = useState<null | "pdf" | "jpg">(null)
     // Groups / schedule / match stay A4 portrait; the bracket uses the bigger A3
-    // portrait sheet so its two-sided vertical layout gets roomy columns.
+    // portrait sheet so knockout columns stay roomy.
     const orientation: Orientation = kind === "bracket" ? "a3portrait" : "portrait"
     const page = PAGE_PX[orientation]
     // Export scope: "all" (whole poster) or one group / "ko" (završnica). The
@@ -3235,7 +3469,7 @@ export function ExportDialog({
     // baseName (`<slug>-najbolji-{place}`) instead of appending a suffix.
     let groupsStandaloneBase: string | null = null
     if (kind === "bracket") {
-        pageBodies = buildBracketPages(bracket)
+        pageBodies = buildBracketPages(bracket, teamColors)
     } else if (kind === "match") {
         pageBodies = buildMatchPages(match, matchEvents)
     } else if (kind === "scorers") {
@@ -3535,6 +3769,7 @@ export function ExportDialog({
                                                     pageRefs.current[i] = el
                                                 }}
                                                 orientation={orientation}
+                                                headerMetaMode={kind === "bracket" ? "labels" : "inline"}
                                                 pageIndex={i}
                                                 pageCount={pageCount}
                                                 headerExtra={(() => {

@@ -12,7 +12,7 @@ import {
     VStack,
     chakra,
 } from "@chakra-ui/react"
-import { FiAward, FiCheckCircle, FiX } from "react-icons/fi"
+import { FiX } from "react-icons/fi"
 
 import type { TeamShort } from "../types/teams"
 import type { UserTeamPreset } from "../api/userTeamPresets"
@@ -185,7 +185,7 @@ export function TeamInfoDialog({
     /** Every match of the tournament (group + knockout), in play order. */
     matches: ScheduledMatch[]
     onClose: () => void
-    /** Open a match (its timeline modal) from a history row. */
+    /** Open a match details page from a history row. */
     onSelectMatch?: (m: ScheduledMatch) => void
 }) {
     // Roster + per-player goal tallies for the "Igrači" section. Fetched
@@ -469,68 +469,82 @@ export function TeamInfoDialog({
                                                             : undefined
                                                     }
                                                 >
-                                                    <HStack justify="space-between" gap="2" wrap="wrap">
-                                                        <HStack gap="2" minW="0" flex="1">
-                                                            <Badge variant="solid" colorPalette="gray" size="sm" flexShrink={0}>
+                                                    <Box
+                                                        display="grid"
+                                                        gridTemplateColumns={{
+                                                            base: "112px minmax(0, 1fr) auto 44px",
+                                                            sm: "124px minmax(0, 1fr) auto 50px",
+                                                        }}
+                                                        alignItems="center"
+                                                        gap={{ base: "2", sm: "2.5" }}
+                                                    >
+                                                        <Badge
+                                                            variant="solid"
+                                                            colorPalette="gray"
+                                                            size="sm"
+                                                            w="full"
+                                                            justifyContent="center"
+                                                            overflow="hidden"
+                                                        >
+                                                            <Text as="span" truncate>
                                                                 {x.stageLabel}
-                                                            </Badge>
-                                                            <Text
-                                                                fontWeight="medium"
-                                                                overflow="hidden"
-                                                                textOverflow="ellipsis"
-                                                                whiteSpace="nowrap"
-                                                                minW="0"
-                                                            >
-                                                                {x.isBye ? "Slobodan prolaz" : `vs ${x.opponentName ?? "-"}`}
                                                             </Text>
-                                                        </HStack>
-                                                        <HStack gap="2" flexShrink={0}>
-                                                            {!x.isBye && (x.isFinished || x.isLive) && (
-                                                                <Text fontWeight="semibold" fontSize="sm">
-                                                                    {x.myScore ?? "-"} : {x.oppScore ?? "-"}
+                                                        </Badge>
+                                                        <Text
+                                                            fontWeight="medium"
+                                                            overflow="hidden"
+                                                            textOverflow="ellipsis"
+                                                            whiteSpace="nowrap"
+                                                            minW="0"
+                                                        >
+                                                            {x.isBye ? "Slobodan prolaz" : `vs ${x.opponentName ?? "-"}`}
+                                                        </Text>
+                                                        <Box textAlign="center" minW={{ base: "42px", sm: "52px" }}>
+                                                            {!x.isBye && (x.isFinished || x.isLive) ? (
+                                                                <>
+                                                                    <Text fontWeight="semibold" fontSize="sm" lineHeight="1.1" whiteSpace="nowrap">
+                                                                        {x.myScore ?? "-"} : {x.oppScore ?? "-"}
+                                                                    </Text>
                                                                     {x.penInfo ? (
-                                                                        <Text as="span" fontSize="xs" color="fg.muted" ml="1">
+                                                                        <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" lineHeight="1.1" mt="0.5" whiteSpace="nowrap">
                                                                             {x.penInfo}
                                                                         </Text>
                                                                     ) : null}
-                                                                </Text>
+                                                                </>
+                                                            ) : (
+                                                                <Text fontWeight="semibold" fontSize="sm" color="fg.muted">-</Text>
                                                             )}
-                                                            {/* ONE badge shape for every outcome:
-                                                                a fixed min-width + centred content, so
-                                                                Pobjeda / Poraz / Neriješeno / Uživo /
-                                                                Zakazano / Prošao all render as
-                                                                identically sized chips instead of
-                                                                ragged, label-length-driven boxes. */}
-                                                            {(() => {
-                                                                const badge = x.isBye
-                                                                    ? { label: "Prošao", palette: "brand", icon: <FiCheckCircle size={11} /> }
-                                                                    : x.isLive
-                                                                        ? { label: "Uživo", palette: "yellow", icon: null }
-                                                                        : !x.isFinished
-                                                                            ? { label: "Zakazano", palette: "gray", icon: null }
-                                                                            : x.result === "win"
-                                                                                ? { label: "Pobjeda", palette: "green", icon: <FiAward size={11} /> }
-                                                                                : x.result === "loss"
-                                                                                    ? { label: "Poraz", palette: "red", icon: null }
-                                                                                    : { label: "Neriješeno", palette: "gray", icon: null }
-                                                                return (
-                                                                    <Badge
-                                                                        variant="solid"
-                                                                        colorPalette={badge.palette}
-                                                                        size="sm"
-                                                                        minW="104px"
-                                                                        justifyContent="center"
-                                                                        flexShrink={0}
-                                                                    >
-                                                                        <HStack gap="1" justify="center">
-                                                                            {badge.icon}
-                                                                            {badge.label}
-                                                                        </HStack>
-                                                                    </Badge>
-                                                                )
-                                                            })()}
-                                                        </HStack>
-                                                    </HStack>
+                                                        </Box>
+                                                        {/* Compact, fixed-width status keeps every row aligned:
+                                                            W/L/D for finished matches, with short labels for the
+                                                            non-result states. */}
+                                                        {(() => {
+                                                            const badge = x.isBye
+                                                                ? { label: "BYE", palette: "brand" }
+                                                                : x.isLive
+                                                                    ? { label: "LIVE", palette: "yellow" }
+                                                                    : !x.isFinished
+                                                                        ? { label: "—", palette: "gray" }
+                                                                        : x.result === "win"
+                                                                            ? { label: "W", palette: "green" }
+                                                                            : x.result === "loss"
+                                                                                ? { label: "L", palette: "red" }
+                                                                                : { label: "D", palette: "gray" }
+                                                            return (
+                                                                <Badge
+                                                                    variant="solid"
+                                                                    colorPalette={badge.palette}
+                                                                    size="sm"
+                                                                    w="full"
+                                                                    minH="28px"
+                                                                    justifyContent="center"
+                                                                    flexShrink={0}
+                                                                >
+                                                                    {badge.label}
+                                                                </Badge>
+                                                            )
+                                                        })()}
+                                                    </Box>
                                                 </Box>
                                             ))}
                                         </VStack>
@@ -544,7 +558,6 @@ export function TeamInfoDialog({
         </Dialog.Root>
     )
 }
-
 /* ---------- Delete-tournament confirm (admin only) ---------- */
 export function DeleteTournamentDialog({
     open,

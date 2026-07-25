@@ -19,13 +19,19 @@ export type ScheduleConfig = {
 export type ScheduledMatch = {
     matchId: number
     stage: string
+    /** Stable backend-owned knockout code ("Š1", "O3", "ČF2", "PF1"). */
+    knockoutCode?: string | null
     /** Group letter (A, B, …) for GROUP matches; null for knockout. */
     groupName?: string | null
     roundNumber: number | null
     team1Id: number | null
     team1Name: string | null
+    team1JerseyColor?: string | null
+    team1ShortsColor?: string | null
     team2Id: number | null
     team2Name: string | null
+    team2JerseyColor?: string | null
+    team2ShortsColor?: string | null
     /** Predicted knockout pairing labels/names shown before a slot's team is
      *  decided (mirrors BracketMatch). Null for group matches; KNOCKOUT_ONLY
      *  carries feeder labels ("W O2", "L PF1") for later rounds. */

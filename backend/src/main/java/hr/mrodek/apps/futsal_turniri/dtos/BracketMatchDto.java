@@ -10,6 +10,8 @@ import java.time.OffsetDateTime;
 public record BracketMatchDto(
         Long matchId,
         String stage,
+        /** Stable numbered knockout code used by bracket feeder labels. */
+        String knockoutCode,
         Long team1Id,
         String team1Name,
         Long team2Id,

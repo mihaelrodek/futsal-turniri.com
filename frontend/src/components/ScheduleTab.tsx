@@ -29,6 +29,7 @@ import { GoalscorersPanel } from "./liveMatch"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
+import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { ExportDialog, type ExportMeta } from "./TournamentExport"
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -54,6 +55,15 @@ const STAGE_LABEL: Record<string, string> = {
     SEMIFINAL: "Polufinale",
     FINAL: "Finale",
     THIRD_PLACE: "Za 3. mjesto",
+}
+const COMPACT_STAGE_LABEL: Record<string, string> = {
+    GROUP: "Grupa",
+    ROUND_OF_32: "1/16",
+    ROUND_OF_16: "Osm.",
+    QUARTERFINAL: "ČF",
+    SEMIFINAL: "PF",
+    FINAL: "Finale",
+    THIRD_PLACE: "3. mjesto",
 }
 
 /** Kickoff time in ms for sorting; matches without a time sort to the end. */
@@ -120,17 +130,33 @@ function numValOrNull(v: string): number | null {
 }
 
 /* -- Stage badge --------------------------------------------------------- */
-function StageBadge({ stage, groupName }: { stage: string; groupName?: string | null }) {
+function stageBadgeText(
+    stage: string,
+    groupName?: string | null,
+    knockoutCode?: string | null,
+    compact = false,
+) {
     const isGroup = stage === "GROUP"
-    // For group matches show which group ("Grupa A"); knockout just its phase
-    // label ("Polufinale", "Finale", …). The short per-match code ("O2") that
-    // feeder labels reference as "W O2" is deliberately NOT shown here - it
-    // belongs to the bracket, and in the schedule it only crowds the row.
-    const base = isGroup
+    const labels = compact ? COMPACT_STAGE_LABEL : STAGE_LABEL
+    const stageLabel = isGroup
         ? groupName
             ? `Grupa ${groupName}`
             : "Grupa"
-        : STAGE_LABEL[stage] ?? stage
+        : labels[stage] ?? stage
+    return !isGroup && knockoutCode ? `${stageLabel} - ${knockoutCode}` : stageLabel
+}
+
+function StageBadge({
+    stage,
+    groupName,
+    knockoutCode,
+}: {
+    stage: string
+    groupName?: string | null
+    knockoutCode?: string | null
+}) {
+    const isGroup = stage === "GROUP"
+    const base = stageBadgeText(stage, groupName, knockoutCode)
     return (
         <Box
             as="span"
@@ -145,19 +171,25 @@ function StageBadge({ stage, groupName }: { stage: string; groupName?: string | 
             color={isGroup ? "brand.fg" : "fg.muted"}
             flexShrink={0}
             whiteSpace="nowrap"
+            minW={{ base: "104px", md: "128px" }}
+            textAlign="center"
         >
             {base}
         </Box>
     )
 }
 
-function CompactStageBadge({ stage, groupName }: { stage: string; groupName?: string | null }) {
+function CompactStageBadge({
+    stage,
+    groupName,
+    knockoutCode,
+}: {
+    stage: string
+    groupName?: string | null
+    knockoutCode?: string | null
+}) {
     const isGroup = stage === "GROUP"
-    const base = isGroup
-        ? groupName
-            ? `Grupa ${groupName}`
-            : "Grupa"
-        : STAGE_LABEL[stage] ?? stage
+    const base = stageBadgeText(stage, groupName, knockoutCode, true)
     return (
         <Box
             as="span"
@@ -172,7 +204,8 @@ function CompactStageBadge({ stage, groupName }: { stage: string; groupName?: st
             color={isGroup ? "brand.fg" : "fg.muted"}
             flexShrink={0}
             whiteSpace="nowrap"
-            maxW="86px"
+            w="full"
+            minW="0"
             overflow="hidden"
             textOverflow="ellipsis"
             textAlign="center"
@@ -489,7 +522,11 @@ function MatchRow({
                        border + red score box alone - no "UŽIVO" text badge. */
                     <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
                         <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
-                            <StageBadge stage={match.stage} groupName={match.groupName} />
+                            <StageBadge
+                                stage={match.stage}
+                                groupName={match.groupName}
+                                knockoutCode={match.knockoutCode}
+                            />
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
@@ -514,7 +551,11 @@ function MatchRow({
                        border (the "Na redu" tag was dropped). */
                     <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
                         <HStack gap="2" wrap="wrap" minW="0" justify="flex-start">
-                            <StageBadge stage={match.stage} groupName={match.groupName} />
+                            <StageBadge
+                                stage={match.stage}
+                                groupName={match.groupName}
+                                knockoutCode={match.knockoutCode}
+                            />
                         </HStack>
                         <Box flexShrink={0} w="200px" maxW="100%">
                             {timeContent}
@@ -676,7 +717,7 @@ function MatchCard({
         <Panel
             px="3"
             py="2.5"
-            h="full"
+            minH={{ base: "86px", md: "86px" }}
             cursor="pointer"
             transition="background 0.15s"
             _hover={{ bg: "bg.muted" }}
@@ -687,7 +728,7 @@ function MatchCard({
             borderColor={isLive || isNext ? "red.emphasized" : "border"}
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
-            <VStack align="stretch" gap="2" h="full" justify="space-between">
+            <VStack align="stretch" gap="2" justify="center">
                 <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="2">
                     {/* Left cell - icon-only "add to calendar" button (scheduled
                         matches only). Right cell mirrors it with the bell, so a
@@ -719,8 +760,12 @@ function MatchCard({
                             </IconButton>
                         )}
                     </Flex>
-                    <VStack gap="0.5" align="center" minW="0">
-                        <StageBadge stage={match.stage} groupName={match.groupName} />
+                    <VStack gap="0.5" align="center" minW="0" w={{ base: "112px", md: "126px" }}>
+                        <CompactStageBadge
+                            stage={match.stage}
+                            groupName={match.groupName}
+                            knockoutCode={match.knockoutCode}
+                        />
                         {kickoffLabel ? (
                             <HStack gap="1" fontSize="xs" fontWeight={600} color="fg.muted" fontFamily="mono">
                                 <FiClock size={11} />
@@ -849,6 +894,7 @@ function MatchCompactRow({
         <Panel
             px="3"
             py="2.5"
+            minH={{ base: "86px", md: "76px" }}
             cursor="pointer"
             transition="background 0.15s"
             _hover={{ bg: "bg.muted" }}
@@ -860,15 +906,14 @@ function MatchCompactRow({
             borderWidth={isLive || isNext ? "2px" : "1px"}
         >
             <Flex align="center" gap="2.5">
-                {/* LEFT column - the time/score pill with the stage tag directly
-                    under it. Both are narrow and fixed-width so the two team
-                    names to the right always start at the same x down the list.
-                    Multi-day floor = the widest content, "DD.MM. HH:MM" (12 mono
-                    chars, `ch` tracks this Box's own font) + the 2×8px padding -
-                    the slight negative letter-spacing keeps the date's natural
-                    width just UNDER the floor, so live/score pills and date
-                    pills all render at exactly the same width. */}
-                <VStack gap="1" flexShrink={0} align="stretch">
+                {/* Fixed-width left column: short stages ("Finale") and long
+                    stages ("Za 3. mjesto") keep the teams aligned. */}
+                <VStack
+                    gap="1"
+                    flexShrink={0}
+                    align="stretch"
+                    w={{ base: multiDay ? "112px" : "92px", md: multiDay ? "126px" : "104px" }}
+                >
                     <Box
                         fontFamily="mono"
                         // Smaller than the team names on purpose: the names are
@@ -881,14 +926,18 @@ function MatchCompactRow({
                         px="1.5"
                         py="1"
                         rounded="lg"
-                        minW={multiDay ? "calc(11ch + 12px)" : "48px"}
+                        w="full"
                         textAlign="center"
                         fontVariantNumeric="tabular-nums"
                     >
                         {pillText}
                     </Box>
                     <Flex justify="center" minW="0">
-                        <CompactStageBadge stage={match.stage} groupName={match.groupName} />
+                        <CompactStageBadge
+                            stage={match.stage}
+                            groupName={match.groupName}
+                            knockoutCode={match.knockoutCode}
+                        />
                     </Flex>
                 </VStack>
 
@@ -918,7 +967,14 @@ function MatchCompactRow({
                 </VStack>
 
                 {(showCalBtn || showBell) && (
-                    <VStack gap="0.5" flexShrink={0}>
+                    <Flex
+                        direction={{ base: "column", md: "row" }}
+                        align="center"
+                        justify="center"
+                        gap={{ base: "0.5", md: "1" }}
+                        flexShrink={0}
+                        minW={{ md: showCalBtn && showBell ? "64px" : "32px" }}
+                    >
                         {showCalBtn && (
                             <IconButton
                                 aria-label="Dodaj u kalendar"
@@ -948,7 +1004,7 @@ function MatchCompactRow({
                                 matchId={match.matchId}
                             />
                         )}
-                    </VStack>
+                    </Flex>
                 )}
 
                 <Box as="span" color="fg.muted" flexShrink={0} display="inline-flex">
@@ -1309,7 +1365,15 @@ export default function ScheduleTab({
         return <Loader label="Učitavanje rasporeda..." />
     }
 
-    const rawMatches = schedule?.matches ?? []
+    const scheduleMatches = schedule?.matches ?? []
+    // The backend-owned code is authoritative. The local map is a rolling-
+    // deploy fallback while an older API instance may still omit the field.
+    const fallbackKoCodes = buildKoMatchCodes(scheduleMatches)
+    const rawMatches = scheduleMatches.map((m) =>
+        m.knockoutCode || !fallbackKoCodes.has(m.matchId)
+            ? m
+            : { ...m, knockoutCode: fallbackKoCodes.get(m.matchId) },
+    )
 
     // Sort strictly by kickoff time (play order) - matches without a time go
     // to the bottom. Array.sort is stable, so equal/no-time rows keep the

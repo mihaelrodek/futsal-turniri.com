@@ -558,6 +558,7 @@ public class AdminController {
             m.put("id", mt.getId());
             m.put("roundId", mt.getRound() != null ? mt.getRound().getId() : null);
             m.put("stage", mt.getStage() != null ? mt.getStage().name() : null);
+            m.put("knockoutCode", mt.getKnockoutCode());
             m.put("groupId", mt.getGroup() != null ? mt.getGroup().getId() : null);
             m.put("tableNo", mt.getTableNo());
             m.put("kickoffAt", mt.getKickoffAt());

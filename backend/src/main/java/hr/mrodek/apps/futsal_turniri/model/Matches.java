@@ -63,6 +63,14 @@ public class Matches {
     private Integer nextSlot;
 
     /**
+     * Stable public knockout identifier ("Š1", "O3", "ČF2", "PF1").
+     * Numbered stages get one when the bracket tree is created; group, final
+     * and third-place matches keep this null.
+     */
+    @Column(name = "knockout_code", length = 8)
+    private String knockoutCode;
+
+    /**
      * Persisted position-pairing override for a knockout slot - the position-
      * based manual pairing ("A1 vs B2") an organizer can define at any time after
      * the groups are drawn, even before the group stage finishes. The value is a

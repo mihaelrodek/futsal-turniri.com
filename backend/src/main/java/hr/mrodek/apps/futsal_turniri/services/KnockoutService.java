@@ -277,6 +277,7 @@ public class KnockoutService {
                 m.setTournament(t);
                 m.setRound(koRound);
                 m.setStage(stage);
+                m.setKnockoutCode(knockoutCode(stage, i + 1));
                 m.setStatus(MatchStatus.SCHEDULED);
                 matchesRepo.persist(m);
                 rm.add(m);
@@ -677,6 +678,7 @@ public class KnockoutService {
                 m.setTournament(t);
                 m.setRound(koRound);
                 m.setStage(stage);
+                m.setKnockoutCode(knockoutCode(stage, i + 1));
                 m.setStatus(MatchStatus.SCHEDULED);
                 matchesRepo.persist(m);
                 rm.add(m);
@@ -795,6 +797,7 @@ public class KnockoutService {
                 m.setTournament(t);
                 m.setRound(koRound);
                 m.setStage(stage);
+                m.setKnockoutCode(knockoutCode(stage, i + 1));
                 m.setStatus(MatchStatus.SCHEDULED);
                 matchesRepo.persist(m);
                 rm.add(m);
@@ -1648,6 +1651,7 @@ public class KnockoutService {
         return new BracketMatchDto(
                 m.getId(),
                 m.getStage().name(),
+                m.getKnockoutCode(),
                 m.getTeam1() != null ? m.getTeam1().getId() : null,
                 m.getTeam1() != null ? m.getTeam1().getName() : null,
                 m.getTeam2() != null ? m.getTeam2().getId() : null,
@@ -1823,12 +1827,10 @@ public class KnockoutService {
                 // Third place is fed (in recordResult) by the two semi-final
                 // losers: lower-id semi-final → slot 1, the other → slot 2.
                 if (s1Null && !s1HasSource && semis.size() >= 1) {
-                    l1 = "L " + stageAbbrev(MatchStage.SEMIFINAL)
-                            + indexInStage.get(semis.get(0).getId());
+                    l1 = "L " + codeOf(semis.get(0), indexInStage);
                 }
                 if (s2Null && !s2HasSource && semis.size() >= 2) {
-                    l2 = "L " + stageAbbrev(MatchStage.SEMIFINAL)
-                            + indexInStage.get(semis.get(1).getId());
+                    l2 = "L " + codeOf(semis.get(1), indexInStage);
                 }
             } else {
                 // Any later round: label each empty, source-less slot from its
@@ -1836,10 +1838,10 @@ public class KnockoutService {
                 Matches f1 = feederSlot1.get(m.getId());
                 Matches f2 = feederSlot2.get(m.getId());
                 if (s1Null && !s1HasSource && f1 != null) {
-                    l1 = "W " + stageAbbrev(f1.getStage()) + indexInStage.get(f1.getId());
+                    l1 = "W " + codeOf(f1, indexInStage);
                 }
                 if (s2Null && !s2HasSource && f2 != null) {
-                    l2 = "W " + stageAbbrev(f2.getStage()) + indexInStage.get(f2.getId());
+                    l2 = "W " + codeOf(f2, indexInStage);
                 }
             }
             if (l1 != null || l2 != null || p1 != null || p2 != null) {
@@ -1892,6 +1894,23 @@ public class KnockoutService {
             // GROUP / THIRD_PLACE never feed another slot.
             default -> "";
         };
+    }
+
+    /** Persisted match code for numbered knockout stages. */
+    private static String knockoutCode(MatchStage stage, int index) {
+        String prefix = stageAbbrev(stage);
+        if (prefix.isEmpty() || stage == MatchStage.FINAL) return null;
+        return prefix + index;
+    }
+
+    /** Persisted code is authoritative; the fallback keeps pre-migration rows
+     *  readable during a rolling deployment. */
+    private static String codeOf(Matches match, Map<Long, Integer> indexInStage) {
+        if (match.getKnockoutCode() != null && !match.getKnockoutCode().isBlank()) {
+            return match.getKnockoutCode();
+        }
+        Integer index = indexInStage.get(match.getId());
+        return index != null ? knockoutCode(match.getStage(), index) : "";
     }
 
     /* ──────────────────────────── helpers ────────────────────────────── */

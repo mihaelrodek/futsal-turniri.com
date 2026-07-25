@@ -66,7 +66,6 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
 import GroupsTab from "../components/GroupsTab"
 import BracketTab from "../components/BracketTab"
 import ScheduleTab from "../components/ScheduleTab"
-import { MatchTimelineModal } from "../components/liveMatch"
 import ActiveMatchOverview from "../components/ActiveMatchOverview"
 import { fetchLiveMatches, type LiveMatch } from "../api/live"
 import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
@@ -372,9 +371,6 @@ export default function TournamentDetailsPage() {
     /** All tournament matches (group + knockout), loaded for the team-info
      *  history dialog. Fetched lazily when a team's info is opened. */
     const [infoMatches, setInfoMatches] = useState<ScheduledMatch[]>([])
-    /** Match whose read-only timeline modal is open (from a history row). */
-    const [historyMatch, setHistoryMatch] = useState<ScheduledMatch | null>(null)
-
     // Load the full match list for the team-info history dialog the moment a
     // team's info is opened (lazy - most visits never open it).
     useEffect(() => {
@@ -1697,17 +1693,9 @@ export default function TournamentDetailsPage() {
                 onClose={() => setInfoTeamId(null)}
                 onSelectMatch={(m) => {
                     setInfoTeamId(null)
-                    setHistoryMatch(m)
+                    navigate(`/turniri/${t?.slug ?? uuid}/utakmica/${m.matchId}`)
                 }}
             />
-
-            {historyMatch && uuid && (
-                <MatchTimelineModal
-                    uuid={uuid}
-                    match={historyMatch}
-                    onClose={() => setHistoryMatch(null)}
-                />
-            )}
 
 
             <DeleteTeamDialog

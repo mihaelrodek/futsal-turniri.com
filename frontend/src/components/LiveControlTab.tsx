@@ -63,7 +63,7 @@ function stageLabel(stage?: string | null): string {
  *  its teams are decided shows "TBD – TBD" (the group stage still has to say
  *  who plays). */
 type MatchMeta = {
-    status: "LIVE" | "ONDECK" | "SCHEDULED"
+    status: "LIVE" | "ONDECK" | "SCHEDULED" | "FINISHED"
     teams: string
     meta: string
 }
@@ -75,7 +75,10 @@ function matchMeta(e: Entry, onDeck: boolean): MatchMeta {
         e.kind === "group" ? "Grupa" : stageLabel((m as { stage?: string | null }).stage)
     const when = m.kickoffAt ? fmtKickoff(m.kickoffAt) : ""
     const meta = [stage, when].filter(Boolean).join(" · ")
-    const status = m.status === "LIVE" ? "LIVE" : onDeck ? "ONDECK" : "SCHEDULED"
+    const status =
+        m.status === "LIVE" ? "LIVE" :
+            m.status === "FINISHED" ? "FINISHED" :
+                onDeck ? "ONDECK" : "SCHEDULED"
     return { status, teams, meta }
 }
 
@@ -90,7 +93,7 @@ function StatusChip({ status }: { status: MatchMeta["status"] }) {
             </HStack>
         )
     }
-    const label = status === "ONDECK" ? "NA REDU" : "ZAKAZANO"
+    const label = status === "ONDECK" ? "NA REDU" : status === "FINISHED" ? "ZAVRŠENO" : "ZAKAZANO"
     return (
         <Box bg="bg.muted" color="fg.muted" rounded="full" px="2.5" py="1" flexShrink={0}>
             <Text fontSize="2xs" fontWeight={800} letterSpacing="wide">{label}</Text>
@@ -151,6 +154,8 @@ export default function LiveControlTab({
     const [knockout, setKnockout] = useState<BracketMatch[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [selectedId, setSelectedId] = useState<number | null>(null)
+    const [showFinished, setShowFinished] = useState(false)
+    const [pickerOpen, setPickerOpen] = useState(false)
 
     const reload = useCallback(async () => {
         const [g, b] = await Promise.all([
@@ -173,9 +178,10 @@ export default function LiveControlTab({
         return () => { cancelled = true }
     }, [reload])
 
-    // Manageable = a fixture with both teams decided, a kickoff (→ the schedule
-    // is generated) and still LIVE or SCHEDULED. LIVE first, then by kickoff.
-    const manageable = useMemo<Entry[]>(() => {
+    // A recordable fixture has both teams decided and a kickoff (→ the schedule
+    // is generated). Finished matches stay hidden until the user asks for them,
+    // but they remain selectable so results can be corrected through Zapisnik.
+    const recordable = useMemo<Entry[]>(() => {
         const out: Entry[] = []
         for (const g of groups ?? [])
             for (const m of g.matches)
@@ -188,7 +194,7 @@ export default function LiveControlTab({
                     e.match.team1Id != null &&
                     e.match.team2Id != null &&
                     e.match.kickoffAt != null &&
-                    (e.match.status === "LIVE" || e.match.status === "SCHEDULED"),
+                    (e.match.status === "LIVE" || e.match.status === "SCHEDULED" || e.match.status === "FINISHED"),
             )
             .sort((a, b) => {
                 const sr = (STATUS_RANK[a.match.status] ?? 9) - (STATUS_RANK[b.match.status] ?? 9)
@@ -196,6 +202,21 @@ export default function LiveControlTab({
                 return kickoffMs(a.match.kickoffAt) - kickoffMs(b.match.kickoffAt)
             })
     }, [groups, knockout])
+
+    const manageable = useMemo(
+        () => recordable.filter((e) => e.match.status === "LIVE" || e.match.status === "SCHEDULED"),
+        [recordable],
+    )
+    const finished = useMemo(
+        () => recordable
+            .filter((e) => e.match.status === "FINISHED")
+            .sort((a, b) => kickoffMs(b.match.kickoffAt) - kickoffMs(a.match.kickoffAt)),
+        [recordable],
+    )
+    const selectable = useMemo(
+        () => showFinished ? [...manageable, ...finished] : manageable,
+        [manageable, finished, showFinished],
+    )
 
     // Generated knockout fixtures whose participants aren't decided yet - e.g. a
     // semifinal/final drawn with a reserved kickoff while the group stage is
@@ -220,10 +241,13 @@ export default function LiveControlTab({
     }, [knockout])
 
     // Default selection = the match the schedule says is up now: the current
-    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED). A manual
-    // pick (selectedId) overrides until that match leaves the list (finished).
-    const fallback = manageable.find((e) => e.match.status === "LIVE") ?? manageable[0] ?? null
-    const selected = manageable.find((e) => e.match.matchId === selectedId) ?? fallback
+    // LIVE one, else the next-to-play (earliest kickoff SCHEDULED). Finished
+    // matches become fallbacks only after the explicit "Pokaži završene" click.
+    const fallback =
+        manageable.find((e) => e.match.status === "LIVE") ??
+        manageable[0] ??
+        (showFinished ? finished[0] ?? null : null)
+    const selected = selectable.find((e) => e.match.matchId === selectedId) ?? fallback
 
     // Finished + locked: the console is off entirely - show the notice instead.
     if (finishedLocked) {
@@ -241,7 +265,7 @@ export default function LiveControlTab({
 
     if (loading) return <Loader />
 
-    if (manageable.length === 0 && pending.length === 0) {
+    if (recordable.length === 0 && pending.length === 0) {
         return (
             <Panel>
                 <EmptyState
@@ -256,36 +280,45 @@ export default function LiveControlTab({
     // Nothing to record yet, but the schedule already holds knockout fixtures
     // waiting on the draw: list them as upcoming "TBD" games instead of the
     // empty state, so it's clear the final/semifinal is scheduled.
-    if (manageable.length === 0) {
+    if (selectable.length === 0) {
         return (
             <Panel>
                 <VStack align="stretch" gap="3">
                     <Flex align="center" gap="2">
                         <Box color="fg.muted" display="inline-flex"><LuRadioTower size={16} /></Box>
                         <Text fontSize="sm" fontWeight={800} color="fg.ink">
-                            Nadolazeće utakmice
+                            {pending.length > 0 ? "Nadolazeće utakmice" : "Završene utakmice"}
                         </Text>
                     </Flex>
-                    <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
-                        Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
-                    </Text>
-                    <VStack align="stretch" gap="2">
-                        {pending.map((e) => (
-                            <Flex
-                                key={`pending-${e.match.matchId}`}
-                                align="center"
-                                gap="3"
-                                borderWidth="1px"
-                                borderColor="border"
-                                rounded="lg"
-                                px="3"
-                                py="2.5"
-                                minW="0"
-                            >
-                                <MatchCardContent meta={matchMeta(e, false)} />
-                            </Flex>
-                        ))}
-                    </VStack>
+                    {pending.length > 0 && (
+                        <>
+                            <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
+                                Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
+                            </Text>
+                            <VStack align="stretch" gap="2">
+                                {pending.map((e) => (
+                                    <Flex
+                                        key={`pending-${e.match.matchId}`}
+                                        align="center"
+                                        gap="3"
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        rounded="lg"
+                                        px="3"
+                                        py="2.5"
+                                        minW="0"
+                                    >
+                                        <MatchCardContent meta={matchMeta(e, false)} />
+                                    </Flex>
+                                ))}
+                            </VStack>
+                        </>
+                    )}
+                    {finished.length > 0 && !showFinished && (
+                        <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => setShowFinished(true)} alignSelf="flex-start">
+                            Pokaži završene ({finished.length})
+                        </Button>
+                    )}
                 </VStack>
             </Panel>
         )
@@ -311,8 +344,8 @@ export default function LiveControlTab({
         bg: "bg.panel",
     }
     const selector =
-        manageable.length + pending.length > 1 ? (
-            <Menu.Root>
+        (selectable.length + pending.length > 1 || (finished.length > 0 && !showFinished)) ? (
+            <Menu.Root open={pickerOpen} onOpenChange={(e) => setPickerOpen(e.open)}>
                 <Menu.Trigger asChild>
                     <Flex
                         {...cardBox}
@@ -328,7 +361,7 @@ export default function LiveControlTab({
                 <Portal>
                     <Menu.Positioner>
                         <Menu.Content maxW="min(92vw, 640px)" maxH="60vh" overflowY="auto">
-                            {manageable.map((e) => (
+                            {selectable.map((e) => (
                                 <Menu.Item
                                     key={`${e.kind}-${e.match.matchId}`}
                                     value={String(e.match.matchId)}
@@ -342,6 +375,29 @@ export default function LiveControlTab({
                                     </Flex>
                                 </Menu.Item>
                             ))}
+                            {finished.length > 0 && !showFinished && (
+                                <>
+                                    <Menu.Separator />
+                                    <Box px="2" py="1.5">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            colorPalette="pitch"
+                                            w="full"
+                                            justifyContent="flex-start"
+                                            fontWeight={800}
+                                            onClick={(event) => {
+                                                event.preventDefault()
+                                                event.stopPropagation()
+                                                setShowFinished(true)
+                                                window.setTimeout(() => setPickerOpen(true), 0)
+                                            }}
+                                        >
+                                            Pokaži završene ({finished.length})
+                                        </Button>
+                                    </Box>
+                                </>
+                            )}
                             {pending.length > 0 && (
                                 <>
                                     <Menu.Separator />
@@ -372,10 +428,6 @@ export default function LiveControlTab({
     // fresh state.
     return selected ? (
         <VStack align="stretch" gap="4">
-            {/* "Puni zapisnik" now lives INSIDE the console header (headerAction).
-                Only when this console is embedded in the tournament tab (the prop
-                is set there); the standalone page omits it so there's no
-                self-link. */}
             <LiveMatchPanel
                 key={`${selected.match.matchId}-${selected.match.status}`}
                 uuid={uuid}
@@ -384,7 +436,7 @@ export default function LiveControlTab({
                 onChanged={reload}
                 selector={selector}
                 onClockArgs={onClockArgs}
-                headerAction={
+                footerAction={
                     standaloneHref ? (
                         <Button
                             size="xs"
@@ -392,7 +444,7 @@ export default function LiveControlTab({
                             colorPalette="pitch"
                             onClick={() => navigate(standaloneHref)}
                         >
-                            <FiMaximize2 /> Puni zapisnik
+                            <FiMaximize2 /> Puni zaslon
                         </Button>
                     ) : undefined
                 }

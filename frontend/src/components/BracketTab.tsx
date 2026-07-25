@@ -50,7 +50,7 @@ import { DateTimeField } from "./DateTimeField"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, matchPhase } from "./liveMatch"
-import { useTeamColors, teamKit } from "./jersey"
+import { KitSwatch, useTeamColors, teamKit } from "./jersey"
 import type { TeamKit } from "../api/tournaments"
 import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiDownload, FiEdit2, FiRefreshCw, FiShare2, FiTrash2, FiX } from "react-icons/fi"
 import { LuRotateCcw, LuShuffle } from "react-icons/lu"
@@ -1743,7 +1743,7 @@ export default function BracketTab({
                 <Box flex="1" minW="0" ref={isFinalCard ? finalCardRef : undefined}>
                     <MatchCard
                         match={original}
-                        code={koCodes.get(original.matchId) ?? null}
+                        code={original.knockoutCode ?? koCodes.get(original.matchId) ?? null}
                         canEdit={canEdit}
                         isFinal={isFinalCard}
                         isOnDeck={original.matchId === onDeckId}
@@ -1937,22 +1937,14 @@ export default function BracketTab({
                                                 return r?.title ?? undefined
                                             },
                                         },
-                                        // Match-box dimensions. boxHeight
-                                        // has to be ≥ the TALLEST possible
-                                        // MatchCard render (Finale header
-                                        // strip + 2 team rows + "Pocni
-                                        // uzivo" + "Unesi rezultat" stack
-                                        // ≈ 270px). The card wrapper above
-                                        // vertically centres shorter cards
-                                        // inside this box so the bracket
-                                        // connectors always land on the
-                                        // visible centre of the card, not
-                                        // an empty box top.
-                                        width: 260,
-                                        boxHeight: 280,
+                                        // Compact match-box dimensions. Editing
+                                        // controls may add height, while normal
+                                        // read-only cards stay visually tight.
+                                        width: 236,
+                                        boxHeight: 220,
                                         canvasPadding: 16,
-                                        spaceBetweenColumns: 64,
-                                        spaceBetweenRows: 48,
+                                        spaceBetweenColumns: 56,
+                                        spaceBetweenRows: 34,
                                         roundSeparatorWidth: 24,
                                     },
                                 }}
@@ -1982,7 +1974,7 @@ export default function BracketTab({
                                       right: `${thirdPos.right}px`,
                                       w: `${thirdPos.width}px`,
                                   }
-                                : { bottom: "16px", right: "16px", w: "260px" })}
+                                : { bottom: "16px", right: "16px", w: "236px" })}
                         >
                             <Box>
                                 
@@ -2084,6 +2076,7 @@ export default function BracketTab({
                     }
                 }
                 bracket={bracket ?? undefined}
+                teamColors={kitColors}
             />
 
             {/* ── Live-match dialog - goals, cards, finish. ──────────────── */}
@@ -2398,7 +2391,6 @@ type MatchCardProps = {
 function MatchCard({
     match: m,
     code = null,
-    canEdit,
     editing,
     form,
     showPenaltyRow,
@@ -2411,20 +2403,16 @@ function MatchCard({
     halfCount = null,
     uuid,
     colors,
-    onEdit,
     onSave,
     onCancel,
     onFormChange,
-    onOpenLive,
     onOpenTimeline,
 }: MatchCardProps) {
     const navigate = useNavigate()
-    const editable = m.team1Id != null && m.team2Id != null
     const w1 = m.winnerTeamId != null && m.winnerTeamId === m.team1Id
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
     const isFinished = m.status === "FINISHED"
     const isLive = m.status === "LIVE"
-    const isScheduled = m.status === "SCHEDULED"
 
     // Live and on-deck both wear the red border; only the live card gets the
     // extra halo + red header strip below, so the two stay visually distinct.
@@ -2450,7 +2438,7 @@ function MatchCard({
             bg="bg.panel"
             borderWidth={isLive || isOnDeck ? "2px" : isFinal ? "1.5px" : "1px"}
             borderColor={accentBorder}
-            rounded="xl"
+            rounded="lg"
             shadow={isFinal ? "md" : "xs"}
             overflow="hidden"
             cursor={editing ? "default" : "pointer"}
@@ -2611,59 +2599,7 @@ function MatchCard({
                         </Button>
                     </HStack>
                 </VStack>
-            ) : (
-                // Action stack only renders when the viewer is the
-                // organizer / admin. Anonymous and regular-user viewers
-                // get a read-only scoreboard - no "Unesi rezultat",
-                // "Pokreni" or live-management controls leak through.
-                canEdit && (isLive || isFinished || (isScheduled && editable)) && (
-                    // Hidden on mobile: the library renders this card in a
-                    // fixed-size SVG foreignObject, so on a narrow viewport the
-                    // action buttons overflow and overlap the team divider (the
-                    // same clipping that killed the old live-start popover). On
-                    // phones the result is entered / edited from the Zapisnik /
-                    // Raspored instead; the buttons return on md+.
-                    <VStack align="stretch" gap="1.5" mt="2" display={{ base: "none", md: "flex" }}>
-                        {/* Knockout matches are STARTED from the Zapisnik - the
-                            bracket's live-start popover was removed (it broke the
-                            iOS layout and made accidental live-starts too easy).
-                            The bracket only enters/edits a result and opens an
-                            already-live match ("Uživo" → "Poništi utakmicu"). */}
-                        {isScheduled && editable && (
-                            <Button
-                                size="xs"
-                                variant="outline"
-                                colorPalette="pitch"
-                                rounded="lg"
-                                onClick={() => onEdit(m)}
-                            >
-                                <FiEdit2 /> Unesi rezultat
-                            </Button>
-                        )}
-                        {isLive && (
-                            <Button
-                                size="xs"
-                                colorPalette="red"
-                                rounded="lg"
-                                onClick={() => onOpenLive(m)}
-                            >
-                                Uživo
-                            </Button>
-                        )}
-                        {isFinished && (
-                            <Button
-                                size="xs"
-                                variant="ghost"
-                                colorPalette="brand"
-                                rounded="lg"
-                                onClick={() => onOpenLive(m)}
-                            >
-                                Uredi rezultat
-                            </Button>
-                        )}
-                    </VStack>
-                )
-            )}
+            ) : null}
             </Box>
         </Box>
     )
@@ -2692,58 +2628,21 @@ const STAGE_SHORT: Record<string, string> = {
     THIRD_PLACE: "ZA 3. MJESTO",
 }
 
-/** Two-letter initials: first letters of the first two words, else the first
- *  two characters. "?" for a TBD slot. */
-function teamInitials(name: string | null): string {
-    if (!name) return "?"
-    const words = name.trim().split(/\s+/).filter((w) => w.length > 0)
-    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
-    return name.trim().slice(0, 2).toUpperCase()
-}
-
-/** Black-or-white ink for a "#rrggbb" background (perceived luminance). */
-function contrastInk(hex: string): string {
-    const r = parseInt(hex.slice(1, 3), 16) || 0
-    const g = parseInt(hex.slice(3, 5), 16) || 0
-    const b = parseInt(hex.slice(5, 7), 16) || 0
-    return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111418" : "#ffffff"
-}
-
-/** SafeFlow-style ".av" tile: team initials on the kit colour (jersey over
- *  shorts when both are set). Neutral tile when no colour / TBD. */
-function TeamTile({ name, kit }: { name: string | null; kit?: TeamKit }) {
-    const jersey = kit?.jersey ?? null
-    const shorts = kit?.shorts ?? null
-    const base = jersey ?? shorts
+/** Jersey/shorts silhouette used in bracket rows. A neutral kit keeps TBD /
+ *  uncoloured teams aligned without bringing back the old initials circle. */
+function TeamKitIcon({ kit }: { kit?: TeamKit }) {
+    const jersey = kit?.jersey ?? kit?.shorts ?? "#E8EEF3"
+    const shorts = kit?.shorts ?? kit?.jersey ?? "#DCE4EA"
     return (
         <Flex
-            w="22px"
-            h="22px"
-            rounded="md"
+            w="18px"
+            h="24px"
             align="center"
             justify="center"
             flexShrink={0}
-            fontFamily="heading"
-            fontSize="9px"
-            fontWeight={800}
-            lineHeight="1"
-            color={base ? contrastInk(base) : "fg.muted"}
-            bg={base ? undefined : "bg.surfaceTint"}
-            borderWidth="1px"
-            borderColor={base ? "blackAlpha.300" : "border"}
-            css={
-                base
-                    ? {
-                          background:
-                              jersey && shorts
-                                  ? `linear-gradient(180deg, ${jersey} 62%, ${shorts} 62%)`
-                                  : base,
-                      }
-                    : undefined
-            }
             aria-hidden
         >
-            {teamInitials(name)}
+            <KitSwatch jersey={jersey} shorts={shorts} size={14} />
         </Flex>
     )
 }
@@ -2811,10 +2710,12 @@ function TeamRow({
             px="1"
             py="1"
             rounded="md"
-            bg={winner ? "green.subtle" : "transparent"}
+            bg={winner ? "brand.subtle" : "transparent"}
+            borderWidth={winner ? "1px" : "0"}
+            borderColor={winner ? "brand.emphasized" : "transparent"}
         >
             <HStack gap="2" minW="0" flex="1">
-                <TeamTile name={name ?? slotPredictedName ?? null} kit={kit} />
+                <TeamKitIcon kit={kit} />
                 {name != null ? (
                     <Text
                         fontSize="13px"

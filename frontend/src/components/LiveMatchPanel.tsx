@@ -107,7 +107,7 @@ export default function LiveMatchPanel({
     match,
     onChanged,
     selector,
-    headerAction,
+    footerAction,
     onClockArgs,
 }: {
     uuid: string
@@ -116,9 +116,9 @@ export default function LiveMatchPanel({
     onChanged: () => Promise<void> | void
     /** The styled match-selector node (built by the host, which owns the list). */
     selector?: React.ReactNode
-    /** Optional right-aligned action (e.g. "Puni zapisnik") rendered at the top
-     *  of the console header, above the match selector. */
-    headerAction?: React.ReactNode
+    /** Optional host action (e.g. "Puni zaslon") rendered with the lower
+     *  stream/clock controls so the match selector can stay perfectly centred. */
+    footerAction?: React.ReactNode
     /** Lifts THIS console's own clock truth up to a host (e.g. the fullscreen
      *  zapisnik header) so its clock ticks from the exact same instants and
      *  freezes together on pause. Called with the current local clockArgs while
@@ -548,6 +548,51 @@ export default function LiveMatchPanel({
     // the scheduled branch, and never while the penalty shootout handoff is up.
     const editingScore = isScheduled && showDirectScore && !shootout
 
+    const actionRow = (showClockButton: boolean) => {
+        if (!footerAction && !showClockButton) return null
+        return (
+            <Flex justify="center" align="center" gap="2" wrap="wrap" mt="2">
+                {footerAction}
+                {showClockButton && (
+                    <Button
+                        size="xs"
+                        variant="outline"
+                        colorPalette={clockVisibleOnStream ? "gray" : "pitch"}
+                        loading={clockVisibilityBusy}
+                        onClick={toggleStreamClockVisibility}
+                    >
+                        {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
+                        {clockVisibleOnStream ? "Sakrij sat na streamu" : "Prikaži sat na streamu"}
+                    </Button>
+                )}
+            </Flex>
+        )
+    }
+
+    const eventEntry = (
+        <PairingEntry
+            uuid={uuid}
+            matchId={matchId}
+            team1Id={match.team1Id ?? null}
+            team1Name={match.team1Name ?? null}
+            team2Id={match.team2Id ?? null}
+            team2Name={match.team2Name ?? null}
+            isTimer={isLive && isTimer}
+            clockArgs={clockArgs}
+            half={currentHalf}
+            serverFouls={{
+                fouls1First: match.fouls1First ?? 0,
+                fouls1Second: match.fouls1Second ?? 0,
+                fouls2First: match.fouls2First ?? 0,
+                fouls2Second: match.fouls2Second ?? 0,
+            }}
+            onAddEvent={addEvent}
+            sentOffPlayerIds={sentOffIds}
+            yellowCardedPlayerIds={yellowIds}
+            penaltyInProgress={penaltyInProgress}
+        />
+    )
+
     return (
         <VStack align="stretch" gap="0">
             {/* Main card. A stable minimum height (desktop) so switching matches
@@ -555,14 +600,11 @@ export default function LiveMatchPanel({
                 longer makes the console box jump between the shorter pre-match
                 layout and the taller live one. */}
             <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" px={{ base: "4", md: "6" }} pb={{ base: "4", md: "6" }} pt="3" minH={{ base: "auto", md: "440px" }} display="flex" flexDirection="column">
-                {/* Match selector (built by the host) + the optional host action
-                    (e.g. "Puni zapisnik") share ONE centred row - the action sits
-                    immediately right of the picker and wraps below on narrow
-                    screens. No label above: the selector's own "● UŽIVO · A – B ·
-                    …" text says it all. */}
-                <Flex justify="center" align="center" gap="2" wrap="wrap">
+                {/* Match selector (built by the host). It stays centred on its
+                    own row; auxiliary actions live lower in the console so they
+                    cannot pull the dropdown off centre. */}
+                <Flex justify="center" align="center">
                     {selector}
-                    {headerAction}
                 </Flex>
 
                 {/* ===== PRE-MATCH / FINISHED scoreboard ===== */}
@@ -751,6 +793,14 @@ export default function LiveMatchPanel({
                                 />
                             </Box>
                         )}
+
+                        {footerAction && actionRow(false)}
+
+                        {isFinished && (
+                            <Box mt="4">
+                                {eventEntry}
+                            </Box>
+                        )}
                     </VStack>
                 )}
 
@@ -805,18 +855,11 @@ export default function LiveMatchPanel({
                                         {halfLabel}
                                     </Text>
                                 )}
-                                <Button
-                                    size="xs"
-                                    variant="outline"
-                                    colorPalette={clockVisibleOnStream ? "gray" : "pitch"}
-                                    loading={clockVisibilityBusy}
-                                    onClick={toggleStreamClockVisibility}
-                                >
-                                    {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
-                                    {clockVisibleOnStream ? "Sakrij sat na streamu" : "Prikaži sat na streamu"}
-                                </Button>
+                                {actionRow(isLive && isTimer)}
                             </VStack>
                         )}
+
+                        {!isTimer && footerAction && actionRow(false)}
 
                         {shootout ? (
                             <PenaltyShootout
@@ -832,27 +875,7 @@ export default function LiveMatchPanel({
                             />
                         ) : (
                             <>
-                                <PairingEntry
-                                    uuid={uuid}
-                                    matchId={matchId}
-                                    team1Id={match.team1Id ?? null}
-                                    team1Name={match.team1Name ?? null}
-                                    team2Id={match.team2Id ?? null}
-                                    team2Name={match.team2Name ?? null}
-                                    isTimer={isTimer}
-                                    clockArgs={clockArgs}
-                                    half={currentHalf}
-                                    serverFouls={{
-                                        fouls1First: match.fouls1First ?? 0,
-                                        fouls1Second: match.fouls1Second ?? 0,
-                                        fouls2First: match.fouls2First ?? 0,
-                                        fouls2Second: match.fouls2Second ?? 0,
-                                    }}
-                                    onAddEvent={addEvent}
-                                    sentOffPlayerIds={sentOffIds}
-                                    yellowCardedPlayerIds={yellowIds}
-                                    penaltyInProgress={penaltyInProgress}
-                                />
+                                {eventEntry}
 
                                 {/* Flow controls: the primary phase button + ⋯ menu.
                                     A half transition (end 1st / start 2nd) is a
@@ -946,7 +969,7 @@ export default function LiveMatchPanel({
                                 events={events}
                                 team1Id={match.team1Id}
                                 halfLengthMin={halfLengthMin}
-                                canDelete={!isFinished}
+                                canDelete
                                 onUndo={(ev) => deleteEvent(ev)}
                                 fouls={{
                                     t1First: match.fouls1First ?? 0,
