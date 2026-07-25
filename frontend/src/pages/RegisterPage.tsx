@@ -29,6 +29,8 @@ function authErrorMessage(err: any): string {
             return "Neispravan format email adrese."
         case "auth/weak-password":
             return "Lozinka je preslaba. Mora imati barem 6 znakova."
+        case "auth/popup-blocked":
+            return "Preglednik je blokirao prozor za Google prijavu. Dopusti skočne prozore za ovu stranicu i pokušaj ponovno."
         case "auth/popup-closed-by-user":
         case "auth/cancelled-popup-request":
             return ""

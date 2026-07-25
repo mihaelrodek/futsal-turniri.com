@@ -9,36 +9,6 @@ import { emailForUsername } from "../api/auth"
 // first-paint bundle - see firebase.ts. Only the `User` type is imported
 // statically (type-only, erased at compile time).
 
-/** True when running as an installed PWA (launched from the home screen). */
-function isStandalonePwa(): boolean {
-    if (typeof window === "undefined") return false
-    return (
-        window.matchMedia?.("(display-mode: standalone)").matches === true ||
-        (navigator as any)?.standalone === true // iOS home-screen PWA
-    )
-}
-
-/**
- * Whether to use the full-page redirect flow instead of a popup for Google
- * sign-in. Used ONLY for a plain mobile browser tab (not an installed PWA):
- * there a "popup" is really a new browser tab that, thanks to
- * Cross-Origin-Opener-Policy, can't close itself afterwards, stranding the
- * user on the Google tab - so the same-tab redirect behaves better.
- *
- * Installed PWAs (standalone) are deliberately EXCLUDED: there
- * signInWithRedirect silently loses the session on return (the return lands in
- * a partitioned storage context, so getRedirectResult / onAuthStateChanged
- * never see the sign-in and the user is bounced to the start screen "as if not
- * logged in"). Those use the popup flow instead, which returns the credential
- * to the still-alive app context. See Firebase "redirect-best-practices".
- */
-function prefersRedirect(): boolean {
-    if (typeof navigator === "undefined" || typeof window === "undefined") return false
-    const ua = navigator.userAgent || ""
-    const mobileUA = /Android|iPhone|iPad|iPod|Mobi|Windows Phone/i.test(ua)
-    return mobileUA && !isStandalonePwa()
-}
-
 type AuthValue = {
     /** Currently signed-in Firebase user (null when signed out, undefined while loading). */
     user: FirebaseUser | null
@@ -85,18 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let cancelled = false
         let unsub = () => {}
         ;(async () => {
-            const [{ auth }, { getRedirectResult, onAuthStateChanged }] =
+            const [{ auth }, { onAuthStateChanged }] =
                 await Promise.all([getFirebase(), import("firebase/auth")])
-            if (cancelled) return
-
-            // Finish the mobile redirect before probing persisted auth state.
-            // Otherwise the initial null state can win the race on browsers
-            // with stricter storage handling (notably iOS private browsing).
-            try {
-                await getRedirectResult(auth)
-            } catch (error) {
-                console.error("[auth] Google redirect failed", error)
-            }
             if (cancelled) return
 
             // Fires once with the persisted user on load, then again on every change.
@@ -182,35 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 })
             },
             async signInWithGoogle() {
-                const [{ auth, googleProvider }, { signInWithPopup, signInWithRedirect }] =
+                const [{ auth, googleProvider }, { signInWithPopup }] =
                     await Promise.all([getFirebase(), import("firebase/auth")])
-                // Plain mobile browser tab → full-page redirect (popup tabs
-                // can't close themselves there and strand the user on Google).
-                if (prefersRedirect()) {
-                    await signInWithRedirect(auth, googleProvider)
-                    return // page navigates away; onAuthStateChanged finishes on return
-                }
-                // Desktop AND installed PWAs → popup. In an installed PWA the
-                // redirect flow silently loses the session on return, so popup
-                // (credential returned to the live context) is the reliable path.
-                try {
-                    await signInWithPopup(auth, googleProvider)
-                } catch (e: any) {
-                    const code = e?.code ?? ""
-                    const popupFailed =
-                        code === "auth/popup-blocked" ||
-                        code === "auth/popup-closed-by-user" ||
-                        code === "auth/cancelled-popup-request" ||
-                        code === "auth/operation-not-supported-in-this-environment"
-                    // Fall back to redirect only in a real browser tab. In an
-                    // installed PWA redirect is broken (lost session), so surface
-                    // the error rather than bounce the user through a dead flow.
-                    if (popupFailed && !isStandalonePwa()) {
-                        await signInWithRedirect(auth, googleProvider)
-                        return
-                    }
-                    throw e
-                }
+                await signInWithPopup(auth, googleProvider)
             },
             async signOut() {
                 const [{ auth }, { signOut: fbSignOut }] =

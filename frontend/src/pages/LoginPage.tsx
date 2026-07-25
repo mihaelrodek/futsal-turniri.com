@@ -31,6 +31,8 @@ function authErrorMessage(err: any): string {
             return "Korisnički račun je deaktiviran."
         case "auth/too-many-requests":
             return "Previše pokušaja. Pokušaj ponovno kasnije."
+        case "auth/popup-blocked":
+            return "Preglednik je blokirao prozor za Google prijavu. Dopusti skočne prozore za ovu stranicu i pokušaj ponovno."
         case "auth/popup-closed-by-user":
         case "auth/cancelled-popup-request":
             return "" // user closed popup - not really an error
