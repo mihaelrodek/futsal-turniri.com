@@ -151,6 +151,37 @@ function StageBadge({ stage, groupName }: { stage: string; groupName?: string | 
     )
 }
 
+function CompactStageBadge({ stage, groupName }: { stage: string; groupName?: string | null }) {
+    const isGroup = stage === "GROUP"
+    const base = isGroup
+        ? groupName
+            ? `Grupa ${groupName}`
+            : "Grupa"
+        : STAGE_LABEL[stage] ?? stage
+    return (
+        <Box
+            as="span"
+            px="1.5"
+            py="0.5"
+            rounded="full"
+            fontSize="9px"
+            fontWeight="semibold"
+            letterSpacing="0.04em"
+            textTransform="uppercase"
+            bg={isGroup ? "brand.subtle" : "bg.muted"}
+            color={isGroup ? "brand.fg" : "fg.muted"}
+            flexShrink={0}
+            whiteSpace="nowrap"
+            maxW="86px"
+            overflow="hidden"
+            textOverflow="ellipsis"
+            textAlign="center"
+        >
+            {base}
+        </Box>
+    )
+}
+
 /* -- Day divider --------------------------------------------------------- */
 /** Thin labelled separator inserted before the first match of each day, so a
  *  multi-day schedule reads as distinct days. Purely visual - carries no
@@ -842,22 +873,22 @@ function MatchCompactRow({
                         fontFamily="mono"
                         // Smaller than the team names on purpose: the names are
                         // what a reader scans for, the score is the detail.
-                        fontSize="13px"
+                        fontSize="11px"
                         fontWeight={scoreboard ? 800 : 600}
-                        letterSpacing="-0.02em"
+                        letterSpacing="0"
                         color={isLive ? "red.fg" : isFinished ? "fg.ink" : "fg.muted"}
                         bg={isLive ? "red.subtle" : "bg.surfaceTint"}
-                        px="2"
+                        px="1.5"
                         py="1"
                         rounded="lg"
-                        minW={multiDay ? "calc(12ch + 16px)" : "58px"}
+                        minW={multiDay ? "calc(11ch + 12px)" : "48px"}
                         textAlign="center"
                         fontVariantNumeric="tabular-nums"
                     >
                         {pillText}
                     </Box>
                     <Flex justify="center" minW="0">
-                        <StageBadge stage={match.stage} groupName={match.groupName} />
+                        <CompactStageBadge stage={match.stage} groupName={match.groupName} />
                     </Flex>
                 </VStack>
 
@@ -867,7 +898,7 @@ function MatchCompactRow({
                     undecided knockout slots. */}
                 <VStack flex="1" minW="0" gap="0.5" align="stretch">
                     <Text
-                        fontSize="sm"
+                        fontSize={{ base: "13px", md: "sm" }}
                         fontWeight={700}
                         lineHeight="1.25"
                         truncate
@@ -876,7 +907,7 @@ function MatchCompactRow({
                         {t1Name}
                     </Text>
                     <Text
-                        fontSize="sm"
+                        fontSize={{ base: "13px", md: "sm" }}
                         fontWeight={700}
                         lineHeight="1.25"
                         truncate
@@ -887,7 +918,7 @@ function MatchCompactRow({
                 </VStack>
 
                 {(showCalBtn || showBell) && (
-                    <HStack gap="0.5" flexShrink={0}>
+                    <VStack gap="0.5" flexShrink={0}>
                         {showCalBtn && (
                             <IconButton
                                 aria-label="Dodaj u kalendar"
@@ -917,7 +948,7 @@ function MatchCompactRow({
                                 matchId={match.matchId}
                             />
                         )}
-                    </HStack>
+                    </VStack>
                 )}
 
                 <Box as="span" color="fg.muted" flexShrink={0} display="inline-flex">

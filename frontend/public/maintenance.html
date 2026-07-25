@@ -21,25 +21,35 @@
             font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: radial-gradient(120% 90% at 50% 0%, #132A3E 0%, #0B1522 62%);
             color: #F5F7FA;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
+            display: grid;
+            place-items: center;
+            padding: clamp(24px, 6vh, 56px) 24px;
             -webkit-font-smoothing: antialiased;
         }
         .card {
             width: 100%;
-            max-width: 440px;
+            max-width: 560px;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         /* Real app logo (inlined dark-variant SVG). It must be inlined, not
            <img src>, because during maintenance every request - including one
            for /logo/*.svg - returns THIS page, so an external logo would 404. */
         .logo {
-            width: min(360px, 92%);
-            margin: 0 auto 30px;
+            width: min(424px, 100%);
+            margin: 0 auto 32px;
+            display: flex;
+            justify-content: center;
         }
         .logo svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.45)); }
+        .copy {
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+            text-align: center;
+        }
         h1 {
             font-size: 26px;
             line-height: 1.2;
@@ -86,6 +96,10 @@
         @media (prefers-reduced-motion: reduce) {
             .dots span { animation: none; opacity: 0.75; }
         }
+        @media (max-width: 520px) {
+            .logo { width: min(360px, 96%); margin-bottom: 28px; }
+            .copy { max-width: 360px; }
+        }
     </style>
 </head>
 <body>
@@ -116,17 +130,19 @@
                 <text x="131" y="87" font-family="'Geist Mono', 'JetBrains Mono', monospace" font-size="13" font-weight="700" letter-spacing="0.6" fill="#2AD4C8">futsal-turniri.com</text>
             </svg>
         </div>
-        <p class="eyebrow">Nadogradnja</p>
-        <h1>Nadogradnja u tijeku</h1>
-        <p>
-            Radimo na poboljšanjima aplikacije. Stranica će uskoro ponovno biti
-            dostupna - stranica se osvježava sama, ne treba ništa raditi.
-        </p>
-        <p>
-            Hvala na strpljenju!
-        </p>
-        <div class="dots" aria-hidden="true">
-            <span></span><span></span><span></span>
+        <div class="copy">
+            <p class="eyebrow">Nadogradnja</p>
+            <h1>Nadogradnja u tijeku</h1>
+            <p>
+                Radimo na poboljšanjima aplikacije. Stranica će uskoro ponovno biti
+                dostupna - stranica se osvježava sama, ne treba ništa raditi.
+            </p>
+            <p>
+                Hvala na strpljenju!
+            </p>
+            <div class="dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+            </div>
         </div>
     </main>
 </body>

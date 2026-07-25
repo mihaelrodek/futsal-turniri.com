@@ -41,10 +41,12 @@ function StatChip({
     accent,
     label,
     value,
+    wide = false,
 }: {
     accent: string
     label: string
     value: string | number
+    wide?: boolean
 }) {
     return (
         <Box
@@ -54,7 +56,7 @@ function StatChip({
             borderColor="border"
             rounded="lg"
             pl="2.5"
-            pr="2"
+            pr={wide ? "2.5" : "2"}
             py="1.5"
             overflow="hidden"
             minW="0"
@@ -71,7 +73,7 @@ function StatChip({
             >
                 {label}
             </Text>
-            <Text fontSize="15px" fontWeight={800} color="fg.ink" letterSpacing="-0.01em" truncate>
+            <Text fontSize={wide ? "14px" : "15px"} fontWeight={800} color="fg.ink" letterSpacing="-0.01em" truncate>
                 {value}
             </Text>
         </Box>
@@ -401,7 +403,7 @@ export default function StatsSection({
             {/* Headline stats. Phone: one slim row of three compact chips so
                 the search box and the scorer list surface without scrolling;
                 sm+: the familiar 3-tile AccentStat strip. */}
-            <Grid templateColumns="repeat(3, 1fr)" gap="2" display={{ base: "grid", sm: "none" }}>
+            <Grid templateColumns="0.78fr 0.78fr minmax(0, 1.24fr)" gap="2" display={{ base: "grid", sm: "none" }}>
                 <StatChip
                     accent="var(--chakra-colors-pitch-500)"
                     label="Strijelci"
@@ -416,6 +418,7 @@ export default function StatsSection({
                     accent="var(--chakra-colors-accent-amber)"
                     label="Top ekipa"
                     value={topTeam?.name ?? "-"}
+                    wide
                 />
             </Grid>
             <Grid templateColumns="repeat(3, 1fr)" gap="3" display={{ base: "none", sm: "grid" }}>

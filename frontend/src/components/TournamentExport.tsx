@@ -1479,13 +1479,14 @@ function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
    All values rounded up so the last row never clips or crams against the footer. */
 const SCHED_ROW_PX = 52
 const SCHED_HEADER_PX = 50
-const SCHED_FIRST_PX = 760
-const SCHED_REST_PX = 880
+const SCHED_FIRST_PX = 700
+const SCHED_REST_PX = 830
+const SCHED_SECTION_GAP_PX = 20
 /** Shaved off every page budget so estimate noise can only ever leave a page
  *  slightly emptier - never overflow it. A missing row is unacceptable
  *  (matches were silently clipped by the fixed A4 overflow); a bit of white
  *  space at the foot of a page is fine. */
-const SCHED_SAFETY_PX = 24
+const SCHED_SAFETY_PX = 40
 const SCHED_REST_SAFE_PX = SCHED_REST_PX - SCHED_SAFETY_PX
 
 /**
@@ -1596,14 +1597,15 @@ function paginateScheduleSections(
             // match row; if it won't fit and the page already has content, start
             // this section (chunk) on a fresh page. A fresh page always keeps
             // >= 1 row below its header, so a day header is never orphaned.
-            if (pageSecs.length > 0 && remainingPx < SCHED_HEADER_PX + schedRowPx(rest[0])) {
+            const sectionGapPx = pageSecs.length > 0 ? SCHED_SECTION_GAP_PX : 0
+            if (pageSecs.length > 0 && remainingPx < sectionGapPx + SCHED_HEADER_PX + schedRowPx(rest[0])) {
                 flush()
                 continue
             }
             // Walk the section's matches, accumulating each row's real pixel cost
             // until the budget is spent; always take at least one row.
             let take = 0
-            let chunkPx = SCHED_HEADER_PX
+            let chunkPx = sectionGapPx + SCHED_HEADER_PX
             for (const m of rest) {
                 const rowPx = schedRowPx(m)
                 if (take > 0 && usedPx + chunkPx + rowPx > budgetPx) break

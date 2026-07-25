@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Spinner, Text, VStack } from "@chakra-ui/react"
+import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Text, VStack } from "@chakra-ui/react"
 import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
@@ -977,12 +977,22 @@ export function GoalscorersPanel({
 
     if (state.status === "loading") {
         return (
-            <HStack gap="2" py="1">
-                <Spinner size="xs" color="brand.solid" />
-                <Text fontSize="xs" color="fg.muted">
+            <Flex minH="120px" align="center" justify="center">
+                <VStack gap="2">
+                    <Box
+                        color="brand.solid"
+                        css={{
+                            animation: "ftBallSpin 0.9s linear infinite",
+                            "@keyframes ftBallSpin": { to: { transform: "rotate(360deg)" } },
+                        }}
+                    >
+                        <GiSoccerBall size={22} />
+                    </Box>
+                    <Text fontSize="sm" color="fg.muted" fontWeight={600}>
                     Učitavanje...
-                </Text>
-            </HStack>
+                    </Text>
+                </VStack>
+            </Flex>
         )
     }
 

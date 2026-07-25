@@ -423,13 +423,15 @@ export default function MatchLivePage() {
     // and fits (wrapping to at most three lines) instead of truncating hard.
     const maxNameLen = Math.max(team1Name.length, team2Name.length)
     const teamFont =
-        maxNameLen > 44
-            ? { base: "2xs", md: "xs" }
-            : maxNameLen > 34
-                ? { base: "xs", md: "sm" }
-                : maxNameLen > 22
-                    ? { base: "sm", md: "md" }
-                    : { base: "md", md: "lg" }
+        isScheduled && maxNameLen > 18
+            ? { base: "sm", md: "md" }
+            : maxNameLen > 44
+                ? { base: "2xs", md: "xs" }
+                : maxNameLen > 34
+                    ? { base: "xs", md: "sm" }
+                    : maxNameLen > 22
+                        ? { base: "sm", md: "md" }
+                        : { base: "md", md: "lg" }
 
     // (Status pill/clock, the big score and the penalty line are rendered
     // inline in the header below - the status sits ABOVE the teams+score row so
@@ -552,15 +554,23 @@ export default function MatchLivePage() {
                 {/* Teams + score - the team name and the score sit on ONE
                     horizontal line (grid is vertically centred and the score is
                     the only thing in the centre cell). */}
-                <Box display="grid" gridTemplateColumns="1fr auto 1fr" alignItems="center" gap="3" w="full">
+                <Box display="grid" gridTemplateColumns="minmax(0, 1fr) auto minmax(0, 1fr)" alignItems="center" gap={{ base: "2", md: "3" }} w="full">
                     <HStack gap="2" justify="flex-end" minW="0">
                         <KitSwatch jersey={jerseyC1} shorts={shortsC1} size={12} />
-                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="right" lineClamp="3" minW="0">
+                        <Text
+                            fontSize={teamFont}
+                            fontWeight={800}
+                            color="fg.ink"
+                            textAlign="right"
+                            lineClamp="3"
+                            minW="0"
+                            css={{ overflowWrap: "normal", wordBreak: "normal", hyphens: "none" }}
+                        >
                             {team1Name}
                         </Text>
                     </HStack>
                     {isScheduled ? (
-                        <Text fontFamily="mono" fontSize="xl" fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
+                        <Text fontFamily="mono" fontSize={{ base: "md", md: "xl" }} fontWeight={800} color="fg.ink" whiteSpace="nowrap" flexShrink={0}>
                             {formatKickoff(scheduled.kickoffAt)}
                         </Text>
                     ) : (
@@ -586,7 +596,15 @@ export default function MatchLivePage() {
                         </HStack>
                     )}
                     <HStack gap="2" justify="flex-start" minW="0">
-                        <Text fontSize={teamFont} fontWeight={800} color="fg.ink" textAlign="left" lineClamp="3" minW="0">
+                        <Text
+                            fontSize={teamFont}
+                            fontWeight={800}
+                            color="fg.ink"
+                            textAlign="left"
+                            lineClamp="3"
+                            minW="0"
+                            css={{ overflowWrap: "normal", wordBreak: "normal", hyphens: "none" }}
+                        >
                             {team2Name}
                         </Text>
                         <KitSwatch jersey={jerseyC2} shorts={shortsC2} size={12} />
@@ -659,45 +677,43 @@ export default function MatchLivePage() {
                 css={{ WebkitOverflowScrolling: "touch" }}
             >
                 <Box maxW={infoMaxW} mx="auto" w="full">
-                    <Box bg="bg.panel" rounded="xl" borderWidth="1px" borderColor="border" p="4">
-                        <HStack
-                            gap="1"
-                            bg="bg.muted"
-                            rounded="full"
-                            p="1"
-                            mb="4"
-                            overflowX="auto"
-                            justify={{ base: "flex-start", md: "center" }}
-                            position="sticky"
-                            top="0"
-                            zIndex={3}
-                            boxShadow="0 10px 18px rgba(15, 23, 42, 0.08)"
-                        >
-                            {infoTabs.map((it) => (
-                                <chakra.button
-                                    key={it.key}
-                                    type="button"
-                                    onClick={() => setTab(it.key)}
-                                    display="inline-flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                    px="3.5"
-                                    py="1.5"
-                                    rounded="full"
-                                    fontSize="12px"
-                                    fontWeight={800}
-                                    whiteSpace="nowrap"
-                                    flexShrink={0}
-                                    cursor="pointer"
-                                    bg={tab === it.key ? "brand.solid" : "transparent"}
-                                    color={tab === it.key ? "white" : "fg.muted"}
-                                    boxShadow={tab === it.key ? "sm" : undefined}
-                                    _hover={tab === it.key ? undefined : { color: "fg.ink" }}
-                                >
-                                    {it.label}
-                                </chakra.button>
-                            ))}
-                        </HStack>
+                    <Box position="relative">
+                        <Box position="sticky" top="0" zIndex={4} bg="bg.canvas" pb="3">
+                            <HStack
+                                gap="1"
+                                bg="bg.muted"
+                                rounded="full"
+                                p="1"
+                                overflowX="auto"
+                                justify={{ base: "flex-start", md: "center" }}
+                                boxShadow="0 10px 18px rgba(15, 23, 42, 0.08)"
+                            >
+                                {infoTabs.map((it) => (
+                                    <chakra.button
+                                        key={it.key}
+                                        type="button"
+                                        onClick={() => setTab(it.key)}
+                                        display="inline-flex"
+                                        alignItems="center"
+                                        justifyContent="center"
+                                        px="3.5"
+                                        py="1.5"
+                                        rounded="full"
+                                        fontSize="12px"
+                                        fontWeight={800}
+                                        whiteSpace="nowrap"
+                                        flexShrink={0}
+                                        cursor="pointer"
+                                        bg={tab === it.key ? "brand.solid" : "transparent"}
+                                        color={tab === it.key ? "white" : "fg.muted"}
+                                        boxShadow={tab === it.key ? "sm" : undefined}
+                                        _hover={tab === it.key ? undefined : { color: "fg.ink" }}
+                                    >
+                                        {it.label}
+                                    </chakra.button>
+                                ))}
+                            </HStack>
+                        </Box>
 
                         {tab === "timeline" && (
                             <GoalscorersPanel
@@ -740,11 +756,7 @@ export default function MatchLivePage() {
 
                         {tab === "context" && (
                             hasGroupContext ? (
-                                <GroupContextPanel
-                                    group={groupForMatch}
-                                    team1Id={scheduled.team1Id}
-                                    team2Id={scheduled.team2Id}
-                                />
+                                <GroupContextPanel group={groupForMatch} />
                             ) : (
                                 <BracketContextPanel bracket={bracket} matchId={matchId} />
                             )
@@ -827,14 +839,14 @@ function TeamLineupCard({
             borderColor="border"
         >
             <Flex
-                minH="40px"
-                pb="2.5"
+                minH="34px"
+                pb="2"
                 align="center"
                 justify={align === "left" ? "flex-start" : "flex-end"}
                 borderBottomWidth="1px"
                 borderColor="border"
             >
-                <Text fontSize="sm" fontWeight={900} color="fg.ink" textAlign={align} lineClamp={2}>
+                <Text fontSize={{ base: "xs", md: "sm" }} fontWeight={900} color="fg.ink" textAlign={align} lineClamp={2}>
                     {teamName}
                 </Text>
             </Flex>
@@ -852,25 +864,38 @@ function TeamLineupCard({
                 <VStack align="stretch" gap="0">
                     {sorted.map((p) => {
                         const stat = playerMatchStats(events, p.id)
+                        const marks = (
+                            <>
+                                {stat.goals > 0 && <PlayerGoalMark count={stat.goals} />}
+                                {stat.yellow > 0 && <PlayerCardMark tone="yellow" count={stat.yellow} />}
+                                {stat.red > 0 && <PlayerCardMark tone="red" count={stat.red} />}
+                                {p.captain && (
+                                    <Box as="span" px="1.5" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="9px" fontWeight={900}>
+                                        K
+                                    </Box>
+                                )}
+                            </>
+                        )
                         return (
                             <Flex
                                 key={p.id}
                                 align="center"
                                 gap="2.5"
-                                py="2.5"
+                                py={{ base: "2", md: "2.5" }}
                                 borderTopWidth="1px"
                                 borderColor="border"
                                 direction={align === "right" ? "row-reverse" : "row"}
                             >
                                 <Flex
-                                    w="34px"
-                                    h="34px"
+                                    w={{ base: "28px", md: "34px" }}
+                                    h={{ base: "28px", md: "34px" }}
                                     rounded="md"
                                     align="center"
                                     justify="center"
                                     bg="bg.muted"
                                     color="fg.ink"
                                     fontFamily="mono"
+                                    fontSize={{ base: "xs", md: "sm" }}
                                     fontWeight={900}
                                     flexShrink={0}
                                 >
@@ -878,17 +903,11 @@ function TeamLineupCard({
                                 </Flex>
                                 <Box minW="0" flex="1" textAlign={align}>
                                     <HStack gap="1.5" justify={align === "right" ? "flex-end" : "flex-start"} minW="0" wrap="wrap">
-                                        <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>
+                                        {align === "right" && marks}
+                                        <Text fontSize={{ base: "xs", md: "sm" }} fontWeight={800} color="fg.ink" truncate>
                                             {p.name}
                                         </Text>
-                                        {stat.goals > 0 && <PlayerGoalMark count={stat.goals} />}
-                                        {stat.yellow > 0 && <PlayerCardMark tone="yellow" count={stat.yellow} />}
-                                        {stat.red > 0 && <PlayerCardMark tone="red" count={stat.red} />}
-                                        {p.captain && (
-                                            <Box as="span" px="1.5" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="9px" fontWeight={900}>
-                                                K
-                                            </Box>
-                                        )}
+                                        {align === "left" && marks}
                                     </HStack>
                                 </Box>
                             </Flex>
@@ -958,12 +977,8 @@ function PlayerCardMark({ tone, count }: { tone: "yellow" | "red"; count: number
 
 function GroupContextPanel({
     group,
-    team1Id,
-    team2Id,
 }: {
     group: Group | null
-    team1Id: number | null
-    team2Id: number | null
 }) {
     if (!group) {
         return <EmptyContext title="Grupa nije dostupna" note="Grupna faza još nije izvučena." />
@@ -986,7 +1001,6 @@ function GroupContextPanel({
                 ))}
             </Grid>
             {group.standings.map((row, i) => {
-                const playing = row.teamId === team1Id || row.teamId === team2Id
                 const advancing = i < group.effectiveAdvance
                 return (
                     <Grid
@@ -998,14 +1012,14 @@ function GroupContextPanel({
                         py="2.5"
                         borderTopWidth="1px"
                         borderColor="border"
-                        bg={playing ? "brand.subtle" : undefined}
+                        bg={advancing ? "brand.subtle" : "bg.panel"}
                         borderLeftWidth="3px"
                         borderLeftColor={advancing ? "brand.solid" : "transparent"}
                     >
                         <Text fontFamily="mono" fontWeight={900} color={advancing ? "brand.fg" : "fg.muted"}>
                             {i + 1}
                         </Text>
-                        <Text fontSize="sm" fontWeight={playing ? 900 : 800} color="fg.ink" truncate>
+                        <Text fontSize="sm" fontWeight={advancing ? 900 : 800} color="fg.ink" truncate>
                             {row.teamName}
                         </Text>
                         <StandingsCell>{row.played}</StandingsCell>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Box, Button, Dialog, Flex, Grid, HStack, Portal, Text, VStack, chakra } from "@chakra-ui/react"
+import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Portal, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
 import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
@@ -805,11 +805,16 @@ function MobileLineupsDialog({
                 <Dialog.Backdrop />
                 <Dialog.Positioner>
                     <Dialog.Content maxW="92vw" w="420px" maxH="82vh" rounded="xl">
-                        <Dialog.Header>
+                        <Dialog.Header alignItems="center" justifyContent="space-between" pb="1">
                             <Dialog.Title>Sastavi</Dialog.Title>
+                            <Dialog.CloseTrigger asChild>
+                                <IconButton aria-label="Zatvori sastave" size="sm" variant="ghost" rounded="full">
+                                    <FiX />
+                                </IconButton>
+                            </Dialog.CloseTrigger>
                         </Dialog.Header>
-                        <Dialog.Body px="3" pb="3">
-                            <Box h="min(62vh, 430px)" display="flex" flexDirection="column" borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
+                        <Dialog.Body px="3" pt="1" pb="3">
+                            <Box h="min(64vh, 450px)" display="flex" flexDirection="column" overflow="hidden">
                                 <StreamLineupsBody fixture={fixture} d={lineups} />
                             </Box>
                         </Dialog.Body>
@@ -837,10 +842,10 @@ function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: M
     return (
         <>
             <Grid
-                templateColumns="1fr auto 1fr"
+                templateColumns="minmax(0, 1fr) minmax(0, 1fr)"
                 alignItems="center"
                 gap="2"
-                px="3"
+                px="1"
                 py="2"
                 borderBottomWidth="1px"
                 borderColor="border"
@@ -852,9 +857,6 @@ function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: M
                         {fixture.team1Name ?? "-"}
                     </Text>
                 </HStack>
-                <Text fontFamily="mono" fontSize="10px" fontWeight={900} color="fg.muted" letterSpacing="0.08em">
-                    SASTAVI
-                </Text>
                 <HStack gap="1.5" justify="flex-start" minW="0">
                     <Text fontSize="xs" fontWeight={800} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
                         {fixture.team2Name ?? "-"}
@@ -862,7 +864,7 @@ function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: M
                     <TeamKitChip colors={colors} teamId={fixture.team2Id} size={9} />
                 </HStack>
             </Grid>
-            <Box flex="1" minH="0" overflowY="auto" px="3" py="3">
+            <Box flex="1" minH="0" overflowY="auto" px="1" py="2">
                 <Grid templateColumns="minmax(0, 1fr) minmax(0, 1fr)" gap="0" minH="full">
                     <StreamTeamLineup players={d.team1} align="left" />
                     <StreamTeamLineup players={d.team2} align="right" withDivider />
@@ -890,8 +892,8 @@ function StreamTeamLineup({
     return (
         <Box
             minW="0"
-            px={align === "left" ? "0" : "3"}
-            pr={align === "left" ? "3" : undefined}
+            px={align === "left" ? "0" : "2"}
+            pr={align === "left" ? "2" : undefined}
             borderLeftWidth={withDivider ? "1px" : undefined}
             borderColor="border"
         >
@@ -911,26 +913,26 @@ function StreamTeamLineup({
                         <HStack
                             key={p.id}
                             gap="1.5"
-                            py="1.5"
+                            py="1.25"
                             direction={align === "right" ? "row-reverse" : "row"}
                         >
                             <Flex
-                                w="22px"
-                                h="22px"
+                                w="20px"
+                                h="20px"
                                 rounded="md"
                                 align="center"
                                 justify="center"
                                 bg="bg.muted"
                                 color="fg.ink"
                                 fontFamily="mono"
-                                fontSize="10px"
+                                fontSize="9px"
                                 fontWeight={900}
                                 flexShrink={0}
                             >
                                 {p.number ?? "-"}
                             </Flex>
                             <HStack gap="1" minW="0" justify={align === "right" ? "flex-end" : "flex-start"} flex="1">
-                                <Text fontSize="11px" fontWeight={800} color="fg.ink" textAlign={align} truncate>
+                                <Text fontSize="10px" fontWeight={800} color="fg.ink" textAlign={align} truncate>
                                     {p.name}
                                 </Text>
                                 {p.captain && (
