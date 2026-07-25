@@ -534,13 +534,14 @@ export function AccentStat({
     hint,
     accent = "pitch.500",
     icon,
+    ...boxProps
 }: {
     label: ReactNode
     value: ReactNode
     hint?: ReactNode
     accent?: string
     icon?: ReactNode
-}) {
+} & BoxProps) {
     return (
         <Box
             position="relative"
@@ -551,6 +552,7 @@ export function AccentStat({
             px="4"
             py="3"
             overflow="hidden"
+            {...boxProps}
         >
             <Box position="absolute" top="0" left="0" w="3px" h="100%" bg={accent} />
             <HStack color="fg.muted" gap="1.5">

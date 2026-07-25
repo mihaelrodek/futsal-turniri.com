@@ -32,6 +32,23 @@
 	order rate_limit before reverse_proxy
 }
 
+# Firebase Auth helper on a first-party subdomain. Mobile browsers block the
+# cross-site storage used by signInWithRedirect when the helper is served
+# directly from futsal-turniri.firebaseapp.com, so proxy the required routes
+# transparently through auth.futsal-turniri.com instead.
+auth.futsal-turniri.com {
+	@firebase_auth path /__/auth/* /__/firebase/init.json
+	handle @firebase_auth {
+		reverse_proxy https://futsal-turniri.firebaseapp.com {
+			header_up Host futsal-turniri.firebaseapp.com
+		}
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}
+
 futsal-turniri.com, www.futsal-turniri.com {
 	encode zstd gzip
 

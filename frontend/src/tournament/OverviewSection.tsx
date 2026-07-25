@@ -919,56 +919,60 @@ function DetailsReadView({
 
             {/* ── Right column: ekipe/kotizacija/detalji + lokacija + nagrade ── */}
             <VStack align="stretch" gap="3">
-                {/* Meta row: EKIPE · KOTIZACIJA · SISTEM IGRE · LOKACIJA - lokacija
-                    sits to the RIGHT of the stat tiles (its own compact tile), so a
-                    long "Detalji" text can no longer stretch it. Detalji is full-width
-                    BELOW. Mobile: ekipe+kotizacija 2-up, then sistem + lokacija each
-                    full-width. `alignItems="start"` keeps every tile its natural
-                    height (no stretching). */}
-                <Grid
-                    templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1.8fr" }}
-                    gap="3"
-                    alignItems="start"
-                >
-                    <AccentStat
-                        accent="var(--chakra-colors-accent-amber)"
-                        icon={<FiUsers size={12} />}
-                        label="EKIPE"
-                        value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
-                        hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
-                    />
-                    {typeof t.entryPrice === "number" ? (
+                {/* Meta overview: top row keeps the compact metrics together,
+                    while location gets a full-width row below. */}
+                <VStack align="stretch" gap="3">
+                    <Grid
+                        templateColumns={{ base: "1fr 1fr", md: "repeat(3, minmax(0, 1fr))" }}
+                        gap="3"
+                        alignItems="stretch"
+                    >
                         <AccentStat
-                            accent="var(--chakra-colors-accent-goal)"
-                            icon={<FiDollarSign size={12} />}
-                            label="KOTIZACIJA"
-                            value={fmtMoney(t.entryPrice)}
+                            accent="var(--chakra-colors-accent-amber)"
+                            icon={<FiUsers size={12} />}
+                            label="EKIPE"
+                            value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
+                            hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
+                            h="full"
                         />
-                    ) : (
-                        <Box display={{ base: "none", md: "block" }} />
-                    )}
-                    {t.gameSystem ? (
-                        <Box gridColumn={{ base: "1 / -1", md: "auto" }}>
+                        {typeof t.entryPrice === "number" ? (
                             <AccentStat
-                                accent="var(--chakra-colors-pitch-500)"
-                                icon={<FiGrid size={12} />}
-                                label="SISTEM IGRE"
-                                value={t.gameSystem}
+                                accent="var(--chakra-colors-accent-goal)"
+                                icon={<FiDollarSign size={12} />}
+                                label="KOTIZACIJA"
+                                value={fmtMoney(t.entryPrice)}
+                                h="full"
                             />
-                        </Box>
-                    ) : (
-                        <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
-                    )}
+                        ) : (
+                            <Box display={{ base: "none", md: "block" }} />
+                        )}
+                        {t.gameSystem ? (
+                            <Box gridColumn={{ base: "1 / -1", md: "auto" }} h="full">
+                                <AccentStat
+                                    accent="var(--chakra-colors-pitch-500)"
+                                    icon={<FiGrid size={12} />}
+                                    label="SISTEM IGRE"
+                                    value={t.gameSystem}
+                                    h="full"
+                                />
+                            </Box>
+                        ) : (
+                            <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
+                        )}
+                    </Grid>
                     {t.location ? (
                         <Box
-                            gridColumn={{ base: "1 / -1", md: "auto" }}
                             bg="bg.panel"
                             borderWidth="1px"
                             borderColor="border"
                             rounded="xl"
                             p="5"
                             display="flex"
-                            flexDirection="column"
+                            flexDirection={{ base: "column", sm: "row" }}
+                            alignItems={{ base: "stretch", sm: "center" }}
+                            justifyContent="space-between"
+                            gap="4"
+                            w="full"
                         >
                             <HStack gap="3" align="start">
                                 <Flex
@@ -1008,17 +1012,15 @@ function DetailsReadView({
                                 fontSize="13px"
                                 fontWeight={600}
                                 textDecoration="none"
-                                mt="3"
-                                w="fit-content"
+                                w={{ base: "fit-content", sm: "auto" }}
+                                flexShrink={0}
                                 _hover={{ bg: "pitch.100", textDecoration: "none" }}
                             >
                                 <FiExternalLink /> Otvori u kartama
                             </chakra.a>
                         </Box>
-                    ) : (
-                        <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
-                    )}
-                </Grid>
+                    ) : null}
+                </VStack>
 
                 {/* Web stranica organizatora - full-width row (optional). */}
                 {t.websiteUrl && (

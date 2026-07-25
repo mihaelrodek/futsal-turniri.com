@@ -515,9 +515,6 @@ export default function MatchLivePage() {
                         )}
                     </VStack>
                     <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
-                        <IconButton aria-label="Preuzmi" variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
-                            <FiDownload />
-                        </IconButton>
                         <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
                             <FiShare2 />
                         </IconButton>
@@ -617,46 +614,60 @@ export default function MatchLivePage() {
                     clock + half/pause label while live, else the plain state.
                     It sits here (not above) so the clock reads as a caption of
                     the scoreline; the live-stream pill stays up top. */}
-                <Flex justify="center" align="center" minH="5" mt="2">
-                    {isLive ? (
-                        <HStack gap="2">
-                            {/* The "Uživo" pill is redundant while the pulsing
-                                "Gledaj live stream" pill is shown above -
-                                one red live signal is enough. */}
-                            {!streamLiveForThis && (
-                                <Box
-                                    as="span"
-                                    px="2"
-                                    py="0.5"
-                                    rounded="full"
-                                    bg="red.solid"
-                                    color="white"
-                                    fontSize="2xs"
-                                    fontWeight={800}
-                                    letterSpacing="wider"
-                                    textTransform="uppercase"
-                                >
-                                    Uživo
-                                </Box>
-                            )}
-                            {isTimer && (
-                                <LiveClock
-                                    liveStartedAt={live?.liveStartedAt}
-                                    firstHalfEndedAt={live?.firstHalfEndedAt}
-                                    secondHalfStartedAt={live?.secondHalfStartedAt}
-                                    livePausedAt={live?.livePausedAt}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                    showLabel
-                                />
-                            )}
-                        </HStack>
-                    ) : (
-                        <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted">
-                            {isFinished ? "Završeno" : "Nije počelo"}
-                        </Text>
-                    )}
-                </Flex>
+                <Box position="relative" minH="8" mt="2">
+                    <Flex justify="center" align="center" minH="8">
+                        {isLive ? (
+                            <HStack gap="2">
+                                {/* The "Uživo" pill is redundant while the pulsing
+                                    "Gledaj live stream" pill is shown above -
+                                    one red live signal is enough. */}
+                                {!streamLiveForThis && (
+                                    <Box
+                                        as="span"
+                                        px="2"
+                                        py="0.5"
+                                        rounded="full"
+                                        bg="red.solid"
+                                        color="white"
+                                        fontSize="2xs"
+                                        fontWeight={800}
+                                        letterSpacing="wider"
+                                        textTransform="uppercase"
+                                    >
+                                        Uživo
+                                    </Box>
+                                )}
+                                {isTimer && (
+                                    <LiveClock
+                                        liveStartedAt={live?.liveStartedAt}
+                                        firstHalfEndedAt={live?.firstHalfEndedAt}
+                                        secondHalfStartedAt={live?.secondHalfStartedAt}
+                                        livePausedAt={live?.livePausedAt}
+                                        halfLengthMin={halfLengthMin}
+                                        halfCount={halfCount}
+                                        showLabel
+                                    />
+                                )}
+                            </HStack>
+                        ) : (
+                            <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted">
+                                {isFinished ? "Završeno" : "Nije počelo"}
+                            </Text>
+                        )}
+                    </Flex>
+                    <IconButton
+                        aria-label="Preuzmi"
+                        variant="ghost"
+                        size="sm"
+                        position="absolute"
+                        right="0"
+                        top="50%"
+                        transform="translateY(-50%)"
+                        onClick={() => setExportOpen(true)}
+                    >
+                        <FiDownload />
+                    </IconButton>
+                </Box>
 
                 {/* Penalty shootout result under the score (centred). */}
                 {hasPens && (
@@ -855,14 +866,14 @@ function TeamLineupCard({
             borderColor="border"
         >
             <Flex
-                minH="34px"
+                h={{ base: "68px", md: "46px" }}
                 pb="2"
                 align="center"
                 justify={align === "left" ? "flex-start" : "flex-end"}
                 borderBottomWidth="1px"
                 borderColor="border"
             >
-                <Text fontSize={{ base: "xs", md: "sm" }} fontWeight={900} color="fg.ink" textAlign={align} lineClamp={2}>
+                <Text fontSize={{ base: "xs", md: "sm" }} fontWeight={900} color="fg.ink" textAlign={align} lineClamp={2} lineHeight="1.25">
                     {teamName}
                 </Text>
             </Flex>
@@ -881,7 +892,15 @@ function TeamLineupCard({
                     {sorted.map((p) => {
                         const stat = playerMatchStats(events, p.id)
                         const marks = (
-                            <>
+                            <HStack
+                                as="span"
+                                gridColumn={align === "right" ? 1 : 3}
+                                gridRow={1}
+                                gap="1"
+                                align="center"
+                                justify={align === "right" ? "flex-end" : "flex-start"}
+                                flexShrink={0}
+                            >
                                 {stat.goals > 0 && <PlayerGoalMark count={stat.goals} />}
                                 {stat.yellow > 0 && <PlayerCardMark tone="yellow" count={stat.yellow} />}
                                 {stat.red > 0 && <PlayerCardMark tone="red" count={stat.red} />}
@@ -890,21 +909,33 @@ function TeamLineupCard({
                                         K
                                     </Box>
                                 )}
-                            </>
+                            </HStack>
                         )
                         return (
-                            <Flex
+                            <Grid
                                 key={p.id}
-                                align="center"
+                                templateColumns={
+                                    align === "right"
+                                        ? {
+                                            base: "24px minmax(0, 1fr) 34px",
+                                            md: "34px minmax(0, 1fr) 40px",
+                                        }
+                                        : {
+                                            base: "34px minmax(0, 1fr) 24px",
+                                            md: "40px minmax(0, 1fr) 34px",
+                                        }
+                                }
+                                alignItems="center"
                                 gap="2.5"
+                                minH={{ base: "46px", md: "50px" }}
                                 py={{ base: "2", md: "2.5" }}
                                 borderTopWidth="1px"
                                 borderColor="border"
-                                direction={align === "right" ? "row-reverse" : "row"}
                             >
+                                {align === "right" && marks}
                                 <Flex
-                                    w={{ base: "28px", md: "34px" }}
-                                    h={{ base: "28px", md: "34px" }}
+                                    w={{ base: "34px", md: "40px" }}
+                                    h={{ base: "34px", md: "40px" }}
                                     rounded="md"
                                     align="center"
                                     justify="center"
@@ -914,19 +945,25 @@ function TeamLineupCard({
                                     fontSize={{ base: "xs", md: "sm" }}
                                     fontWeight={900}
                                     flexShrink={0}
+                                    gridColumn={align === "right" ? 3 : 1}
+                                    gridRow={1}
                                 >
                                     {p.number ?? "-"}
                                 </Flex>
-                                <Box minW="0" flex="1" textAlign={align}>
-                                    <HStack gap="1.5" justify={align === "right" ? "flex-end" : "flex-start"} minW="0" wrap="wrap">
-                                        {align === "right" && marks}
-                                        <Text fontSize={{ base: "xs", md: "sm" }} fontWeight={800} color="fg.ink" truncate>
-                                            {p.name}
-                                        </Text>
-                                        {align === "left" && marks}
-                                    </HStack>
-                                </Box>
-                            </Flex>
+                                <Text
+                                    gridColumn={2}
+                                    gridRow={1}
+                                    fontSize={{ base: "xs", md: "sm" }}
+                                    fontWeight={800}
+                                    color="fg.ink"
+                                    minW="0"
+                                    textAlign={align}
+                                    truncate
+                                >
+                                    {p.name}
+                                </Text>
+                                {align === "left" && marks}
+                            </Grid>
                         )
                     })}
                 </VStack>
