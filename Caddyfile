@@ -49,8 +49,22 @@ auth.futsal-turniri.com {
 	}
 }
 
-futsal-turniri.com, www.futsal-turniri.com {
+www.futsal-turniri.com {
+	redir https://futsal-turniri.com{uri} permanent
+}
+
+futsal-turniri.com {
 	encode zstd gzip
+
+	# Firebase's redirect helper must share the app origin. This avoids the
+	# cross-origin storage access blocked by Safari private browsing and other
+	# browsers with storage partitioning enabled.
+	@firebase_auth_main path /__/auth/* /__/firebase/init.json
+	handle @firebase_auth_main {
+		reverse_proxy https://futsal-turniri.firebaseapp.com {
+			header_up Host futsal-turniri.firebaseapp.com
+		}
+	}
 
 	# ─── 0. Maintenance mode ──────────────────────────────────────────
 	# When the flag file /maintenance/ENABLED exists, short-circuit EVERY

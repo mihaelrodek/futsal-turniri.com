@@ -89,10 +89,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await Promise.all([getFirebase(), import("firebase/auth")])
             if (cancelled) return
 
-            // Complete any pending signInWithRedirect (mobile Google flow). The
-            // success path also fires onAuthStateChanged below, so this is mainly
-            // to consume the result and not silently swallow a redirect error.
-            getRedirectResult(auth).catch(() => { /* surfaced on next attempt */ })
+            // Finish the mobile redirect before probing persisted auth state.
+            // Otherwise the initial null state can win the race on browsers
+            // with stricter storage handling (notably iOS private browsing).
+            try {
+                await getRedirectResult(auth)
+            } catch (error) {
+                console.error("[auth] Google redirect failed", error)
+            }
+            if (cancelled) return
 
             // Fires once with the persisted user on load, then again on every change.
             // For each user we also pull the parsed token, so we know their role.
