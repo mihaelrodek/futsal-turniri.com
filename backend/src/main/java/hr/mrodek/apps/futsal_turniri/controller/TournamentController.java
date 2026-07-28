@@ -542,13 +542,10 @@ public class TournamentController {
         try {
             String url = emailService.baseUrl() + "/turniri/"
                     + (t.getSlug() != null ? t.getSlug() : t.getUuid());
-            String html = emailService.shell(
-                    "Turnir je završen",
-                    "<p><strong>" + EmailService.escapeHtml(t.getName()) + "</strong> je završen.</p>"
-                            + "<p style=\"font-size:17px;\">🏆 Pobjednik: <strong>"
-                            + EmailService.escapeHtml(winnerName) + "</strong></p>"
-                            + "<p>Pogledaj konačni poredak, strijelce i statistiku na stranici turnira.</p>",
-                    url, "Pogledaj rezultate");
+            String body = MailTemplates.render("tournament-finished", Map.of(
+                    "tournamentName", EmailService.escapeHtml(t.getName()),
+                    "winnerName", EmailService.escapeHtml(winnerName)));
+            String html = emailService.shell("Turnir je završen", body, url, "Pogledaj rezultate");
             emailService.sendToTournamentSubscribers(
                     t.getId(), "🏁 Turnir završen - " + t.getName(), html);
         } catch (Exception ignored) {
@@ -1142,11 +1139,9 @@ public class TournamentController {
                     if (email != null && !email.isBlank()) {
                         String url = emailService.baseUrl() + "/turniri/"
                                 + (t.getSlug() != null ? t.getSlug() : t.getUuid());
-                        String html = emailService.shell(
-                                "Pratiš turnir",
-                                "<p>Od sada pratiš <strong>" + EmailService.escapeHtml(t.getName())
-                                        + "</strong>. Javit ćemo ti obavijesti o turniru (npr. konačni rezultat).</p>",
-                                url, "Otvori turnir");
+                        String body = MailTemplates.render("tournament-subscribed",
+                                Map.of("tournamentName", EmailService.escapeHtml(t.getName())));
+                        String html = emailService.shell("Pratiš turnir", body, url, "Otvori turnir");
                         emailService.sendHtml(email, "Pratiš turnir - " + t.getName(), html);
                     }
                 } catch (Exception ignored) {

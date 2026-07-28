@@ -17,6 +17,7 @@ import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
+import hr.mrodek.apps.futsal_turniri.services.RecordingAutoLinkService;
 import hr.mrodek.apps.futsal_turniri.services.RecordingRequestNotifier;
 import hr.mrodek.apps.futsal_turniri.services.RecordingStorageService;
 import hr.mrodek.apps.futsal_turniri.services.StripeService;
@@ -100,6 +101,7 @@ public class RecordingRequestController {
     @Inject PushService pushService;
     @Inject StripeService stripeService;
     @Inject RecordingRequestNotifier notifier;
+    @Inject RecordingAutoLinkService autoLink;
     @Inject JsonWebToken jwt;
 
     /* ─────────────────────────── request bodies ─────────────────────────── */
@@ -482,20 +484,25 @@ public class RecordingRequestController {
         r.setPaidAt(paid ? OffsetDateTime.now() : null);
         r.setUpdatedAt(OffsetDateTime.now());
         // The manual toggle stands in for the Stripe webhook (e.g. a cash /
-        // bank-transfer payment), so it must fire the same download email
-        // once the request is both paid and delivered.
-        if (becamePaid && r.getRecording() != null) {
-            notifier.notifyDownloadReady(r);
+        // bank-transfer payment): auto-link a library recording if one
+        // already exists for this match, and send the download email either
+        // way it ends up linked - same as the webhook path.
+        if (becamePaid) {
+            autoLink.autoLinkAndNotify(r);
         }
         return Response.ok(toDto(r)).build();
     }
 
     /**
-     * Deliver, or re-link, a library recording (see {@link MatchRecordingController}
-     * for the upload itself) - the admin never uploads against a request directly,
-     * and no external URL is ever accepted. Callable again after DELIVERED to fix a
-     * wrongly mapped recording. The recording must belong to the SAME match as the
-     * request, and the request must already be APPROVED or DELIVERED.
+     * Manual delivery path: the admin uploads to the library (see
+     * {@link MatchRecordingController}) and links it here, for the case where
+     * no recording existed for the match at the moment payment came in
+     * ({@link RecordingAutoLinkService} already auto-links + emails instantly
+     * when one does). Also used to re-link after DELIVERED, to fix a wrongly
+     * mapped recording. No external URL is ever accepted, and the admin never
+     * uploads against a request directly. The recording must belong to the
+     * SAME match as the request, and the request must already be APPROVED or
+     * DELIVERED.
      */
     @PUT
     @Path("/{uuid}/link-recording")

@@ -5,7 +5,7 @@ import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
-import hr.mrodek.apps.futsal_turniri.services.RecordingRequestNotifier;
+import hr.mrodek.apps.futsal_turniri.services.RecordingAutoLinkService;
 import hr.mrodek.apps.futsal_turniri.services.StripeService;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -47,7 +47,7 @@ public class StripeWebhookController {
 
     @Inject StripeService stripeService;
     @Inject MatchRecordingRequestRepository repo;
-    @Inject RecordingRequestNotifier notifier;
+    @Inject RecordingAutoLinkService autoLink;
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
@@ -112,8 +112,8 @@ public class StripeWebhookController {
         r.setPayerEmail(session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null);
         r.setUpdatedAt(OffsetDateTime.now());
 
-        if (r.getRecording() != null) {
-            notifier.notifyDownloadReady(r);
-        }
+        // Auto-link a library recording if one already exists for this match,
+        // and send the download-ready email either way it ends up linked.
+        autoLink.autoLinkAndNotify(r);
     }
 }

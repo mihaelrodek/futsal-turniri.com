@@ -13,6 +13,7 @@ import org.jboss.logging.Logger;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Transactional-email sender (Brevo SMTP via quarkus-mailer).
@@ -102,31 +103,20 @@ public class EmailService {
      * strip &lt;style&gt; and external CSS, so everything is inline). Optional
      * CTA button. Always appends a plain-language footer noting why the user
      * got the mail + how to stop it (GDPR-friendly for opted-in notifications).
+     * The markup itself lives in {@code src/main/resources/mail/shell.html} /
+     * {@code cta.html} - see {@link MailTemplates}.
      */
     public String shell(String heading, String bodyHtml, String ctaUrl, String ctaLabel) {
         String cta = (ctaUrl == null || ctaUrl.isBlank())
                 ? ""
-                : "<div style=\"margin:24px 0;\">"
-                + "<a href=\"" + escapeHtml(ctaUrl) + "\" "
-                + "style=\"display:inline-block;background:#0b6b3a;color:#ffffff;text-decoration:none;"
-                + "font-weight:700;font-size:15px;padding:12px 22px;border-radius:10px;\">"
-                + escapeHtml(ctaLabel == null ? "Otvori" : ctaLabel) + "</a></div>";
+                : MailTemplates.render("cta", Map.of(
+                        "url", escapeHtml(ctaUrl),
+                        "label", escapeHtml(ctaLabel == null ? "Otvori" : ctaLabel)));
 
-        return "<!doctype html><html lang=\"hr\"><body style=\"margin:0;background:#f1f5f2;"
-                + "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;\">"
-                + "<div style=\"max-width:520px;margin:0 auto;padding:24px;\">"
-                + "<div style=\"background:#ffffff;border:1px solid #e2e8e4;border-radius:16px;overflow:hidden;\">"
-                + "<div style=\"background:linear-gradient(135deg,#0b6b3a,#084a28);padding:20px 24px;color:#fff;"
-                + "font-weight:800;letter-spacing:0.02em;font-size:16px;\">Futsal Turniri</div>"
-                + "<div style=\"padding:24px;color:#0f172a;\">"
-                + "<h1 style=\"font-size:20px;margin:0 0 12px;letter-spacing:-0.01em;\">" + escapeHtml(heading) + "</h1>"
-                + "<div style=\"font-size:15px;line-height:1.6;color:#334155;\">" + bodyHtml + "</div>"
-                + cta
-                + "</div></div>"
-                + "<p style=\"font-size:12px;color:#94a3b8;text-align:center;margin:16px 8px;line-height:1.5;\">"
-                + "Primaš ovu poruku jer pratiš turnir na Futsal Turniri. "
-                + "Za odjavu isključi praćenje (zvonce) na stranici turnira.</p>"
-                + "</div></body></html>";
+        return MailTemplates.render("shell", Map.of(
+                "heading", escapeHtml(heading),
+                "body", bodyHtml,
+                "cta", cta));
     }
 
     /** Minimal HTML escaping for user-supplied text interpolated into email HTML. */
