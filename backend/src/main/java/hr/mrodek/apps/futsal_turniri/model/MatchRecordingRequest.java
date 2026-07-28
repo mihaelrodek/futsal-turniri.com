@@ -13,8 +13,10 @@ import java.util.UUID;
 
 /**
  * One paid request for the video recording of a single match (~20 EUR).
- * Delivery is either an external {@link #deliveryUrl} or an mp4 uploaded to
- * MinIO ({@link #videoObjectKey}) - never both required.
+ * Delivery is either an external {@link #deliveryUrl} or a {@link #recording}
+ * linked in from the admin's recording library - never both required. The
+ * admin never uploads a file directly against a request; uploads happen in
+ * the library ({@link MatchRecording}) and get linked here.
  */
 @Entity
 @Table(name = "match_recording_requests")
@@ -59,16 +61,14 @@ public class MatchRecordingRequest {
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
 
-    /** MinIO object key of the uploaded mp4 (e.g. {@code recordings/<uuid>.mp4}). */
-    @Column(name = "video_object_key", length = 255)
-    private String videoObjectKey;
-
-    @Column(name = "video_size_bytes")
-    private Long videoSizeBytes;
-
-    /** External delivery link (e.g. a cloud-drive share) - alternative to the MinIO upload. */
+    /** External delivery link (e.g. a cloud-drive share) - alternative to a linked recording. */
     @Column(name = "delivery_url", length = 1000)
     private String deliveryUrl;
+
+    /** Library recording linked in by an admin as this request's delivery. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recording_id")
+    private MatchRecording recording;
 
     @CreationTimestamp
     @Column(name = "created_at")

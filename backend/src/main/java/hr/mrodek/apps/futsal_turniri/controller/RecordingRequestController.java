@@ -3,9 +3,11 @@ package hr.mrodek.apps.futsal_turniri.controller;
 import hr.mrodek.apps.futsal_turniri.dtos.RecordingRequestDto;
 import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.RecordingRequestMapper;
+import hr.mrodek.apps.futsal_turniri.model.MatchRecording;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
+import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
@@ -32,8 +34,9 @@ import java.util.UUID;
 /**
  * Paid match-recording requests (~20 EUR/match). A user asks for the video of
  * one match; an admin approves, marks it paid and delivers either an external
- * URL or an mp4 uploaded straight to MinIO via presigned PUT; the user then
- * fetches a presigned GET download link.
+ * URL or a recording linked in from the admin's library
+ * ({@link MatchRecordingController}) - uploads never happen against a request
+ * directly. The user then fetches a presigned GET download link.
  *
  * Routes:
  *   POST   /recording-requests/by-match/{matchId}       - create (user)
@@ -42,8 +45,7 @@ import java.util.UUID;
  *   PUT    /recording-requests/{uuid}/status            - approve/reject (admin)
  *   PUT    /recording-requests/{uuid}/paid              - toggle paid (admin)
  *   PUT    /recording-requests/{uuid}/deliver-url       - deliver external URL (admin)
- *   POST   /recording-requests/{uuid}/upload-url        - presigned PUT for the mp4 (admin)
- *   POST   /recording-requests/{uuid}/upload-complete   - verify upload + mark delivered (admin)
+ *   PUT    /recording-requests/{uuid}/link-recording    - deliver via a library recording (admin)
  *   GET    /recording-requests/{uuid}/download-link     - presigned GET / external URL (owner or admin)
  *   DELETE /recording-requests/{uuid}                   - cancel (owner, only while REQUESTED)
  */
@@ -52,12 +54,11 @@ import java.util.UUID;
 @Consumes(MediaType.APPLICATION_JSON)
 public class RecordingRequestController {
 
-    /** Presigned PUT validity for the admin's mp4 upload. */
-    private static final int UPLOAD_EXPIRY_SECONDS = 3600;
     /** Presigned GET validity for the requester's download (48 h). */
     private static final int DOWNLOAD_EXPIRY_SECONDS = 172_800;
 
     @Inject MatchRecordingRequestRepository repo;
+    @Inject MatchRecordingRepository recordingRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject RecordingRequestMapper mapper;
     @Inject RecordingStorageService recordingStorage;
@@ -80,9 +81,7 @@ public class RecordingRequestController {
 
     public record DeliverUrlBody(@Size(max = 1000) String url) {}
 
-    public record UploadCompleteBody(String objectKey) {}
-
-    public record UploadUrlResponse(String uploadUrl, String objectKey, int expiresInSeconds) {}
+    public record LinkRecordingBody(UUID recordingUuid) {}
 
     public record DownloadLinkResponse(String url, int expiresInSeconds) {}
 
@@ -283,41 +282,29 @@ public class RecordingRequestController {
         return Response.ok(toDto(r)).build();
     }
 
-    @POST
-    @Path("/{uuid}/upload-url")
-    @RolesAllowed("admin")
-    public Response uploadUrl(@PathParam("uuid") UUID uuid) {
-        var r = repo.findByUuid(uuid).orElse(null);
-        if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
-
-        String objectKey = "recordings/" + r.getUuid() + ".mp4";
-        String url = recordingStorage.presignedPut(objectKey, UPLOAD_EXPIRY_SECONDS);
-        return Response.ok(new UploadUrlResponse(url, objectKey, UPLOAD_EXPIRY_SECONDS)).build();
-    }
-
-    @POST
-    @Path("/{uuid}/upload-complete")
+    /**
+     * Deliver by linking in a library recording (see {@link MatchRecordingController}
+     * for the upload itself) - the admin never uploads against a request directly.
+     * The recording must belong to the SAME match as the request.
+     */
+    @PUT
+    @Path("/{uuid}/link-recording")
     @RolesAllowed("admin")
     @Transactional
-    public Response uploadComplete(@PathParam("uuid") UUID uuid, UploadCompleteBody body) {
+    public Response linkRecording(@PathParam("uuid") UUID uuid, LinkRecordingBody body) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
-
-        String objectKey = body == null || body.objectKey() == null ? "" : body.objectKey().trim();
-        if (objectKey.isBlank()) throw new BadRequestException("objectKey is required");
-        // Only this request's own upload slot is acceptable - never an arbitrary object.
-        String expectedKey = "recordings/" + r.getUuid() + ".mp4";
-        if (!expectedKey.equals(objectKey)) {
-            throw new BadRequestException("objectKey does not belong to this request");
+        if (body == null || body.recordingUuid() == null) {
+            throw new BadRequestException("recordingUuid is required");
         }
 
-        var size = recordingStorage.statSize(objectKey);
-        if (size.isEmpty()) {
-            return conflict("NO_OBJECT");
+        MatchRecording rec = recordingRepo.findByUuid(body.recordingUuid()).orElse(null);
+        if (rec == null) return conflict("RECORDING_NOT_FOUND");
+        if (!rec.getMatch().getId().equals(r.getMatch().getId())) {
+            return conflict("MATCH_MISMATCH");
         }
 
-        r.setVideoObjectKey(objectKey);
-        r.setVideoSizeBytes(size.get());
+        r.setRecording(rec);
         r.setStatus(RecordingRequestStatus.DELIVERED);
         r.setUpdatedAt(OffsetDateTime.now());
 
@@ -349,8 +336,9 @@ public class RecordingRequestController {
         if (r.getDeliveryUrl() != null && !r.getDeliveryUrl().isBlank()) {
             return Response.ok(new DownloadLinkResponse(r.getDeliveryUrl(), 0)).build();
         }
-        if (r.getVideoObjectKey() != null) {
-            String url = recordingStorage.presignedGet(r.getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS);
+        if (r.getRecording() != null) {
+            String url = recordingStorage.presignedGet(
+                    r.getRecording().getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, r.getRecording().getFileName());
             return Response.ok(new DownloadLinkResponse(url, DOWNLOAD_EXPIRY_SECONDS)).build();
         }
         return conflict("NOT_DELIVERED");

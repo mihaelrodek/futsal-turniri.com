@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useState } from "react"
 import {
     Badge,
     Box,
@@ -6,7 +6,6 @@ import {
     Card,
     HStack,
     Input,
-    Progress,
     Spinner,
     Stack,
     Text,
@@ -17,21 +16,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
     FiCheck,
     FiDollarSign,
+    FiFilm,
     FiLink,
-    FiUploadCloud,
     FiX,
 } from "react-icons/fi"
 import {
-    completeRecordingUpload,
-    createRecordingUploadUrl,
     deliverRecordingUrl,
     fetchRecordingDownloadLink,
     fetchRecordingRequests,
+    linkRecordingToRequest,
     setRecordingRequestPaid,
     setRecordingRequestStatus,
     type RecordingRequestDto,
     type RecordingRequestStatus,
 } from "../api/recordingRequests"
+import { fetchMatchRecordingsForMatch } from "../api/matchRecordings"
 import { showError, showSuccess } from "../toaster"
 import { qk } from "../queryClient"
 
@@ -41,12 +40,9 @@ import { qk } from "../queryClient"
  * <p>Lifecycle handled here: an organizer/visitor REQUESTED a recording →
  * admin approves or rejects (optionally with a note) → admin marks the
  * request paid → admin delivers the video, either as an external URL or by
- * uploading the file straight from the browser to MinIO via a presigned PUT
- * → the requester fetches a time-limited download link.
- *
- * <p>The presigned upload deliberately bypasses the app's axios instance:
- * the URL is self-authenticating (no Authorization header wanted) and we
- * use XMLHttpRequest so multi-GB uploads can report progress.
+ * linking in a video already uploaded to the recording library (see the
+ * "Baza snimki" tab - uploads never happen against a request directly) →
+ * the requester fetches a time-limited download link.
  */
 
 /** "ALL" disables server-side filtering; everything else maps 1:1 to the enum. */
@@ -158,7 +154,7 @@ function RecordingRequestRow({
     onChanged: () => void
 }) {
     const [busy, setBusy] = useState<
-        null | "approve" | "reject" | "paid" | "deliverUrl" | "upload" | "link"
+        null | "approve" | "reject" | "paid" | "deliverUrl" | "linkRecording" | "link"
     >(null)
 
     // Reject flow: the button first reveals an inline textarea for the
@@ -169,10 +165,16 @@ function RecordingRequestRow({
     // External-URL delivery input.
     const [deliveryUrlInput, setDeliveryUrlInput] = useState("")
 
-    // Direct-to-MinIO upload.
-    const fileInputRef = useRef<HTMLInputElement | null>(null)
-    const [selectedFile, setSelectedFile] = useState<File | null>(null)
-    const [uploadPct, setUploadPct] = useState<number | null>(null)
+    const status = req.status as RecordingRequestStatus
+
+    // Library recordings already uploaded for this match - the only delivery
+    // path other than the external URL above. Fetched lazily, only once the
+    // request is APPROVED (the section where it's shown).
+    const { data: candidates, isLoading: candidatesLoading } = useQuery({
+        queryKey: ["matchRecordings", "by-match", req.matchId],
+        queryFn: () => fetchMatchRecordingsForMatch(req.matchId),
+        enabled: status === "APPROVED",
+    })
 
     async function approve() {
         if (busy) return
@@ -226,29 +228,14 @@ function RecordingRequestRow({
         }
     }
 
-    async function uploadRecording() {
-        if (busy || !selectedFile) return
+    async function linkRecording(recordingUuid: string) {
+        if (busy) return
         try {
-            setBusy("upload")
-            setUploadPct(0)
-            const { uploadUrl, objectKey } = await createRecordingUploadUrl(req.uuid)
-            await putFileWithProgress(uploadUrl, selectedFile, setUploadPct)
-            await completeRecordingUpload(req.uuid, objectKey)
-            showSuccess("Snimka je uploadana i isporučena.")
-            setSelectedFile(null)
-            if (fileInputRef.current) fileInputRef.current.value = ""
+            setBusy("linkRecording")
+            await linkRecordingToRequest(req.uuid, recordingUuid)
             onChanged()
-        } catch (e) {
-            // The presigned PUT runs outside the axios interceptor, so its
-            // failures need a manual toast; API-call failures already toasted
-            // but a second, specific title here is still clearer than silence.
-            showError(
-                "Upload nije uspio",
-                e instanceof Error ? e.message : "Pokušaj ponovno.",
-            )
         } finally {
             setBusy(null)
-            setUploadPct(null)
         }
     }
 
@@ -270,8 +257,6 @@ function RecordingRequestRow({
             setBusy(null)
         }
     }
-
-    const status = req.status as RecordingRequestStatus
 
     return (
         <Box
@@ -439,52 +424,43 @@ function RecordingRequestRow({
                                     </Button>
                                 </HStack>
 
-                                {/* Delivery b) direct-to-MinIO browser upload */}
-                                <HStack gap="2" wrap="wrap">
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="video/mp4,video/webm,video/quicktime,.mov"
-                                        style={{ display: "none" }}
-                                        onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                                    />
-                                    <Button
-                                        size="xs"
-                                        variant="outline"
-                                        disabled={busy != null}
-                                        onClick={() => fileInputRef.current?.click()}
-                                    >
-                                        Odaberi datoteku
-                                    </Button>
-                                    {selectedFile && (
-                                        <Text fontSize="xs" color="fg.muted" truncate maxW="240px">
-                                            {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                                {/* Delivery b) link a recording already in the library */}
+                                <Stack gap="1.5">
+                                    <Text fontSize="xs" color="fg.muted">
+                                        ILI POVEŽI SNIMKU IZ BAZE
+                                    </Text>
+                                    {candidatesLoading ? (
+                                        <HStack py="1"><Spinner size="xs" /></HStack>
+                                    ) : !candidates || candidates.length === 0 ? (
+                                        <Text fontSize="xs" color="fg.muted">
+                                            Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki"
+                                            i uploadaj je tamo.
                                         </Text>
+                                    ) : (
+                                        <Stack gap="1.5">
+                                            {candidates.map((rec) => (
+                                                <HStack key={rec.uuid} gap="2" wrap="wrap">
+                                                    <Text fontSize="xs" truncate maxW="240px">
+                                                        {rec.fileName ?? rec.uuid}
+                                                        {rec.videoSizeBytes != null
+                                                            ? ` (${formatFileSize(rec.videoSizeBytes)})`
+                                                            : ""}
+                                                    </Text>
+                                                    <Button
+                                                        size="xs"
+                                                        variant="solid"
+                                                        colorPalette="pitch"
+                                                        disabled={busy != null}
+                                                        loading={busy === "linkRecording"}
+                                                        onClick={() => linkRecording(rec.uuid)}
+                                                    >
+                                                        <FiFilm /> Poveži
+                                                    </Button>
+                                                </HStack>
+                                            ))}
+                                        </Stack>
                                     )}
-                                    <Button
-                                        size="xs"
-                                        variant="solid"
-                                        colorPalette="pitch"
-                                        disabled={busy != null || !selectedFile}
-                                        loading={busy === "upload"}
-                                        onClick={uploadRecording}
-                                    >
-                                        <FiUploadCloud /> Uploadaj snimku
-                                    </Button>
-                                </HStack>
-                                {uploadPct != null && (
-                                    <Progress.Root value={uploadPct} size="sm" colorPalette="pitch">
-                                        <HStack gap="2">
-                                            <Progress.Track flex="1" rounded="full">
-                                                <Progress.Range />
-                                            </Progress.Track>
-                                            <Progress.ValueText fontSize="xs" />
-                                        </HStack>
-                                    </Progress.Root>
-                                )}
-                                <Text fontSize="xs" color="fg.muted">
-                                    Velike datoteke (par GB) — ostavi karticu otvorenom dok upload traje.
-                                </Text>
+                                </Stack>
                             </Stack>
                         </Box>
                     </Stack>
@@ -499,8 +475,14 @@ function RecordingRequestRow({
                             </Text>
                         )}
                         {req.hasVideo && !req.deliveryUrl && (
-                            <Text fontSize="xs" color="fg.muted">
-                                Isporučeno uploadom snimke u sustav.
+                            <Text fontSize="xs" color="fg.muted" truncate>
+                                Povezana snimka iz baze:{" "}
+                                <Text as="span" color="fg">
+                                    {req.recordingFileName ?? req.recordingUuid}
+                                    {req.recordingSizeBytes != null
+                                        ? ` (${formatFileSize(req.recordingSizeBytes)})`
+                                        : ""}
+                                </Text>
                             </Text>
                         )}
                         <HStack gap="2">
@@ -523,36 +505,6 @@ function RecordingRequestRow({
 }
 
 /* ──────────────────────────── helpers ──────────────────────────── */
-
-/**
- * Presigned PUT straight to MinIO. Deliberately XMLHttpRequest, not the app
- * axios instance: the URL is self-authenticating (an Authorization header
- * would break the signature) and XHR gives us upload progress for files in
- * the multi-GB range.
- */
-function putFileWithProgress(
-    url: string,
-    file: File,
-    onProgress: (pct: number) => void,
-): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open("PUT", url)
-        if (file.type) xhr.setRequestHeader("Content-Type", file.type)
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                onProgress(Math.round((e.loaded / e.total) * 100))
-            }
-        }
-        xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve()
-            else reject(new Error(`Spremište je odbilo upload (HTTP ${xhr.status}).`))
-        }
-        xhr.onerror = () => reject(new Error("Mrežna greška tijekom uploada."))
-        xhr.onabort = () => reject(new Error("Upload je prekinut."))
-        xhr.send(file)
-    })
-}
 
 /** dd.mm.yyyy HH:mm, "-" for missing/unparsable values. */
 function formatDateTime(iso: string | null | undefined): string {

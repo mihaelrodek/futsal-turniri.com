@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Admin-only library of uploaded match recordings, decoupled from any
+        one paid request: an admin uploads a video once for a match, then
+        links it to one or more recording requests for that match instead of
+        re-uploading per request. video_object_key is UUID-based; file_name is
+        the admin-editable, human-readable download name.
+    -->
+
+    <changeSet id="2026-07-28-04-match-recordings-seq" author="mrodek">
+        <createSequence sequenceName="seq_match_recordings_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-28-05-match-recordings" author="mrodek">
+        <createTable tableName="match_recordings">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="uuid" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="match_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="video_object_key" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="video_size_bytes" type="bigint"/>
+            <column name="file_name" type="varchar(255)"/>
+            <column name="uploaded_by_uid" type="varchar(64)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="match_recordings" baseColumnNames="match_id"
+                                 referencedTableName="matches" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_match_recordings_match"/>
+
+        <createIndex tableName="match_recordings" indexName="idx_match_recordings_match">
+            <column name="match_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2026-07-28-06-match-recording-requests-recording-id" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="recording_id" type="bigint"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="match_recording_requests" baseColumnNames="recording_id"
+                                 referencedTableName="match_recordings" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_match_recording_requests_recording"/>
+        <createIndex tableName="match_recording_requests" indexName="idx_match_recording_requests_recording">
+            <column name="recording_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- video_object_key/video_size_bytes moved to match_recordings; delivery is now via recording_id link. -->
+    <changeSet id="2026-07-28-07-match-recording-requests-drop-video-columns" author="mrodek">
+        <dropColumn tableName="match_recording_requests" columnName="video_object_key"/>
+        <dropColumn tableName="match_recording_requests" columnName="video_size_bytes"/>
+    </changeSet>
+</databaseChangeLog>

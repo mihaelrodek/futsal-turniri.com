@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.services;
 
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
+import io.minio.RemoveObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
@@ -9,6 +10,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -74,9 +76,33 @@ public class RecordingStorageService {
         return presign(Method.PUT, objectKey, expirySeconds);
     }
 
-    /** Presigned GET URL for downloading {@code objectKey}, valid {@code expirySeconds}. */
-    public String presignedGet(String objectKey, int expirySeconds) {
-        return presign(Method.GET, objectKey, expirySeconds);
+    /**
+     * Presigned GET URL for downloading {@code objectKey}, valid {@code expirySeconds}.
+     * The browser saves the file as {@code downloadFileName} regardless of the
+     * (UUID-based) object key, via a signed {@code response-content-disposition}
+     * override - standard S3 GetObject behaviour, no server-side rename needed.
+     */
+    public String presignedGet(String objectKey, int expirySeconds, String downloadFileName) {
+        try {
+            var builder = GetPresignedObjectUrlArgs.builder()
+                    .method(Method.GET)
+                    .bucket(bucket)
+                    .object(objectKey)
+                    .expiry(expirySeconds);
+            if (downloadFileName != null && !downloadFileName.isBlank()) {
+                builder.extraQueryParams(Map.of(
+                        "response-content-disposition",
+                        "attachment; filename=\"" + sanitizeHeaderValue(downloadFileName) + "\""));
+            }
+            return signer().getPresignedObjectUrl(builder.build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to presign GET for " + objectKey, e);
+        }
+    }
+
+    /** Strips characters that would break the quoted Content-Disposition value. */
+    private static String sanitizeHeaderValue(String value) {
+        return value.replaceAll("[\\r\\n\"]", "").trim();
     }
 
     private String presign(Method method, String objectKey, int expirySeconds) {
@@ -107,6 +133,15 @@ public class RecordingStorageService {
             return Optional.empty();
         } catch (Exception e) {
             throw new RuntimeException("Failed to stat object " + objectKey, e);
+        }
+    }
+
+    /** Removes an object from the bucket; a no-op (no error) if it's already gone. */
+    public void deleteObject(String objectKey) {
+        try {
+            minio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete object " + objectKey, e);
         }
     }
 }

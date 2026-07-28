@@ -55,6 +55,7 @@ import SpectoConnectionCard from "../components/SpectoConnectionCard"
 import AdminPlayersListTab from "../components/AdminPlayersListTab"
 import MyRecordingsTab from "../components/MyRecordingsTab"
 import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
+import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /** Country dial codes shared with FindTeam / CreateTournament. */
@@ -107,7 +108,7 @@ export default function PublicProfilePage() {
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
     // see Turniri only.
-    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "moje-snimke" | "dashboard" | "popis-igraca" | "live-stream" | "zahtjevi-snimke">("turniri")
+    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "moje-snimke" | "dashboard" | "popis-igraca" | "live-stream" | "zahtjevi-snimke" | "baza-snimki">("turniri")
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -401,6 +402,18 @@ export default function PublicProfilePage() {
                             Zahtjevi za snimke
                         </Button>
                     )}
+                    {/* Admin-only recording library - upload once per match,
+                        link into requests from the tab above. */}
+                    {isAdmin && (
+                        <Button
+                            size="sm"
+                            variant={profileTab === "baza-snimki" ? "solid" : "ghost"}
+                            colorPalette="purple"
+                            onClick={() => setProfileTab("baza-snimki")}
+                        >
+                            Baza snimki
+                        </Button>
+                    )}
                 </HStack>
             )}
 
@@ -554,6 +567,11 @@ export default function PublicProfilePage() {
             {/* === ZAHTJEVI ZA SNIMKE tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "zahtjevi-snimke" && (
                 <AdminRecordingRequestsTab />
+            )}
+
+            {/* === BAZA SNIMKI tab - admin-only, on own profile === */}
+            {isOwner && isAdmin && profileTab === "baza-snimki" && (
+                <AdminRecordingsLibraryTab />
             )}
         </VStack>
     )

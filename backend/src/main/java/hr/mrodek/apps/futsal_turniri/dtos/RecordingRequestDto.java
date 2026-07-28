@@ -37,6 +37,10 @@ public class RecordingRequestDto {
      * never by the mapper).
      */
     private String deliveryUrl;
+    /** Set once an admin links a library recording to this request. Null otherwise. */
+    private UUID recordingUuid;
+    private String recordingFileName;
+    private Long recordingSizeBytes;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

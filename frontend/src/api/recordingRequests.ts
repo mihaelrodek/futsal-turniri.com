@@ -24,10 +24,14 @@ export type RecordingRequestDto = {
     /** Price in euro cents (e.g. 2000 = 20 €). */
     priceEurCents: number
     paid: boolean
-    /** True once the video file has been uploaded to storage. */
+    /** True once a library recording has been linked in. */
     hasVideo: boolean
-    /** External delivery URL set by the admin (alternative to an upload). */
+    /** External delivery URL set by the admin (alternative to a linked recording). */
     deliveryUrl: string | null
+    /** Set once an admin links a library recording as this request's delivery. */
+    recordingUuid: string | null
+    recordingFileName: string | null
+    recordingSizeBytes: number | null
     createdAt: string
     updatedAt: string
 }
@@ -119,33 +123,20 @@ export async function deliverRecordingUrl(
     return data
 }
 
-export type RecordingUploadUrl = {
-    uploadUrl: string
-    objectKey: string
-    expiresInSeconds: number
-}
-
-/** Admin: get a presigned upload URL for the recording file. */
-export async function createRecordingUploadUrl(
+/**
+ * Admin: deliver by linking in a recording from the library (see
+ * `api/matchRecordings.ts`) - uploads never happen against a request
+ * directly. 409 {"code":"MATCH_MISMATCH"} when the recording belongs to a
+ * different match than this request.
+ */
+export async function linkRecordingToRequest(
     uuid: string,
-): Promise<RecordingUploadUrl> {
-    const { data } = await http.post<RecordingUploadUrl>(
-        `/recording-requests/${uuid}/upload-url`,
-        undefined,
-        { silent: true },
-    )
-    return data
-}
-
-/** Admin: confirm the presigned upload finished for the given object key. */
-export async function completeRecordingUpload(
-    uuid: string,
-    objectKey: string,
+    recordingUuid: string,
 ): Promise<RecordingRequestDto> {
-    const { data } = await http.post<RecordingRequestDto>(
-        `/recording-requests/${uuid}/upload-complete`,
-        { objectKey },
-        { successMessage: "Snimka je učitana." },
+    const { data } = await http.put<RecordingRequestDto>(
+        `/recording-requests/${uuid}/link-recording`,
+        { recordingUuid },
+        { successMessage: "Snimka je povezana sa zahtjevom.", silentErrorStatuses: [409] },
     )
     return data
 }
