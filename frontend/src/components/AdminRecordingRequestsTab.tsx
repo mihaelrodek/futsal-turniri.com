@@ -444,7 +444,7 @@ function RecordingRequestRow({
                                     <input
                                         ref={fileInputRef}
                                         type="file"
-                                        accept="video/mp4,video/webm"
+                                        accept="video/mp4,video/webm,video/quicktime,.mov"
                                         style={{ display: "none" }}
                                         onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
                                     />
