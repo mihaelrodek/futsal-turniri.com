@@ -7,6 +7,7 @@ import { fetchGlobalScorers, type GlobalScorer } from "../api/players"
 import { fetchTeamMedals } from "../api/stats"
 import { MonoLabel, PageTitle, PillTabBar } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { t, useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StatsPage - all-time statistics, split into two tabs:
@@ -26,7 +27,7 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
 
 type TabKey = "igraci" | "ekipe"
 const TAB_KEYS: TabKey[] = ["igraci", "ekipe"]
-const TAB_LABELS: Record<TabKey, string> = { igraci: "Igrači", ekipe: "Ekipe" }
+const TAB_LABELS: Record<TabKey, string> = { igraci: t.stats.tabs.players, ekipe: t.stats.tabs.teams }
 
 // Gold / silver / bronze, shared by the scorer rank column and every medal
 // dot + bar segment on the Ekipe tab, so both tabs read as one palette.
@@ -40,6 +41,7 @@ function rankColor(rank: number): string {
 }
 
 export default function StatsPage() {
+    const t = useTranslation()
     /* ---------- Active-tab persistence ----------
      * Mirror the active tab into the URL so a hard refresh or a shared
      * link lands the user back on the same pane (pattern mirrors the
@@ -63,12 +65,12 @@ export default function StatsPage() {
     useDocumentHead({
         title:
             tab === "ekipe"
-                ? "Vječni poredak ekipa - futsal-turniri.com"
-                : "Vječna lista strijelaca - futsal-turniri.com",
+                ? t.stats.docHeadTitleTeams
+                : t.stats.docHeadTitlePlayers,
         description:
             tab === "ekipe"
-                ? "Vječni poredak ekipa po broju osvojenih zlatnih, srebrnih i brončanih medalja na futsal turnirima."
-                : "Vječna lista strijelaca - golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
+                ? t.stats.docHeadDescTeams
+                : t.stats.docHeadDescPlayers,
         canonical: "https://futsal-turniri.com/statistika",
     })
 
@@ -96,6 +98,7 @@ export default function StatsPage() {
 /* ── "Igrači" - vječna lista strijelaca (unchanged content, just moved) ── */
 
 function IgraciPane() {
+    const t = useTranslation()
     const [scorers, setScorers] = useState<GlobalScorer[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -109,7 +112,7 @@ function IgraciPane() {
             })
             .catch((e) => {
                 if (!cancelled) {
-                    setError(e instanceof Error ? e.message : "Neuspješno učitavanje statistike.")
+                    setError(e instanceof Error ? e.message : t.stats.loadStatsErrorFallback)
                 }
             })
             .finally(() => {
@@ -118,7 +121,7 @@ function IgraciPane() {
         return () => {
             cancelled = true
         }
-    }, [])
+    }, [t.stats.loadStatsErrorFallback])
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase()
@@ -138,7 +141,7 @@ function IgraciPane() {
                 below. Wraps to full width under the title on mobile. */}
             <PageTitle
                 size="sm"
-                title="Vječna lista strijelaca"
+                title={t.stats.scorersTitle}
                 action={
                     <HStack
                         gap="2"
@@ -149,8 +152,8 @@ function IgraciPane() {
                     >
                         {!loading && !error && scorers.length > 0 && (
                             <>
-                                <SummaryTile label="Različitih strijelaca" value={scorers.length} />
-                                <SummaryTile label="Ukupno golova" value={totalGoals} />
+                                <SummaryTile label={t.stats.summaryDistinctScorers} value={scorers.length} />
+                                <SummaryTile label={t.stats.summaryTotalGoals} value={totalGoals} />
                             </>
                         )}
                         {/* Green-accented search so it reads as an ACTION, not a
@@ -181,7 +184,7 @@ function IgraciPane() {
                                 // to 16px to stop that jump; md+ keeps the sm
                                 // recipe's 14px (no zoom risk on desktop).
                                 fontSize={{ base: "16px", md: "sm" }}
-                                placeholder="Pretraži igrača…"
+                                placeholder={t.stats.searchPlayerPlaceholder}
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 borderColor="pitch.500"
@@ -199,7 +202,7 @@ function IgraciPane() {
             />
 
             {loading ? (
-                <Text color="fg.muted">Učitavanje statistike…</Text>
+                <Text color="fg.muted">{t.stats.loadingStats}</Text>
             ) : error ? (
                 <Text color="accent.red">{error}</Text>
             ) : scorers.length === 0 ? (
@@ -215,15 +218,14 @@ function IgraciPane() {
                     >
                         <FiTarget size={22} />
                     </Flex>
-                    <Heading size="md">Još nema zabilježenih golova</Heading>
+                    <Heading size="md">{t.stats.emptyScorersTitle}</Heading>
                     <Text fontSize="sm" color="fg.muted" maxW="md">
-                        Kad organizatori počnu bilježiti golove uživo, ovdje će rasti vječna
-                        lista strijelaca.
+                        {t.stats.emptyScorersDesc}
                     </Text>
                 </Flex>
             ) : filtered.length === 0 ? (
                 <Text fontSize="sm" color="fg.muted" textAlign="center" py="4">
-                    Nijedan igrač ne odgovara pretrazi.
+                    {t.stats.noPlayerMatch}
                 </Text>
             ) : (
                 <VStack align="stretch" gap="1.5">
@@ -260,14 +262,13 @@ function IgraciPane() {
                                     </Text>
                                     <HStack gap="2" mt="0.5" color="fg.muted" wrap="wrap">
                                         <Text fontSize="xs">
-                                            {s.tournamentsPlayed}{" "}
-                                            {s.tournamentsPlayed === 1 ? "turnir" : "turnira"}
+                                            {t.stats.tournamentsPlayed(s.tournamentsPlayed)}
                                         </Text>
                                         {s.bestScorerAwards > 0 && (
                                             <HStack gap="1" color="pitch.600">
                                                 <FiAward size={11} />
                                                 <Text fontSize="xs" fontWeight={600}>
-                                                    {s.bestScorerAwards}× najbolji strijelac
+                                                    {t.stats.bestScorerAwards(s.bestScorerAwards)}
                                                 </Text>
                                             </HStack>
                                         )}
@@ -288,7 +289,7 @@ function IgraciPane() {
                                     <Text fontFamily="heading" fontSize="18px" fontWeight={800} lineHeight={1}>
                                         {s.goals}
                                     </Text>
-                                    <MonoLabel color="pitch.600">GOL</MonoLabel>
+                                    <MonoLabel color="pitch.600">{t.stats.goalUnit}</MonoLabel>
                                 </Flex>
                             </Flex>
                         )
@@ -328,6 +329,7 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
 /* ── "Ekipe" - vječni poredak ekipa (World-Cup-style medal table) ── */
 
 function EkipePane() {
+    const t = useTranslation()
     const [query, setQuery] = useState("")
     const { data, isLoading, isError } = useQuery({
         queryKey: ["stats", "teamMedals"] as const,
@@ -354,9 +356,9 @@ function EkipePane() {
     return (
         <VStack align="stretch" gap="5">
             {isLoading ? (
-                <Text color="fg.muted">Učitavanje statistike…</Text>
+                <Text color="fg.muted">{t.stats.loadingStats}</Text>
             ) : isError ? (
-                <Text color="accent.red">Neuspješno učitavanje statistike.</Text>
+                <Text color="accent.red">{t.stats.loadStatsErrorFallback}</Text>
             ) : medals.length === 0 ? (
                 <Flex direction="column" align="center" py="12" px="4" gap="3" textAlign="center">
                     <Flex
@@ -370,10 +372,9 @@ function EkipePane() {
                     >
                         <FiUsers size={22} />
                     </Flex>
-                    <Heading size="md">Još nema završenih turnira</Heading>
+                    <Heading size="md">{t.stats.emptyTeamsTitle}</Heading>
                     <Text fontSize="sm" color="fg.muted" maxW="md">
-                        Kad se prvi turnir odigra do kraja, ovdje će rasti vječni poredak ekipa
-                        po osvojenim medaljama.
+                        {t.stats.emptyTeamsDesc}
                     </Text>
                 </Flex>
             ) : (
@@ -384,7 +385,7 @@ function EkipePane() {
                         the podium, so there are no separate summary cards. */}
                     <PageTitle
                         size="sm"
-                        title="Vječna lista plasmana"
+                        title={t.stats.teamsTitle}
                         action={
                             <Box position="relative" w={{ base: "100%", md: "240px" }}>
                                 <Box
@@ -403,7 +404,7 @@ function EkipePane() {
                                     h={{ base: "36px", md: "32px" }}
                                     py="0"
                                     fontSize={{ base: "16px", md: "sm" }}
-                                    placeholder="Pretraži ekipu…"
+                                    placeholder={t.stats.searchTeamPlaceholder}
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     borderColor="pitch.500"
@@ -421,7 +422,7 @@ function EkipePane() {
 
                     {filtered.length === 0 ? (
                         <Text fontSize="sm" color="fg.muted" textAlign="center" py="4">
-                            Nijedna ekipa ne odgovara pretrazi.
+                            {t.stats.noTeamMatch}
                         </Text>
                     ) : (
                         <VStack align="stretch" gap="1.5">

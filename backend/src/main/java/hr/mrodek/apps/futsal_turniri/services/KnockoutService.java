@@ -71,6 +71,7 @@ public class KnockoutService {
     @Inject TournamentsRepository tournamentsRepo;
     @Inject GroupStageService groupStageService;
     @Inject PushService pushService;
+    @Inject MessageService messages;
 
     /**
      * Computed predicted-pairing labels (and, for a finished group, resolved
@@ -132,20 +133,19 @@ public class KnockoutService {
             long groupTotal = matchesRepo.count(
                     "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
             if (groupTotal == 0) {
-                throw new BadRequestException("Generiraj raspored grupne faze prvo");
+                throw new BadRequestException(messages.t("knockout.error.generateGroupScheduleFirst"));
             }
             long unfinished = matchesRepo.count(
                     "tournament = ?1 and stage = ?2 and status <> ?3",
                     t, MatchStage.GROUP, MatchStatus.FINISHED);
             if (unfinished > 0) {
-                throw new BadRequestException(
-                        "Sve utakmice grupne faze moraju imati upisan rezultat prije eliminacije");
+                throw new BadRequestException(messages.t("knockout.error.allGroupMatchesMustHaveResult"));
             }
         }
 
         List<Teams> qs = qualifiers(t);
         if (qs.size() < 2) {
-            throw new BadRequestException("Need at least 2 teams for a knockout bracket");
+            throw new BadRequestException(messages.t("knockout.error.needAtLeast2Teams"));
         }
         // Defensive: a duplicated id would silently void the bye pull-front
         // below while groupRoundOnePairs still pinned the team via its bye
@@ -719,7 +719,7 @@ public class KnockoutService {
     @Transactional
     public BracketDto generateBracketManual(Tournaments t, ManualBracketRequest req) {
         if (req == null || req.pairs() == null || req.pairs().isEmpty()) {
-            throw new BadRequestException("No pairings provided");
+            throw new BadRequestException(messages.t("knockout.error.noPairingsProvided"));
         }
         // A group-stage tournament can only start the knockout once every
         // group match has a recorded result.
@@ -727,22 +727,20 @@ public class KnockoutService {
             long groupTotal = matchesRepo.count(
                     "tournament = ?1 and stage = ?2", t, MatchStage.GROUP);
             if (groupTotal == 0) {
-                throw new BadRequestException("Generiraj raspored grupne faze prvo");
+                throw new BadRequestException(messages.t("knockout.error.generateGroupScheduleFirst"));
             }
             long unfinished = matchesRepo.count(
                     "tournament = ?1 and stage = ?2 and status <> ?3",
                     t, MatchStage.GROUP, MatchStatus.FINISHED);
             if (unfinished > 0) {
-                throw new BadRequestException(
-                        "Sve utakmice grupne faze moraju imati upisan rezultat prije eliminacije");
+                throw new BadRequestException(messages.t("knockout.error.allGroupMatchesMustHaveResult"));
             }
         }
         int p = req.pairs().size();
         // p = number of first-round matches; must be a power of two for a
         // balanced single-elimination tree (1, 2, 4, 8, 16).
         if (Integer.bitCount(p) != 1) {
-            throw new BadRequestException(
-                    "Number of first-round matches must be a power of two (1, 2, 4, 8, …)");
+            throw new BadRequestException(messages.t("knockout.error.pairCountNotPowerOfTwo"));
         }
         int n = p * 2; // bracket size
 
@@ -757,14 +755,14 @@ public class KnockoutService {
             Teams a = resolveManualTeam(mp.team1Id(), byId, used);
             Teams b = resolveManualTeam(mp.team2Id(), byId, used);
             if (a == null && b == null) {
-                throw new BadRequestException("Each match must have at least one team");
+                throw new BadRequestException(messages.t("knockout.error.matchNeedsAtLeastOneTeam"));
             }
             if (a != null) teamCount++;
             if (b != null) teamCount++;
             roundOnePairs.add(new Teams[]{a, b});
         }
         if (teamCount < 2) {
-            throw new BadRequestException("Need at least 2 teams for a knockout bracket");
+            throw new BadRequestException(messages.t("knockout.error.needAtLeast2Teams"));
         }
 
         // Wipe any prior knockout matches and their now-empty rounds.
@@ -851,11 +849,10 @@ public class KnockoutService {
         if (id == null) return null;
         Teams tm = byId.get(id);
         if (tm == null) {
-            throw new BadRequestException("Unknown team id: " + id);
+            throw new BadRequestException(messages.t("knockout.error.unknownTeamId", id));
         }
         if (!used.add(id)) {
-            throw new BadRequestException(
-                    "Team appears in more than one match: " + tm.getName());
+            throw new BadRequestException(messages.t("knockout.error.teamInMoreThanOneMatch", tm.getName()));
         }
         return tm;
     }
@@ -899,11 +896,10 @@ public class KnockoutService {
     @Transactional
     public BracketDto setManualPositions(Tournaments t, ManualPositionsRequest req) {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
-            throw new BadRequestException(
-                    "Position pairing is only for group + knockout tournaments");
+            throw new BadRequestException(messages.t("knockout.error.positionPairingOnlyForGroups"));
         }
         if (req == null || req.pairs() == null || req.pairs().isEmpty()) {
-            throw new BadRequestException("No pairings provided");
+            throw new BadRequestException(messages.t("knockout.error.noPairingsProvided"));
         }
         // Groups must be drawn (standings exist). The group matches may still be
         // unplayed - defining the pairing early is the whole point.
@@ -925,13 +921,13 @@ public class KnockoutService {
         // cover every qualifier position exactly once.
         int qCount = predictedQualifiers(t);
         if (qCount < 2) {
-            throw new BadRequestException("Too few qualifiers for a knockout bracket");
+            throw new BadRequestException(messages.t("knockout.error.tooFewQualifiers"));
         }
         int n = nextPowerOfTwo(qCount);
         int expectedPairs = n / 2;
         if (req.pairs().size() != expectedPairs) {
             throw new BadRequestException(
-                    "Expected " + expectedPairs + " pairings, got " + req.pairs().size());
+                    messages.t("knockout.error.expectedPairings", expectedPairs, req.pairs().size()));
         }
         int expectedByes = n - qCount;
 
@@ -944,27 +940,26 @@ public class KnockoutService {
             boolean s1Null = p.slot1() == null;
             boolean s2Null = p.slot2() == null;
             if (s1Null && s2Null) {
-                throw new BadRequestException("A pairing cannot have two empty slots");
+                throw new BadRequestException(messages.t("knockout.error.pairTwoEmptySlots"));
             }
             if (s1Null || s2Null) byeCount++; // exactly one null → a bye pair
             for (String label : new String[]{p.slot1(), p.slot2()}) {
                 if (label == null) continue; // bye slot
                 if (parseSlotSource(t, groups, label) == null) {
-                    throw new BadRequestException("Invalid position label: " + label);
+                    throw new BadRequestException(messages.t("knockout.error.invalidPositionLabel", label));
                 }
                 if (!seen.add(label)) {
-                    throw new BadRequestException("Position used more than once: " + label);
+                    throw new BadRequestException(messages.t("knockout.error.positionUsedTwice", label));
                 }
                 labelCount++;
             }
         }
         if (byeCount != expectedByes) {
-            throw new BadRequestException(
-                    "Expected " + expectedByes + " bye pairing(s), got " + byeCount);
+            throw new BadRequestException(messages.t("knockout.error.expectedByePairings", expectedByes, byeCount));
         }
         if (labelCount != qCount) {
             throw new BadRequestException(
-                    "Positions must cover every qualifier (" + qCount + "), got " + labelCount);
+                    messages.t("knockout.error.positionsMustCoverQualifiers", qCount, labelCount));
         }
 
         // Hang the template on the skeleton (create it if the multi-day schedule
@@ -1388,7 +1383,7 @@ public class KnockoutService {
         int defaultAdv = t.getAdvancePerGroup() == null ? 2 : t.getAdvancePerGroup();
         List<GroupDto> groups = groupStageService.standings(t.getId());
         if (groups.isEmpty()) {
-            throw new BadRequestException("Group stage has not been drawn yet");
+            throw new BadRequestException(messages.t("knockout.error.groupStageNotDrawn"));
         }
         Map<Long, Teams> teamById = teamsRepo.list("tournament.id", t.getId())
                 .stream().collect(Collectors.toMap(Teams::getId, x -> x));
@@ -1500,7 +1495,7 @@ public class KnockoutService {
             throw new NotFoundException("Match not found");
         }
         if (m.getStage() == MatchStage.GROUP) {
-            throw new BadRequestException("Not a knockout match");
+            throw new BadRequestException(messages.t("knockout.error.notKnockoutMatch"));
         }
         // The bracket must be confirmed before any knockout result is recorded
         // (GROUPS_KNOCKOUT only; KNOCKOUT_ONLY has no confirmation step).
@@ -1512,7 +1507,7 @@ public class KnockoutService {
                             .entity("BRACKET_NOT_CONFIRMED").build());
         }
         if (m.getTeam1() == null || m.getTeam2() == null) {
-            throw new BadRequestException("Both teams of this match are not decided yet");
+            throw new BadRequestException(messages.t("knockout.error.teamsNotDecidedYet"));
         }
 
         int s1 = req.score1();
@@ -1522,8 +1517,7 @@ public class KnockoutService {
             Integer p1 = req.penalties1();
             Integer p2 = req.penalties2();
             if (p1 == null || p2 == null || p1.equals(p2)) {
-                throw new BadRequestException(
-                        "A knockout match cannot end level - enter a penalty result");
+                throw new BadRequestException(messages.t("knockout.error.cannotEndLevel"));
             }
             m.setPenalties1(p1);
             m.setPenalties2(p2);

@@ -32,6 +32,7 @@ import {
 import { fetchMatchRecordingsForMatch } from "../api/matchRecordings"
 import { showError, showSuccess } from "../toaster"
 import { qk } from "../queryClient"
+import { t, useTranslation } from "../i18n"
 
 /**
  * Platform-admin management of paid match-recording requests (~20 €/match).
@@ -50,21 +51,13 @@ import { qk } from "../queryClient"
 type StatusFilter = RecordingRequestStatus | "ALL"
 
 const FILTERS: { value: StatusFilter; label: string }[] = [
-    { value: "ALL", label: "Svi" },
-    { value: "REQUESTED", label: "Zatraženo" },
-    { value: "APPROVED", label: "Odobreno" },
-    { value: "DELIVERED", label: "Isporučeno" },
-    { value: "REJECTED", label: "Odbijeno" },
-    { value: "CANCELLED", label: "Otkazano" },
+    { value: "ALL", label: t.recordingRequest.adminRequests.allFilter },
+    { value: "REQUESTED", label: t.recordingRequest.statusLabels.REQUESTED },
+    { value: "APPROVED", label: t.recordingRequest.statusLabels.APPROVED },
+    { value: "DELIVERED", label: t.recordingRequest.statusLabels.DELIVERED },
+    { value: "REJECTED", label: t.recordingRequest.statusLabels.REJECTED },
+    { value: "CANCELLED", label: t.recordingRequest.statusLabels.CANCELLED },
 ]
-
-const STATUS_LABEL: Record<RecordingRequestStatus, string> = {
-    REQUESTED: "Zatraženo",
-    APPROVED: "Odobreno",
-    REJECTED: "Odbijeno",
-    DELIVERED: "Isporučeno",
-    CANCELLED: "Otkazano",
-}
 
 const STATUS_PALETTE: Record<RecordingRequestStatus, string> = {
     REQUESTED: "orange",
@@ -75,6 +68,7 @@ const STATUS_PALETTE: Record<RecordingRequestStatus, string> = {
 }
 
 export function AdminRecordingRequestsTab() {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("REQUESTED")
 
@@ -96,11 +90,9 @@ export function AdminRecordingRequestsTab() {
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
                         <Box>
-                            <Text fontSize="lg" fontWeight="semibold">Zahtjevi za snimke</Text>
+                            <Text fontSize="lg" fontWeight="semibold">{t.recordingRequest.adminRequests.title}</Text>
                             <Text fontSize="sm" color="fg.muted">
-                                Upravljanje zahtjevima za snimke utakmica (20 €) i pojedinih
-                                golova (5 €) - odobri ili odbij zahtjev, označi uplatu i
-                                isporuči snimku povezivanjem s bazom snimki.
+                                {t.recordingRequest.adminRequests.description}
                             </Text>
                         </Box>
 
@@ -124,7 +116,7 @@ export function AdminRecordingRequestsTab() {
                             <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
                         ) : !requests || requests.length === 0 ? (
                             <Text py="2" fontSize="sm" color="fg.muted">
-                                Nema zahtjeva za odabrani status.
+                                {t.recordingRequest.adminRequests.noneForFilter}
                             </Text>
                         ) : (
                             <Stack gap="2.5">
@@ -154,6 +146,7 @@ function RecordingRequestRow({
     req: RecordingRequestDto
     onChanged: () => void
 }) {
+    const t = useTranslation()
     const [busy, setBusy] = useState<
         null | "approve" | "reject" | "paid" | "linkRecording" | "link"
     >(null)
@@ -236,13 +229,13 @@ function RecordingRequestRow({
             const { url, expiresInSeconds } = await fetchRecordingDownloadLink(req.uuid)
             await navigator.clipboard.writeText(url)
             showSuccess(
-                "Poveznica kopirana u međuspremnik.",
-                `Vrijedi još ${formatExpiry(expiresInSeconds)}.`,
+                t.recordingRequest.adminRequests.copySuccess,
+                t.recordingRequest.adminRequests.copySuccessDesc(formatExpiry(expiresInSeconds)),
             )
         } catch {
             /* API errors surface via the http interceptor; clipboard denial
                is the only local failure worth naming. */
-            showError("Kopiranje poveznice nije uspjelo.")
+            showError(t.recordingRequest.adminRequests.copyFail)
         } finally {
             setBusy(null)
         }
@@ -254,8 +247,8 @@ function RecordingRequestRow({
         ) : !candidates || candidates.length === 0 ? (
             <Text fontSize="xs" color="fg.muted">
                 {req.kind === "GOAL"
-                    ? "Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki“ i uploadaj isječak gola pod tu utakmicu."
-                    : "Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki“ i uploadaj je tamo."}
+                    ? t.recordingRequest.adminRequests.noRecordingGoal
+                    : t.recordingRequest.adminRequests.noRecordingMatch}
             </Text>
         ) : (
             <Stack gap="1.5">
@@ -275,7 +268,7 @@ function RecordingRequestRow({
                             loading={busy === "linkRecording"}
                             onClick={() => linkRecording(rec.uuid)}
                         >
-                            <FiFilm /> {rec.uuid === req.recordingUuid ? "Povezano" : "Poveži"}
+                            <FiFilm /> {rec.uuid === req.recordingUuid ? t.recordingRequest.adminRequests.linked : t.recordingRequest.adminRequests.link}
                         </Button>
                     </HStack>
                 ))}
@@ -305,7 +298,7 @@ function RecordingRequestRow({
                             time, so it survives the event being edited away. */}
                         {req.kind === "GOAL" && (
                             <Text fontSize="xs" color="pitch.fg" fontWeight="medium" truncate>
-                                ⚽ {req.goalLabel ?? "gol"}
+                                ⚽ {req.goalLabel ?? t.recordingRequest.adminRequests.goalLabelFallback}
                             </Text>
                         )}
                     </Box>
@@ -315,19 +308,19 @@ function RecordingRequestRow({
                             variant="outline"
                             colorPalette={req.kind === "GOAL" ? "pitch" : "gray"}
                         >
-                            {req.kind === "GOAL" ? "Gol" : "Utakmica"}
+                            {req.kind === "GOAL" ? t.recordingRequest.adminRequests.goalBadge : t.recordingRequest.adminRequests.matchBadge}
                         </Badge>
                         <Badge size="sm" variant="solid" colorPalette={STATUS_PALETTE[status] ?? "gray"}>
-                            {STATUS_LABEL[status] ?? req.status}
+                            {t.recordingRequest.statusLabels[status] ?? req.status}
                         </Badge>
                         {req.paid && (
                             <Badge size="sm" variant="subtle" colorPalette="green">
-                                Plaćeno
+                                {t.recordingRequest.adminRequests.paidBadge}
                             </Badge>
                         )}
                         {req.hasVideo && (
                             <Badge size="sm" variant="subtle" colorPalette="purple">
-                                Video
+                                {t.recordingRequest.adminRequests.videoBadge}
                             </Badge>
                         )}
                     </HStack>
@@ -336,25 +329,25 @@ function RecordingRequestRow({
                 {/* Meta: contact, price, note(s) */}
                 <HStack gap="3" wrap="wrap">
                     <Text fontSize="xs" color="fg.muted">
-                        Cijena: <Text as="span" fontWeight="medium" color="fg">{formatPrice(req.priceEurCents)}</Text>
+                        {t.recordingRequest.adminRequests.priceLabel} <Text as="span" fontWeight="medium" color="fg">{formatPrice(req.priceEurCents)}</Text>
                     </Text>
                     {req.contactEmail && (
                         <Text fontSize="xs" color="fg.muted" truncate>
-                            Kontakt: <Text as="span" color="fg">{req.contactEmail}</Text>
+                            {t.recordingRequest.adminRequests.contactLabel} <Text as="span" color="fg">{req.contactEmail}</Text>
                         </Text>
                     )}
                     <Text fontSize="xs" color="fg.muted">
-                        Zatraženo: {formatDateTime(req.createdAt)}
+                        {t.recordingRequest.adminRequests.requestedLabel} {formatDateTime(req.createdAt)}
                     </Text>
                 </HStack>
                 {req.note && (
                     <Text fontSize="xs" color="fg.muted">
-                        Napomena: {req.note}
+                        {t.recordingRequest.adminRequests.noteLabel} {req.note}
                     </Text>
                 )}
                 {req.adminNote && (
                     <Text fontSize="xs" color="fg.muted">
-                        Napomena admina: {req.adminNote}
+                        {t.recordingRequest.adminRequests.adminNoteLabel} {req.adminNote}
                     </Text>
                 )}
                 {/* Payment reference. The status link is a capability, so the
@@ -363,9 +356,9 @@ function RecordingRequestRow({
                     in the dashboard. Absent for manual paid toggles. */}
                 {req.paid && (req.payerEmail || req.stripeSessionId) && (
                     <Text fontSize="xs" color="fg.muted" css={{ overflowWrap: "anywhere" }}>
-                        Plaćeno preko Stripea
-                        {req.payerEmail ? <> — platio: <Text as="span" color="fg">{req.payerEmail}</Text></> : null}
-                        {req.stripeSessionId ? <> · ref: <Text as="span" fontFamily="mono">{req.stripeSessionId}</Text></> : null}
+                        {t.recordingRequest.adminRequests.paidViaStripe}
+                        {req.payerEmail ? <> — {t.recordingRequest.adminRequests.paidBy} <Text as="span" color="fg">{req.payerEmail}</Text></> : null}
+                        {req.stripeSessionId ? <> · {t.recordingRequest.adminRequests.refLabel} <Text as="span" fontFamily="mono">{req.stripeSessionId}</Text></> : null}
                     </Text>
                 )}
 
@@ -381,7 +374,7 @@ function RecordingRequestRow({
                                 loading={busy === "approve"}
                                 onClick={approve}
                             >
-                                <FiCheck /> Odobri
+                                <FiCheck /> {t.common.approve}
                             </Button>
                             <Button
                                 size="xs"
@@ -390,7 +383,7 @@ function RecordingRequestRow({
                                 disabled={busy != null}
                                 onClick={() => setRejecting((v) => !v)}
                             >
-                                <FiX /> Odbij
+                                <FiX /> {t.common.reject}
                             </Button>
                         </HStack>
                         {rejecting && (
@@ -398,7 +391,7 @@ function RecordingRequestRow({
                                 <Textarea
                                     size="sm"
                                     rows={2}
-                                    placeholder="Razlog odbijanja (nije obavezno)…"
+                                    placeholder={t.recordingRequest.adminRequests.rejectPlaceholder}
                                     value={rejectNote}
                                     onChange={(e) => setRejectNote(e.target.value)}
                                 />
@@ -409,7 +402,7 @@ function RecordingRequestRow({
                                         disabled={busy != null}
                                         onClick={() => { setRejecting(false); setRejectNote("") }}
                                     >
-                                        Odustani
+                                        {t.common.cancel}
                                     </Button>
                                     <Button
                                         size="xs"
@@ -419,7 +412,7 @@ function RecordingRequestRow({
                                         loading={busy === "reject"}
                                         onClick={confirmReject}
                                     >
-                                        Potvrdi odbijanje
+                                        {t.recordingRequest.adminRequests.confirmReject}
                                     </Button>
                                 </HStack>
                             </Stack>
@@ -439,7 +432,7 @@ function RecordingRequestRow({
                                 loading={busy === "paid"}
                                 onClick={togglePaid}
                             >
-                                <FiDollarSign /> {req.paid ? "Poništi plaćeno" : "Označi plaćeno"}
+                                <FiDollarSign /> {req.paid ? t.recordingRequest.adminRequests.unmarkPaid : t.recordingRequest.adminRequests.markPaid}
                             </Button>
                         </HStack>
 
@@ -453,7 +446,7 @@ function RecordingRequestRow({
                         >
                             <Stack gap="1.5">
                                 <Text fontSize="xs" color="fg.muted">
-                                    POVEŽI SNIMKU IZ BAZE
+                                    {t.recordingRequest.adminRequests.linkFromLibraryLabel}
                                 </Text>
                                 {libraryPicker()}
                             </Stack>
@@ -465,7 +458,7 @@ function RecordingRequestRow({
                 {status === "DELIVERED" && (
                     <Stack gap="1.5">
                         <Text fontSize="xs" color="fg.muted" truncate>
-                            Povezana snimka iz baze:{" "}
+                            {t.recordingRequest.adminRequests.deliveredRecordingLabel}{" "}
                             <Text as="span" color="fg">
                                 {req.recordingFileName ?? req.recordingUuid}
                                 {req.recordingSizeBytes != null
@@ -485,7 +478,7 @@ function RecordingRequestRow({
                                 loading={busy === "paid"}
                                 onClick={togglePaid}
                             >
-                                <FiDollarSign /> {req.paid ? "Poništi plaćeno" : "Označi plaćeno"}
+                                <FiDollarSign /> {req.paid ? t.recordingRequest.adminRequests.unmarkPaid : t.recordingRequest.adminRequests.markPaid}
                             </Button>
                             <Button
                                 size="xs"
@@ -495,7 +488,7 @@ function RecordingRequestRow({
                                 loading={busy === "link"}
                                 onClick={copyDownloadLink}
                             >
-                                <FiLink /> Poveznica
+                                <FiLink /> {t.recordingRequest.adminRequests.copyLink}
                             </Button>
                             <Button
                                 size="xs"
@@ -503,7 +496,7 @@ function RecordingRequestRow({
                                 disabled={busy != null}
                                 onClick={() => setEditingRecording((v) => !v)}
                             >
-                                <FiEdit2 /> {editingRecording ? "Odustani" : "Uredi snimku"}
+                                <FiEdit2 /> {editingRecording ? t.common.cancel : t.recordingRequest.adminRequests.editRecording}
                             </Button>
                         </HStack>
                         {editingRecording && (
@@ -516,7 +509,7 @@ function RecordingRequestRow({
                             >
                                 <Stack gap="1.5">
                                     <Text fontSize="xs" color="fg.muted">
-                                        POVEŽI DRUGU SNIMKU IZ BAZE
+                                        {t.recordingRequest.adminRequests.linkAnotherFromLibraryLabel}
                                     </Text>
                                     {libraryPicker()}
                                 </Stack>

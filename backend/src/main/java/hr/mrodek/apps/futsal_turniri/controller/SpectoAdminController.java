@@ -9,6 +9,7 @@ import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 
 import java.util.List;
 import jakarta.annotation.security.RolesAllowed;
@@ -47,6 +48,7 @@ public class SpectoAdminController {
     @Inject TournamentsRepository tournamentsRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject PlayersRepository playersRepo;
+    @Inject MessageService messages;
 
     /* Home-page banner keys - shared with StreamBannerController, which owns
        their semantics. Starting a broadcast points the banner at this stream so
@@ -84,7 +86,7 @@ public class SpectoAdminController {
         if (base != null && !base.isBlank()
                 && !(base.startsWith("http://") || base.startsWith("https://"))) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Adresa mora počinjati s http:// ili https://").build();
+                    .entity(messages.t("specto.error.addressMustStartWithProtocol")).build();
         }
         specto.saveConnection(
                 base,
@@ -118,7 +120,7 @@ public class SpectoAdminController {
         if (t == null) return notFound();
         if (t.getSpectoStreamId() == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Turnir nije povezan sa streamom.").build();
+                    .entity(messages.t("specto.error.tournamentNotLinked")).build();
         }
         // Overlay: camera on + announce what's on next, then that match's squads
         // (single FIFO dispatch, so the lineup can't overtake stream_start).
@@ -144,7 +146,7 @@ public class SpectoAdminController {
         if (t == null) return notFound();
         if (t.getSpectoStreamId() == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Turnir nije povezan sa streamom.").build();
+                    .entity(messages.t("specto.error.tournamentNotLinked")).build();
         }
         settings.put(KEY_BANNER_URL, specto.embedUrl(t.getSpectoStreamId()));
         settings.put(KEY_BANNER_TOURNAMENT, t.getUuid().toString());
@@ -209,11 +211,11 @@ public class SpectoAdminController {
         Matches m = currentMatch(t);
         if (m == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Nema utakmice u tijeku ni sljedeće na rasporedu.").build();
+                    .entity(messages.t("specto.error.noCurrentOrNextMatch")).build();
         }
         if (m.getTeam1() == null && m.getTeam2() == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Ekipe te utakmice još nisu poznate.").build();
+                    .entity(messages.t("specto.error.teamsUnknown")).build();
         }
         sendLineupFor(t, m);
         return Response.status(Response.Status.ACCEPTED).build();
@@ -237,7 +239,7 @@ public class SpectoAdminController {
         int secs = req.seconds() == null ? 0 : req.seconds();
         if (secs < 1 || secs > 3600) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Trajanje mora biti između 1 i 3600 sekundi.").build();
+                    .entity(messages.t("specto.error.durationRange")).build();
         }
         specto.timerStart(t, secs);
         return Response.status(Response.Status.ACCEPTED).build();
@@ -273,7 +275,7 @@ public class SpectoAdminController {
         return tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
     }
 
-    private static Response notFound() {
-        return Response.status(Response.Status.NOT_FOUND).entity("Turnir nije pronađen.").build();
+    private Response notFound() {
+        return Response.status(Response.Status.NOT_FOUND).entity(messages.t("specto.error.tournamentNotFound")).build();
     }
 }

@@ -25,6 +25,7 @@ import {
 import { qk } from "../queryClient"
 import { useAuth } from "../auth/AuthContext"
 import { showSuccess, toaster } from "../toaster"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Dialog to request paid video of a match. Two modes, same flow (explained
@@ -69,6 +70,7 @@ export default function RecordingRequestDialog({
     /** Readable goal label ("12' - M. Rodek"), shown for kind="GOAL". */
     goalLabel?: string | null
 }) {
+    const t = useTranslation()
     const { user } = useAuth()
     const queryClient = useQueryClient()
     const [contactEmail, setContactEmail] = useState("")
@@ -122,8 +124,8 @@ export default function RecordingRequestDialog({
             if (user) {
                 queryClient.invalidateQueries({ queryKey: qk.myRecordingRequests })
                 showSuccess(
-                    isGoal ? "Zahtjev za snimku gola je poslan." : "Zahtjev za snimku je poslan.",
-                    "Status pratiš na svom profilu, u kartici „Moje snimke“.",
+                    isGoal ? t.recordingRequest.dialog.toastSuccessGoal : t.recordingRequest.dialog.toastSuccessMatch,
+                    t.recordingRequest.dialog.toastSuccessDescription,
                 )
                 onClose()
             } else {
@@ -138,20 +140,21 @@ export default function RecordingRequestDialog({
                 // GOAL_REQUESTS_DISABLED (feature not on sale yet - possible if
                 // the UI flag was flipped on before the backend setting).
                 const code = (err.response.data as { code?: string } | undefined)?.code
+                const d = t.recordingRequest.dialog
                 toaster.create({
                     type: "info",
                     title:
                         code === "GOAL_REQUESTS_DISABLED"
-                            ? "Zahtjevi za snimku gola trenutno nisu dostupni."
+                            ? d.duplicateGoalDisabled
                             : code === "MATCH_NOT_FINISHED"
-                                ? "Snimku gola možeš zatražiti tek kad utakmica završi."
+                                ? d.duplicateMatchNotFinished
                                 : isGoal
                                     ? user
-                                        ? "Zahtjev za ovaj gol već postoji — provjeri svoj profil."
-                                        : "Zahtjev za ovaj gol već postoji za ovaj email."
+                                        ? d.duplicateGoalUser
+                                        : d.duplicateGoalAnon
                                     : user
-                                        ? "Zahtjev za ovu utakmicu već postoji — provjeri svoj profil."
-                                        : "Zahtjev za ovu utakmicu već postoji za ovaj email.",
+                                        ? d.duplicateMatchUser
+                                        : d.duplicateMatchAnon,
                     duration: 5000,
                 })
                 onClose()
@@ -179,7 +182,7 @@ export default function RecordingRequestDialog({
                         <Dialog.Header>
                             <HStack gap="2">
                                 <FiCheckCircle color="var(--chakra-colors-pitch-600)" />
-                                <Text>Zahtjev je poslan</Text>
+                                <Text>{t.recordingRequest.dialog.sentTitle}</Text>
                             </HStack>
                         </Dialog.Header>
                         <Dialog.Body>
@@ -190,7 +193,7 @@ export default function RecordingRequestDialog({
                                     </Text>
                                 )}
                                 <Text fontSize="sm">
-                                    Obavijest o odobrenju i uputama za plaćanje stiže na{" "}
+                                    {t.recordingRequest.dialog.sentEmailPrefix}{" "}
                                     <chakra.span fontWeight={700}>{trimmedEmail}</chakra.span>.
                                 </Text>
                                 <Box
@@ -201,12 +204,11 @@ export default function RecordingRequestDialog({
                                     p="3"
                                 >
                                     <Text fontSize="sm">
-                                        Status zahtjeva u svakom trenutku možeš provjeriti na
-                                        javnoj stranici zahtjeva.
+                                        {t.recordingRequest.dialog.statusPageNotice}
                                     </Text>
                                     <ChakraLink asChild color="pitch.600" fontWeight={600} fontSize="sm">
                                         <RouterLink to={`/snimke/zahtjev/${createdUuid}`} onClick={onClose}>
-                                            Prati status zahtjeva ovdje
+                                            {t.recordingRequest.dialog.statusPageLink}
                                         </RouterLink>
                                     </ChakraLink>
                                 </Box>
@@ -214,7 +216,7 @@ export default function RecordingRequestDialog({
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="solid" colorPalette="pitch" onClick={onClose}>
-                                Zatvori
+                                {t.common.close}
                             </Button>
                         </Dialog.Footer>
                     </Dialog.Content>
@@ -236,7 +238,7 @@ export default function RecordingRequestDialog({
                             <HStack gap="2">
                                 {isGoal ? <GiSoccerBall /> : <FiVideo />}
                                 <Text>
-                                    {isGoal ? "Zatraži snimku gola" : "Zatraži snimku utakmice"}
+                                    {isGoal ? t.recordingRequest.dialog.titleGoal : t.recordingRequest.dialog.titleMatch}
                                 </Text>
                             </HStack>
                         </Dialog.Header>
@@ -277,16 +279,16 @@ export default function RecordingRequestDialog({
                                     <VStack align="stretch" gap="1.5">
                                         <Text fontSize="sm">
                                             {isGoal
-                                                ? "Pošalji zahtjev, admin ga odobrava (obavijest stiže e-mailom), zatim platiš karticom i dobivaš poveznicu za preuzimanje snimke ovog gola."
-                                                : "Pošalji zahtjev, admin ga odobrava (obavijest stiže e-mailom), zatim platiš karticom i dobivaš poveznicu za preuzimanje snimke cijele utakmice."}
+                                                ? t.recordingRequest.dialog.howItWorksGoal
+                                                : t.recordingRequest.dialog.howItWorksMatch}
                                         </Text>
                                         <Text fontSize="sm" color="fg.muted">
-                                            Zahtjev → odobrenje → plaćanje karticom → preuzimanje.
+                                            {t.recordingRequest.dialog.flowSummary}
                                         </Text>
                                         <Text fontSize="sm" fontWeight={700}>
-                                            Cijena:{" "}
+                                            {t.recordingRequest.dialog.priceLabel}{" "}
                                             <chakra.span color="pitch.600">
-                                                {isGoal ? "5 € po golu" : "20 € po utakmici"}
+                                                {isGoal ? t.recordingRequest.dialog.priceGoal : t.recordingRequest.dialog.priceMatch}
                                             </chakra.span>
                                         </Text>
                                     </VStack>
@@ -294,44 +296,44 @@ export default function RecordingRequestDialog({
 
                                 <Field.Root invalid={showEmailError}>
                                     <Field.Label>
-                                        Kontakt e-mail{" "}
+                                        {t.recordingRequest.dialog.emailLabel}{" "}
                                         {emailRequired ? (
-                                            <chakra.span color="red.500" fontSize="xs">(obavezno)</chakra.span>
+                                            <chakra.span color="red.500" fontSize="xs">{t.common.requiredTag}</chakra.span>
                                         ) : (
-                                            <chakra.span color="fg.muted" fontSize="xs">(opcionalno)</chakra.span>
+                                            <chakra.span color="fg.muted" fontSize="xs">{t.common.optionalTag}</chakra.span>
                                         )}
                                     </Field.Label>
                                     <Input
                                         size="sm"
                                         type="email"
-                                        placeholder="ime@example.com"
+                                        placeholder={t.recordingRequest.dialog.emailPlaceholder}
                                         value={contactEmail}
                                         onChange={(e) => setContactEmail(e.target.value)}
                                         onBlur={() => setEmailTouched(true)}
                                     />
                                     {showEmailError ? (
-                                        <Field.ErrorText>Unesi ispravnu email adresu.</Field.ErrorText>
+                                        <Field.ErrorText>{t.recordingRequest.dialog.emailInvalid}</Field.ErrorText>
                                     ) : (
                                         <Field.HelperText>
                                             {emailRequired
-                                                ? "Nemaš profil za praćenje statusa - obavijesti o odobrenju i plaćanju stižu isključivo na ovaj email."
-                                                : "Na ovu adresu javljamo status zahtjeva i upute za plaćanje."}
+                                                ? t.recordingRequest.dialog.emailHelperAnonymous
+                                                : t.recordingRequest.dialog.emailHelperUser}
                                         </Field.HelperText>
                                     )}
                                 </Field.Root>
 
                                 <Field.Root>
                                     <Field.Label>
-                                        Napomena{" "}
-                                        <chakra.span color="fg.muted" fontSize="xs">(opcionalno)</chakra.span>
+                                        {t.recordingRequest.dialog.noteLabel}{" "}
+                                        <chakra.span color="fg.muted" fontSize="xs">{t.common.optionalTag}</chakra.span>
                                     </Field.Label>
                                     <Textarea
                                         size="sm"
                                         rows={3}
                                         placeholder={
                                             isGoal
-                                                ? "Npr. treba mi i asistencija prije gola…"
-                                                : "Npr. treba mi samo drugo poluvrijeme…"
+                                                ? t.recordingRequest.dialog.notePlaceholderGoal
+                                                : t.recordingRequest.dialog.notePlaceholderMatch
                                         }
                                         value={note}
                                         onChange={(e) => setNote(e.target.value)}
@@ -340,14 +342,14 @@ export default function RecordingRequestDialog({
 
                                 <Text fontSize="xs" color="fg.muted">
                                     {user
-                                        ? "Sve svoje zahtjeve pratiš na profilu, u kartici „Moje snimke“."
-                                        : "Poveznicu za praćenje statusa dobivaš odmah nakon slanja zahtjeva."}
+                                        ? t.recordingRequest.dialog.footerHintUser
+                                        : t.recordingRequest.dialog.footerHintAnonymous}
                                 </Text>
                             </VStack>
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="ghost" type="button" onClick={onClose} disabled={saving}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"
@@ -356,7 +358,7 @@ export default function RecordingRequestDialog({
                                 loading={saving}
                                 disabled={showEmailError || (isGoal && matchEventId == null)}
                             >
-                                Pošalji zahtjev
+                                {t.recordingRequest.dialog.submit}
                             </Button>
                         </Dialog.Footer>
                     </form>

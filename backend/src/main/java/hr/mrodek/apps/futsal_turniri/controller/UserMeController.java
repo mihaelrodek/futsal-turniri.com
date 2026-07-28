@@ -12,6 +12,7 @@ import hr.mrodek.apps.futsal_turniri.model.UserProfile;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserTeamPresetRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.SlugService;
 import hr.mrodek.apps.futsal_turniri.services.StorageService;
 import io.quarkus.security.Authenticated;
@@ -51,6 +52,7 @@ public class UserMeController {
     @Inject UserProfileRepository profileRepo;
     @Inject SlugService slugService;
     @Inject StorageService storageService;
+    @Inject MessageService messages;
     @Inject JsonWebToken jwt;
 
     @GET
@@ -181,12 +183,12 @@ public class UserMeController {
             if (body.slug() != null && !body.slug().isBlank()) {
                 String norm = slugService.normalizeUsername(body.slug());
                 if (norm == null || norm.length() < SlugService.MIN_USERNAME_LENGTH) {
-                    throw new BadRequestException("Korisničko ime je prekratko (najmanje "
-                            + SlugService.MIN_USERNAME_LENGTH + " znaka).");
+                    throw new BadRequestException(
+                            messages.t("user.error.usernameTooShort", SlugService.MIN_USERNAME_LENGTH));
                 }
                 if (!norm.equals(existing.getSlug())) {
                     if (!slugService.isUsernameAvailable(norm, uid)) {
-                        throw new ClientErrorException("Korisničko ime je zauzeto.", Response.Status.CONFLICT);
+                        throw new ClientErrorException(messages.t("user.error.usernameTaken"), Response.Status.CONFLICT);
                     }
                     existing.setSlug(norm);
                 }
@@ -245,11 +247,11 @@ public class UserMeController {
                 ? slugService.normalizeUsername(body.username())
                 : slugService.defaultUsername(first, last);
         if (desired == null || desired.length() < SlugService.MIN_USERNAME_LENGTH) {
-            throw new BadRequestException("Korisničko ime je prekratko (najmanje "
-                    + SlugService.MIN_USERNAME_LENGTH + " znaka).");
+            throw new BadRequestException(
+                    messages.t("user.error.usernameTooShort", SlugService.MIN_USERNAME_LENGTH));
         }
         if (!slugService.isUsernameAvailable(desired, uid)) {
-            throw new ClientErrorException("Korisničko ime je zauzeto.", Response.Status.CONFLICT);
+            throw new ClientErrorException(messages.t("user.error.usernameTaken"), Response.Status.CONFLICT);
         }
 
         // ensureProfile creates the row (+ an auto-slug we immediately override).

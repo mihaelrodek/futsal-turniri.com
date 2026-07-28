@@ -32,6 +32,7 @@ public class EmailService {
     @Inject ReactiveMailer mailer;
     @Inject TournamentSubscriptionRepository tournamentSubRepo;
     @Inject UserProfileRepository profileRepo;
+    @Inject MessageService messages;
 
     /** Absent when SMTP isn't configured → sending is skipped. Optional, NOT a
      *  defaultValue="" String - SmallRye Config treats an empty string as a
@@ -111,12 +112,13 @@ public class EmailService {
                 ? ""
                 : MailTemplates.render("cta", Map.of(
                         "url", escapeHtml(ctaUrl),
-                        "label", escapeHtml(ctaLabel == null ? "Otvori" : ctaLabel)));
+                        "label", escapeHtml(ctaLabel == null ? messages.t("mail.shell.defaultCtaLabel") : ctaLabel)));
 
         return MailTemplates.render("shell", Map.of(
                 "heading", escapeHtml(heading),
                 "body", bodyHtml,
-                "cta", cta));
+                "cta", cta,
+                "footer", messages.t("mail.shell.footer")));
     }
 
     /** Minimal HTML escaping for user-supplied text interpolated into email HTML. */

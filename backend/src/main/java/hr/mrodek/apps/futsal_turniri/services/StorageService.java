@@ -19,6 +19,7 @@ public class StorageService {
     @Inject MinioClient minio;
     @Inject ResourcesRepository resourcesRepo;
     @Inject ObjectMapper objectMapper;
+    @Inject MessageService messages;
 
     @ConfigProperty(name = "minio.bucket")
     String bucket;
@@ -98,7 +99,7 @@ public class StorageService {
         try {
             if (file.size() > MAX_AD_VIDEO_BYTES) {
                 throw new IllegalArgumentException(
-                        "Video je prevelik. Maksimum: " + (MAX_AD_VIDEO_BYTES / (1024 * 1024)) + " MB.");
+                        messages.t("upload.error.videoTooLarge", MAX_AD_VIDEO_BYTES / (1024 * 1024)));
             }
             boolean exists = minio.bucketExists(
                     io.minio.BucketExistsArgs.builder().bucket(bucket).build());
@@ -166,7 +167,7 @@ public class StorageService {
             // cheaply as possible.
             if (file.size() > maxBytes) {
                 throw new IllegalArgumentException(
-                        "Slika je prevelika. Maksimum: " + (maxBytes / (1024 * 1024)) + " MB.");
+                        messages.t("upload.error.imageTooLarge", maxBytes / (1024 * 1024)));
             }
 
             // Ensure bucket exists (no-op if it already does)
@@ -186,8 +187,7 @@ public class StorageService {
             // previews on social platforms to render properly.
             String magicExt = sniffMagicExt(path);
             if (magicExt == null) {
-                throw new IllegalArgumentException(
-                        "Unsupported image type. Allowed: jpg, jpeg, png, webp.");
+                throw new IllegalArgumentException(messages.t("upload.error.unsupportedImageType"));
             }
             // Reject "decompression bombs" BEFORE recompress() decodes the full
             // raster. A few-hundred-KB PNG/JPEG (under the byte cap) can declare
@@ -294,8 +294,7 @@ public class StorageService {
             long w = reader.getWidth(0);
             long h = reader.getHeight(0);
             if (w > 0 && h > 0 && w * h > MAX_PIXELS) {
-                throw new IllegalArgumentException(
-                        "Slika ima previše piksela (najviše ~40 MP). Smanji razlučivost pa pokušaj ponovno.");
+                throw new IllegalArgumentException(messages.t("upload.error.tooManyPixels"));
             }
         } catch (IllegalArgumentException iae) {
             throw iae;

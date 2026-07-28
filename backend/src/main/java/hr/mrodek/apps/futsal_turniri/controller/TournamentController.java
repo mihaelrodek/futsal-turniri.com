@@ -68,6 +68,7 @@ public class TournamentController {
     @Inject TournamentSlugService tournamentSlugService;
     @Inject PushService pushService;
     @Inject hr.mrodek.apps.futsal_turniri.services.EmailService emailService;
+    @Inject hr.mrodek.apps.futsal_turniri.services.MessageService messages;
 
     @Inject TournamentsRepository tournamentsRepo;
     @Inject TeamsRepository teamRepo;
@@ -543,11 +544,13 @@ public class TournamentController {
             String url = emailService.baseUrl() + "/turniri/"
                     + (t.getSlug() != null ? t.getSlug() : t.getUuid());
             String body = MailTemplates.render("tournament-finished", Map.of(
-                    "tournamentName", EmailService.escapeHtml(t.getName()),
-                    "winnerName", EmailService.escapeHtml(winnerName)));
-            String html = emailService.shell("Turnir je završen", body, url, "Pogledaj rezultate");
+                    "finishedLine", messages.t("mail.tournament.finished.finishedLine", EmailService.escapeHtml(t.getName())),
+                    "winnerLine", messages.t("mail.tournament.finished.winnerLine", EmailService.escapeHtml(winnerName)),
+                    "viewLine", messages.t("mail.tournament.finished.viewLine")));
+            String html = emailService.shell(
+                    messages.t("mail.tournament.finished.heading"), body, url, messages.t("mail.tournament.finished.cta"));
             emailService.sendToTournamentSubscribers(
-                    t.getId(), "🏁 Turnir završen - " + t.getName(), html);
+                    t.getId(), messages.t("mail.tournament.finished.subject", t.getName()), html);
         } catch (Exception ignored) {
             // best-effort - the tournament is already finished
         }
@@ -1140,9 +1143,11 @@ public class TournamentController {
                         String url = emailService.baseUrl() + "/turniri/"
                                 + (t.getSlug() != null ? t.getSlug() : t.getUuid());
                         String body = MailTemplates.render("tournament-subscribed",
-                                Map.of("tournamentName", EmailService.escapeHtml(t.getName())));
-                        String html = emailService.shell("Pratiš turnir", body, url, "Otvori turnir");
-                        emailService.sendHtml(email, "Pratiš turnir - " + t.getName(), html);
+                                Map.of("body", messages.t("mail.tournament.subscribed.body", EmailService.escapeHtml(t.getName()))));
+                        String html = emailService.shell(
+                                messages.t("mail.tournament.subscribed.heading"), body, url,
+                                messages.t("mail.tournament.subscribed.cta"));
+                        emailService.sendHtml(email, messages.t("mail.tournament.subscribed.subject", t.getName()), html);
                     }
                 } catch (Exception ignored) {
                     // best-effort - the subscription is already saved
@@ -1417,7 +1422,7 @@ public class TournamentController {
             String trimmedName = in.name().trim();
             if (!seenNormalizedNames.add(trimmedName.toLowerCase())) {
                 return Response.status(Response.Status.CONFLICT)
-                        .entity("Ekipa \"" + trimmedName + "\" već postoji u ovom turniru.")
+                        .entity(messages.t("tournament.error.teamDuplicate", trimmedName))
                         .build();
             }
         }
@@ -1442,7 +1447,7 @@ public class TournamentController {
                     .anyMatch(e -> e.getId() != null && !payloadIds.contains(e.getId()));
             if (removingTeam) {
                 return Response.status(Response.Status.CONFLICT)
-                        .entity("Ždrijeb je već generiran - ekipe se više ne mogu uklanjati.")
+                        .entity(messages.t("tournament.error.rosterLocked"))
                         .build();
             }
         }
@@ -1632,8 +1637,8 @@ public class TournamentController {
                 pushService.sendToUser(
                         uid,
                         new PushService.PushPayload(
-                                "Prijava odobrena",
-                                "Tvoj par \"" + team.getName() + "\" je prihvaćen na turniru " + t.getName() + ".",
+                                messages.t("tournament.push.teamApproved.title"),
+                                messages.t("tournament.push.teamApproved.body", team.getName(), t.getName()),
                                 "/turniri/" + tournamentRef
                         )
                 );
@@ -1665,7 +1670,7 @@ public class TournamentController {
         // team can no longer be removed - it would corrupt the structure.
         if (isRosterLocked(t)) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Ždrijeb je već generiran - ekipe se više ne mogu uklanjati.")
+                    .entity(messages.t("tournament.error.rosterLocked"))
                     .build();
         }
         if (t.getStatus() == TournamentStatus.STARTED || t.getStatus() == TournamentStatus.FINISHED) {
@@ -1747,8 +1752,7 @@ public class TournamentController {
         playerRepo.findByTournamentAndName(team.getTournament().getId(), name, null)
                 .ifPresent(existing -> {
                     throw new ClientErrorException(
-                            "Igrač \"" + name + "\" već postoji u ekipi \"" + existing.getTeam().getName()
-                                    + "\" u ovom turniru.",
+                            messages.t("tournament.error.playerDuplicate", name, existing.getTeam().getName()),
                             Response.Status.CONFLICT);
                 });
 
@@ -1802,8 +1806,7 @@ public class TournamentController {
         playerRepo.findByTournamentAndName(team.getTournament().getId(), name, player.getId())
                 .ifPresent(existing -> {
                     throw new ClientErrorException(
-                            "Igrač \"" + name + "\" već postoji u ekipi \"" + existing.getTeam().getName()
-                                    + "\" u ovom turniru.",
+                            messages.t("tournament.error.playerDuplicate", name, existing.getTeam().getName()),
                             Response.Status.CONFLICT);
                 });
         player.setName(name);
@@ -2147,7 +2150,7 @@ public class TournamentController {
             try {
                 pushService.sendToMatchSubscribers(
                         match.getId(),
-                        "▶️ Utakmica počinje - " + t.getName(),
+                        messages.t("tournament.push.matchStart.title", t.getName()),
                         matchVersusLine(match),
                         matchUrl(t, match.getId()));
             } catch (Exception ignored) {
@@ -2227,7 +2230,7 @@ public class TournamentController {
             firePushMatchSafe(
                     match.getId(),
                     t.getId(),
-                    "🏁 Kraj utakmice - " + t.getName(),
+                    messages.t("tournament.push.matchEnd.title", t.getName()),
                     matchScoreLine(match),
                     matchUrl(t, match.getId())
             );
@@ -2321,7 +2324,7 @@ public class TournamentController {
                 || (body.team() != 1 && body.team() != 2)
                 || (body.half() != 1 && body.half() != 2)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("team and half must be 1 or 2").build();
+                    .entity(messages.t("tournament.error.teamAndHalfInvalid")).build();
         }
         int step = Integer.signum(body.delta());
         if (body.team() == 1) {
@@ -2359,7 +2362,7 @@ public class TournamentController {
         assertMatchesMutable(match.getTournament());
         int h = half == null ? 1 : half;
         if (h != 1 && h != 2) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("half must be 1 or 2").build();
+            return Response.status(Response.Status.BAD_REQUEST).entity(messages.t("tournament.error.halfInvalid")).build();
         }
         if (h == 1) {
             match.setFouls1First(0);
@@ -2397,7 +2400,7 @@ public class TournamentController {
                 || (body.team() != 1 && body.team() != 2)
                 || (body.half() != 1 && body.half() != 2)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("team and half must be 1 or 2").build();
+                    .entity(messages.t("tournament.error.teamAndHalfInvalid")).build();
         }
         int value = Math.max(0, body.value());
         if (body.team() == 1) {
@@ -2432,7 +2435,7 @@ public class TournamentController {
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Match is not LIVE").build();
+                    .entity(messages.t("tournament.error.matchNotLive")).build();
         }
 
         // Play time elapsed in the half, measured BEFORE the pause marker is
@@ -2451,7 +2454,7 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
-                    "⏸️ Poluvrijeme - " + t.getName(),
+                    messages.t("tournament.push.halfTime.title", t.getName()),
                     matchVersusLine(match),
                     matchUrl(t, match.getId())
             );
@@ -2498,7 +2501,7 @@ public class TournamentController {
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Match is not LIVE").build();
+                    .entity(messages.t("tournament.error.matchNotLive")).build();
         }
 
         // Defensive: the 1st half is implicitly over once the 2nd starts, so the
@@ -2515,7 +2518,7 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
-                    "🟢 Drugo poluvrijeme - " + t.getName(),
+                    messages.t("tournament.push.secondHalf.title", t.getName()),
                     matchVersusLine(match),
                     matchUrl(t, match.getId())
             );
@@ -2558,7 +2561,7 @@ public class TournamentController {
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Match is not LIVE").build();
+                    .entity(messages.t("tournament.error.matchNotLive")).build();
         }
         boolean pausedNow = false;
         if (match.getLivePausedAt() == null) {
@@ -2581,13 +2584,13 @@ public class TournamentController {
     /** Client click time for pause. If omitted, fall back to server time; if
      *  present but invalid, reject so SpectoStream doesn't freeze at a fake
      *  receive-time while the app stores another time. */
-    private static java.time.OffsetDateTime parsePauseOccurredAt(PauseMatchRequest body) {
+    private java.time.OffsetDateTime parsePauseOccurredAt(PauseMatchRequest body) {
         String raw = body == null ? null : body.occurredAt();
         if (raw == null || raw.isBlank()) return java.time.OffsetDateTime.now();
         try {
             return java.time.OffsetDateTime.parse(raw.trim());
         } catch (java.time.format.DateTimeParseException e) {
-            throw new BadRequestException("occurredAt must be an ISO-8601 timestamp.");
+            throw new BadRequestException(messages.t("tournament.error.occurredAtInvalid"));
         }
     }
 
@@ -2612,7 +2615,7 @@ public class TournamentController {
 
         if (match.getStatus() != MatchStatus.LIVE) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Match is not LIVE").build();
+                    .entity(messages.t("tournament.error.matchNotLive")).build();
         }
         var pausedAt = match.getLivePausedAt();
         if (pausedAt != null) {
@@ -2845,7 +2848,7 @@ public class TournamentController {
                 firePushMatchSafe(
                         match.getId(),
                         t.getId(),
-                        "⚽ Gol - " + t.getName(),
+                        messages.t("tournament.push.goal.title", t.getName()),
                         matchScoreLine(match),
                         matchUrl(t, match.getId())
                 );

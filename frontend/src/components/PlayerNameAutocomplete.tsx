@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Box, Input, VStack } from "@chakra-ui/react"
 import { searchPlayers } from "../api/players"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    PlayerNameAutocomplete - name input that suggests existing players.
@@ -20,7 +21,7 @@ export default function PlayerNameAutocomplete({
     value,
     onChange,
     onEnter,
-    placeholder = "Ime i prezime igrača",
+    placeholder,
     size = "sm",
     autoFocus,
 }: {
@@ -32,6 +33,8 @@ export default function PlayerNameAutocomplete({
     size?: "sm" | "md"
     autoFocus?: boolean
 }) {
+    const t = useTranslation()
+    const effectivePlaceholder = placeholder ?? t.autocomplete.playerNamePlaceholder
     const [suggestions, setSuggestions] = useState<string[]>([])
     const [open, setOpen] = useState(false)
     const [highlight, setHighlight] = useState(-1)
@@ -102,7 +105,7 @@ export default function PlayerNameAutocomplete({
             <Input
                 size={size}
                 autoFocus={autoFocus}
-                placeholder={placeholder}
+                placeholder={effectivePlaceholder}
                 value={value}
                 onChange={(e) => onChange(e.target.value.toUpperCase())}
                 onFocus={() => {

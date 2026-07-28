@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.integrations.spectostream.SpectoStreamServi
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.PermitAll;
@@ -47,6 +48,7 @@ public class SpectoStreamController {
     @Inject TournamentEditorRepository editorRepo;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
+    @Inject MessageService messages;
 
     /** Integration/link status for the tournament: whether the SpectoStream
      *  integration is configured on the server at all, whether THIS tournament
@@ -108,7 +110,7 @@ public class SpectoStreamController {
         Tournaments t = resolveAndGuard(uuid);
         if (!specto.isConfigured()) {
             return Response.status(Response.Status.SERVICE_UNAVAILABLE)
-                    .entity("Stream integracija nije konfigurirana.").build();
+                    .entity(messages.t("specto.error.notConfigured")).build();
         }
         // SYNC: persists the stream id on the tournament; raises 502 on upstream
         // failure, which propagates as-is (and rolls back this transaction).
@@ -131,7 +133,7 @@ public class SpectoStreamController {
         String streamId = body == null || body.streamId() == null ? null : body.streamId().trim();
         if (streamId != null && !streamId.isEmpty() && !isPlainStreamId(streamId)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Upiši samo Stream ID, ne URL, embed kod ili HTML.").build();
+                    .entity(messages.t("specto.error.invalidStreamId")).build();
         }
         specto.linkExisting(t, streamId);
         return Response.ok(new SpectoStatusDto(
@@ -165,7 +167,7 @@ public class SpectoStreamController {
         String text = body == null || body.text() == null ? null : body.text().trim();
         if (text == null || text.isEmpty() || text.length() > 200) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Poruka ne smije biti prazna i može imati najviše 200 znakova.").build();
+                    .entity(messages.t("specto.error.messageBlankOrTooLong")).build();
         }
         specto.customMessage(t, text);
         return Response.status(Response.Status.ACCEPTED).build();

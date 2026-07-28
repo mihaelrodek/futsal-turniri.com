@@ -20,6 +20,7 @@ import {
     type RecordingRequestStatus,
 } from "../api/recordingRequests"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Public status page for a single recording request: /snimke/zahtjev/:uuid.
@@ -32,14 +33,6 @@ import { useDocumentHead } from "../hooks/useDocumentHead"
    that flips `paid` can lag the redirect by a second, so on a "uspjeh"
    landing with `paid` still false we schedule ONE extra refetch ~2s later.
    ────────────────────────────────────────────────────────────────────── */
-
-const STATUS_LABEL: Record<RecordingRequestStatus, string> = {
-    REQUESTED: "Zatraženo",
-    APPROVED: "Odobreno",
-    REJECTED: "Odbijeno",
-    DELIVERED: "Isporučeno",
-    CANCELLED: "Otkazano",
-}
 
 const STATUS_PALETTE: Record<RecordingRequestStatus, string> = {
     REQUESTED: "orange",
@@ -81,6 +74,7 @@ function errorCode(err: unknown): string | undefined {
 }
 
 export default function RecordingRequestStatusPage() {
+    const t = useTranslation()
     const { uuid = "" } = useParams<{ uuid: string }>()
     const [searchParams] = useSearchParams()
     const placanje = searchParams.get("placanje")
@@ -127,8 +121,8 @@ export default function RecordingRequestStatusPage() {
     }, [placanje, data, load])
 
     useDocumentHead({
-        title: "Zahtjev za snimku - futsal-turniri.com",
-        description: "Status zahtjeva za video snimku utakmice.",
+        title: t.recordingRequest.status.pageTitle,
+        description: t.recordingRequest.status.pageDescription,
     })
 
     async function onCheckout() {
@@ -141,14 +135,14 @@ export default function RecordingRequestStatusPage() {
         } catch (err) {
             const code = errorCode(err)
             if (code === "NOT_CONFIGURED") {
-                setCheckoutError("Plaćanje trenutno nije dostupno, pokušaj kasnije.")
+                setCheckoutError(t.recordingRequest.status.checkoutErrorNotConfigured)
             } else if (code === "ALREADY_PAID") {
-                setCheckoutError("Ova snimka je već plaćena.")
+                setCheckoutError(t.recordingRequest.status.checkoutErrorAlreadyPaid)
                 load()
             } else if (code === "NOT_APPROVED") {
-                setCheckoutError("Zahtjev još nije odobren.")
+                setCheckoutError(t.recordingRequest.status.checkoutErrorNotApproved)
             } else {
-                setCheckoutError("Plaćanje trenutno nije moguće.")
+                setCheckoutError(t.recordingRequest.status.checkoutErrorGeneric)
             }
         } finally {
             setCheckoutBusy(false)
@@ -165,9 +159,9 @@ export default function RecordingRequestStatusPage() {
         } catch (err) {
             const code = errorCode(err)
             if (code === "NOT_PAID") {
-                setDownloadError("Snimka još nije plaćena.")
+                setDownloadError(t.recordingRequest.status.downloadErrorNotPaid)
             } else {
-                setDownloadError("Snimka još nije spremna za preuzimanje.")
+                setDownloadError(t.recordingRequest.status.downloadErrorGeneric)
             }
         } finally {
             setDownloadBusy(false)
@@ -178,7 +172,7 @@ export default function RecordingRequestStatusPage() {
         return (
             <VStack py="16" gap="3">
                 <Spinner />
-                <Text color="fg.muted" fontSize="sm">Učitavanje…</Text>
+                <Text color="fg.muted" fontSize="sm">{t.common.loading}</Text>
             </VStack>
         )
     }
@@ -190,13 +184,13 @@ export default function RecordingRequestStatusPage() {
                     <VStack gap="3" align="stretch">
                         <HStack gap="2">
                             <FiVideo />
-                            <Text fontWeight={700}>Zahtjev nije pronađen</Text>
+                            <Text fontWeight={700}>{t.recordingRequest.status.notFoundTitle}</Text>
                         </HStack>
                         <Text fontSize="sm" color="fg.muted">
-                            Poveznica za zahtjev nije valjana ili je zahtjev obrisan.
+                            {t.recordingRequest.status.notFoundDescription}
                         </Text>
                         <Button asChild variant="outline" size="sm" mt="2">
-                            <RouterLink to="/turniri">Natrag na turnire</RouterLink>
+                            <RouterLink to="/turniri">{t.recordingRequest.status.backToTournaments}</RouterLink>
                         </Button>
                     </VStack>
                 </Card.Body>
@@ -205,7 +199,7 @@ export default function RecordingRequestStatusPage() {
     }
 
     const matchLabel =
-        data.team1Name && data.team2Name ? `${data.team1Name} — ${data.team2Name}` : "Utakmica"
+        data.team1Name && data.team2Name ? `${data.team1Name} — ${data.team2Name}` : t.recordingRequest.status.matchLabelFallback
     const kickoff = formatKickoff(data.kickoffAt)
     const price = formatPrice(data.priceEurCents)
 
@@ -230,20 +224,20 @@ export default function RecordingRequestStatusPage() {
                             p="3"
                         >
                             <Text fontSize="sm" fontWeight={600} color="colorPalette.fg">
-                                Plaćanje uspješno! Hvala.
+                                {t.recordingRequest.status.paymentSuccess}
                             </Text>
                         </Box>
                     )}
                     {placanje === "odustao" && (
                         <Box borderWidth="1px" borderColor="border.emphasized" bg="bg.subtle" rounded="md" p="3">
                             <Text fontSize="sm">
-                                Plaćanje je prekinuto — možeš pokušati ponovno.
+                                {t.recordingRequest.status.paymentCancelled}
                             </Text>
                         </Box>
                     )}
 
                     <Box>
-                        <Text fontSize="xs" color="fg.muted">ZAHTJEV ZA SNIMKU</Text>
+                        <Text fontSize="xs" color="fg.muted">{t.recordingRequest.status.requestLabel}</Text>
                         <Text fontSize="lg" fontWeight={700} mt="1">{matchLabel}</Text>
                         <Text fontSize="sm" color="fg.muted" mt="0.5">
                             {data.tournamentName}
@@ -253,12 +247,12 @@ export default function RecordingRequestStatusPage() {
 
                     <HStack justify="space-between" wrap="wrap" gap="2">
                         <Badge variant="solid" colorPalette={STATUS_PALETTE[data.status] ?? "gray"} size="sm">
-                            {STATUS_LABEL[data.status] ?? data.status}
+                            {t.recordingRequest.statusLabels[data.status] ?? data.status}
                         </Badge>
                         <HStack gap="2">
                             {data.paid && (
                                 <Badge variant="subtle" colorPalette="green" size="sm">
-                                    Plaćeno
+                                    {t.recordingRequest.status.paidBadge}
                                 </Badge>
                             )}
                             {price && (
@@ -269,16 +263,16 @@ export default function RecordingRequestStatusPage() {
 
                     {data.status === "REQUESTED" && (
                         <Text fontSize="sm" color="fg.muted">
-                            Zahtjev čeka odobrenje. Obavijest stiže na email.
+                            {t.recordingRequest.status.awaitingApproval}
                         </Text>
                     )}
 
                     {data.status === "REJECTED" && (
-                        <Text fontSize="sm" color="fg.muted">Zahtjev je odbijen.</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.recordingRequest.status.rejected}</Text>
                     )}
 
                     {data.status === "CANCELLED" && (
-                        <Text fontSize="sm" color="fg.muted">Zahtjev je otkazan.</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.recordingRequest.status.cancelled}</Text>
                     )}
 
                     {paymentDue && (
@@ -290,7 +284,7 @@ export default function RecordingRequestStatusPage() {
                                 loading={checkoutBusy}
                                 onClick={onCheckout}
                             >
-                                <FiCreditCard /> Plati snimku {price ? `(${price})` : ""}
+                                <FiCreditCard /> {t.recordingRequest.status.payButton(price)}
                             </Button>
                             {checkoutError && (
                                 <Text fontSize="sm" color="red.500">{checkoutError}</Text>
@@ -300,7 +294,7 @@ export default function RecordingRequestStatusPage() {
 
                     {!paymentDue && processing && (
                         <Text fontSize="sm" color="fg.muted">
-                            Plaćanje zaprimljeno. Snimka stiže uskoro — obavijest dolazi emailom.
+                            {t.recordingRequest.status.processing}
                         </Text>
                     )}
 
@@ -313,9 +307,9 @@ export default function RecordingRequestStatusPage() {
                                 loading={downloadBusy}
                                 onClick={onDownload}
                             >
-                                <FiDownload /> Preuzmi snimku
+                                <FiDownload /> {t.recordingRequest.status.downloadButton}
                             </Button>
-                            <Text fontSize="xs" color="fg.muted">Poveznica vrijedi 48 sati.</Text>
+                            <Text fontSize="xs" color="fg.muted">{t.recordingRequest.status.downloadLinkNote}</Text>
                             {downloadError && (
                                 <Text fontSize="sm" color="red.500">{downloadError}</Text>
                             )}

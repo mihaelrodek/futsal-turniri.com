@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Box, Input, VStack } from "@chakra-ui/react"
 import { searchTeams } from "../api/tournaments"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    TeamNameAutocomplete - name input that suggests existing teams.
@@ -21,7 +22,7 @@ export default function TeamNameAutocomplete({
     onCommit,
     onBlur,
     onEnter,
-    placeholder = "Ime ekipe",
+    placeholder,
     size = "sm",
     variant,
     fontWeight,
@@ -46,6 +47,8 @@ export default function TeamNameAutocomplete({
     fontWeight?: string | number
     autoFocus?: boolean
 }) {
+    const t = useTranslation()
+    const effectivePlaceholder = placeholder ?? t.autocomplete.teamNamePlaceholder
     const [suggestions, setSuggestions] = useState<string[]>([])
     const [open, setOpen] = useState(false)
     const [highlight, setHighlight] = useState(-1)
@@ -128,7 +131,7 @@ export default function TeamNameAutocomplete({
                 variant={variant}
                 fontWeight={fontWeight}
                 autoFocus={autoFocus}
-                placeholder={placeholder}
+                placeholder={effectivePlaceholder}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}

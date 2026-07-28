@@ -5,6 +5,7 @@ import hr.mrodek.apps.futsal_turniri.model.UserTeamPreset;
 import hr.mrodek.apps.futsal_turniri.model.UserProfile;
 import hr.mrodek.apps.futsal_turniri.repository.UserTeamPresetRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
@@ -45,6 +46,7 @@ public class UserTeamPresetController {
     @Inject UserTeamPresetRepository repo;
     @Inject UserProfileRepository profileRepo;
     @Inject PushService pushService;
+    @Inject MessageService messages;
     @Inject JsonWebToken jwt;
 
     private String currentUid() {
@@ -183,10 +185,10 @@ public class UserTeamPresetController {
         var myProfile = profileRepo.findByUid(me).orElse(null);
         String requesterName = myProfile != null && myProfile.getDisplayName() != null
                 ? myProfile.getDisplayName()
-                : "Suvlasnik";
+                : messages.t("preset.defaultCoOwnerLabel");
         pushService.sendToUser(partnerUid, new PushService.PushPayload(
-                "Zahtjev za brisanje para",
-                requesterName + " želi obrisati par \"" + p.getName() + "\". Prihvati ili odbij u Postavkama.",
+                messages.t("preset.push.archiveRequest.title"),
+                messages.t("preset.push.archiveRequest.body", requesterName, p.getName()),
                 "/profil"
         ));
         return Response.ok(toDto(p)).build();
@@ -223,10 +225,10 @@ public class UserTeamPresetController {
         var myProfile = profileRepo.findByUid(me).orElse(null);
         String confirmerName = myProfile != null && myProfile.getDisplayName() != null
                 ? myProfile.getDisplayName()
-                : "Suvlasnik";
+                : messages.t("preset.defaultCoOwnerLabel");
         pushService.sendToUser(requesterUid, new PushService.PushPayload(
-                "Par obrisan",
-                confirmerName + " je potvrdio brisanje para \"" + p.getName() + "\".",
+                messages.t("preset.push.archiveConfirmed.title"),
+                messages.t("preset.push.archiveConfirmed.body", confirmerName, p.getName()),
                 "/profil"
         ));
         return Response.noContent().build();
@@ -259,10 +261,10 @@ public class UserTeamPresetController {
             var myProfile = profileRepo.findByUid(me).orElse(null);
             String rejecterName = myProfile != null && myProfile.getDisplayName() != null
                     ? myProfile.getDisplayName()
-                    : "Suvlasnik";
+                    : messages.t("preset.defaultCoOwnerLabel");
             pushService.sendToUser(requesterUid, new PushService.PushPayload(
-                    "Zahtjev odbijen",
-                    rejecterName + " je odbio brisanje para \"" + p.getName() + "\".",
+                    messages.t("preset.push.archiveRejected.title"),
+                    messages.t("preset.push.archiveRejected.body", rejecterName, p.getName()),
                     "/profil"
             ));
         }

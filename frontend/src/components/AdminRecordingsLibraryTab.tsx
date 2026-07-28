@@ -39,6 +39,7 @@ import type { TournamentCard } from "../types/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { qk } from "../queryClient"
 import { showError } from "../toaster"
+import { t, useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Baza snimki" admin tab - the recording library, decoupled from any one
@@ -87,10 +88,10 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
         }
         xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) resolve()
-            else reject(new Error(`Spremište je odbilo upload (HTTP ${xhr.status}).`))
+            else reject(new Error(t.recordingRequest.adminLibrary.uploadRejected(xhr.status)))
         }
-        xhr.onerror = () => reject(new Error("Mrežna greška tijekom uploada."))
-        xhr.onabort = () => reject(new Error("Upload je prekinut."))
+        xhr.onerror = () => reject(new Error(t.recordingRequest.adminLibrary.uploadNetworkError))
+        xhr.onabort = () => reject(new Error(t.recordingRequest.adminLibrary.uploadAborted))
         xhr.send(file)
     })
 }
@@ -99,14 +100,9 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
  *  applied client-side (the list is admin-only and small). */
 type LibrarySort = "newest" | "oldest" | "largest" | "name"
 
-const SORT_LABELS: Record<LibrarySort, string> = {
-    newest: "Najnovije prvo",
-    oldest: "Najstarije prvo",
-    largest: "Najveće prvo",
-    name: "Naziv (A-Ž)",
-}
-
 export function AdminRecordingsLibraryTab() {
+    const t = useTranslation()
+    const SORT_LABELS: Record<LibrarySort, string> = t.recordingRequest.adminLibrary.sortLabels
     const queryClient = useQueryClient()
 
     // ── Filters ─────────────────────────────────────────────────────────
@@ -245,7 +241,7 @@ export function AdminRecordingsLibraryTab() {
             closePicker()
             invalidate()
         } catch (e) {
-            showError("Upload nije uspio", e instanceof Error ? e.message : "Pokušaj ponovno.")
+            showError(t.recordingRequest.adminLibrary.uploadFailedTitle, e instanceof Error ? e.message : t.recordingRequest.adminLibrary.uploadFailedRetry)
         } finally {
             setUploading(false)
             setUploadPct(null)
@@ -258,10 +254,9 @@ export function AdminRecordingsLibraryTab() {
                 <VStack align="stretch" gap="3">
                     <HStack justify="space-between" wrap="wrap" gap="2">
                         <Box>
-                            <Heading size="sm">Baza snimki</Heading>
+                            <Heading size="sm">{t.recordingRequest.adminLibrary.title}</Heading>
                             <Text fontSize="xs" color="fg.muted">
-                                Uploadaj snimku jednom po utakmici, zatim je poveži s jednim ili
-                                više zahtjeva iz kartice „Zahtjevi za snimke".
+                                {t.recordingRequest.adminLibrary.description}
                             </Text>
                         </Box>
                         <Button
@@ -271,7 +266,7 @@ export function AdminRecordingsLibraryTab() {
                             onClick={() => (pickerOpen ? closePicker() : setPickerOpen(true))}
                         >
                             {pickerOpen ? <FiX /> : <FiPlus />}
-                            {pickerOpen ? "Zatvori" : "Nova snimka"}
+                            {pickerOpen ? t.common.close : t.recordingRequest.adminLibrary.newRecording}
                         </Button>
                     </HStack>
 
@@ -286,9 +281,9 @@ export function AdminRecordingsLibraryTab() {
                                             pickMatch(null)
                                         }}
                                     >
-                                        <option value="">Odaberi turnir…</option>
-                                        {(tournaments ?? []).map((t) => (
-                                            <option key={t.uuid} value={t.uuid}>{t.name}</option>
+                                        <option value="">{t.recordingRequest.adminLibrary.pickTournament}</option>
+                                        {(tournaments ?? []).map((tn) => (
+                                            <option key={tn.uuid} value={tn.uuid}>{tn.name}</option>
                                         ))}
                                     </NativeSelect.Field>
                                 </NativeSelect.Root>
@@ -297,11 +292,11 @@ export function AdminRecordingsLibraryTab() {
                                     scheduleLoading ? (
                                         <HStack gap="2" color="fg.muted">
                                             <Spinner size="xs" />
-                                            <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                            <Text fontSize="sm">{t.recordingRequest.adminLibrary.loadingMatches}</Text>
                                         </HStack>
                                     ) : pickableMatches.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
-                                            Ovaj turnir još nema utakmica s poznatim ekipama.
+                                            {t.recordingRequest.adminLibrary.noMatchesTeams}
                                         </Text>
                                     ) : (
                                         <NativeSelect.Root size="sm">
@@ -312,7 +307,7 @@ export function AdminRecordingsLibraryTab() {
                                                     pickMatch(v ? Number(v) : null)
                                                 }}
                                             >
-                                                <option value="">Odaberi utakmicu…</option>
+                                                <option value="">{t.recordingRequest.adminLibrary.pickMatch}</option>
                                                 {pickableMatches.map((m) => (
                                                     <option key={m.matchId} value={String(m.matchId)}>
                                                         {m.team1Name} – {m.team2Name}
@@ -328,7 +323,7 @@ export function AdminRecordingsLibraryTab() {
                                     <>
                                         <Input
                                             size="sm"
-                                            placeholder="Naziv datoteke za preuzimanje"
+                                            placeholder={t.recordingRequest.adminLibrary.fileNamePlaceholder}
                                             value={fileName}
                                             onChange={(e) => setFileName(e.target.value)}
                                             disabled={uploading}
@@ -347,7 +342,7 @@ export function AdminRecordingsLibraryTab() {
                                                 disabled={uploading}
                                                 onClick={() => fileInputRef.current?.click()}
                                             >
-                                                Odaberi datoteku
+                                                {t.recordingRequest.adminLibrary.chooseFile}
                                             </Button>
                                             {selectedFile && (
                                                 <Text fontSize="xs" color="fg.muted" truncate maxW="240px">
@@ -362,7 +357,7 @@ export function AdminRecordingsLibraryTab() {
                                                 loading={uploading}
                                                 onClick={upload}
                                             >
-                                                <FiUploadCloud /> Uploadaj snimku
+                                                <FiUploadCloud /> {t.recordingRequest.adminLibrary.uploadCta}
                                             </Button>
                                         </HStack>
                                         {uploadPct != null && (
@@ -376,7 +371,7 @@ export function AdminRecordingsLibraryTab() {
                                             </Progress.Root>
                                         )}
                                         <Text fontSize="xs" color="fg.muted">
-                                            Velike datoteke (par GB) — ostavi karticu otvorenom dok upload traje.
+                                            {t.recordingRequest.adminLibrary.uploadHintLarge}
                                         </Text>
                                     </>
                                 )}
@@ -392,7 +387,7 @@ export function AdminRecordingsLibraryTab() {
                     <VStack align="stretch" gap="2">
                         <Input
                             size="sm"
-                            placeholder="Pretraži bazu (turnir, ekipa, naziv datoteke)…"
+                            placeholder={t.recordingRequest.adminLibrary.searchPlaceholder}
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                         />
@@ -406,9 +401,9 @@ export function AdminRecordingsLibraryTab() {
                                         setFilterMatchId(null)
                                     }}
                                 >
-                                    <option value="">Svi turniri</option>
-                                    {(tournaments ?? []).map((t) => (
-                                        <option key={t.uuid} value={t.uuid}>{t.name}</option>
+                                    <option value="">{t.recordingRequest.adminLibrary.allTournaments}</option>
+                                    {(tournaments ?? []).map((tn) => (
+                                        <option key={tn.uuid} value={tn.uuid}>{tn.name}</option>
                                     ))}
                                 </NativeSelect.Field>
                             </NativeSelect.Root>
@@ -417,7 +412,7 @@ export function AdminRecordingsLibraryTab() {
                                 filterScheduleLoading ? (
                                     <HStack gap="2" color="fg.muted">
                                         <Spinner size="xs" />
-                                        <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                        <Text fontSize="sm">{t.recordingRequest.adminLibrary.loadingMatches}</Text>
                                     </HStack>
                                 ) : (
                                     <NativeSelect.Root size="sm" w={{ base: "100%", md: "260px" }}>
@@ -428,7 +423,7 @@ export function AdminRecordingsLibraryTab() {
                                                 setFilterMatchId(v ? Number(v) : null)
                                             }}
                                         >
-                                            <option value="">Sve utakmice</option>
+                                            <option value="">{t.recordingRequest.adminLibrary.allMatches}</option>
                                             {filterMatches.map((m) => (
                                                 <option key={m.matchId} value={String(m.matchId)}>
                                                     {m.team1Name} – {m.team2Name}
@@ -455,14 +450,13 @@ export function AdminRecordingsLibraryTab() {
 
                             {filtersActive && (
                                 <Button size="xs" variant="ghost" onClick={clearFilters}>
-                                    <FiX /> Očisti filtere
+                                    <FiX /> {t.recordingRequest.adminLibrary.clearFilters}
                                 </Button>
                             )}
 
                             {!isLoading && (
                                 <Text fontSize="xs" color="fg.muted" ml={{ base: "0", md: "auto" }}>
-                                    {sortedRecordings.length}{" "}
-                                    {sortedRecordings.length === 1 ? "snimka" : "snimki"}
+                                    {t.recordingRequest.adminLibrary.recordingsCount(sortedRecordings.length)}
                                 </Text>
                             )}
                         </HStack>
@@ -473,8 +467,8 @@ export function AdminRecordingsLibraryTab() {
                     ) : sortedRecordings.length === 0 ? (
                         <Text py="2" fontSize="sm" color="fg.muted">
                             {filtersActive
-                                ? "Nijedna snimka ne odgovara filterima."
-                                : "Baza je prazna."}
+                                ? t.recordingRequest.adminLibrary.noneForFilters
+                                : t.recordingRequest.adminLibrary.empty}
                         </Text>
                     ) : (
                         <VStack align="stretch" gap="2">
@@ -505,6 +499,7 @@ function RecordingRow({
     tournaments: TournamentCard[]
     onChanged: () => void
 }) {
+    const t = useTranslation()
     const [busy, setBusy] = useState<null | "download" | "rename" | "delete" | "reassign">(null)
     const [renaming, setRenaming] = useState(false)
     const [nameInput, setNameInput] = useState(rec.fileName ?? "")
@@ -567,7 +562,7 @@ function RecordingRow({
 
     async function remove() {
         if (busy) return
-        if (!confirm("Ukloniti ovu snimku iz baze? Ovo briše i datoteku iz spremišta.")) return
+        if (!confirm(t.recordingRequest.adminLibrary.confirmDelete)) return
         try {
             setBusy("delete")
             await deleteMatchRecording(rec.uuid)
@@ -641,7 +636,7 @@ function RecordingRow({
             {reassigning && (
                 <Box borderWidth="1px" borderColor="border.emphasized" bg="bg.muted" rounded="md" p="2.5">
                     <VStack align="stretch" gap="2">
-                        <Text fontSize="xs" color="fg.muted">PREMAPIRAJ NA UTAKMICU</Text>
+                        <Text fontSize="xs" color="fg.muted">{t.recordingRequest.adminLibrary.reassignLabel}</Text>
                         <NativeSelect.Root size="sm">
                             <NativeSelect.Field
                                 value={reassignTournamentUuid}
@@ -650,9 +645,9 @@ function RecordingRow({
                                     setReassignMatchId(null)
                                 }}
                             >
-                                <option value="">Odaberi turnir…</option>
-                                {tournaments.map((t) => (
-                                    <option key={t.uuid} value={t.uuid}>{t.name}</option>
+                                <option value="">{t.recordingRequest.adminLibrary.pickTournament}</option>
+                                {tournaments.map((tn) => (
+                                    <option key={tn.uuid} value={tn.uuid}>{tn.name}</option>
                                 ))}
                             </NativeSelect.Field>
                         </NativeSelect.Root>
@@ -661,11 +656,11 @@ function RecordingRow({
                             reassignScheduleLoading ? (
                                 <HStack gap="2" color="fg.muted">
                                     <Spinner size="xs" />
-                                    <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                    <Text fontSize="sm">{t.recordingRequest.adminLibrary.loadingMatches}</Text>
                                 </HStack>
                             ) : reassignPickableMatches.length === 0 ? (
                                 <Text fontSize="sm" color="fg.muted">
-                                    Ovaj turnir još nema utakmica s poznatim ekipama.
+                                    {t.recordingRequest.adminLibrary.noMatchesTeams}
                                 </Text>
                             ) : (
                                 <NativeSelect.Root size="sm">
@@ -676,7 +671,7 @@ function RecordingRow({
                                             setReassignMatchId(v ? Number(v) : null)
                                         }}
                                     >
-                                        <option value="">Odaberi utakmicu…</option>
+                                        <option value="">{t.recordingRequest.adminLibrary.pickMatch}</option>
                                         {reassignPickableMatches.map((m) => (
                                             <option key={m.matchId} value={String(m.matchId)}>
                                                 {m.team1Name} – {m.team2Name}
@@ -690,7 +685,7 @@ function RecordingRow({
 
                         <HStack gap="2" justify="flex-end">
                             <Button size="xs" variant="ghost" disabled={busy != null} onClick={() => setReassigning(false)}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                             <Button
                                 size="xs"
@@ -700,7 +695,7 @@ function RecordingRow({
                                 loading={busy === "reassign"}
                                 onClick={confirmReassign}
                             >
-                                <FiCheck /> Premapiraj
+                                <FiCheck /> {t.recordingRequest.adminLibrary.reassignConfirm}
                             </Button>
                         </HStack>
                     </VStack>

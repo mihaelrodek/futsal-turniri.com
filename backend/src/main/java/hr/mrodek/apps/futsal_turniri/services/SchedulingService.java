@@ -42,6 +42,7 @@ public class SchedulingService {
     @Inject MatchesRepository matchesRepo;
     @Inject GroupStageService groupStageService;
     @Inject KnockoutService knockoutService;
+    @Inject MessageService messages;
 
     /** Play order: matchday/round number, then knockout stage, then id. */
     private static final Comparator<Matches> MATCH_ORDER = Comparator
@@ -68,7 +69,7 @@ public class SchedulingService {
     @Transactional
     public void generateSchedule(Tournaments t, ScheduleConfigRequest cfg) {
         if (t.getStartAt() == null) {
-            throw new BadRequestException("Tournament has no start time");
+            throw new BadRequestException(messages.t("schedule.error.noStartTime"));
         }
 
         // Generating the schedule is what creates the group fixtures - the
@@ -92,7 +93,7 @@ public class SchedulingService {
 
         int slot = slotLength(t);
         if (slot <= 0) {
-            throw new BadRequestException("The match format must total more than 0 minutes");
+            throw new BadRequestException(messages.t("schedule.error.formatZeroMinutes"));
         }
 
         // Single court → matches are played back-to-back. Order: group matches
@@ -182,7 +183,7 @@ public class SchedulingService {
         int slot = slotFromRequest(req, false);
         int koSlot = slotFromRequest(req, true);
         if (slot <= 0 || koSlot <= 0) {
-            throw new BadRequestException("The match format must total more than 0 minutes");
+            throw new BadRequestException(messages.t("schedule.error.formatZeroMinutes"));
         }
 
         record Plan(String stage, String group, String t1, String t2, boolean known,
@@ -330,7 +331,7 @@ public class SchedulingService {
     @Transactional
     public void generateMultiDay(Tournaments t, SchedulePlanRequest req) {
         if (req == null || req.days() == null || req.days().isEmpty()) {
-            throw new BadRequestException("No day plan provided");
+            throw new BadRequestException(messages.t("schedule.error.noDayPlanProvided"));
         }
         validateBreaks(req.breaks());
         boolean koOnly = Boolean.TRUE.equals(req.koOnly());
@@ -361,7 +362,7 @@ public class SchedulingService {
                 ? slotFor(t, MatchStage.FINAL) <= 0
                 : (slotLength(t) <= 0 || slotFor(t, MatchStage.FINAL) <= 0);
         if (formatInvalid) {
-            throw new BadRequestException("The match format must total more than 0 minutes");
+            throw new BadRequestException(messages.t("schedule.error.formatZeroMinutes"));
         }
 
         if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT) {
@@ -394,14 +395,13 @@ public class SchedulingService {
             if (order.size() != scheduledCount) {
                 // The fixture list changed since the sketch (roster / bracket
                 // edit) - the previewed order no longer maps onto it.
-                throw new BadRequestException(
-                        "Schedule changed since the preview - sketch it again");
+                throw new BadRequestException(messages.t("schedule.error.scheduleChangedSincePreview"));
             }
             // Must be a permutation of the scheduled prefix 0..scheduledCount-1.
             java.util.Set<Integer> seen = new java.util.HashSet<>();
             for (Integer idx : order) {
                 if (idx == null || idx < 0 || idx >= order.size() || !seen.add(idx)) {
-                    throw new BadRequestException("Invalid match order");
+                    throw new BadRequestException(messages.t("schedule.error.invalidMatchOrder"));
                 }
             }
             // Staleness guard: the fixtures the sketch showed must fingerprint
@@ -415,8 +415,7 @@ public class SchedulingService {
                             + (m.getTeam2() != null ? m.getTeam2().getId() : null));
                 }
                 if (!req.planHash().equals(planFingerprint(parts))) {
-                    throw new BadRequestException(
-                            "Schedule changed since the preview - sketch it again");
+                    throw new BadRequestException(messages.t("schedule.error.scheduleChangedSincePreview"));
                 }
             }
             // Rounds MAY be reordered (e.g. an osmina played before the
@@ -509,10 +508,10 @@ public class SchedulingService {
         for (SchedulePlanRequest.Break b : breaks) {
             if (b == null) continue;
             if (b.beforeOrderPos() == null || b.beforeOrderPos() < 0) {
-                throw new BadRequestException("Break position must be >= 0");
+                throw new BadRequestException(messages.t("schedule.error.breakPositionNegative"));
             }
             if (b.minutes() == null || b.minutes() < 1 || b.minutes() > 24 * 60) {
-                throw new BadRequestException("Break minutes must be between 1 and 1440");
+                throw new BadRequestException(messages.t("schedule.error.breakMinutesRange"));
             }
         }
     }
@@ -575,7 +574,7 @@ public class SchedulingService {
             cursor = t.getStartAt();
         }
         if (cursor == null) {
-            throw new BadRequestException("Tournament has no start time");
+            throw new BadRequestException(messages.t("schedule.error.noStartTime"));
         }
 
         // Earlier knockout stages first (… SEMIFINAL, THIRD_PLACE, FINAL), then id.

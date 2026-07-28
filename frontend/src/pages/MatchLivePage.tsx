@@ -25,6 +25,7 @@ import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
+import { useTranslation } from "../i18n"
 import type { TeamKit } from "../api/tournaments"
 import type { MatchEventDto } from "../types/matchEvents"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
@@ -77,6 +78,7 @@ function splitPlayerDisplayName(name: string): { first: string; rest: string } {
 }
 
 export default function MatchLivePage() {
+    const t = useTranslation()
     const { uuid, matchId: matchIdParam } = useParams<{ uuid: string; matchId: string }>()
     const matchId = Number(matchIdParam)
     const navigate = useNavigate()
@@ -246,7 +248,7 @@ export default function MatchLivePage() {
         const url = window.location.href
         const t1 = scheduled?.team1Name ?? live?.team1Name ?? ""
         const t2 = scheduled?.team2Name ?? live?.team2Name ?? ""
-        const title = t1 && t2 ? `${t1} vs ${t2}` : "Utakmica uživo"
+        const title = t1 && t2 ? `${t1} vs ${t2}` : t.matchLive.shareDefaultTitle
         if (navigator.share) {
             try {
                 await navigator.share({ title, url })
@@ -257,7 +259,7 @@ export default function MatchLivePage() {
         }
         try {
             await navigator.clipboard.writeText(url)
-            showSuccess("Poveznica kopirana.")
+            showSuccess(t.common.linkCopied)
         } catch {
             /* clipboard blocked - nothing more we can do */
         }
@@ -275,9 +277,9 @@ export default function MatchLivePage() {
             evt.type === "OWN_GOAL"
                 ? evt.playerName
                     ? `${evt.playerName} (ag)`
-                    : "autogol"
-                : evt.playerName ?? "nepoznat strijelac"
-        const when = evt.type === "PENALTY_GOAL" ? "Penali" : `${evt.minute}'`
+                    : t.matchLive.ownGoal
+                : evt.playerName ?? t.matchLive.unknownScorer
+        const when = evt.type === "PENALTY_GOAL" ? t.matchLive.penaltiesShort : `${evt.minute}'`
         setGoalRequest({ eventId: evt.id, label: `${when} — ${who}` })
     }
 
@@ -285,7 +287,7 @@ export default function MatchLivePage() {
         return (
             <Flex h="100%" align="center" justify="center" gap="3">
                 <Spinner size="lg" color="brand.solid" />
-                <Text color="fg.muted">Učitavanje…</Text>
+                <Text color="fg.muted">{t.common.loading}</Text>
             </Flex>
         )
     }
@@ -293,8 +295,8 @@ export default function MatchLivePage() {
     if (!scheduled) {
         return (
             <VStack h="100%" justify="center" gap="4" px="6">
-                <Text color="fg.muted" textAlign="center">Utakmica nije pronađena.</Text>
-                <IconButton aria-label="Natrag" variant="outline" onClick={goBack}>
+                <Text color="fg.muted" textAlign="center">{t.matchLive.notFound}</Text>
+                <IconButton aria-label={t.common.back} variant="outline" onClick={goBack}>
                     <FiArrowLeft />
                 </IconButton>
             </VStack>
@@ -347,10 +349,10 @@ export default function MatchLivePage() {
         ? groups.find((g) => g.name === scheduled.groupName) ?? null
         : null
     const hasGroupContext = !!groupForMatch && (tMeta?.format ?? cachedDetails?.format ?? null) === "GROUPS_KNOCKOUT"
-    const contextLabel = hasGroupContext ? "Grupa" : "Završnica"
+    const contextLabel = hasGroupContext ? t.matchLive.tabs.group : t.matchLive.tabs.knockout
     const infoTabs: Array<{ key: MatchInfoTab; label: string }> = [
-        { key: "timeline", label: "Tijek utakmice" },
-        { key: "lineups", label: "Sastavi" },
+        { key: "timeline", label: t.matchLive.tabs.timeline },
+        { key: "lineups", label: t.matchLive.tabs.lineups },
         { key: "context", label: contextLabel },
     ]
     const infoMaxW = tab === "context" && !hasGroupContext ? "1280px" : "640px"
@@ -359,7 +361,7 @@ export default function MatchLivePage() {
     // a shared-link open hasn't fetched it yet) + the match itself, reusing the
     // exact fields the header above already derived so the two agree.
     const exportMeta: ExportMeta = {
-        tournamentName: title ?? "Turnir",
+        tournamentName: title ?? t.matchLive.tournamentFallback,
         organizerName: tMeta?.organizerName ?? null,
         location: tMeta?.location ?? null,
         startAt: tMeta?.startAt ?? null,
@@ -436,7 +438,7 @@ export default function MatchLivePage() {
                     share never pull it off-axis. */}
                 <Box position="relative" minH="44px" mb="2">
                     <Flex position="absolute" left="0" top="50%" transform="translateY(-50%)" zIndex={2}>
-                        <IconButton aria-label="Natrag" variant="ghost" size="sm" onClick={goBack}>
+                        <IconButton aria-label={t.common.back} variant="ghost" size="sm" onClick={goBack}>
                             <FiArrowLeft />
                         </IconButton>
                     </Flex>
@@ -480,8 +482,8 @@ export default function MatchLivePage() {
                     <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
                         {RECORDING_REQUEST_ENABLED && (
                             <IconButton
-                                aria-label="Zatraži snimku"
-                                title="Zatraži snimku utakmice"
+                                aria-label={t.matchLive.requestRecordingAria}
+                                title={t.recordingRequest.dialog.titleMatch}
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setRecordingOpen(true)}
@@ -489,7 +491,7 @@ export default function MatchLivePage() {
                                 <FiVideo />
                             </IconButton>
                         )}
-                        <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
+                        <IconButton aria-label={t.common.share} variant="ghost" size="sm" onClick={share}>
                             <FiShare2 />
                         </IconButton>
                     </Flex>
@@ -519,7 +521,7 @@ export default function MatchLivePage() {
                             _hover={{ bg: "#b91c1c" }}
                         >
                             <Box w="6px" h="6px" rounded="full" bg="white" flexShrink={0} css={{ animation: "pitchPulse 1.6s infinite" }} />
-                            Gledaj live stream
+                            {t.matchLive.watchLiveStream}
                         </chakra.button>
                     </Flex>
                 )}
@@ -608,7 +610,7 @@ export default function MatchLivePage() {
                                         letterSpacing="wider"
                                         textTransform="uppercase"
                                     >
-                                        Uživo
+                                        {t.common.live}
                                     </Box>
                                 )}
                                 {isTimer && (
@@ -625,7 +627,7 @@ export default function MatchLivePage() {
                             </HStack>
                         ) : (
                             <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted">
-                                {isFinished ? "Završeno" : "Nije počelo"}
+                                {isFinished ? t.matchLive.finished : t.matchLive.notStarted}
                             </Text>
                         )}
                     </Flex>
@@ -637,8 +639,8 @@ export default function MatchLivePage() {
                         transform="translateY(-50%)"
                     >
                         <IconButton
-                            aria-label="Preuzmi zapisnik"
-                            title="Zapisnik"
+                            aria-label={t.matchLive.downloadZapisnikAria}
+                            title={t.matchLive.downloadZapisnikTitle}
                             variant="ghost"
                             size="sm"
                             onClick={() => setZapisnikOpen(true)}
@@ -646,7 +648,7 @@ export default function MatchLivePage() {
                             <FiFileText />
                         </IconButton>
                         <IconButton
-                            aria-label="Preuzmi"
+                            aria-label={t.common.download}
                             variant="ghost"
                             size="sm"
                             onClick={() => setExportOpen(true)}
@@ -659,7 +661,7 @@ export default function MatchLivePage() {
                 {/* Penalty shootout result under the score (centred). */}
                 {hasPens && (
                     <Text fontSize="2xs" fontWeight={700} color="fg.muted" textAlign="center" mt="1" whiteSpace="nowrap">
-                        ({scheduled.penalties1} : {scheduled.penalties2} penali)
+                        {t.matchLive.penaltiesResult(scheduled.penalties1!, scheduled.penalties2!)}
                     </Text>
                 )}
             </Box>
@@ -763,10 +765,10 @@ export default function MatchLivePage() {
                                 }}
                                 emptyNote={
                                     isFinished
-                                        ? "Prikazan samo krajnji rezultat bez strijelca."
+                                        ? t.matchLive.emptyTimelineFinished
                                         : isScheduled
-                                            ? "Utakmica još nije počela."
-                                            : "Još nema događaja."
+                                            ? t.matchLive.emptyTimelineScheduled
+                                            : t.matchLive.emptyTimelineLive
                                 }
                             />
                         )}
@@ -885,6 +887,7 @@ function TeamLineupCard({
     align: "left" | "right"
     withDivider?: boolean
 }) {
+    const t = useTranslation()
     const sorted = [...(players ?? [])].sort((a, b) => {
         const an = a.number ?? 10_000
         const bn = b.number ?? 10_000
@@ -917,7 +920,7 @@ function TeamLineupCard({
             ) : sorted.length === 0 ? (
                 <Flex minH="96px" align="center" justify="center" px="2">
                     <Text fontSize="sm" color="fg.muted" textAlign="center">
-                        Nema unesenih sastava za ekipu.
+                        {t.matchLive.noLineup}
                     </Text>
                 </Flex>
             ) : (
@@ -1040,6 +1043,7 @@ function playerMatchStats(events: ReturnType<typeof useRawMatchEvents>, playerId
 }
 
 function PlayerGoalMark({ count }: { count: number }) {
+    const t = useTranslation()
     return (
         <Box
             as="span"
@@ -1055,7 +1059,7 @@ function PlayerGoalMark({ count }: { count: number }) {
             lineHeight="1"
             flexShrink={0}
         >
-            <Box as="span" aria-label="Gol">⚽</Box>
+            <Box as="span" aria-label={t.matchLive.goalAria}>⚽</Box>
             {count > 1 && (
                 <Box
                     as="span"
@@ -1082,13 +1086,14 @@ function PlayerGoalMark({ count }: { count: number }) {
 }
 
 function PlayerCardMark({ tone, count }: { tone: "yellow" | "red"; count: number }) {
+    const t = useTranslation()
     return (
         <HStack as="span" gap="0.5" align="center" flexShrink={0}>
             {Array.from({ length: Math.min(count, 2) }).map((_, i) => (
                 <Box
                     key={i}
                     as="span"
-                    aria-label={tone === "yellow" ? "Žuti karton" : "Crveni karton"}
+                    aria-label={tone === "yellow" ? t.matchLive.yellowCardAria : t.matchLive.redCardAria}
                     w="8px"
                     h="12px"
                     rounded="1px"
@@ -1112,8 +1117,9 @@ function GroupContextPanel({
 }: {
     group: Group | null
 }) {
+    const t = useTranslation()
     if (!group) {
-        return <EmptyContext title="Grupa nije dostupna" note="Grupna faza još nije izvučena." />
+        return <EmptyContext title={t.matchLive.groupNotAvailableTitle} note={t.matchLive.groupNotAvailableNote} />
     }
     const gridCols = {
         base: "minmax(0, 1fr) 28px 28px 28px 42px 42px",
@@ -1122,11 +1128,14 @@ function GroupContextPanel({
     return (
         <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden">
             <Grid templateColumns={gridCols} gap="1" px="3" py="2" bg="bg.muted">
-                {["#", "Ekipa", "UT", "P", "N", "I", "Gol", "GR", "Bod"].map((h, i) => (
+                {t.matchLive.groupHeaders.map((h, i) => (
+                    // Indices 0 (#), 2 (played count) and 6 (goals for:against)
+                    // are desktop-only columns - by POSITION, not by matching
+                    // the header text, since the text itself is locale-dependent.
                     <Text
                         key={h}
                         display={
-                            h === "#" || h === "UT" || h === "Gol"
+                            i === 0 || i === 2 || i === 6
                                 ? { base: "none", md: "block" }
                                 : undefined
                         }
@@ -1207,6 +1216,7 @@ function BracketContextPanel({
     matchId: number
     colors: Record<string, TeamKit>
 }) {
+    const t = useTranslation()
     const zoomRef = useRef<ZoomableBracketHandle>(null)
     const activeRef = useRef<HTMLDivElement | null>(null)
     const rounds = bracket?.rounds ?? []
@@ -1221,7 +1231,7 @@ function BracketContextPanel({
     }, [bracket, matchId, rounds.length])
 
     if (!bracket || rounds.length === 0) {
-        return <EmptyContext title="Završnica nije dostupna" note="Eliminacijska ljestvica još nije generirana." />
+        return <EmptyContext title={t.matchLive.bracketNotAvailableTitle} note={t.matchLive.bracketNotAvailableNote} />
     }
     const koCodes = buildKoMatchCodes(rounds.flatMap((r) => r.matches))
 
@@ -1256,7 +1266,7 @@ function BracketContextPanel({
                                 mb="2"
                                 textTransform="uppercase"
                             >
-                                Za 3. mjesto
+                                {t.matchLive.forThirdPlace}
                             </Text>
                             <ReadOnlyBracketMatch
                                 match={m}
@@ -1290,8 +1300,9 @@ function ReadOnlyBracketMatch({
     code: string | null
     colors: Record<string, TeamKit>
 }) {
+    const t = useTranslation()
     const showScore = match.score1 != null && match.score2 != null
-    const headerLabel = code ?? (match.stage === "FINAL" ? "FINALE" : match.stage === "THIRD_PLACE" ? "ZA 3. MJESTO" : null)
+    const headerLabel = code ?? (match.stage === "FINAL" ? t.matchLive.finalLabel : match.stage === "THIRD_PLACE" ? t.matchLive.thirdPlaceLabel : null)
     return (
         <Box
             w="100%"

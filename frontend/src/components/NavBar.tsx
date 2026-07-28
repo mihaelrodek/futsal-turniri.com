@@ -21,6 +21,7 @@ import ColorModeToggle from "./ColorModeToggle"
 import { LiveNavItem } from "./LiveNavItem"
 import { Logo } from "./Logo"
 import { MonoLabel } from "../ui/pitch"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    PitchNav - top navigation in the "Pitch" theme.
@@ -89,6 +90,7 @@ function UserAvatar({
     avatarUrl?: string | null
     size?: number
 }) {
+    const t = useTranslation()
     const source = (name || email || "?").trim()
     const initials =
         source
@@ -116,7 +118,7 @@ function UserAvatar({
             flexShrink={0}
         >
             {avatarUrl ? (
-                <Image src={avatarUrl} alt={name ?? "Profilna slika"} w="100%" h="100%" objectFit="cover" />
+                <Image src={avatarUrl} alt={name ?? t.nav.profilePictureAlt} w="100%" h="100%" objectFit="cover" />
             ) : (
                 initials
             )}
@@ -125,6 +127,7 @@ function UserAvatar({
 }
 
 export default function NavBar() {
+    const t = useTranslation()
     const { user, signOut, loading } = useAuth()
     const navigate = useNavigate()
 
@@ -174,7 +177,7 @@ export default function NavBar() {
         if (!user) {
             return (
                 <Button asChild size="sm" variant="solid" colorPalette="pitch">
-                    <RouterLink to="/prijava">Prijava</RouterLink>
+                    <RouterLink to="/prijava">{t.nav.login}</RouterLink>
                 </Button>
             )
         }
@@ -213,16 +216,16 @@ export default function NavBar() {
                 <Menu.Positioner>
                     <Menu.Content minW="220px">
                         <Box px="3" py="2" borderBottomWidth="1px" borderColor="border">
-                            <MonoLabel>Prijavljen kao</MonoLabel>
+                            <MonoLabel>{t.nav.loggedInAs}</MonoLabel>
                             <Text fontSize="sm" fontWeight={600} truncate mt="0.5">
-                                {user.email ?? user.displayName ?? "Anonimno"}
+                                {user.email ?? user.displayName ?? t.nav.anonymous}
                             </Text>
                         </Box>
                         <Menu.Item value="profile" onSelect={() => navigate("/profil")}>
-                            <FiUser /> Profil
+                            <FiUser /> {t.nav.profile}
                         </Menu.Item>
                         <Menu.Item value="logout" onSelect={onSignOut}>
-                            <FiLogOut /> Odjavi se
+                            <FiLogOut /> {t.nav.logout}
                         </Menu.Item>
                     </Menu.Content>
                 </Menu.Positioner>
@@ -265,12 +268,12 @@ export default function NavBar() {
                         rounded="full"
                     >
                         <PillNavLink to="/turniri" exact>
-                            Turniri
+                            {t.nav.tournaments}
                         </PillNavLink>
                         <LiveNavItem />
-                        <PillNavLink to="/turniri/novi">Kreiraj turnir</PillNavLink>
-                        <PillNavLink to="/karta">Karta</PillNavLink>
-                        <PillNavLink to="/statistika">Statistika</PillNavLink>
+                        <PillNavLink to="/turniri/novi">{t.nav.createTournament}</PillNavLink>
+                        <PillNavLink to="/karta">{t.nav.map}</PillNavLink>
+                        <PillNavLink to="/statistika">{t.nav.stats}</PillNavLink>
                     </HStack>
 
                     {/* Right cluster: install affordance + user pill. The
@@ -303,7 +306,7 @@ export default function NavBar() {
                         {!loading && user && (
                             <Menu.Root>
                                 <Menu.Trigger asChild>
-                                    <Button aria-label="Profil meni" size="sm" variant="ghost" px={1}>
+                                    <Button aria-label={t.nav.profileMenuAria} size="sm" variant="ghost" px={1}>
                                         <UserAvatar
                                             name={user.displayName}
                                             email={user.email}
@@ -315,16 +318,16 @@ export default function NavBar() {
                                 <Menu.Positioner>
                                     <Menu.Content minW="220px">
                                         <Box px="3" py="2" borderBottomWidth="1px" borderColor="border">
-                                            <MonoLabel>Prijavljen kao</MonoLabel>
+                                            <MonoLabel>{t.nav.loggedInAs}</MonoLabel>
                                             <Text fontSize="sm" fontWeight={600} truncate mt="0.5">
-                                                {user.email ?? user.displayName ?? "Anonimno"}
+                                                {user.email ?? user.displayName ?? t.nav.anonymous}
                                             </Text>
                                         </Box>
                                         <Menu.Item value="profile" onSelect={() => navigate("/profil")}>
-                                            <FiUser /> Profil
+                                            <FiUser /> {t.nav.profile}
                                         </Menu.Item>
                                         <Menu.Item value="logout" onSelect={onSignOut}>
-                                            <FiLogOut /> Odjavi se
+                                            <FiLogOut /> {t.nav.logout}
                                         </Menu.Item>
                                     </Menu.Content>
                                 </Menu.Positioner>
@@ -332,7 +335,7 @@ export default function NavBar() {
                         )}
                         {!loading && !user && (
                             <Button asChild size="sm" variant="solid" colorPalette="pitch">
-                                <RouterLink to="/prijava">Prijava</RouterLink>
+                                <RouterLink to="/prijava">{t.nav.login}</RouterLink>
                             </Button>
                         )}
                     </Box>

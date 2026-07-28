@@ -40,6 +40,8 @@ public class RoundService {
     RoundMatchMapper mapper;
     @Inject
     PushService pushService;
+    @Inject
+    MessageService messages;
 
     public List<RoundDto> listByTournamentUuid(String uuid) {
         Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
@@ -66,7 +68,7 @@ public class RoundService {
         List<Teams> active = teamsRepo.findByTournament_Id(t.getId())
                 .stream().filter(p -> !p.isEliminated()).toList();
 
-        if (active.size() < 2) throw new IllegalStateException("Not enough teams to draw");
+        if (active.size() < 2) throw new IllegalStateException(messages.t("round.error.notEnoughTeams"));
 
         // History for prior BYEs
         List<Matches> history = matchesRepo.findByTournament_Id(t.getId());
@@ -164,9 +166,10 @@ public class RoundService {
             Teams p2 = m.getTeam2();
             if (p1 == null) continue;
             Integer tbl = m.getTableNo();
-            String title = "Runda " + round.getNumber();
-            String body = p1.getName() + " vs " + p2.getName()
-                    + (tbl != null ? " na stolu " + tbl : "");
+            String title = messages.t("round.push.roundTitle", round.getNumber());
+            String body = tbl != null
+                    ? messages.t("round.push.body.withTable", p1.getName(), p2.getName(), tbl)
+                    : messages.t("round.push.body.noTable", p1.getName(), p2.getName());
             // Deep-link to the specific match: TournamentDetailsPage reads
             // ?match={id} on mount, switches to the Ždrijeb tab, expands
             // the round, and scrolls the row into view (no modal opened
@@ -237,11 +240,11 @@ public class RoundService {
                 .orElseThrow(() -> new NoSuchElementException("Tournament not found"));
 
         if (t.getStatus() == TournamentStatus.FINISHED) {
-            throw new IllegalStateException("Tournament is already finished");
+            throw new IllegalStateException(messages.t("round.error.tournamentFinished"));
         }
 
         if (req == null || req.matches() == null || req.matches().isEmpty()) {
-            throw new IllegalStateException("At least one match is required");
+            throw new IllegalStateException(messages.t("round.error.atLeastOneMatchRequired"));
         }
 
         // Load every team in the tournament once so we can validate the
@@ -256,31 +259,31 @@ public class RoundService {
         Set<Long> usedIds = new HashSet<>();
         for (ManualRoundRequest.Match m : req.matches()) {
             if (m == null || m.team1Id() == null || m.tableNo() == null) {
-                throw new IllegalStateException("Each match needs team1Id and tableNo");
+                throw new IllegalStateException(messages.t("round.error.matchNeedsTeam1AndTable"));
             }
             Teams p1 = teamsById.get(m.team1Id());
             if (p1 == null) {
-                throw new IllegalStateException("team1Id " + m.team1Id() + " is not in this tournament");
+                throw new IllegalStateException(messages.t("round.error.team1NotInTournament", m.team1Id()));
             }
             if (p1.isEliminated()) {
-                throw new IllegalStateException("Team " + p1.getName() + " is already eliminated");
+                throw new IllegalStateException(messages.t("round.error.teamAlreadyEliminated", p1.getName()));
             }
             if (!usedIds.add(m.team1Id())) {
-                throw new IllegalStateException("Team " + p1.getName() + " appears in more than one match");
+                throw new IllegalStateException(messages.t("round.error.teamInMoreThanOneMatch", p1.getName()));
             }
             if (m.team2Id() != null) {
                 if (m.team2Id().equals(m.team1Id())) {
-                    throw new IllegalStateException("A team cannot play itself");
+                    throw new IllegalStateException(messages.t("round.error.teamCannotPlayItself"));
                 }
                 Teams p2 = teamsById.get(m.team2Id());
                 if (p2 == null) {
-                    throw new IllegalStateException("team2Id " + m.team2Id() + " is not in this tournament");
+                    throw new IllegalStateException(messages.t("round.error.team2NotInTournament", m.team2Id()));
                 }
                 if (p2.isEliminated()) {
-                    throw new IllegalStateException("Team " + p2.getName() + " is already eliminated");
+                    throw new IllegalStateException(messages.t("round.error.teamAlreadyEliminated", p2.getName()));
                 }
                 if (!usedIds.add(m.team2Id())) {
-                    throw new IllegalStateException("Team " + p2.getName() + " appears in more than one match");
+                    throw new IllegalStateException(messages.t("round.error.teamInMoreThanOneMatch", p2.getName()));
                 }
             }
         }
@@ -335,9 +338,10 @@ public class RoundService {
             Teams p2 = m.getTeam2();
             if (p1 == null) continue;
             Integer tbl = m.getTableNo();
-            String title = "Runda " + round.getNumber();
-            String body = p1.getName() + " vs " + p2.getName()
-                    + (tbl != null ? " na stolu " + tbl : "");
+            String title = messages.t("round.push.roundTitle", round.getNumber());
+            String body = tbl != null
+                    ? messages.t("round.push.body.withTable", p1.getName(), p2.getName(), tbl)
+                    : messages.t("round.push.body.noTable", p1.getName(), p2.getName());
             String matchUrl = "/turniri/" + tournamentRef + "?match=" + m.getId();
             String tag = "round-" + round.getId() + "-team-";
             for (String uid : teamUids(p1)) {
@@ -405,8 +409,8 @@ public class RoundService {
             pushService.sendToUser(
                     uid,
                     new PushService.PushPayload(
-                            "Izgubili ste meč",
-                            "Vaš meč je odigran.",
+                            messages.t("round.push.lostTitle"),
+                            messages.t("round.push.lostBody"),
                             "/turniri/" + tournamentRef,
                             "/futsal-turniri-symbol.png",
                             tag + "-" + uid
@@ -518,7 +522,7 @@ public class RoundService {
                 .orElseThrow(() -> new NoSuchElementException("Round not found"));
 
         if (r.getStatus() == RoundStatus.COMPLETED) {
-            throw new IllegalStateException("Cannot hard-reset a completed round.");
+            throw new IllegalStateException(messages.t("round.error.cannotHardResetCompleted"));
         }
 
         // 1) Delete this round's matches, then the round itself
@@ -592,7 +596,7 @@ public class RoundService {
             Integer s2 = m.getScore2();
 
             if (s1 == null || s2 == null || Objects.equals(s1, s2)) {
-                throw new IllegalStateException("All matches must have decisive scores (no ties, no blanks).");
+                throw new IllegalStateException(messages.t("round.error.allMatchesMustHaveDecisiveScores"));
             }
 
             // If already finished, assume stats are already accounted for (updateMatchScore handled reversals)
@@ -639,13 +643,13 @@ public class RoundService {
         var round = roundsRepo.findByIdOptional(roundId)
                 .orElseThrow(() -> new NoSuchElementException("Round not found"));
         if (!round.getTournament().getId().equals(tournament.getId())) {
-            throw new IllegalArgumentException("Round does not belong to tournament");
+            throw new IllegalArgumentException(messages.t("round.error.roundNotInTournament"));
         }
 
         var match = matchesRepo.findByIdOptional(matchId)
                 .orElseThrow(() -> new NoSuchElementException("Match not found"));
         if (!match.getRound().getId().equals(round.getId())) {
-            throw new IllegalArgumentException("Match does not belong to round");
+            throw new IllegalArgumentException(messages.t("round.error.matchNotInRound"));
         }
 
         Integer s1 = req.score1();

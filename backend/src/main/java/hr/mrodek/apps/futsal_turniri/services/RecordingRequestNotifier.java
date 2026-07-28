@@ -32,8 +32,11 @@ public class RecordingRequestNotifier {
 
     @Inject EmailService emailService;
     @Inject AppSettingsRepository settings;
+    @Inject MessageService messages;
 
-    /** "Team A - Team B" with graceful fallback for undecided knockout slots. */
+    /** "Team A - Team B" with graceful fallback for undecided knockout slots.
+     *  "TBD" is a placeholder for a not-yet-decided knockout slot, not
+     *  user-facing prose - left as-is (see the i18n migration notes). */
     public static String matchLabel(Matches m) {
         String t1 = m.getTeam1() != null ? m.getTeam1().getName() : "TBD";
         String t2 = m.getTeam2() != null ? m.getTeam2().getName() : "TBD";
@@ -47,22 +50,22 @@ public class RecordingRequestNotifier {
         return whole + "," + (fraction < 10 ? "0" + fraction : String.valueOf(fraction)) + " €";
     }
 
-    /** Croatian noun phrase for the request's kind, used in every notification. */
-    public static String kindLabel(RecordingRequestKind kind) {
-        return kind == RecordingRequestKind.GOAL ? "snimku gola" : "snimku utakmice";
+    /** Noun phrase for the request's kind, used in every notification. */
+    public String kindLabel(RecordingRequestKind kind) {
+        return messages.t(kind == RecordingRequestKind.GOAL ? "recording.kind.goal" : "recording.kind.match");
     }
 
     /** "Gol: 12' - M. Rodek (Ekipa A)" paragraph for goal-clip requests, "" otherwise. */
-    private static String goalHtml(MatchRecordingRequest r) {
+    private String goalHtml(MatchRecordingRequest r) {
         if (r.getKind() != RecordingRequestKind.GOAL || r.getGoalLabel() == null) return "";
         return MailTemplates.render("recording-goal-line",
-                Map.of("goalLabel", EmailService.escapeHtml(r.getGoalLabel())));
+                Map.of("goalLine", messages.t("mail.recording.goalLine", EmailService.escapeHtml(r.getGoalLabel()))));
     }
 
     /** "(turnir X)" suffix, or "" when the match has no tournament name. */
-    private static String tournamentLine(Matches match) {
+    private String tournamentLine(Matches match) {
         String name = match.getTournament() != null ? match.getTournament().getName() : null;
-        return name == null || name.isBlank() ? "" : " (turnir " + EmailService.escapeHtml(name) + ")";
+        return name == null || name.isBlank() ? "" : messages.t("mail.recording.tournamentLine", EmailService.escapeHtml(name));
     }
 
     private String statusLink(MatchRecordingRequest r) {
@@ -75,15 +78,14 @@ public class RecordingRequestNotifier {
         if (notifyEmail == null || notifyEmail.isBlank() || !emailService.isReady()) return;
 
         boolean goal = r.getKind() == RecordingRequestKind.GOAL;
-        String subject = goal ? "Novi zahtjev za snimku gola" : "Novi zahtjev za snimku utakmice";
+        String subject = messages.t(goal ? "mail.recording.adminNotify.subject.goal" : "mail.recording.adminNotify.subject.match");
         String link = emailService.baseUrl() + "/profil";
         String body = MailTemplates.render("recording-admin-notify", Map.of(
-                "kind", kindLabel(r.getKind()),
-                "label", EmailService.escapeHtml(matchLabel(match)),
-                "tournamentLine", tournamentLine(match),
+                "intro", messages.t("mail.recording.adminNotify.intro",
+                        kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match)), tournamentLine(match)),
                 "goal", goalHtml(r),
-                "noteLine", r.getNote() == null ? "" : "<p>Napomena: " + EmailService.escapeHtml(r.getNote()) + "</p>"));
-        String html = emailService.shell(subject, body, link, "Otvori");
+                "noteLine", r.getNote() == null ? "" : messages.t("mail.recording.noteLine", EmailService.escapeHtml(r.getNote()))));
+        String html = emailService.shell(subject, body, link, null);
         emailService.sendHtml(notifyEmail, subject, html);
     }
 
@@ -93,12 +95,12 @@ public class RecordingRequestNotifier {
         if (to == null || to.isBlank() || !emailService.isReady()) return;
 
         String body = MailTemplates.render("recording-request-received", Map.of(
-                "kind", kindLabel(r.getKind()),
-                "label", EmailService.escapeHtml(matchLabel(match)),
-                "tournamentLine", tournamentLine(match),
+                "intro", messages.t("mail.recording.received.intro",
+                        kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match)), tournamentLine(match)),
                 "goal", goalHtml(r)));
-        String html = emailService.shell("Zahtjev za snimku je zaprimljen", body, statusLink(r), "Pogledaj status");
-        emailService.sendHtml(to, "Zahtjev za snimku je zaprimljen", html);
+        String subject = messages.t("mail.recording.received.subject");
+        String html = emailService.shell(subject, body, statusLink(r), messages.t("mail.recording.received.cta"));
+        emailService.sendHtml(to, subject, html);
     }
 
     /** Sent when an admin approves the request - states the price and asks for payment. */
@@ -107,12 +109,12 @@ public class RecordingRequestNotifier {
         if (to == null || to.isBlank() || !emailService.isReady()) return;
 
         String body = MailTemplates.render("recording-request-approved", Map.of(
-                "kind", kindLabel(r.getKind()),
-                "label", EmailService.escapeHtml(matchLabel(match)),
-                "price", formatEurCents(r.getPriceEurCents()),
+                "intro", messages.t("mail.recording.approved.intro",
+                        kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match)), formatEurCents(r.getPriceEurCents())),
                 "goal", goalHtml(r)));
-        String html = emailService.shell("Zahtjev za snimku je odobren", body, statusLink(r), "Plati snimku");
-        emailService.sendHtml(to, "Zahtjev za snimku je odobren - plaćanje", html);
+        String subject = messages.t("mail.recording.approved.subject");
+        String html = emailService.shell(subject, body, statusLink(r), messages.t("mail.recording.approved.cta"));
+        emailService.sendHtml(to, messages.t("mail.recording.approved.emailSubject"), html);
     }
 
     /** Courtesy email sent when an admin rejects the request. */
@@ -121,12 +123,13 @@ public class RecordingRequestNotifier {
         if (to == null || to.isBlank() || !emailService.isReady()) return;
 
         String body = MailTemplates.render("recording-request-rejected", Map.of(
-                "kind", kindLabel(r.getKind()),
-                "label", EmailService.escapeHtml(matchLabel(match)),
+                "intro", messages.t("mail.recording.rejected.intro",
+                        kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match))),
                 "noteLine", r.getAdminNote() == null || r.getAdminNote().isBlank()
-                        ? "" : "<p>Napomena: " + EmailService.escapeHtml(r.getAdminNote()) + "</p>"));
-        String html = emailService.shell("Zahtjev za snimku je odbijen", body, null, null);
-        emailService.sendHtml(to, "Zahtjev za snimku je odbijen", html);
+                        ? "" : messages.t("mail.recording.noteLine", EmailService.escapeHtml(r.getAdminNote()))));
+        String subject = messages.t("mail.recording.rejected.subject");
+        String html = emailService.shell(subject, body, null, null);
+        emailService.sendHtml(to, subject, html);
     }
 
     /**
@@ -140,8 +143,10 @@ public class RecordingRequestNotifier {
 
         boolean goal = r.getKind() == RecordingRequestKind.GOAL;
         String body = MailTemplates.render("recording-download-ready",
-                Map.of("kindNoun", goal ? "snimka gola" : "snimka utakmice"));
-        String html = emailService.shell("Snimka je spremna za preuzimanje", body, statusLink(r), "Preuzmi snimku");
-        emailService.sendHtml(to, "Snimka je spremna za preuzimanje", html);
+                Map.of("body", messages.t("mail.recording.downloadReady.body",
+                        messages.t(goal ? "recording.kindNoun.goal" : "recording.kindNoun.match"))));
+        String subject = messages.t("mail.recording.downloadReady.subject");
+        String html = emailService.shell(subject, body, statusLink(r), messages.t("mail.recording.downloadReady.cta"));
+        emailService.sendHtml(to, subject, html);
     }
 }

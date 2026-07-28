@@ -53,6 +53,7 @@ public class GroupStageService {
     @Inject GroupsRepository groupsRepo;
     @Inject RoundsRepository roundsRepo;
     @Inject MatchesRepository matchesRepo;
+    @Inject MessageService messages;
 
     /* ───────────────────────── draw + fixtures ───────────────────────── */
 
@@ -66,7 +67,7 @@ public class GroupStageService {
     @Transactional
     public void draw(Tournaments t, DrawRequest req) {
         if (t.getFormat() != TournamentFormat.GROUPS_KNOCKOUT) {
-            throw new BadRequestException("Tournament format is not GROUPS_KNOCKOUT");
+            throw new BadRequestException(messages.t("group.error.notGroupsKnockout"));
         }
         // Group count + advance-per-group are chosen at draw time. Persist them
         // on the tournament so the bracket / standings know how many advance.
@@ -74,12 +75,12 @@ public class GroupStageService {
         int groupCount = reqGroupCount != null ? reqGroupCount
                 : (t.getGroupCount() != null ? t.getGroupCount() : 0);
         if (groupCount < 2) {
-            throw new BadRequestException("Need at least 2 groups");
+            throw new BadRequestException(messages.t("group.error.needAtLeast2Groups"));
         }
         t.setGroupCount(groupCount);
         if (req != null && req.advancePerGroup() != null) {
             if (req.advancePerGroup() < 1) {
-                throw new BadRequestException("At least 1 team must advance per group");
+                throw new BadRequestException(messages.t("group.error.needAtLeast1AdvancePerGroup"));
             }
             t.setAdvancePerGroup(req.advancePerGroup());
         }
@@ -95,8 +96,7 @@ public class GroupStageService {
         List<Teams> teams = teamsRepo.list(
                 "tournament.id = ?1 and pendingApproval = false", t.getId());
         if (teams.size() < groupCount) {
-            throw new BadRequestException(
-                    "Need at least " + groupCount + " teams for " + groupCount + " groups");
+            throw new BadRequestException(messages.t("group.error.needTeamsForGroups", groupCount));
         }
 
         // Wipe any previous group stage. NOTE (Phase E2): a tournament at this
@@ -193,15 +193,14 @@ public class GroupStageService {
                 if (tm == null) continue;
                 int ord = a.groupOrdinal();
                 if (ord < 0 || ord >= groups.size()) {
-                    throw new BadRequestException("Invalid group ordinal: " + ord);
+                    throw new BadRequestException(messages.t("group.error.invalidGroupOrdinal", ord));
                 }
                 tm.setGroup(groups.get(ord));
                 tm.setDrawPosition(posInGroup[ord]++);
             }
             for (Teams tm : teams) {
                 if (tm.getGroup() == null) {
-                    throw new BadRequestException(
-                            "Team not assigned to a group: " + tm.getName());
+                    throw new BadRequestException(messages.t("group.error.teamNotAssigned", tm.getName()));
                 }
             }
         } else {
@@ -497,10 +496,10 @@ public class GroupStageService {
             throw new NotFoundException("Match not found");
         }
         if (m.getStage() != MatchStage.GROUP) {
-            throw new BadRequestException("Not a group match");
+            throw new BadRequestException(messages.t("group.error.notGroupMatch"));
         }
         if (m.getTeam1() == null || m.getTeam2() == null) {
-            throw new BadRequestException("Both teams of this match are not set");
+            throw new BadRequestException(messages.t("group.error.teamsNotSet"));
         }
         m.setScore1(score1);
         m.setScore2(score2);
@@ -534,21 +533,20 @@ public class GroupStageService {
         long unfinished = matchesRepo.count(
                 "group.id = ?1 and status != ?2", g.getId(), MatchStatus.FINISHED);
         if (unfinished > 0) {
-            throw new BadRequestException(
-                    "Sve utakmice u skupini moraju biti odigrane prije ručne izmjene poretka");
+            throw new BadRequestException(messages.t("group.error.mustBeAllFinishedForReorder"));
         }
 
         Map<Long, Teams> byId = teams.stream()
                 .collect(Collectors.toMap(Teams::getId, x -> x));
         if (orderedTeamIds == null || orderedTeamIds.size() != teams.size()) {
-            throw new BadRequestException("Poredak mora sadržavati sve ekipe skupine");
+            throw new BadRequestException(messages.t("group.error.orderMustContainAllTeams"));
         }
         Set<Long> seen = new HashSet<>();
         int rank = 0;
         for (Long id : orderedTeamIds) {
             Teams tm = byId.get(id);
             if (tm == null || !seen.add(id)) {
-                throw new BadRequestException("Nevažeća ekipa u poretku skupine");
+                throw new BadRequestException(messages.t("group.error.invalidTeamInOrder"));
             }
             tm.setManualRank(rank++);
         }

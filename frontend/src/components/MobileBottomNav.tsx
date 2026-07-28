@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { fetchLiveMatches } from "../api/live"
 import { qk } from "../queryClient"
 import { usePolling } from "../hooks/usePolling"
+import { t } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MobileBottomNav - v3 5-tab bottom navigation with a centred FAB.
@@ -41,10 +42,10 @@ type Item = {
 // Four flanking items - Kreiraj is rendered separately as a FAB between the
 // 2nd and 3rd entries below.
 const SIDE_ITEMS: Item[] = [
-    { to: "/turniri", label: "Turniri", icon: FiList, exact: true },
-    { to: "/uzivo", label: "Uživo", icon: FiRadio, livePoll: true },
-    { to: "/karta", label: "Karta", icon: FiMap },
-    { to: "/statistika", label: "Statistika", icon: FiBarChart2 },
+    { to: "/turniri", label: t.nav.tournaments, icon: FiList, exact: true },
+    { to: "/uzivo", label: t.nav.live, icon: FiRadio, livePoll: true },
+    { to: "/karta", label: t.nav.map, icon: FiMap },
+    { to: "/statistika", label: t.nav.stats, icon: FiBarChart2 },
 ]
 
 function NavTab({ item, liveCount }: { item: Item; liveCount: number }) {
@@ -138,7 +139,7 @@ function CreateFab() {
             <RouterLink
                 to="/turniri/novi"
                 style={{ textDecoration: "none", display: "block" }}
-                aria-label="Kreiraj turnir"
+                aria-label={t.nav.createTournament}
             >
                 <Flex
                     direction="column"
@@ -178,7 +179,7 @@ function CreateFab() {
                         color={isActive ? "pitch.fg" : "fg.muted"}
                         lineHeight={1}
                     >
-                        Kreiraj
+                        {t.nav.createShort}
                     </Text>
                 </Flex>
             </RouterLink>

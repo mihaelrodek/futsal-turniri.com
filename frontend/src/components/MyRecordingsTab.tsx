@@ -31,6 +31,7 @@ import type { MatchEventDto } from "../types/matchEvents"
 import { qk } from "../queryClient"
 import { showError } from "../toaster"
 import RecordingRequestDialog from "./RecordingRequestDialog"
+import { t, useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Moje snimke" profile tab - every recording request of the signed-in
@@ -40,12 +41,12 @@ import RecordingRequestDialog from "./RecordingRequestDialog"
    RecordingRequestDialog files the request.
    ────────────────────────────────────────────────────────────────────── */
 
-const STATUS_META: Record<RecordingRequestStatus, { label: string; palette: "yellow" | "blue" | "red" | "green" | "gray" }> = {
-    REQUESTED: { label: "Zatraženo", palette: "yellow" },
-    APPROVED: { label: "Odobreno", palette: "blue" },
-    REJECTED: { label: "Odbijeno", palette: "red" },
-    DELIVERED: { label: "Isporučeno", palette: "green" },
-    CANCELLED: { label: "Otkazano", palette: "gray" },
+const STATUS_PALETTE: Record<RecordingRequestStatus, "yellow" | "blue" | "red" | "green" | "gray"> = {
+    REQUESTED: "yellow",
+    APPROVED: "blue",
+    REJECTED: "red",
+    DELIVERED: "green",
+    CANCELLED: "gray",
 }
 
 function formatKickoff(iso: string | null | undefined): string {
@@ -86,13 +87,14 @@ function goalOptionLabel(e: MatchEventDto): string {
         e.type === "OWN_GOAL"
             ? e.playerName
                 ? `${e.playerName} (ag)`
-                : "autogol"
-            : e.playerName ?? "nepoznat strijelac"
-    const when = e.type === "PENALTY_GOAL" ? "Penali" : `${e.minute}'`
+                : t.matchLive.ownGoal
+            : e.playerName ?? t.matchLive.unknownScorer
+    const when = e.type === "PENALTY_GOAL" ? t.matchLive.penaltiesShort : `${e.minute}'`
     return `${when} — ${who}`
 }
 
 export default function MyRecordingsTab() {
+    const t = useTranslation()
     const queryClient = useQueryClient()
 
     const { data: requests, isLoading } = useQuery({
@@ -169,8 +171,8 @@ export default function MyRecordingsTab() {
     const [busyUuid, setBusyUuid] = useState<string | null>(null)
 
     async function onCancel(r: RecordingRequestDto) {
-        const what = r.kind === "GOAL" ? "gola" : "ove utakmice"
-        if (!confirm(`Otkazati zahtjev za snimku ${what}?`)) return
+        const what = r.kind === "GOAL" ? t.recordingRequest.mine.cancelWhatGoal : t.recordingRequest.mine.cancelWhatMatch
+        if (!confirm(t.recordingRequest.mine.confirmCancel(what))) return
         try {
             setBusyUuid(r.uuid)
             await deleteRecordingRequest(r.uuid)
@@ -192,9 +194,9 @@ export default function MyRecordingsTab() {
         } catch (err) {
             const code = errorCode(err)
             if (code === "NOT_PAID") {
-                showError("Snimka još nije plaćena", "Plati snimku prije preuzimanja.")
+                showError(t.recordingRequest.mine.downloadErrorNotPaidTitle, t.recordingRequest.mine.downloadErrorNotPaidDesc)
             } else if (isAxiosError(err) && err.response?.status === 409) {
-                showError("Snimka još nije dostupna", "Pokušaj ponovno malo kasnije.")
+                showError(t.recordingRequest.mine.downloadErrorGenericTitle, t.recordingRequest.mine.downloadErrorGenericDesc)
             }
             /* other errors toasted by the interceptor */
         } finally {
@@ -210,12 +212,12 @@ export default function MyRecordingsTab() {
         } catch (err) {
             const code = errorCode(err)
             if (code === "NOT_CONFIGURED") {
-                showError("Plaćanje trenutno nije dostupno", "Pokušaj ponovno za koji trenutak.")
+                showError(t.recordingRequest.mine.checkoutErrorNotConfiguredTitle, t.recordingRequest.mine.checkoutErrorNotConfiguredDesc)
             } else if (code === "ALREADY_PAID") {
-                showError("Snimka je već plaćena")
+                showError(t.recordingRequest.mine.checkoutErrorAlreadyPaidTitle)
                 queryClient.invalidateQueries({ queryKey: qk.myRecordingRequests })
             } else if (code === "NOT_APPROVED") {
-                showError("Zahtjev još nije odobren")
+                showError(t.recordingRequest.mine.checkoutErrorNotApprovedTitle)
             }
             /* other errors toasted by the interceptor */
         } finally {
@@ -229,14 +231,14 @@ export default function MyRecordingsTab() {
                 <VStack align="stretch" gap="3">
                     <HStack justify="space-between" wrap="wrap" gap="2">
                         <Box>
-                            <Heading size="sm">Moje snimke</Heading>
+                            <Heading size="sm">{t.recordingRequest.mine.title}</Heading>
                             <Text fontSize="xs" color="fg.muted">
                                 {GOAL_CLIP_REQUESTS_ENABLED
-                                    ? "Zahtjevi za video snimke — 20 € cijela utakmica, 5 € pojedini gol."
-                                    : "Zahtjevi za video snimke utakmica — 20 € po utakmici."}
+                                    ? t.recordingRequest.mine.subtitleWithGoals
+                                    : t.recordingRequest.mine.subtitleMatchOnly}
                             </Text>
                             <Text fontSize="xs" color="fg.muted">
-                                Nakon odobrenja plaćaš karticom, zatim preuzimaš snimku.
+                                {t.recordingRequest.mine.subtitleFlow}
                             </Text>
                         </Box>
                         <Button
@@ -249,7 +251,7 @@ export default function MyRecordingsTab() {
                             }}
                         >
                             {pickerOpen ? <FiX /> : <FiPlus />}
-                            {pickerOpen ? "Zatvori" : "Novi zahtjev"}
+                            {pickerOpen ? t.common.close : t.recordingRequest.mine.newRequest}
                         </Button>
                     </HStack>
 
@@ -271,10 +273,10 @@ export default function MyRecordingsTab() {
                                             setPickedMatchId(null)
                                         }}
                                     >
-                                        <option value="">Odaberi turnir…</option>
-                                        {(tournaments ?? []).map((t) => (
-                                            <option key={t.uuid} value={t.uuid}>
-                                                {t.name}
+                                        <option value="">{t.recordingRequest.mine.pickTournament}</option>
+                                        {(tournaments ?? []).map((tn) => (
+                                            <option key={tn.uuid} value={tn.uuid}>
+                                                {tn.name}
                                             </option>
                                         ))}
                                     </NativeSelect.Field>
@@ -297,7 +299,7 @@ export default function MyRecordingsTab() {
                                                 setPickedGoalId(null)
                                             }}
                                         >
-                                            Cijela utakmica · 20 €
+                                            {t.recordingRequest.mine.fullMatchOption}
                                         </Button>
                                         <Button
                                             size="2xs"
@@ -313,15 +315,14 @@ export default function MyRecordingsTab() {
                                                 }
                                             }}
                                         >
-                                            Pojedini gol · 5 €
+                                            {t.recordingRequest.mine.goalOption}
                                         </Button>
                                     </HStack>
                                 )}
 
                                 {pickedKind === "GOAL" && (
                                     <Text fontSize="xs" color="fg.muted">
-                                        Snimku pojedinog gola možeš zatražiti samo za završene
-                                        utakmice. Snimku cijele utakmice možeš zatražiti i unaprijed.
+                                        {t.recordingRequest.mine.goalOnlyFinishedNote}
                                     </Text>
                                 )}
 
@@ -329,13 +330,13 @@ export default function MyRecordingsTab() {
                                     scheduleLoading ? (
                                         <HStack gap="2" color="fg.muted">
                                             <Spinner size="xs" />
-                                            <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                            <Text fontSize="sm">{t.recordingRequest.mine.loadingMatches}</Text>
                                         </HStack>
                                     ) : pickableMatches.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
                                             {pickedKind === "GOAL"
-                                                ? "Ovaj turnir još nema odigranih utakmica."
-                                                : "Ovaj turnir još nema utakmica s poznatim ekipama."}
+                                                ? t.recordingRequest.mine.noMatchesGoal
+                                                : t.recordingRequest.mine.noMatchesTeams}
                                         </Text>
                                     ) : (
                                         <NativeSelect.Root size="sm">
@@ -348,7 +349,7 @@ export default function MyRecordingsTab() {
                                                     setPickedGoalId(null)
                                                 }}
                                             >
-                                                <option value="">Odaberi utakmicu…</option>
+                                                <option value="">{t.recordingRequest.mine.pickMatch}</option>
                                                 {pickableMatches.map((m) => (
                                                     <option key={m.matchId} value={String(m.matchId)}>
                                                         {m.team1Name} – {m.team2Name}
@@ -365,11 +366,11 @@ export default function MyRecordingsTab() {
                                     goalsLoading ? (
                                         <HStack gap="2" color="fg.muted">
                                             <Spinner size="xs" />
-                                            <Text fontSize="sm">Učitavanje golova…</Text>
+                                            <Text fontSize="sm">{t.recordingRequest.mine.loadingGoals}</Text>
                                         </HStack>
                                     ) : (goals ?? []).length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
-                                            Na ovoj utakmici nema zabilježenih golova.
+                                            {t.recordingRequest.mine.noGoals}
                                         </Text>
                                     ) : (
                                         <NativeSelect.Root size="sm">
@@ -380,7 +381,7 @@ export default function MyRecordingsTab() {
                                                     setPickedGoalId(v ? Number(v) : null)
                                                 }}
                                             >
-                                                <option value="">Odaberi gol…</option>
+                                                <option value="">{t.recordingRequest.mine.pickGoal}</option>
                                                 {(goals ?? []).map((g) => (
                                                     <option key={g.id} value={String(g.id)}>
                                                         {goalOptionLabel(g)}
@@ -403,7 +404,7 @@ export default function MyRecordingsTab() {
                                     onClick={() => setDialogOpen(true)}
                                 >
                                     <FiVideo />{" "}
-                                    {pickedKind === "GOAL" ? "Zatraži snimku gola" : "Zatraži snimku"}
+                                    {pickedKind === "GOAL" ? t.recordingRequest.mine.requestGoalCta : t.recordingRequest.mine.requestMatchCta}
                                 </Button>
                             </VStack>
                         </Box>
@@ -413,7 +414,7 @@ export default function MyRecordingsTab() {
                     {isLoading ? (
                         <HStack gap="2" color="fg.muted" py="4">
                             <Spinner size="xs" />
-                            <Text fontSize="sm">Učitavanje…</Text>
+                            <Text fontSize="sm">{t.common.loading}</Text>
                         </HStack>
                     ) : !requests || requests.length === 0 ? (
                         <Box
@@ -426,8 +427,7 @@ export default function MyRecordingsTab() {
                             textAlign="center"
                         >
                             <Text color="fg.muted" fontSize="sm">
-                                Još nemaš zahtjeva za snimke. Snimku možeš zatražiti sa stranice
-                                utakmice ili gumbom „Novi zahtjev“.
+                                {t.recordingRequest.mine.emptyState}
                             </Text>
                         </Box>
                     ) : (
@@ -482,7 +482,9 @@ function RequestRow({
     onDownload: () => void
     onCheckout: () => void
 }) {
-    const meta = STATUS_META[r.status] ?? { label: r.status, palette: "gray" }
+    const t = useTranslation()
+    const statusLabel = t.recordingRequest.statusLabels[r.status] ?? r.status
+    const statusPalette = STATUS_PALETTE[r.status] ?? "gray"
     const kickoff = formatKickoff(r.kickoffAt)
     // Payment is due whenever a request has moved past REQUESTED but hasn't
     // been paid yet - the normal APPROVED-then-pay step, plus a
@@ -509,12 +511,12 @@ function RequestRow({
                     </Text>
                     {r.kind === "GOAL" && (
                         <Text fontSize="xs" color="pitch.fg" fontWeight={600} truncate maxW="full">
-                            ⚽ {r.goalLabel ?? "gol"}
+                            ⚽ {r.goalLabel ?? t.recordingRequest.adminRequests.goalLabelFallback}
                         </Text>
                     )}
                     {r.adminNote && (
                         <Text fontSize="xs" color="fg.muted">
-                            Napomena: <chakra.span fontStyle="italic">{r.adminNote}</chakra.span>
+                            {t.recordingRequest.mine.noteLabel} <chakra.span fontStyle="italic">{r.adminNote}</chakra.span>
                         </Text>
                     )}
                 </VStack>
@@ -525,15 +527,15 @@ function RequestRow({
                             colorPalette={r.kind === "GOAL" ? "pitch" : "gray"}
                             size="sm"
                         >
-                            {r.kind === "GOAL" ? "Gol" : "Utakmica"}
+                            {r.kind === "GOAL" ? t.recordingRequest.mine.goalBadge : t.recordingRequest.mine.matchBadge}
                         </Badge>
                         {r.paid && (
                             <Badge variant="subtle" colorPalette="green" size="sm">
-                                Plaćeno
+                                {t.recordingRequest.mine.paidBadge}
                             </Badge>
                         )}
-                        <Badge variant="solid" colorPalette={meta.palette} size="sm">
-                            {meta.label}
+                        <Badge variant="solid" colorPalette={statusPalette} size="sm">
+                            {statusLabel}
                         </Badge>
                     </HStack>
                     <Text fontSize="xs" fontFamily="mono" fontWeight={700} color="fg.muted">
@@ -552,7 +554,7 @@ function RequestRow({
                             loading={busy}
                             onClick={onCancel}
                         >
-                            <FiX /> Otkaži
+                            <FiX /> {t.recordingRequest.mine.cancelButton}
                         </Button>
                     )}
                     {paymentDue && (
@@ -563,7 +565,7 @@ function RequestRow({
                             loading={busy}
                             onClick={onCheckout}
                         >
-                            <FiCreditCard /> Plati snimku
+                            <FiCreditCard /> {t.recordingRequest.mine.payButton}
                         </Button>
                     )}
                     {r.status === "DELIVERED" && (
@@ -574,7 +576,7 @@ function RequestRow({
                             loading={busy}
                             onClick={onDownload}
                         >
-                            <FiDownload /> Preuzmi snimku
+                            <FiDownload /> {t.recordingRequest.mine.downloadButton}
                         </Button>
                     )}
                 </HStack>

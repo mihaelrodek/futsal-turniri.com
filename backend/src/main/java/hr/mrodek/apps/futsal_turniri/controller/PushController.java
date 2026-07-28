@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.model.PushSubscription;
 import hr.mrodek.apps.futsal_turniri.repository.PushSubscriptionRepository;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -44,6 +45,7 @@ public class PushController {
 
     @Inject PushService pushService;
     @Inject PushSubscriptionRepository subRepo;
+    @Inject MessageService messages;
     @Inject JsonWebToken jwt;
 
     /** Anonymous: serves the VAPID public key + a "ready" flag. */
@@ -69,7 +71,7 @@ public class PushController {
         if (body == null || body.endpoint() == null || body.endpoint().isBlank()
                 || body.p256dh() == null || body.p256dh().isBlank()
                 || body.auth() == null || body.auth().isBlank()) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("Missing endpoint/p256dh/auth").build();
+            return Response.status(Response.Status.BAD_REQUEST).entity(messages.t("push.error.missingFields")).build();
         }
         // null => anonymous browser; a non-blank value => a logged-in user.
         String myUid = jwt != null ? jwt.getSubject() : null;
@@ -93,7 +95,7 @@ public class PushController {
             // since endpoint URLs aren't secrets. 409 otherwise.
             if (existing.getUserUid() != null) {
                 return Response.status(Response.Status.CONFLICT)
-                        .entity("Endpoint claimed by a user.").build();
+                        .entity(messages.t("push.error.endpointClaimedByUser")).build();
             }
             refresh(existing, body, ua);
         } else if (existing.getUserUid() == null) {
@@ -116,7 +118,7 @@ public class PushController {
             // attacker starts). 409 mirrors the spec's "subscription
             // already exists" expectation.
             return Response.status(Response.Status.CONFLICT)
-                    .entity("Endpoint claimed by another user.").build();
+                    .entity(messages.t("push.error.endpointClaimedByOther")).build();
         }
         return Response.status(Response.Status.CREATED).build();
     }

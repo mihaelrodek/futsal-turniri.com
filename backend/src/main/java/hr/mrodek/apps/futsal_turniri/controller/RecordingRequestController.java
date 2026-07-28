@@ -16,6 +16,7 @@ import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
 import hr.mrodek.apps.futsal_turniri.services.RecordingAutoLinkService;
 import hr.mrodek.apps.futsal_turniri.services.RecordingRequestNotifier;
@@ -102,6 +103,7 @@ public class RecordingRequestController {
     @Inject StripeService stripeService;
     @Inject RecordingRequestNotifier notifier;
     @Inject RecordingAutoLinkService autoLink;
+    @Inject MessageService messages;
     @Inject JsonWebToken jwt;
 
     /* ─────────────────────────── request bodies ─────────────────────────── */
@@ -181,10 +183,10 @@ public class RecordingRequestController {
             contactEmail = normalizeEmail(emailClaim == null ? null : emailClaim.toString());
         }
         if (contactEmail == null) {
-            throw new BadRequestException("contactEmail is required");
+            throw new BadRequestException(messages.t("recording.error.contactEmailRequired"));
         }
         if (!isValidEmail(contactEmail)) {
-            throw new BadRequestException("Neispravna email adresa.");
+            throw new BadRequestException(messages.t("recording.error.invalidEmail"));
         }
         return new RequesterContact(me, contactEmail);
     }
@@ -306,7 +308,7 @@ public class RecordingRequestController {
         MatchEvent ev = eventRepo.findByIdOptional(matchEventId).orElse(null);
         if (ev == null) return Response.status(Response.Status.NOT_FOUND).build();
         if (!isGoal(ev.getType())) {
-            throw new BadRequestException("matchEventId must reference a goal event");
+            throw new BadRequestException(messages.t("recording.error.goalEventRequired"));
         }
 
         Matches match = ev.getMatch();
@@ -394,8 +396,8 @@ public class RecordingRequestController {
 
         Matches match = r.getMatch();
         String productName = (r.getKind() == RecordingRequestKind.GOAL
-                ? "Snimka gola: " + (r.getGoalLabel() != null ? r.getGoalLabel() + ", " : "")
-                : "Snimka utakmice: ")
+                ? messages.t("recording.stripe.product.goal") + " " + (r.getGoalLabel() != null ? r.getGoalLabel() + ", " : "")
+                : messages.t("recording.stripe.product.match") + " ")
                 + RecordingRequestNotifier.matchLabel(match);
         String base = emailService.baseUrl() + "/snimke/zahtjev/" + uuid;
         String successUrl = base + "?placanje=uspjeh";
@@ -435,10 +437,10 @@ public class RecordingRequestController {
             target = RecordingRequestStatus.valueOf(
                     body == null || body.status() == null ? "" : body.status().toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("status must be APPROVED or REJECTED");
+            throw new BadRequestException(messages.t("recording.error.statusInvalid"));
         }
         if (target != RecordingRequestStatus.APPROVED && target != RecordingRequestStatus.REJECTED) {
-            throw new BadRequestException("status must be APPROVED or REJECTED");
+            throw new BadRequestException(messages.t("recording.error.statusInvalid"));
         }
         if (r.getStatus() != RecordingRequestStatus.REQUESTED) {
             return conflict("NOT_REQUESTED");
@@ -455,11 +457,10 @@ public class RecordingRequestController {
 
         boolean approved = target == RecordingRequestStatus.APPROVED;
         // Resolve the kind wording HERE - the push is dispatched off-thread.
-        String what = RecordingRequestNotifier.kindLabel(r.getKind());
+        String what = notifier.kindLabel(r.getKind());
         pushService.sendToUser(r.getCreatedByUid(), new PushService.PushPayload(
-                approved ? "Zahtjev za snimku odobren" : "Zahtjev za snimku odbijen",
-                "Tvoj zahtjev za " + what + (approved ? " je odobren." : " je odbijen.")
-                        + " Detalji su na tvom profilu.",
+                messages.t(approved ? "recording.push.statusApproved.title" : "recording.push.statusRejected.title"),
+                messages.t(approved ? "recording.push.approved.body" : "recording.push.rejected.body", what),
                 "/profil"));
 
         if (approved) {
@@ -512,7 +513,7 @@ public class RecordingRequestController {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
         if (body == null || body.recordingUuid() == null) {
-            throw new BadRequestException("recordingUuid is required");
+            throw new BadRequestException(messages.t("recording.error.recordingUuidRequired"));
         }
         if (r.getStatus() != RecordingRequestStatus.APPROVED && r.getStatus() != RecordingRequestStatus.DELIVERED) {
             return conflict("NOT_APPROVED");
@@ -538,10 +539,8 @@ public class RecordingRequestController {
     private void notifyDelivered(MatchRecordingRequest r) {
         boolean goal = r.getKind() == RecordingRequestKind.GOAL;
         pushService.sendToUser(r.getCreatedByUid(), new PushService.PushPayload(
-                goal ? "Snimka gola je dostupna" : "Snimka utakmice je dostupna",
-                goal
-                        ? "Tvoja snimka gola je spremna. Preuzmi je na svom profilu."
-                        : "Tvoja snimka utakmice je spremna. Preuzmi je na svom profilu.",
+                messages.t(goal ? "recording.push.downloadReady.goal.title" : "recording.push.downloadReady.match.title"),
+                messages.t(goal ? "recording.push.downloadReady.goal.body" : "recording.push.downloadReady.match.body"),
                 "/profil"));
     }
 

@@ -50,6 +50,7 @@ import { BulkImportDialog } from "../components/BulkImportDialog"
 import { EmptyState, Panel } from "../ui/primitives"
 import { showError, showSuccess } from "../toaster"
 import { TeamAvatar } from "./parts"
+import { t, useTranslation } from "../i18n"
 
 /* "Ekipe" section - team management as a master-detail.
    LEFT pane = the full list of teams (rename / approve / remove
@@ -59,35 +60,16 @@ import { TeamAvatar } from "./parts"
    stack. Preserved: self-register dialog, partner-requests panel,
    approving pending teams, the podium editor on FINISHED. */
 
-/** Croatian count word for a roster size: "1 igrač" / "N igrača". */
 /** Metallic podium colours - same values as TournamentResults, so the trophy
  *  next to a team card matches the results card in the sidebar. */
 const PODIUM_GOLD = "#f5c842"
 const PODIUM_SILVER = "#c0c5cc"
 const PODIUM_BRONZE = "#cd8654"
 
-function playersWord(n: number): string {
-    return n === 1 ? "igrač" : "igrača"
-}
-
 /* ── Jersey colours ─────────────────────────────────────────────────────
    Preset kit palette the organizer picks from (free-hex isn't needed -
    futsal kits come in a dozen colours). Stored as lowercase #rrggbb. */
-const JERSEY_COLORS: { hex: string; label: string }[] = [
-    { hex: "#f8fafc", label: "Bijela" },
-    { hex: "#111827", label: "Crna" },
-    { hex: "#dc2626", label: "Crvena" },
-    { hex: "#7a1d2b", label: "Bordo" },
-    { hex: "#f97316", label: "Narančasta" },
-    { hex: "#facc15", label: "Žuta" },
-    { hex: "#16a34a", label: "Zelena" },
-    { hex: "#0ea5e9", label: "Svijetloplava" },
-    { hex: "#2563eb", label: "Plava" },
-    { hex: "#1e3a8a", label: "Tamnoplava" },
-    { hex: "#7c3aed", label: "Ljubičasta" },
-    { hex: "#ec4899", label: "Roza" },
-    { hex: "#6b7280", label: "Siva" },
-]
+const JERSEY_COLORS: { hex: string; label: string }[] = t.teams.jerseyColors
 
 /** "Dres" picker - a menu of preset kit swatches. Persists immediately via
  *  its own endpoint (the teams-list save deliberately ignores the colour). */
@@ -100,6 +82,7 @@ function JerseyColorPicker({
     team: TeamShort
     onTeamUpdated: (updated: TeamShort) => void
 }) {
+    const t = useTranslation()
     const [busy, setBusy] = useState(false)
 
     async function applyColor(kind: "jersey" | "shorts", hex: string | null) {
@@ -153,8 +136,8 @@ function JerseyColorPicker({
                     bg="bg.panel"
                     cursor="pointer"
                     _hover={{ borderColor: "border.emphasized" }}
-                    title="Boje dresa i hlača"
-                    aria-label="Boje dresa i hlača"
+                    title={t.teams.kitPickerTitle}
+                    aria-label={t.teams.kitPickerTitle}
                     opacity={busy ? 0.6 : 1}
                 >
                     {team.jerseyColor || team.shortsColor ? (
@@ -171,7 +154,7 @@ function JerseyColorPicker({
                                     bg={team.jerseyColor}
                                     borderWidth="1px"
                                     borderColor="border.emphasized"
-                                    title="Dres"
+                                    title={t.teams.jerseyChipTitle}
                                 />
                             )}
                             {team.shortsColor && (
@@ -182,7 +165,7 @@ function JerseyColorPicker({
                                     bg={team.shortsColor}
                                     borderWidth="1px"
                                     borderColor="border.emphasized"
-                                    title="Hlače"
+                                    title={t.teams.shortsChipTitle}
                                 />
                             )}
                         </HStack>
@@ -198,7 +181,7 @@ function JerseyColorPicker({
                         />
                     )}
                     <Text fontSize="xs" fontWeight={600} color="fg.muted">
-                        Boje
+                        {t.teams.colorsLabel}
                     </Text>
                     <Box color="fg.muted" display="inline-flex"><FiChevronDown size={12} /></Box>
                 </chakra.button>
@@ -207,13 +190,13 @@ function JerseyColorPicker({
                 <Menu.Positioner>
                     <Menu.Content p="2">
                         <ColorRow
-                            label="Boja dresa"
+                            label={t.teams.jerseyColorLabel}
                             selected={team.jerseyColor}
                             onPick={(hex) => applyColor("jersey", hex)}
                         />
                         <Box h="2" />
                         <ColorRow
-                            label="Boja hlača"
+                            label={t.teams.shortsColorLabel}
                             selected={team.shortsColor}
                             onPick={(hex) => applyColor("shorts", hex)}
                         />
@@ -235,6 +218,7 @@ function ColorRow({
     selected?: string | null
     onPick: (hex: string | null) => void
 }) {
+    const t = useTranslation()
     return (
         <>
             <Text fontSize="xs" color="fg.muted" fontWeight={600} px="1" pb="1.5">
@@ -266,7 +250,7 @@ function ColorRow({
             </Grid>
             {selected && (
                 <Menu.Item value={`${label}-none`} onClick={() => onPick(null)} fontSize="xs">
-                    Ukloni
+                    {t.teams.removeColorOption}
                 </Menu.Item>
             )}
         </>
@@ -304,6 +288,10 @@ type TeamsSectionProps = {
 }
 
 export default function TeamsSection(props: TeamsSectionProps) {
+    // Named `tr` (not `t`) in this scope only - the component's own props
+    // destructure a tournament-details object AS `t` (see TeamsSectionProps),
+    // an unrelated pre-existing convention this pass doesn't touch.
+    const tr = useTranslation()
     const {
         t,
         uuid,
@@ -509,17 +497,17 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         metallic gold / silver / bronze used by the results
                         card - not a medal, per design feedback. */}
                     {isWinnerTeam && (
-                        <Box color={PODIUM_GOLD} flexShrink={0} title="1. mjesto">
+                        <Box color={PODIUM_GOLD} flexShrink={0} title={tr.teams.podiumPlace(1)}>
                             <FaTrophy size={20} />
                         </Box>
                     )}
                     {isSecondPlaceTeam && (
-                        <Box color={PODIUM_SILVER} flexShrink={0} title="2. mjesto">
+                        <Box color={PODIUM_SILVER} flexShrink={0} title={tr.teams.podiumPlace(2)}>
                             <FaTrophy size={20} />
                         </Box>
                     )}
                     {isThirdPlaceTeam && (
-                        <Box color={PODIUM_BRONZE} flexShrink={0} title="3. mjesto">
+                        <Box color={PODIUM_BRONZE} flexShrink={0} title={tr.teams.podiumPlace(3)}>
                             <FaTrophy size={20} />
                         </Box>
                     )}
@@ -542,14 +530,14 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                 color="fg.ink"
                                 truncate
                             >
-                                {p.name?.trim() ? p.name : "Bez imena"}
+                                {p.name?.trim() ? p.name : tr.teams.noName}
                             </Text>
                         </HStack>
                         {/* Roster size at a glance - hidden when a team has no
                             players yet (0 shows nothing, per request). */}
                         {playerCount > 0 && (
                             <Text fontSize="2xs" color="fg.muted" fontWeight={600} lineHeight="1.3">
-                                {playerCount} {playersWord(playerCount)}
+                                {tr.teams.playersWord(playerCount)}
                             </Text>
                         )}
                     </Box>
@@ -559,7 +547,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         </Box>
                     )}
                     <IconButton
-                        aria-label="Povijest mečeva"
+                        aria-label={tr.teams.matchHistoryAria}
                         size="xs"
                         variant="ghost"
                         onClick={(e) => {
@@ -567,7 +555,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             openTeamInfo(p.id)
                         }}
                         disabled={!hasServerId}
-                        title="Povijest mečeva"
+                        title={tr.teams.matchHistoryAria}
                         flexShrink={0}
                     >
                         <FiInfo />
@@ -577,7 +565,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 <Text fontSize="xs" color="fg.muted" pl="10" minH="1.25em" lineHeight="1.25em">
                     {p.submittedBySlug ? (
                         <>
-                            Prijavio:{" "}
+                            {tr.teams.submittedBy}{" "}
                             <RouterLink
                                 to={`/profil/${p.submittedBySlug}`}
                                 onClick={(e) => e.stopPropagation()}
@@ -595,7 +583,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                     <HStack gap="1.5" wrap="wrap">
                         {isPending && (
                             <Badge variant="solid" colorPalette="yellow">
-                                Čeka odobrenje
+                                {tr.teams.pendingApproval}
                             </Badge>
                         )}
                         {/* Podium teams never show "Eliminiran": 2nd/3rd are
@@ -603,7 +591,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             oddly next to a trophy and made those cards taller
                             than the winner's. */}
                         {eliminated && !isPodiumTeam && (
-                            <Badge variant="subtle" colorPalette="gray">Eliminiran</Badge>
+                            <Badge variant="subtle" colorPalette="gray">{tr.teams.eliminatedBadge}</Badge>
                         )}
                     </HStack>
 
@@ -618,7 +606,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                     onApproveTeam(p)
                                 }}
                             >
-                                <FiCheck /> Odobri
+                                <FiCheck /> {tr.common.approve}
                             </Button>
                         )}
                         {/* Team delete also moved into the RosterPanel
@@ -643,11 +631,11 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 <Panel>
                     <EmptyState
                         icon={FiUser}
-                        title="Još nema ekipa"
+                        title={tr.teams.noTeamsTitle}
                         description={
                             canEdit
-                                ? 'Dodaj prvu ekipu klikom na "Dodaj ekipu" ispod.'
-                                : "Organizator još nije dodao ekipe."
+                                ? tr.teams.noTeamsDescCanEdit
+                                : tr.teams.noTeamsDescReadonly
                         }
                     />
                 </Panel>
@@ -663,7 +651,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         <Box>
                             <HStack mb="2" gap="2" align="center">
                                 <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" letterSpacing="wider" textTransform="uppercase">
-                                    Eliminirani
+                                    {tr.teams.eliminatedLabel}
                                 </Text>
                                 <Text fontSize="xs" color="fg.muted">({displayEliminatedTeams.length})</Text>
                             </HStack>
@@ -691,8 +679,8 @@ export default function TeamsSection(props: TeamsSectionProps) {
                             >
                                 <FiPlus />
                                 {userAlreadyRegistered
-                                    ? "Prijavi još jednu ekipu"
-                                    : "Prijavi ekipu za turnir"}
+                                    ? tr.teams.registerAnotherTeam
+                                    : tr.teams.registerTeam}
                             </Button>
                         )}
                         {/* Once the tournament has started, registration is
@@ -707,9 +695,9 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                     colorPalette="brand"
                                     onClick={() => setBulkTeamsOpen(true)}
                                     disabled={atCapacity}
-                                    title="Uvezi više ekipa odjednom"
+                                    title={tr.teams.importManyTeamsTitle}
                                 >
-                                    <FiPlus /> Uvezi više
+                                    <FiPlus /> {tr.teams.importManyTeams}
                                 </Button>
                                 <Button
                                     size="sm"
@@ -719,11 +707,11 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                     disabled={atCapacity}
                                     title={
                                         atCapacity
-                                            ? `Maksimalan broj ekipa (${capacity})`
-                                            : "Dodaj novu ekipu"
+                                            ? tr.teams.maxTeamsTooltip(capacity!)
+                                            : tr.teams.addTeamTitle
                                     }
                                 >
-                                    <FiPlus /> Dodaj ekipu
+                                    <FiPlus /> {tr.teams.addTeam}
                                 </Button>
                             </>
                         )}
@@ -736,12 +724,12 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 <HStack justify="flex-end" gap="2" align="baseline" pt="1">
                     <Text fontSize="13px" color="fg.muted">
                         {capacity != null
-                            ? `${teams.length} / ${capacity}`
-                            : `${teams.length} ekipa`}
+                            ? tr.teams.teamsCountOfCapacity(teams.length, capacity)
+                            : tr.teams.teamsCountPlain(teams.length)}
                     </Text>
                     {overCapacity && (
                         <Badge variant="subtle" colorPalette="red">
-                            +{teams.length - capacity!} preko
+                            {tr.teams.overCapacity(teams.length - capacity!)}
                         </Badge>
                     )}
                 </HStack>
@@ -778,8 +766,8 @@ export default function TeamsSection(props: TeamsSectionProps) {
         <Panel h="full" display="flex" alignItems="center" justifyContent="center" minH="320px">
             <EmptyState
                 icon={FiUsers}
-                title="Odaberi ekipu"
-                description="Klikni ekipu s lijeve strane da vidiš i urediš njezin sastav igrača."
+                title={tr.teams.rosterPaneEmptyTitle}
+                description={tr.teams.rosterPaneEmptyDesc}
             />
         </Panel>
     )
@@ -790,10 +778,10 @@ export default function TeamsSection(props: TeamsSectionProps) {
             <BulkImportDialog
                 open={bulkTeamsOpen}
                 onClose={() => setBulkTeamsOpen(false)}
-                title="Uvezi ekipe"
-                description="Zalijepi ekipe - jedna ekipa u svaki red. Sve iz liste dodaju se odjednom."
-                placeholder={"Ekipa 1\nEkipa 2\nEkipa 3"}
-                submitLabel="Uvezi ekipe"
+                title={tr.teams.importTeamsTitle}
+                description={tr.teams.importTeamsDesc}
+                placeholder={tr.teams.importTeamsPlaceholder}
+                submitLabel={tr.teams.importTeamsSubmit}
                 onSubmit={async (lines) => { await onBulkAddTeams(lines) }}
             />
 
@@ -803,14 +791,14 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         <HStack gap="2" align="center">
                             <Box color="brand.fg"><FiUserPlus /></Box>
                             <Text fontWeight="semibold" fontSize="sm">
-                                Zahtjevi za partnera
+                                {tr.teams.partnerRequestsTitle}
                             </Text>
                             <Badge variant="solid" colorPalette="brand" size="sm">
                                 {openRequests.length}
                             </Badge>
                         </HStack>
                         <IconButton
-                            aria-label={teamRequestsCollapsed ? "Proširi" : "Sažmi"}
+                            aria-label={teamRequestsCollapsed ? tr.teams.expand : tr.teams.collapse}
                             size="xs"
                             variant="ghost"
                             onClick={() => setTeamRequestsCollapsed((v) => !v)}
@@ -961,6 +949,7 @@ function RosterPanel({
      *  confirmation flow (DeleteTeamDialog), this just signals intent. */
     onDeleteTeam: () => void
 }) {
+    const t = useTranslation()
     // Master toggle. Two distinct gates depend on it:
     //   1. Team-name input + team-delete trash (always - these are the
     //      destructive team-level actions the user wants hidden by
@@ -999,11 +988,11 @@ function RosterPanel({
             const list = await fetchPlayers(uuid, team.id)
             setPlayers(list)
         } catch (e: any) {
-            setError(e?.response?.data ?? e?.message ?? "Neuspješno učitavanje sastava.")
+            setError(e?.response?.data ?? e?.message ?? t.teams.loadRosterError)
         } finally {
             setLoading(false)
         }
-    }, [uuid, team.id])
+    }, [uuid, team.id, t.teams.loadRosterError])
 
     useEffect(() => {
         load()
@@ -1067,9 +1056,9 @@ function RosterPanel({
         }
         if (created.length > 0) setPlayers((ps) => [...ps, ...created])
         if (failed > 0) {
-            showError("Djelomičan uvoz", `Dodano ${created.length}, neuspješno ${failed}.`)
+            showError(t.teams.bulkImportPartialTitle, t.teams.bulkImportPartialDesc(created.length, failed))
         } else {
-            showSuccess("Igrači su uvezeni.", `Dodano ${created.length} igrača.`)
+            showSuccess(t.teams.bulkImportSuccessTitle, t.teams.bulkImportSuccessDesc(created.length))
         }
     }
 
@@ -1125,7 +1114,7 @@ function RosterPanel({
     }
 
     async function removePlayer(p: PlayerDto) {
-        if (!confirm(`Ukloniti igrača ${p.name} iz sastava?`)) return
+        if (!confirm(t.teams.confirmRemovePlayer(p.name))) return
         try {
             setBusyId(p.id)
             await deletePlayer(uuid, team.id, p.id)
@@ -1149,7 +1138,7 @@ function RosterPanel({
                     {/* Row 1: back button + avatar + team name + roster size. */}
                     <HStack gap="3" align="flex-start" minW="0">
                         <IconButton
-                            aria-label="Natrag na ekipe"
+                            aria-label={t.teams.backToTeams}
                             size="sm"
                             variant="ghost"
                             display={{ base: "inline-flex", lg: "none" }}
@@ -1178,7 +1167,7 @@ function RosterPanel({
                                     onChange={onRenameTeam}
                                     onBlur={onCommitRename}
                                     onCommit={onCommitRename}
-                                    placeholder="Ime ekipe"
+                                    placeholder={t.autocomplete.teamNamePlaceholder}
                                     fontWeight="semibold"
                                 />
                             ) : (
@@ -1207,7 +1196,7 @@ function RosterPanel({
                                 </HStack>
                             )}
                             <Text fontSize="xs" color="fg.muted" mt="0.5">
-                                Sastav igrača · {players.length}
+                                {t.teams.rosterHeading(players.length)}
                             </Text>
                         </Box>
                     </HStack>
@@ -1239,11 +1228,11 @@ function RosterPanel({
                                 >
                                     {editMode ? (
                                         <>
-                                            <FiCheck /> Gotovo
+                                            <FiCheck /> {t.teams.done}
                                         </>
                                     ) : (
                                         <>
-                                            <FiEdit2 /> Uredi
+                                            <FiEdit2 /> {t.common.edit}
                                         </>
                                     )}
                                 </Button>
@@ -1252,12 +1241,12 @@ function RosterPanel({
                                  can't be triggered by accident. */}
                             {editMode && canEditTeamName && (
                                 <IconButton
-                                    aria-label="Obriši ekipu"
+                                    aria-label={t.teams.deleteTeamAria}
                                     size="sm"
                                     variant="outline"
                                     colorPalette="red"
                                     onClick={onDeleteTeam}
-                                    title="Obriši ekipu"
+                                    title={t.teams.deleteTeamAria}
                                 >
                                     <FiTrash2 />
                                 </IconButton>
@@ -1269,9 +1258,9 @@ function RosterPanel({
                                         variant="outline"
                                         colorPalette="brand"
                                         onClick={() => setBulkOpen(true)}
-                                        title="Uvezi više igrača odjednom"
+                                        title={t.teams.importPlayersTooltip}
                                     >
-                                        <FiPlus /> Uvezi više
+                                        <FiPlus /> {t.teams.importManyTeams}
                                     </Button>
                                     <Button
                                         size="sm"
@@ -1279,7 +1268,7 @@ function RosterPanel({
                                         colorPalette="brand"
                                         onClick={() => setAdding(true)}
                                     >
-                                        <FiPlus /> Dodaj igrača
+                                        <FiPlus /> {t.teams.addPlayer}
                                     </Button>
                                 </>
                             )}
@@ -1291,13 +1280,10 @@ function RosterPanel({
                 <BulkImportDialog
                     open={bulkOpen}
                     onClose={() => setBulkOpen(false)}
-                    title="Uvezi igrače"
-                    description={
-                        "Zalijepi igrače - jedan igrač u svaki red. Iza imena i prezimena " +
-                        "možeš (ali ne moraš) dodati broj dresa, odvojen zarezom."
-                    }
-                    placeholder={"Ivan Horvat, 7\nMarko Marić, 10\nLuka Novak"}
-                    submitLabel="Uvezi igrače"
+                    title={t.teams.importPlayersTitle}
+                    description={t.teams.importPlayersDesc}
+                    placeholder={t.teams.importPlayersPlaceholder}
+                    submitLabel={t.teams.importPlayersSubmit}
                     onSubmit={submitBulkPlayers}
                 />
 
@@ -1326,7 +1312,7 @@ function RosterPanel({
                                     size="sm"
                                     w="100px"
                                     inputMode="numeric"
-                                    placeholder="Broj"
+                                    placeholder={t.teams.numberPlaceholder}
                                     value={newNumber}
                                     onChange={(e) =>
                                         setNewNumber(e.target.value.replace(/[^\d]/g, ""))
@@ -1350,7 +1336,7 @@ function RosterPanel({
                                     }}
                                     disabled={savingNew}
                                 >
-                                    Odustani
+                                    {t.common.cancel}
                                 </Button>
                                 <Button
                                     size="xs"
@@ -1360,7 +1346,7 @@ function RosterPanel({
                                     loading={savingNew}
                                     disabled={!newName.trim() || savingNew}
                                 >
-                                    <FiCheck /> Dodaj
+                                    <FiCheck /> {t.common.add}
                                 </Button>
                             </HStack>
                         </VStack>
@@ -1370,7 +1356,7 @@ function RosterPanel({
                 {loading ? (
                     <VStack gap="2" py="8" align="center">
                         <Spinner size="md" color="brand.solid" />
-                        <Text fontSize="sm" color="fg.muted">Učitavanje sastava…</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.teams.loadingRoster}</Text>
                     </VStack>
                 ) : error ? (
                     <Box
@@ -1382,17 +1368,17 @@ function RosterPanel({
                     >
                         <Text fontSize="sm" color="red.fg">{error}</Text>
                         <Button size="xs" variant="outline" mt="2" onClick={load}>
-                            Pokušaj ponovno
+                            {t.common.retry}
                         </Button>
                     </Box>
                 ) : players.length === 0 ? (
                     <EmptyState
                         icon={FiUsers}
-                        title="Sastav je prazan"
+                        title={t.teams.emptyRosterTitle}
                         description={
                             canEdit
-                                ? 'Dodaj prvog igrača klikom na "Dodaj igrača".'
-                                : "Organizator još nije unio igrače za ovu ekipu."
+                                ? t.teams.emptyRosterDescCanEdit
+                                : t.teams.emptyRosterDescReadonly
                         }
                     />
                 ) : (
@@ -1417,7 +1403,7 @@ function RosterPanel({
                                                     autoFocus
                                                     flex="1"
                                                     minW="160px"
-                                                    placeholder="Ime igrača"
+                                                    placeholder={t.teams.playerNamePlaceholder}
                                                     value={editName}
                                                     onChange={(e) => setEditName(e.target.value)}
                                                     onKeyDown={(e) => {
@@ -1431,7 +1417,7 @@ function RosterPanel({
                                                     size="sm"
                                                     w="100px"
                                                     inputMode="numeric"
-                                                    placeholder="Broj"
+                                                    placeholder={t.teams.numberPlaceholder}
                                                     value={editNumber}
                                                     onChange={(e) =>
                                                         setEditNumber(
@@ -1453,7 +1439,7 @@ function RosterPanel({
                                                     onClick={cancelEdit}
                                                     disabled={savingEdit}
                                                 >
-                                                    Odustani
+                                                    {t.common.cancel}
                                                 </Button>
                                                 <Button
                                                     size="xs"
@@ -1463,7 +1449,7 @@ function RosterPanel({
                                                     loading={savingEdit}
                                                     disabled={!editName.trim() || savingEdit}
                                                 >
-                                                    <FiCheck /> Spremi
+                                                    <FiCheck /> {t.common.save}
                                                 </Button>
                                             </HStack>
                                         </VStack>
@@ -1501,8 +1487,8 @@ function RosterPanel({
                                     </Text>
 
                                     {p.captain && (
-                                        <Badge variant="solid" colorPalette="brand" title="Kapetan">
-                                            K
+                                        <Badge variant="solid" colorPalette="brand" title={t.teams.captain}>
+                                            {t.teams.captainBadge}
                                         </Badge>
                                     )}
 
@@ -1522,29 +1508,29 @@ function RosterPanel({
                                                     variant="outline"
                                                     onClick={() => makeCaptain(p)}
                                                     loading={busy}
-                                                    title="Postavi za kapetana"
+                                                    title={t.teams.setCaptainTitle}
                                                 >
-                                                    Kapetan
+                                                    {t.teams.captain}
                                                 </Button>
                                             )}
                                             <IconButton
-                                                aria-label="Uredi igrača"
+                                                aria-label={t.teams.editPlayerAria}
                                                 size="2xs"
                                                 variant="ghost"
                                                 onClick={() => startEdit(p)}
                                                 disabled={busy}
-                                                title="Uredi igrača"
+                                                title={t.teams.editPlayerAria}
                                             >
                                                 <FiEdit2 />
                                             </IconButton>
                                             <IconButton
-                                                aria-label="Ukloni igrača"
+                                                aria-label={t.teams.removePlayerAria}
                                                 size="2xs"
                                                 variant="ghost"
                                                 colorPalette="red"
                                                 onClick={() => removePlayer(p)}
                                                 loading={busy}
-                                                title="Ukloni igrača"
+                                                title={t.teams.removePlayerAria}
                                             >
                                                 <FiTrash2 />
                                             </IconButton>
