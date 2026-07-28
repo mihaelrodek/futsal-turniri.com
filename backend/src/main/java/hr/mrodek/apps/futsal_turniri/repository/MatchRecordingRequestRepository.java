@@ -28,6 +28,11 @@ public class MatchRecordingRequestRepository implements AppRepository<MatchRecor
         return list("status = ?1", Sort.by("createdAt").descending(), status);
     }
 
+    /** Requests currently delivered via this library recording - used when re-mapping it to a different match. */
+    public List<MatchRecordingRequest> findByRecordingId(Long recordingId) {
+        return list("recording.id = ?1", recordingId);
+    }
+
     /**
      * True when the user already has an open (REQUESTED or APPROVED) request
      * for this match - used to block duplicate submissions.

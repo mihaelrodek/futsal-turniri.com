@@ -1,10 +1,12 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.dtos.MatchRecordingDto;
+import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.MatchRecordingMapper;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecording;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRepository;
+import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.services.RecordingStorageService;
 import jakarta.annotation.security.RolesAllowed;
@@ -16,6 +18,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,6 +35,7 @@ import java.util.UUID;
  *   POST   /match-recordings/by-match/{matchId}/upload-url - presigned PUT for a new entry
  *   POST   /match-recordings/{uuid}/upload-complete         - verify the upload
  *   PUT    /match-recordings/{uuid}/file-name               - rename
+ *   PUT    /match-recordings/{uuid}/match                   - re-map to a different match
  *   DELETE /match-recordings/{uuid}                         - remove (DB row + MinIO object)
  *   GET    /match-recordings/{uuid}/download-link           - presigned GET (admin verification)
  */
@@ -47,6 +51,7 @@ public class MatchRecordingController {
     private static final int DOWNLOAD_EXPIRY_SECONDS = 172_800;
 
     @Inject MatchRecordingRepository repo;
+    @Inject MatchRecordingRequestRepository requestRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject MatchRecordingMapper mapper;
     @Inject RecordingStorageService recordingStorage;
@@ -59,6 +64,8 @@ public class MatchRecordingController {
     public record UploadCompleteBody(@Size(max = 255) String fileName) {}
 
     public record FileNameBody(@Size(max = 255) String fileName) {}
+
+    public record MatchIdBody(Long matchId) {}
 
     public record DownloadLinkResponse(String url, int expiresInSeconds) {}
 
@@ -160,6 +167,37 @@ public class MatchRecordingController {
         String fileName = body == null ? null : sanitizeFileName(body.fileName());
         if (fileName == null) throw new BadRequestException("fileName is required");
         rec.setFileName(fileName);
+        return Response.ok(mapper.toDto(rec)).build();
+    }
+
+    /**
+     * Re-map a recording to a different match (e.g. it was uploaded against
+     * the wrong one). Any request currently DELIVERED via this recording was
+     * necessarily linked under the OLD match ({@link RecordingRequestController#linkRecording}
+     * enforces match equality) - so it's unlinked and reverted to APPROVED,
+     * rather than left pointing at a video for a match it no longer matches.
+     */
+    @PUT
+    @Path("/{uuid}/match")
+    @Transactional
+    public Response reassignMatch(@PathParam("uuid") UUID uuid, MatchIdBody body) {
+        var rec = repo.findByUuid(uuid).orElse(null);
+        if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (body == null || body.matchId() == null) {
+            throw new BadRequestException("matchId is required");
+        }
+
+        Matches match = matchesRepo.findByIdOptional(body.matchId()).orElse(null);
+        if (match == null) return Response.status(Response.Status.NOT_FOUND).build();
+
+        if (!match.getId().equals(rec.getMatch().getId())) {
+            for (var linked : requestRepo.findByRecordingId(rec.getId())) {
+                linked.setRecording(null);
+                linked.setStatus(RecordingRequestStatus.APPROVED);
+                linked.setUpdatedAt(OffsetDateTime.now());
+            }
+            rec.setMatch(match);
+        }
         return Response.ok(mapper.toDto(rec)).build();
     }
 

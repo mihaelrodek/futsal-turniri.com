@@ -19,6 +19,7 @@ import {
     FiDownload,
     FiEdit2,
     FiPlus,
+    FiRepeat,
     FiTrash2,
     FiUploadCloud,
     FiX,
@@ -29,10 +30,12 @@ import {
     deleteMatchRecording,
     fetchMatchRecordingDownloadLink,
     fetchMatchRecordings,
+    reassignMatchRecording,
     renameMatchRecording,
     type MatchRecordingDto,
 } from "../api/matchRecordings"
 import { fetchTournaments } from "../api/tournaments"
+import type { TournamentCard } from "../types/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { qk } from "../queryClient"
 import { showError } from "../toaster"
@@ -115,6 +118,8 @@ export function AdminRecordingsLibraryTab() {
     const [uploading, setUploading] = useState(false)
     const [uploadPct, setUploadPct] = useState<number | null>(null)
 
+    // Shared by both the "Nova snimka" picker and each row's re-map picker -
+    // fetched unconditionally since either can need it at any time.
     const { data: tournaments } = useQuery({
         queryKey: ["matchRecordings", "pickerTournaments"] as const,
         queryFn: async () => {
@@ -124,7 +129,6 @@ export function AdminRecordingsLibraryTab() {
             ])
             return [...upcoming, ...finished]
         },
-        enabled: pickerOpen,
     })
 
     const { data: schedule, isLoading: scheduleLoading } = useQuery({
@@ -324,7 +328,12 @@ export function AdminRecordingsLibraryTab() {
                     ) : (
                         <VStack align="stretch" gap="2">
                             {recordings.map((rec) => (
-                                <RecordingRow key={rec.uuid} rec={rec} onChanged={invalidate} />
+                                <RecordingRow
+                                    key={rec.uuid}
+                                    rec={rec}
+                                    tournaments={tournaments ?? []}
+                                    onChanged={invalidate}
+                                />
                             ))}
                         </VStack>
                     )}
@@ -336,10 +345,51 @@ export function AdminRecordingsLibraryTab() {
 
 export default AdminRecordingsLibraryTab
 
-function RecordingRow({ rec, onChanged }: { rec: MatchRecordingDto; onChanged: () => void }) {
-    const [busy, setBusy] = useState<null | "download" | "rename" | "delete">(null)
+function RecordingRow({
+    rec,
+    tournaments,
+    onChanged,
+}: {
+    rec: MatchRecordingDto
+    tournaments: TournamentCard[]
+    onChanged: () => void
+}) {
+    const [busy, setBusy] = useState<null | "download" | "rename" | "delete" | "reassign">(null)
     const [renaming, setRenaming] = useState(false)
     const [nameInput, setNameInput] = useState(rec.fileName ?? "")
+
+    // Re-map picker: pre-filled with the recording's current tournament/match
+    // so fixing a wrong match within the same tournament is a one-select fix.
+    const [reassigning, setReassigning] = useState(false)
+    const [reassignTournamentUuid, setReassignTournamentUuid] = useState(rec.tournamentUuid)
+    const [reassignMatchId, setReassignMatchId] = useState<number | null>(rec.matchId)
+
+    const { data: reassignSchedule, isLoading: reassignScheduleLoading } = useQuery({
+        queryKey: qk.schedule(reassignTournamentUuid),
+        queryFn: () => fetchSchedule(reassignTournamentUuid),
+        enabled: reassigning && !!reassignTournamentUuid,
+    })
+    const reassignPickableMatches = (reassignSchedule?.matches ?? []).filter(
+        (m) => m.team1Name && m.team2Name,
+    )
+
+    function openReassign() {
+        setReassignTournamentUuid(rec.tournamentUuid)
+        setReassignMatchId(rec.matchId)
+        setReassigning(true)
+    }
+
+    async function confirmReassign() {
+        if (busy || reassignMatchId == null || reassignMatchId === rec.matchId) return
+        try {
+            setBusy("reassign")
+            await reassignMatchRecording(rec.uuid, reassignMatchId)
+            setReassigning(false)
+            onChanged()
+        } finally {
+            setBusy(null)
+        }
+    }
 
     async function download() {
         if (busy) return
@@ -378,6 +428,7 @@ function RecordingRow({ rec, onChanged }: { rec: MatchRecordingDto; onChanged: (
 
     return (
         <Box p="2.5" bg="bg.subtle" rounded="md" borderWidth="1px" borderColor="border.subtle">
+            <VStack align="stretch" gap="2">
             <HStack justify="space-between" gap="2" wrap="wrap" align="start">
                 <VStack align="start" gap="0.5" flex="1" minW="0">
                     <Text fontSize="sm" fontWeight={600} truncate>
@@ -422,12 +473,89 @@ function RecordingRow({ rec, onChanged }: { rec: MatchRecordingDto; onChanged: (
                                 <FiEdit2 />
                             </Button>
                         )}
+                        <Button
+                            size="2xs"
+                            variant="ghost"
+                            onClick={() => (reassigning ? setReassigning(false) : openReassign())}
+                        >
+                            <FiRepeat />
+                        </Button>
                         <Button size="2xs" variant="ghost" colorPalette="red" loading={busy === "delete"} onClick={remove}>
                             <FiTrash2 />
                         </Button>
                     </HStack>
                 </VStack>
             </HStack>
+
+            {reassigning && (
+                <Box borderWidth="1px" borderColor="border.emphasized" bg="bg.muted" rounded="md" p="2.5">
+                    <VStack align="stretch" gap="2">
+                        <Text fontSize="xs" color="fg.muted">PREMAPIRAJ NA UTAKMICU</Text>
+                        <NativeSelect.Root size="sm">
+                            <NativeSelect.Field
+                                value={reassignTournamentUuid}
+                                onChange={(e) => {
+                                    setReassignTournamentUuid((e.target as HTMLSelectElement).value)
+                                    setReassignMatchId(null)
+                                }}
+                            >
+                                <option value="">Odaberi turnir…</option>
+                                {tournaments.map((t) => (
+                                    <option key={t.uuid} value={t.uuid}>{t.name}</option>
+                                ))}
+                            </NativeSelect.Field>
+                        </NativeSelect.Root>
+
+                        {reassignTournamentUuid && (
+                            reassignScheduleLoading ? (
+                                <HStack gap="2" color="fg.muted">
+                                    <Spinner size="xs" />
+                                    <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                </HStack>
+                            ) : reassignPickableMatches.length === 0 ? (
+                                <Text fontSize="sm" color="fg.muted">
+                                    Ovaj turnir još nema utakmica s poznatim ekipama.
+                                </Text>
+                            ) : (
+                                <NativeSelect.Root size="sm">
+                                    <NativeSelect.Field
+                                        value={reassignMatchId == null ? "" : String(reassignMatchId)}
+                                        onChange={(e) => {
+                                            const v = (e.target as HTMLSelectElement).value
+                                            setReassignMatchId(v ? Number(v) : null)
+                                        }}
+                                    >
+                                        <option value="">Odaberi utakmicu…</option>
+                                        {reassignPickableMatches.map((m) => (
+                                            <option key={m.matchId} value={String(m.matchId)}>
+                                                {m.team1Name} – {m.team2Name}
+                                                {m.kickoffAt ? `, ${formatKickoff(m.kickoffAt)}` : ""}
+                                            </option>
+                                        ))}
+                                    </NativeSelect.Field>
+                                </NativeSelect.Root>
+                            )
+                        )}
+
+                        <HStack gap="2" justify="flex-end">
+                            <Button size="xs" variant="ghost" disabled={busy != null} onClick={() => setReassigning(false)}>
+                                Odustani
+                            </Button>
+                            <Button
+                                size="xs"
+                                variant="solid"
+                                colorPalette="pitch"
+                                disabled={busy != null || reassignMatchId == null || reassignMatchId === rec.matchId}
+                                loading={busy === "reassign"}
+                                onClick={confirmReassign}
+                            >
+                                <FiCheck /> Premapiraj
+                            </Button>
+                        </HStack>
+                    </VStack>
+                </Box>
+            )}
+            </VStack>
         </Box>
     )
 }

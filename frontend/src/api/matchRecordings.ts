@@ -80,6 +80,24 @@ export async function renameMatchRecording(
     return data
 }
 
+/**
+ * Admin: re-map a library recording to a different match (e.g. it was
+ * uploaded against the wrong one). Any request currently DELIVERED via this
+ * recording gets unlinked and reverted to APPROVED on the backend, since it
+ * was necessarily linked under the old match.
+ */
+export async function reassignMatchRecording(
+    uuid: string,
+    matchId: number,
+): Promise<MatchRecordingDto> {
+    const { data } = await http.put<MatchRecordingDto>(
+        `/match-recordings/${uuid}/match`,
+        { matchId },
+        { successMessage: "Snimka je premapirana na drugu utakmicu." },
+    )
+    return data
+}
+
 export type MatchRecordingDownloadLink = {
     url: string
     expiresInSeconds: number
