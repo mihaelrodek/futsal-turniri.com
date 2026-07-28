@@ -1,43 +1,111 @@
 import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, HStack, Heading, Input, Text, VStack } from "@chakra-ui/react"
-import { FiAward, FiSearch, FiTarget } from "react-icons/fi"
+import { FiAward, FiSearch, FiTarget, FiUsers } from "react-icons/fi"
+import { useQuery } from "@tanstack/react-query"
+import { useSearchParams } from "react-router-dom"
 import { fetchGlobalScorers, type GlobalScorer } from "../api/players"
-import { MonoLabel, PageTitle } from "../ui/pitch"
+import { fetchTeamMedals, type TeamMedalsDto } from "../api/stats"
+import { MonoLabel, PageTitle, PillTabBar } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /* ──────────────────────────────────────────────────────────────────────────
-   StatsPage - "Vječna lista strijelaca".
+   StatsPage - all-time statistics, split into two tabs:
 
-   The all-time scorer list: every player's goals summed across every
-   tournament they've ever played, so the same person scoring in multiple
-   events climbs one combined ranking. Players are matched by their
-   (uppercase) name - the roster autocomplete keeps that consistent.
+   - "Igrači"  - vječna lista strijelaca (unchanged from the single-tab
+                 version this replaced): every player's goals summed across
+                 every tournament they've ever played, so the same person
+                 scoring in multiple events climbs one combined ranking.
+   - "Ekipe"   - vječni poredak ekipa: a World-Cup-style medal table, how
+                 many times each team finished 1st / 2nd / 3rd across every
+                 tournament it's ever played.
 
-   Ranking: goals desc, then best-scorer awards desc (a player who's been a
-   tournament's top scorer outranks an equal-goal player who hasn't), then
-   name. The backend already returns the list pre-sorted; we only filter by
-   the search box here.
+   Both rank by (uppercase) name matching - the roster/team-name
+   autocomplete elsewhere keeps that consistent. The active tab is mirrored
+   into `?tab=` so a shared link / refresh lands back on the same pane.
    ────────────────────────────────────────────────────────────────────── */
 
+type TabKey = "igraci" | "ekipe"
+const TAB_KEYS: TabKey[] = ["igraci", "ekipe"]
+const TAB_LABELS: Record<TabKey, string> = { igraci: "Igrači", ekipe: "Ekipe" }
+
+// Gold / silver / bronze, shared by the scorer rank column and every medal
+// dot + bar segment on the Ekipe tab, so both tabs read as one palette.
+const MEDAL_COLORS = { gold: "#f5c842", silver: "#c0c5cc", bronze: "#cd8654" } as const
+
 function rankColor(rank: number): string {
-    if (rank === 1) return "#f5c842"
-    if (rank === 2) return "#c0c5cc"
-    if (rank === 3) return "#cd8654"
+    if (rank === 1) return MEDAL_COLORS.gold
+    if (rank === 2) return MEDAL_COLORS.silver
+    if (rank === 3) return MEDAL_COLORS.bronze
     return "var(--chakra-colors-fg-muted)"
 }
 
+/** Croatian numeral agreement (1 / 2-4 / 5+), e.g. pluralize(2, "naslov
+ *  prvaka", "naslova prvaka", "naslova prvaka"). */
+function pluralize(n: number, one: string, few: string, many: string): string {
+    const mod10 = n % 10
+    const mod100 = n % 100
+    if (mod10 === 1 && mod100 !== 11) return one
+    if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return few
+    return many
+}
+
 export default function StatsPage() {
+    /* ---------- Active-tab persistence ----------
+     * Mirror the active tab into the URL so a hard refresh or a shared
+     * link lands the user back on the same pane (pattern mirrors the
+     * tournament detail page's `?tab=` handling). "igraci" is the default
+     * and encoded as "no `tab` param" so the canonical share URL stays
+     * clean. */
+    const [searchParams, setSearchParams] = useSearchParams()
+    const initialTab = ((): TabKey => (searchParams.get("tab") === "ekipe" ? "ekipe" : "igraci"))()
+    const [tab, setTab] = useState<TabKey>(initialTab)
+
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams)
+        if (tab === "igraci") next.delete("tab")
+        else next.set("tab", tab)
+        if (next.toString() !== searchParams.toString()) {
+            setSearchParams(next, { replace: true })
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab])
+
+    useDocumentHead({
+        title:
+            tab === "ekipe"
+                ? "Vječni poredak ekipa - futsal-turniri.com"
+                : "Vječna lista strijelaca - futsal-turniri.com",
+        description:
+            tab === "ekipe"
+                ? "Vječni poredak ekipa po broju osvojenih zlatnih, srebrnih i brončanih medalja na futsal turnirima."
+                : "Vječna lista strijelaca - golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
+        canonical: "https://futsal-turniri.com/statistika",
+    })
+
+    return (
+        <VStack align="stretch" gap="5">
+            <PageTitle title="Statistika" />
+            <PillTabBar
+                tabs={TAB_KEYS.map((k) => TAB_LABELS[k])}
+                active={TAB_LABELS[tab]}
+                onChange={(label) => {
+                    const next = TAB_KEYS.find((k) => TAB_LABELS[k] === label)
+                    if (next) setTab(next)
+                }}
+                mb="0"
+            />
+            {tab === "igraci" ? <IgraciPane /> : <EkipePane />}
+        </VStack>
+    )
+}
+
+/* ── "Igrači" - vječna lista strijelaca (unchanged content, just moved) ── */
+
+function IgraciPane() {
     const [scorers, setScorers] = useState<GlobalScorer[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [query, setQuery] = useState("")
-
-    useDocumentHead({
-        title: "Vječna lista strijelaca - futsal-turniri.com",
-        description:
-            "Vječna lista strijelaca - golovi svih igrača zbrojeni kroz sve futsal turnire na jednom mjestu.",
-        canonical: "https://futsal-turniri.com/statistika",
-    })
 
     useEffect(() => {
         let cancelled = false
@@ -45,8 +113,10 @@ export default function StatsPage() {
             .then((s) => {
                 if (!cancelled) setScorers(s)
             })
-            .catch((e: any) => {
-                if (!cancelled) setError(e?.message ?? "Neuspješno učitavanje statistike.")
+            .catch((e) => {
+                if (!cancelled) {
+                    setError(e instanceof Error ? e.message : "Neuspješno učitavanje statistike.")
+                }
             })
             .finally(() => {
                 if (!cancelled) setLoading(false)
@@ -249,5 +319,253 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
             </Text>
             <MonoLabel>{label.toUpperCase()}</MonoLabel>
         </Box>
+    )
+}
+
+/* ── "Ekipe" - vječni poredak ekipa (World-Cup-style medal table) ── */
+
+function EkipePane() {
+    const [query, setQuery] = useState("")
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ["stats", "teamMedals"] as const,
+        queryFn: fetchTeamMedals,
+    })
+    // Stable reference so the memos below don't re-run every render.
+    const medals = useMemo(() => data ?? [], [data])
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase()
+        if (!q) return medals
+        return medals.filter((m) => m.name.toLowerCase().includes(q))
+    }, [medals, query])
+
+    // Every bar's segments are sized relative to the single biggest total
+    // haul in the whole table, so the leader's bar reads as (near) full and
+    // everyone else visibly trails it.
+    const maxTotal = useMemo(
+        () => medals.reduce((max, m) => Math.max(max, m.gold + m.silver + m.bronze), 0),
+        [medals],
+    )
+
+    // "Po zlatu": the list is already sorted gold → silver → bronze → name,
+    // so row 0 is the gold leader (backend's own tiebreak order applies).
+    const topGold: TeamMedalsDto | undefined = medals[0]
+    // "Po medaljama": scan for the highest total; `>` (not `>=`) keeps the
+    // first team encountered - i.e. the backend's sort order - as the
+    // tiebreaker instead of re-sorting here.
+    const topTotal = useMemo<TeamMedalsDto | undefined>(() => {
+        if (medals.length === 0) return undefined
+        return medals.reduce((best, m) => {
+            const total = m.gold + m.silver + m.bronze
+            const bestTotal = best.gold + best.silver + best.bronze
+            return total > bestTotal ? m : best
+        }, medals[0])
+    }, [medals])
+
+    return (
+        <VStack align="stretch" gap="5">
+            {isLoading ? (
+                <Text color="fg.muted">Učitavanje statistike…</Text>
+            ) : isError ? (
+                <Text color="accent.red">Neuspješno učitavanje statistike.</Text>
+            ) : medals.length === 0 ? (
+                <Flex direction="column" align="center" py="12" px="4" gap="3" textAlign="center">
+                    <Flex
+                        w="56px"
+                        h="56px"
+                        rounded="full"
+                        align="center"
+                        justify="center"
+                        bg="bg.surfaceTint"
+                        color="pitch.500"
+                    >
+                        <FiUsers size={22} />
+                    </Flex>
+                    <Heading size="md">Još nema završenih turnira</Heading>
+                    <Text fontSize="sm" color="fg.muted" maxW="md">
+                        Kad se prvi turnir odigra do kraja, ovdje će rasti vječni poredak ekipa
+                        po osvojenim medaljama.
+                    </Text>
+                </Flex>
+            ) : (
+                <>
+                    <HStack gap="3" wrap="wrap">
+                        {topGold && (
+                            <MedalSummaryCard
+                                label="Po zlatu"
+                                teamName={topGold.name}
+                                dotColor={MEDAL_COLORS.gold}
+                                text={`${topGold.gold} ${pluralize(topGold.gold, "naslov prvaka", "naslova prvaka", "naslova prvaka")}`}
+                            />
+                        )}
+                        {topTotal && (
+                            <MedalSummaryCard
+                                label="Po medaljama"
+                                teamName={topTotal.name}
+                                dotColor="pitch.500"
+                                text={`${topTotal.gold + topTotal.silver + topTotal.bronze} ${pluralize(
+                                    topTotal.gold + topTotal.silver + topTotal.bronze,
+                                    "medalja ukupno",
+                                    "medalje ukupno",
+                                    "medalja ukupno",
+                                )}`}
+                            />
+                        )}
+                        <Box position="relative" w={{ base: "100%", md: "240px" }} ml={{ base: "0", md: "auto" }}>
+                            <Box
+                                position="absolute"
+                                left="3"
+                                top="50%"
+                                transform="translateY(-50%)"
+                                color="pitch.500"
+                                pointerEvents="none"
+                            >
+                                <FiSearch />
+                            </Box>
+                            <Input
+                                pl="9"
+                                size={{ base: "md", md: "sm" }}
+                                h={{ base: "36px", md: "32px" }}
+                                py="0"
+                                fontSize={{ base: "16px", md: "sm" }}
+                                placeholder="Pretraži ekipu…"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                borderColor="pitch.500"
+                                borderWidth="1.5px"
+                                bg="brand.subtle"
+                                _hover={{ borderColor: "pitch.600" }}
+                                _focusVisible={{
+                                    borderColor: "pitch.600",
+                                    boxShadow: "0 0 0 1px var(--chakra-colors-pitch-600)",
+                                }}
+                            />
+                        </Box>
+                    </HStack>
+
+                    {filtered.length === 0 ? (
+                        <Text fontSize="sm" color="fg.muted" textAlign="center" py="4">
+                            Nijedna ekipa ne odgovara pretrazi.
+                        </Text>
+                    ) : (
+                        <VStack align="stretch" gap="1.5">
+                            {filtered.map((m) => {
+                                // Rank reflects the full list position, not the filtered one.
+                                const rank = medals.indexOf(m) + 1
+                                return (
+                                    <Flex
+                                        key={m.name}
+                                        align="center"
+                                        gap="3"
+                                        px="3"
+                                        py="2.5"
+                                        rounded="lg"
+                                        borderWidth="1px"
+                                        borderColor="border"
+                                        bg="bg.panel"
+                                    >
+                                        {/* Rank */}
+                                        <Box
+                                            minW="8"
+                                            textAlign="center"
+                                            fontFamily="mono"
+                                            fontSize="15px"
+                                            fontWeight={800}
+                                            color={rankColor(rank)}
+                                        >
+                                            {rank}
+                                        </Box>
+                                        {/* Name + medal bar */}
+                                        <Box flex="1" minW="0">
+                                            <Text fontSize="sm" fontWeight={700} color="fg.ink" truncate mb="1.5">
+                                                {m.name}
+                                            </Text>
+                                            <Box
+                                                position="relative"
+                                                w="100%"
+                                                h="6px"
+                                                rounded="full"
+                                                bg="bg.surfaceTint"
+                                                overflow="hidden"
+                                            >
+                                                <Flex position="absolute" inset="0">
+                                                    <Box
+                                                        h="100%"
+                                                        bg={MEDAL_COLORS.gold}
+                                                        w={`${maxTotal > 0 ? (m.gold / maxTotal) * 100 : 0}%`}
+                                                    />
+                                                    <Box
+                                                        h="100%"
+                                                        bg={MEDAL_COLORS.silver}
+                                                        w={`${maxTotal > 0 ? (m.silver / maxTotal) * 100 : 0}%`}
+                                                    />
+                                                    <Box
+                                                        h="100%"
+                                                        bg={MEDAL_COLORS.bronze}
+                                                        w={`${maxTotal > 0 ? (m.bronze / maxTotal) * 100 : 0}%`}
+                                                    />
+                                                </Flex>
+                                            </Box>
+                                        </Box>
+                                        {/* Medal counts */}
+                                        <HStack gap="2.5" flexShrink={0}>
+                                            <MedalChip color={MEDAL_COLORS.gold} count={m.gold} />
+                                            <MedalChip color={MEDAL_COLORS.silver} count={m.silver} />
+                                            <MedalChip color={MEDAL_COLORS.bronze} count={m.bronze} />
+                                        </HStack>
+                                    </Flex>
+                                )
+                            })}
+                        </VStack>
+                    )}
+                </>
+            )}
+        </VStack>
+    )
+}
+
+function MedalSummaryCard({
+    label,
+    teamName,
+    text,
+    dotColor,
+}: {
+    label: string
+    teamName: string
+    text: string
+    dotColor: string
+}) {
+    return (
+        <Box
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border"
+            rounded="lg"
+            px="4"
+            py="2.5"
+            minW="180px"
+        >
+            <HStack gap="1.5" mb="1">
+                <Box w="8px" h="8px" rounded="full" bg={dotColor} flexShrink={0} />
+                <MonoLabel>{label}</MonoLabel>
+            </HStack>
+            <Text fontFamily="heading" fontSize="16px" fontWeight={800} color="fg.ink" truncate maxW="220px">
+                {teamName}
+            </Text>
+            <Text fontSize="xs" color="fg.muted" mt="0.5">
+                {text}
+            </Text>
+        </Box>
+    )
+}
+
+function MedalChip({ color, count }: { color: string; count: number }) {
+    return (
+        <HStack gap="1.5" minW="7">
+            <Box w="8px" h="8px" rounded="full" bg={color} flexShrink={0} />
+            <Text fontSize="xs" fontFamily="mono" fontWeight={700} color="fg.ink" minW="4" textAlign="right">
+                {count}
+            </Text>
+        </HStack>
     )
 }

@@ -27,3 +27,21 @@ export async function fetchScorers(uuid: string): Promise<ScorerDto[]> {
     )
     return data
 }
+
+/* ── Cross-tournament (all-time) stats ──────────────────────────────── */
+
+/** One row of the all-time team medal table ("Ekipe" tab on /statistika) -
+ *  how many times a team finished 1st / 2nd / 3rd across every tournament
+ *  it's ever played. Name is the normalized uppercase team name. */
+export type TeamMedalsDto = {
+    name: string
+    gold: number
+    silver: number
+    bronze: number
+}
+
+/** All-time team medal table, already sorted (gold → silver → bronze → name). */
+export async function fetchTeamMedals(): Promise<TeamMedalsDto[]> {
+    const { data } = await http.get<TeamMedalsDto[]>(`/stats/team-medals`)
+    return data
+}

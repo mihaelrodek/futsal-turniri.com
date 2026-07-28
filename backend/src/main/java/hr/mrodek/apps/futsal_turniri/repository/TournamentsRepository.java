@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.repository;
 
+import hr.mrodek.apps.futsal_turniri.dtos.TeamMedalsDto;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
@@ -10,6 +11,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,76 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
                         group by upper(trim(t.bestScorerName))
                         """)
                 .getResultList();
+        Map<String, Long> out = new HashMap<>();
+        for (Object[] r : rows) {
+            out.put((String) r[0], (Long) r[1]);
+        }
+        return out;
+    }
+
+    /**
+     * All-time team medal table ("World Cup"-style): gold = tournament won,
+     * silver = 2nd place, bronze = 3rd place, aggregated across every
+     * FINISHED tournament. Teams are matched by uppercased trimmed name -
+     * the same {@code winnerName} / {@code secondPlaceName} /
+     * {@code thirdPlaceName} free-text fields used for the podium display.
+     * Rows are unsorted; the controller orders them for the response.
+     */
+    public List<TeamMedalsDto> teamMedalCounts() {
+        Map<String, Long> gold = goldCounts();
+        Map<String, Long> silver = silverCounts();
+        Map<String, Long> bronze = bronzeCounts();
+
+        Map<String, long[]> totals = new HashMap<>();
+        gold.forEach((name, count) -> totals.computeIfAbsent(name, n -> new long[3])[0] += count);
+        silver.forEach((name, count) -> totals.computeIfAbsent(name, n -> new long[3])[1] += count);
+        bronze.forEach((name, count) -> totals.computeIfAbsent(name, n -> new long[3])[2] += count);
+
+        List<TeamMedalsDto> out = new ArrayList<>();
+        totals.forEach((name, counts) -> out.add(new TeamMedalsDto(name, counts[0], counts[1], counts[2])));
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Long> goldCounts() {
+        List<Object[]> rows = em.createQuery("""
+                        select upper(trim(t.winnerName)), count(t)
+                        from Tournaments t
+                        where t.status = ?1 and t.winnerName is not null and t.winnerName <> ''
+                        group by upper(trim(t.winnerName))
+                        """)
+                .setParameter(1, TournamentStatus.FINISHED)
+                .getResultList();
+        return toCountMap(rows);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Long> silverCounts() {
+        List<Object[]> rows = em.createQuery("""
+                        select upper(trim(t.secondPlaceName)), count(t)
+                        from Tournaments t
+                        where t.status = ?1 and t.secondPlaceName is not null and t.secondPlaceName <> ''
+                        group by upper(trim(t.secondPlaceName))
+                        """)
+                .setParameter(1, TournamentStatus.FINISHED)
+                .getResultList();
+        return toCountMap(rows);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Long> bronzeCounts() {
+        List<Object[]> rows = em.createQuery("""
+                        select upper(trim(t.thirdPlaceName)), count(t)
+                        from Tournaments t
+                        where t.status = ?1 and t.thirdPlaceName is not null and t.thirdPlaceName <> ''
+                        group by upper(trim(t.thirdPlaceName))
+                        """)
+                .setParameter(1, TournamentStatus.FINISHED)
+                .getResultList();
+        return toCountMap(rows);
+    }
+
+    private static Map<String, Long> toCountMap(List<Object[]> rows) {
         Map<String, Long> out = new HashMap<>();
         for (Object[] r : rows) {
             out.put((String) r[0], (Long) r[1]);

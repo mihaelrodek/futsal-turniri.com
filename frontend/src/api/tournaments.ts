@@ -153,6 +153,18 @@ export async function replaceTeams(tournamentId: string, teams: Array<TeamShort 
     return data;
 }
 
+/** Autocomplete: distinct existing team names (across all tournaments)
+ *  matching `q`. Used so renaming/adding a team can reuse an existing
+ *  name instead of accidentally creating a near-duplicate. */
+export async function searchTeams(q: string): Promise<string[]> {
+    if (q.trim().length < 2) return []
+    const { data } = await http.get<string[]>(
+        `/teams/search`,
+        { params: { q }, silent: true },
+    )
+    return data
+}
+
 export async function finishTournament(uuid: string): Promise<TournamentDetails> {
     const { data } = await http.post<TournamentDetails>(
         `/tournaments/${uuid}/finish`,

@@ -131,4 +131,21 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
                 .setParameter("ids", ids)
                 .getResultList();
     }
+
+    /**
+     * Distinct team names across ALL tournaments matching the query as a
+     * substring, for the cross-tournament name autocomplete (mirrors
+     * PlayersRepository.searchDistinctNames). Case-folded compare so
+     * partial lowercase input still matches. Capped at {@code limit}.
+     */
+    public List<String> searchDistinctNames(String q, int limit) {
+        String like = "%" + q.trim().toLowerCase() + "%";
+        return em.createQuery(
+                        "select distinct p.name from Teams p " +
+                        "where lower(p.name) like :like " +
+                        "order by p.name asc", String.class)
+                .setParameter("like", like)
+                .setMaxResults(limit)
+                .getResultList();
+    }
 }

@@ -864,7 +864,15 @@ export default function TournamentDetailsPage() {
                 const saved = await replaceTeams(uuid, buildTeamsPayload())
                 setTeams(saved)
             } catch {
-                /* error toast already surfaced by axios interceptor */
+                // Error toast already surfaced by the axios interceptor (e.g.
+                // 409 on a duplicate name). Re-pull the persisted list so the
+                // optimistic (possibly duplicate) rename doesn't linger in
+                // local state as if it had saved.
+                try {
+                    setTeams(await fetchTournamentTeams(uuid))
+                } catch {
+                    /* best effort - keep the optimistic state if this also fails */
+                }
             } finally {
                 savingTeamsRef.current = false
             }

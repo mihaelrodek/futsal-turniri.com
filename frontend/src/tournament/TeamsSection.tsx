@@ -34,6 +34,7 @@ import type { TournamentDetails } from "../types/tournaments"
 import type { TeamShort } from "../types/teams"
 import { setTeamJerseyColor, setTeamShortsColor, type TeamKit } from "../api/tournaments"
 import { KitSwatch } from "../components/jersey"
+import TeamNameAutocomplete from "../components/TeamNameAutocomplete"
 import { queryClient } from "../queryClient"
 import type { TeamRequest } from "../api/teamRequests"
 import type { PlayerDto } from "../types/players"
@@ -1170,12 +1171,13 @@ function RosterPanel({
                                    already-played fixtures.) Blur flushes
                                    the new name via the parent's
                                    replaceTeams. */
-                                <Input
+                                <TeamNameAutocomplete
                                     size="sm"
                                     variant="flushed"
                                     value={team.name ?? ""}
-                                    onChange={(e) => onRenameTeam(e.target.value)}
+                                    onChange={onRenameTeam}
                                     onBlur={onCommitRename}
+                                    onCommit={onCommitRename}
                                     placeholder="Ime ekipe"
                                     fontWeight="semibold"
                                 />

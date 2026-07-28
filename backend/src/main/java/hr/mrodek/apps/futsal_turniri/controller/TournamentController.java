@@ -1414,6 +1414,19 @@ public class TournamentController {
             return Response.status(Response.Status.BAD_REQUEST).entity("Each team needs a name").build();
         }
 
+        // The payload is the complete new team list, so a same-tournament
+        // duplicate can only be introduced by two entries in the payload
+        // itself sharing a name (normalized: trim + case-insensitive).
+        Set<String> seenNormalizedNames = new java.util.HashSet<>();
+        for (var in : payload) {
+            String trimmedName = in.name().trim();
+            if (!seenNormalizedNames.add(trimmedName.toLowerCase())) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("Ekipa \"" + trimmedName + "\" već postoji u ovom turniru.")
+                        .build();
+            }
+        }
+
         // Managed rows for this tx
         var existing = teamRepo.findByTournament_Id(tournament.getId());
         Map<Long, Teams> byId = existing.stream()
@@ -1506,13 +1519,22 @@ public class TournamentController {
         // the same person from accidentally re-registering the same team.
         String myUid = jwt.getSubject();
         String trimmedName = body.name().trim();
-        boolean alreadyRegistered = teamRepo.findByTournament_Id(t.getId()).stream()
+        var existingTeams = teamRepo.findByTournament_Id(t.getId());
+        boolean alreadyRegistered = existingTeams.stream()
                 .anyMatch(existing ->
                         myUid != null && myUid.equals(existing.getSubmittedByUid())
                                 && existing.getName() != null
                                 && existing.getName().equalsIgnoreCase(trimmedName));
         if (alreadyRegistered) {
             return Response.status(Response.Status.CONFLICT).entity("ALREADY_REGISTERED").build();
+        }
+        // Also reject the name if ANY team in this tournament already has
+        // it - organizer-added or another user's self-registration - so two
+        // different teams never collide on the same display name.
+        boolean nameTakenByAnyTeam = existingTeams.stream()
+                .anyMatch(existing -> existing.getName() != null && existing.getName().equalsIgnoreCase(trimmedName));
+        if (nameTakenByAnyTeam) {
+            return Response.status(Response.Status.CONFLICT).entity("DUPLICATE_TEAM").build();
         }
 
         // Make sure the user has a UserProfile row + slug *before* we persist
