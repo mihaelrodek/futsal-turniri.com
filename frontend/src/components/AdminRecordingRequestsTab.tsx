@@ -98,9 +98,9 @@ export function AdminRecordingRequestsTab() {
                         <Box>
                             <Text fontSize="lg" fontWeight="semibold">Zahtjevi za snimke</Text>
                             <Text fontSize="sm" color="fg.muted">
-                                Upravljanje zahtjevima za snimke utakmica - odobri ili odbij
-                                zahtjev, označi uplatu i isporuči snimku povezivanjem s bazom
-                                snimki.
+                                Upravljanje zahtjevima za snimke utakmica (20 €) i pojedinih
+                                golova (5 €) - odobri ili odbij zahtjev, označi uplatu i
+                                isporuči snimku povezivanjem s bazom snimki.
                             </Text>
                         </Box>
 
@@ -253,7 +253,9 @@ function RecordingRequestRow({
             <HStack py="1"><Spinner size="xs" /></HStack>
         ) : !candidates || candidates.length === 0 ? (
             <Text fontSize="xs" color="fg.muted">
-                Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki" i uploadaj je tamo.
+                {req.kind === "GOAL"
+                    ? "Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki“ i uploadaj isječak gola pod tu utakmicu."
+                    : "Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki“ i uploadaj je tamo."}
             </Text>
         ) : (
             <Stack gap="1.5">
@@ -299,8 +301,22 @@ function RecordingRequestRow({
                         <Text fontSize="xs" color="fg.muted" truncate>
                             {req.tournamentName} • {formatDateTime(req.kickoffAt)}
                         </Text>
+                        {/* Which goal was ordered - a snapshot taken at request
+                            time, so it survives the event being edited away. */}
+                        {req.kind === "GOAL" && (
+                            <Text fontSize="xs" color="pitch.fg" fontWeight="medium" truncate>
+                                ⚽ {req.goalLabel ?? "gol"}
+                            </Text>
+                        )}
                     </Box>
                     <HStack gap="1.5" flexShrink={0} wrap="wrap">
+                        <Badge
+                            size="sm"
+                            variant="outline"
+                            colorPalette={req.kind === "GOAL" ? "pitch" : "gray"}
+                        >
+                            {req.kind === "GOAL" ? "Gol" : "Utakmica"}
+                        </Badge>
                         <Badge size="sm" variant="solid" colorPalette={STATUS_PALETTE[status] ?? "gray"}>
                             {STATUS_LABEL[status] ?? req.status}
                         </Badge>

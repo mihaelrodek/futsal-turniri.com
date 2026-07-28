@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
+import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestKind;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
@@ -39,6 +40,17 @@ public class RecordingRequestNotifier {
         return whole + "," + (fraction < 10 ? "0" + fraction : String.valueOf(fraction)) + " €";
     }
 
+    /** Croatian noun phrase for the request's kind, used in every notification. */
+    public static String kindLabel(RecordingRequestKind kind) {
+        return kind == RecordingRequestKind.GOAL ? "snimku gola" : "snimku utakmice";
+    }
+
+    /** "Gol: 12' - M. Rodek (Ekipa A)" paragraph for goal-clip requests, "" otherwise. */
+    private static String goalHtml(MatchRecordingRequest r) {
+        if (r.getKind() != RecordingRequestKind.GOAL || r.getGoalLabel() == null) return "";
+        return "<p>Gol: <strong>" + EmailService.escapeHtml(r.getGoalLabel()) + "</strong></p>";
+    }
+
     private String statusLink(MatchRecordingRequest r) {
         return emailService.baseUrl() + "/snimke/zahtjev/" + r.getUuid();
     }
@@ -50,18 +62,21 @@ public class RecordingRequestNotifier {
 
         String label = matchLabel(match);
         String tournamentName = match.getTournament() != null ? match.getTournament().getName() : "";
+        boolean goal = r.getKind() == RecordingRequestKind.GOAL;
+        String subject = goal ? "Novi zahtjev za snimku gola" : "Novi zahtjev za snimku utakmice";
         String link = emailService.baseUrl() + "/profil";
         String html = emailService.shell(
-                "Novi zahtjev za snimku utakmice",
-                "<p>Zaprimljen je novi zahtjev za snimku utakmice <strong>"
+                subject,
+                "<p>Zaprimljen je novi zahtjev za " + kindLabel(r.getKind()) + " <strong>"
                         + EmailService.escapeHtml(label) + "</strong>"
                         + (tournamentName.isBlank()
                                 ? "" : " (turnir " + EmailService.escapeHtml(tournamentName) + ")")
                         + ".</p>"
+                        + goalHtml(r)
                         + (r.getNote() == null
                                 ? "" : "<p>Napomena: " + EmailService.escapeHtml(r.getNote()) + "</p>"),
                 link, "Otvori");
-        emailService.sendHtml(notifyEmail, "Novi zahtjev za snimku utakmice", html);
+        emailService.sendHtml(notifyEmail, subject, html);
     }
 
     /** Confirmation sent to the requester right after submission. */
@@ -73,10 +88,12 @@ public class RecordingRequestNotifier {
         String tournamentName = match.getTournament() != null ? match.getTournament().getName() : "";
         String html = emailService.shell(
                 "Zahtjev za snimku je zaprimljen",
-                "<p>Tvoj zahtjev za snimku utakmice <strong>" + EmailService.escapeHtml(label) + "</strong>"
+                "<p>Tvoj zahtjev za " + kindLabel(r.getKind()) + " <strong>"
+                        + EmailService.escapeHtml(label) + "</strong>"
                         + (tournamentName.isBlank()
                                 ? "" : " (turnir " + EmailService.escapeHtml(tournamentName) + ")")
-                        + " je zaprimljen. Obavijestit ćemo te emailom kad bude odobren.</p>",
+                        + " je zaprimljen. Obavijestit ćemo te emailom kad bude odobren.</p>"
+                        + goalHtml(r),
                 statusLink(r), "Pogledaj status");
         emailService.sendHtml(to, "Zahtjev za snimku je zaprimljen", html);
     }
@@ -90,9 +107,11 @@ public class RecordingRequestNotifier {
         String price = formatEurCents(r.getPriceEurCents());
         String html = emailService.shell(
                 "Zahtjev za snimku je odobren",
-                "<p>Tvoj zahtjev za snimku utakmice <strong>" + EmailService.escapeHtml(label) + "</strong>"
+                "<p>Tvoj zahtjev za " + kindLabel(r.getKind()) + " <strong>"
+                        + EmailService.escapeHtml(label) + "</strong>"
                         + " je odobren. Cijena snimke je <strong>" + price + "</strong>."
-                        + " Nakon plaćanja snimka postaje dostupna za preuzimanje.</p>",
+                        + " Nakon plaćanja snimka postaje dostupna za preuzimanje.</p>"
+                        + goalHtml(r),
                 statusLink(r), "Plati snimku");
         emailService.sendHtml(to, "Zahtjev za snimku je odobren - plaćanje", html);
     }
@@ -105,7 +124,8 @@ public class RecordingRequestNotifier {
         String label = matchLabel(match);
         String html = emailService.shell(
                 "Zahtjev za snimku je odbijen",
-                "<p>Tvoj zahtjev za snimku utakmice <strong>" + EmailService.escapeHtml(label) + "</strong>"
+                "<p>Tvoj zahtjev za " + kindLabel(r.getKind()) + " <strong>"
+                        + EmailService.escapeHtml(label) + "</strong>"
                         + " je nažalost odbijen.</p>"
                         + (r.getAdminNote() == null || r.getAdminNote().isBlank()
                                 ? "" : "<p>Napomena: " + EmailService.escapeHtml(r.getAdminNote()) + "</p>"),
@@ -122,9 +142,11 @@ public class RecordingRequestNotifier {
         String to = r.getContactEmail();
         if (to == null || to.isBlank() || !emailService.isReady()) return;
 
+        boolean goal = r.getKind() == RecordingRequestKind.GOAL;
         String html = emailService.shell(
                 "Snimka je spremna za preuzimanje",
-                "<p>Tvoja plaćena snimka utakmice je spremna za preuzimanje. "
+                "<p>Tvoja plaćena " + (goal ? "snimka gola" : "snimka utakmice")
+                        + " je spremna za preuzimanje. "
                         + "Link za preuzimanje na stranici statusa vrijedi 48 sati od otvaranja.</p>",
                 statusLink(r), "Preuzmi snimku");
         emailService.sendHtml(to, "Snimka je spremna za preuzimanje", html);

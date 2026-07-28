@@ -8,6 +8,34 @@ export type RecordingRequestStatus =
     | "DELIVERED"
     | "CANCELLED"
 
+/**
+ * What the request asks for: the whole match (20 €) or a clip of one goal
+ * (5 €). Backend enum RecordingRequestKind.
+ */
+export type RecordingRequestKind = "FULL_MATCH" | "GOAL"
+
+/** Price in euro cents applied to a NEW request of each kind. Display only -
+ *  the backend is authoritative and each row keeps the price it was filed at. */
+export const RECORDING_PRICE_CENTS: Record<RecordingRequestKind, number> = {
+    FULL_MATCH: 2000,
+    GOAL: 500,
+}
+
+/**
+ * Master switch for ORDERING single-goal clips (5 €). Off for now - the feature
+ * is finished but not being sold yet.
+ *
+ * While false, no entry point is rendered: no per-goal button on the match
+ * timeline and no "Pojedini gol" option in the profile's new-request picker.
+ * Everything else stays live on purpose:
+ *   - already-filed GOAL requests still render (badge, goal label, download),
+ *   - the admin queue still handles them,
+ *   - `createGoalRecordingRequest` still works.
+ * The backend has its own, authoritative switch (app_settings key
+ * `goal_clip_requests_enabled`, also off by default) - flip BOTH to launch.
+ */
+export const GOAL_CLIP_REQUESTS_ENABLED = false
+
 /** Wire shape returned by the backend (RecordingRequestDto). */
 export type RecordingRequestDto = {
     uuid: string
@@ -18,6 +46,13 @@ export type RecordingRequestDto = {
     team2Name: string | null
     kickoffAt: string | null
     status: RecordingRequestStatus
+    kind: RecordingRequestKind
+    /** Event id of the requested goal; null for a whole-match request. */
+    matchEventId: number | null
+    /** Minute of the requested goal, snapshotted at request time. */
+    goalMinute: number | null
+    /** Readable snapshot of the requested goal, e.g. "12' - M. Rodek (Ekipa A)". */
+    goalLabel: string | null
     note: string | null
     contactEmail: string | null
     adminNote: string | null
@@ -52,6 +87,24 @@ export async function createRecordingRequest(
         `/recording-requests/by-match/${matchId}`,
         payload,
         // The dialog owns both the success and the duplicate UX.
+        { silent: true, silentErrorStatuses: [409] },
+    )
+    return data
+}
+
+/**
+ * Request a clip of a SINGLE goal (5 €), addressed by its match-event id - the
+ * backend derives the match from the event. 409 {"code":"DUPLICATE"} when this
+ * goal is already requested by the caller; the dialog owns that UX, so the
+ * generic red toast is suppressed.
+ */
+export async function createGoalRecordingRequest(
+    matchEventId: number,
+    payload: CreateRecordingRequestPayload,
+): Promise<RecordingRequestDto> {
+    const { data } = await http.post<RecordingRequestDto>(
+        `/recording-requests/by-goal/${matchEventId}`,
+        payload,
         { silent: true, silentErrorStatuses: [409] },
     )
     return data

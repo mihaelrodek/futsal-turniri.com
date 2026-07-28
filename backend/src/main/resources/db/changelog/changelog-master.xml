@@ -66,5 +66,6 @@
     <include file="db/changelog/tournament_surface.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_recording_requests.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_recordings.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/match_recording_request_goals.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_recording_requests_anonymous.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

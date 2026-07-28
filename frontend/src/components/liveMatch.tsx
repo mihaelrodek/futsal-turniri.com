@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Text, VStack } from "@chakra-ui/react"
-import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2 } from "react-icons/fi"
+import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2, FiVideo } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
 import { useOfflineMatchFouls } from "../hooks/useOfflineMatchFouls"
@@ -882,6 +882,7 @@ export function GoalscorersPanel({
     emptyNote,
     refreshSignal,
     fouls,
+    onRequestGoal,
 }: {
     tournamentUuid: string
     matchId: number
@@ -911,6 +912,11 @@ export function GoalscorersPanel({
      *  the "Penali" section). With no half boundary the whole timeline gets a
      *  single combined tally at the top instead. */
     fouls?: TimelineFouls | null
+    /** When given, every GOAL row gets a small "zatraži snimku gola" button on
+     *  its outer edge that calls this with the event. Only the dedicated match
+     *  page passes it - the compact timelines (live list, schedule, modal) stay
+     *  action-free. */
+    onRequestGoal?: (evt: MatchEventDto) => void
 }) {
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
     // Broadcast-delay hold (see the filter at render time below). The 1s tick
@@ -1148,6 +1154,7 @@ export function GoalscorersPanel({
                                 evt={evt}
                                 isLeft={evt.teamId === t1Id}
                                 scoreLabel={scoreLabels.get(evt.id) ?? null}
+                                onRequestGoal={onRequestGoal}
                             />
                         ))}
                     </Box>
@@ -1170,12 +1177,16 @@ export function TimelineEventLine({
     evt,
     isLeft,
     scoreLabel,
+    onRequestGoal,
 }: {
     evt: MatchEventDto
     isLeft: boolean
     /** SofaScore-style running score at this goal (e.g. "1 - 2"); a small pill
      *  sits nearest the centre line on the scoring side. Null for cards. */
     scoreLabel?: string | null
+    /** When given, goal rows (and only goal rows) get an outer-edge button that
+     *  opens the paid "snimka gola" request for this event. */
+    onRequestGoal?: (evt: MatchEventDto) => void
 }) {
     const isPenGoal = evt.type === "PENALTY_GOAL"
     const isPenMiss = evt.type === "PENALTY_MISSED"
@@ -1277,6 +1288,26 @@ export function TimelineEventLine({
         </VStack>
     )
 
+    // Paid "snimka gola" request - offered on scored goals only (a card or a
+    // missed penalty has nothing to clip). Sits on the row's OUTER edge so it
+    // never pushes the scorer name off the centre line.
+    const canRequestClip =
+        onRequestGoal != null &&
+        (evt.type === "GOAL" || isOwnGoal || isPenGoal)
+    const requestEl = canRequestClip ? (
+        <IconButton
+            aria-label="Zatraži snimku ovog gola"
+            title="Zatraži snimku ovog gola (5 €)"
+            size="2xs"
+            variant="ghost"
+            colorPalette="pitch"
+            flexShrink={0}
+            onClick={() => onRequestGoal!(evt)}
+        >
+            <FiVideo />
+        </IconButton>
+    ) : null
+
     return (
         // The centre column is a FIXED width (not `auto`) so the icons on each
         // side line up in one vertical column regardless of what sits in the
@@ -1289,6 +1320,7 @@ export function TimelineEventLine({
             <Flex align="center" justify="flex-end" gap="1" pr="1" py="1.5" minW="0" overflow="hidden">
                 {isLeft && (
                     <>
+                        {requestEl}
                         {nameEl}
                         {minuteEl}
                         {iconEl}
@@ -1308,6 +1340,7 @@ export function TimelineEventLine({
                         {iconEl}
                         {minuteEl}
                         {nameEl}
+                        {requestEl}
                     </>
                 )}
             </Flex>

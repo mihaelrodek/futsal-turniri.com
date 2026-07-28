@@ -14,6 +14,7 @@ import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
 import { ZapisnikExportDialog } from "../export/zapisnik/ZapisnikExportDialog"
 import RecordingRequestDialog from "../components/RecordingRequestDialog"
+import { GOAL_CLIP_REQUESTS_ENABLED } from "../api/recordingRequests"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
@@ -25,6 +26,7 @@ import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { showSuccess } from "../toaster"
 import type { TeamKit } from "../api/tournaments"
+import type { MatchEventDto } from "../types/matchEvents"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import type { PlayerDto } from "../types/players"
 import type { Group } from "../types/groups"
@@ -109,6 +111,10 @@ export default function MatchLivePage() {
     const [exportOpen, setExportOpen] = useState(false)
     const [zapisnikOpen, setZapisnikOpen] = useState(false)
     const [recordingOpen, setRecordingOpen] = useState(false)
+    // Paid single-goal clip request (5 €) - which goal was tapped on the
+    // timeline. Null = the goal dialog is closed. No login gate - anonymous
+    // visitors can request too (the dialog collects a contact email).
+    const [goalRequest, setGoalRequest] = useState<{ eventId: number; label: string } | null>(null)
     const [loading, setLoading] = useState(!cachedSchedule)
     const [tab, setTab] = useState<MatchInfoTab>("timeline")
     const [lineups, setLineups] = useState<{ team1: PlayerDto[] | null; team2: PlayerDto[] | null }>({
@@ -255,6 +261,24 @@ export default function MatchLivePage() {
         } catch {
             /* clipboard blocked - nothing more we can do */
         }
+    }
+
+    /**
+     * Timeline "zatraži snimku gola" tap. No login gate - like the
+     * whole-match request, anonymous visitors can order too (the dialog
+     * collects a contact email). The goal is labelled here so the dialog can
+     * show exactly which one is being ordered - the backend snapshots its
+     * own label independently.
+     */
+    function requestGoalClip(evt: MatchEventDto) {
+        const who =
+            evt.type === "OWN_GOAL"
+                ? evt.playerName
+                    ? `${evt.playerName} (ag)`
+                    : "autogol"
+                : evt.playerName ?? "nepoznat strijelac"
+        const when = evt.type === "PENALTY_GOAL" ? "Penali" : `${evt.minute}'`
+        setGoalRequest({ eventId: evt.id, label: `${when} — ${who}` })
     }
 
     if (loading && !scheduled) {
@@ -714,6 +738,19 @@ export default function MatchLivePage() {
                                 halfLengthMin={halfLengthMin}
                                 pollMs={isLive ? POLL_MS : undefined}
                                 refreshSignal={scorerTick}
+                                /* Per-goal paid clip request (5 €) - offered
+                                   only here (not on the compact timelines) and
+                                   only once the match is FINISHED: while it's
+                                   live the organizer can still correct or delete
+                                   an event, so the ordered goal isn't stable.
+                                   The backend enforces the same rule.
+                                   Gated behind GOAL_CLIP_REQUESTS_ENABLED, which
+                                   is off until the feature goes on sale. */
+                                onRequestGoal={
+                                    GOAL_CLIP_REQUESTS_ENABLED && isFinished
+                                        ? requestGoalClip
+                                        : undefined
+                                }
                                 /* Live overlay first (it moves as fouls are given),
                                    falling back to the scheduled record so a FINISHED
                                    match - which has no live overlay - still shows
@@ -780,6 +817,20 @@ export default function MatchLivePage() {
                     matchId={matchId}
                     team1Name={scheduled?.team1Name ?? live?.team1Name ?? null}
                     team2Name={scheduled?.team2Name ?? live?.team2Name ?? null}
+                />
+            )}
+
+            {/* Request a paid clip of ONE goal off the timeline (~5 €). */}
+            {RECORDING_REQUEST_ENABLED && goalRequest && (
+                <RecordingRequestDialog
+                    open
+                    onClose={() => setGoalRequest(null)}
+                    matchId={matchId}
+                    team1Name={scheduled?.team1Name ?? live?.team1Name ?? null}
+                    team2Name={scheduled?.team2Name ?? live?.team2Name ?? null}
+                    kind="GOAL"
+                    matchEventId={goalRequest.eventId}
+                    goalLabel={goalRequest.label}
                 />
             )}
         </Flex>
