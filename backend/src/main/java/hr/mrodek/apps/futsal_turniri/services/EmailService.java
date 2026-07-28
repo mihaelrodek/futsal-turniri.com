@@ -39,7 +39,7 @@ public class EmailService {
     @ConfigProperty(name = "quarkus.mailer.username")
     java.util.Optional<String> smtpUser;
 
-    @ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5174")
+    @ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5181")
     String baseUrl;
 
     /** True only when SMTP credentials are present; otherwise no mail is sent. */
