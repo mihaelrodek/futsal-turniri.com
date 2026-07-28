@@ -10,6 +10,8 @@ import com.stripe.param.checkout.SessionCreateParams;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.Optional;
+
 /**
  * Thin wrapper around stripe-java for the recording-request payment flow: one
  * Stripe Checkout Session per approved request
@@ -25,14 +27,17 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 @ApplicationScoped
 public class StripeService {
 
-    @ConfigProperty(name = "stripe.secret-key", defaultValue = "")
-    String secretKey;
+    // Optional, not defaultValue="": SmallRye's String converter treats an
+    // empty string as null and fails startup validation on it - Optional is
+    // the supported way to express "may be absent/blank".
+    @ConfigProperty(name = "stripe.secret-key")
+    Optional<String> secretKey;
 
-    @ConfigProperty(name = "stripe.webhook-secret", defaultValue = "")
-    String webhookSecret;
+    @ConfigProperty(name = "stripe.webhook-secret")
+    Optional<String> webhookSecret;
 
     public boolean isConfigured() {
-        return secretKey != null && !secretKey.isBlank();
+        return secretKey.filter(s -> !s.isBlank()).isPresent();
     }
 
     /**
@@ -65,7 +70,7 @@ public class StripeService {
                 .build();
 
         try {
-            StripeClient client = new StripeClient(secretKey);
+            StripeClient client = new StripeClient(secretKey.orElseThrow());
             Session session = client.checkout().sessions().create(params);
             return session.getUrl();
         } catch (StripeException e) {
@@ -82,6 +87,6 @@ public class StripeService {
      * must catch it and respond 400, never trusting an unverified payload.
      */
     public Event constructWebhookEvent(String payload, String sigHeader) throws SignatureVerificationException {
-        return Webhook.constructEvent(payload, sigHeader, webhookSecret);
+        return Webhook.constructEvent(payload, sigHeader, webhookSecret.orElse(""));
     }
 }
