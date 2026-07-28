@@ -478,8 +478,15 @@ public class RecordingRequestController {
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
 
         boolean paid = body != null && Boolean.TRUE.equals(body.paid());
+        boolean becamePaid = paid && r.getPaidAt() == null;
         r.setPaidAt(paid ? OffsetDateTime.now() : null);
         r.setUpdatedAt(OffsetDateTime.now());
+        // The manual toggle stands in for the Stripe webhook (e.g. a cash /
+        // bank-transfer payment), so it must fire the same download email
+        // once the request is both paid and delivered.
+        if (becamePaid && r.getRecording() != null) {
+            notifier.notifyDownloadReady(r);
+        }
         return Response.ok(toDto(r)).build();
     }
 
