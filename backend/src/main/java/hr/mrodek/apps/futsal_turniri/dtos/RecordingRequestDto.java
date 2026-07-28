@@ -37,6 +37,10 @@ public class RecordingRequestDto {
     private int priceEurCents;
     /** True when the admin marked the request paid ({@code paidAt != null}). */
     private boolean paid;
+    /** Stripe Checkout session id (cs_...) of the payment; null for a manual paid toggle. */
+    private String stripeSessionId;
+    /** Email the payer entered on Stripe Checkout - may differ from contactEmail. */
+    private String payerEmail;
     /** True when an mp4 was uploaded to MinIO ({@code videoObjectKey != null}). */
     private boolean hasVideo;
     /** Set once an admin links a library recording to this request. Null otherwise. */

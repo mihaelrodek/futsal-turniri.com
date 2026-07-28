@@ -357,6 +357,17 @@ function RecordingRequestRow({
                         Napomena admina: {req.adminNote}
                     </Text>
                 )}
+                {/* Payment reference. The status link is a capability, so the
+                    payer can be someone other than the requester - show who
+                    actually paid + the Stripe session id to find the charge
+                    in the dashboard. Absent for manual paid toggles. */}
+                {req.paid && (req.payerEmail || req.stripeSessionId) && (
+                    <Text fontSize="xs" color="fg.muted" css={{ overflowWrap: "anywhere" }}>
+                        Plaćeno preko Stripea
+                        {req.payerEmail ? <> — platio: <Text as="span" color="fg">{req.payerEmail}</Text></> : null}
+                        {req.stripeSessionId ? <> · ref: <Text as="span" fontFamily="mono">{req.stripeSessionId}</Text></> : null}
+                    </Text>
+                )}
 
                 {/* ── REQUESTED: approve / reject ── */}
                 {status === "REQUESTED" && (

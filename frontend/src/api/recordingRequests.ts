@@ -59,6 +59,10 @@ export type RecordingRequestDto = {
     /** Price in euro cents (e.g. 2000 = 20 €). */
     priceEurCents: number
     paid: boolean
+    /** Stripe Checkout session id (cs_...) of the payment; null for a manual paid toggle. */
+    stripeSessionId: string | null
+    /** Email the payer entered on Stripe Checkout - may differ from contactEmail. */
+    payerEmail: string | null
     /** True once a library recording has been linked in. */
     hasVideo: boolean
     /** Set once an admin links a library recording as this request's delivery. */

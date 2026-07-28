@@ -104,6 +104,12 @@ public class StripeWebhookController {
         if (r.getPaidAt() != null) return; // already processed - idempotent no-op on replay
 
         r.setPaidAt(OffsetDateTime.now());
+        // Payment reference: the session id finds the charge in the Stripe
+        // dashboard; the payer email is whatever the payer typed on the
+        // Checkout page - it may legitimately differ from the request's
+        // contactEmail (the status link is a capability anyone can pay).
+        r.setStripeSessionId(session.getId());
+        r.setPayerEmail(session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null);
         r.setUpdatedAt(OffsetDateTime.now());
 
         if (r.getRecording() != null) {

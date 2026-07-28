@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Payment traceability. The status-page link is a capability, so ANYONE
+        holding it can pay - which is fine (payment fulfils the request either
+        way), but the admin then needs to see WHO paid and have a reference to
+        find the charge in the Stripe dashboard. Both stay null for manual
+        "Označi plaćeno" toggles (cash / bank transfer).
+    -->
+
+    <changeSet id="2026-07-28-10-match-recording-requests-payment-ref" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="stripe_session_id" type="varchar(255)"/>
+            <column name="payer_email" type="varchar(255)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

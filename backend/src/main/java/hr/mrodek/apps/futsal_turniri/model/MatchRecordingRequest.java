@@ -101,6 +101,22 @@ public class MatchRecordingRequest {
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
 
+    /**
+     * Stripe Checkout session id (cs_...) of the completed payment - the
+     * reference for finding the charge in the Stripe dashboard. Null for a
+     * manual paid toggle (cash / bank transfer).
+     */
+    @Column(name = "stripe_session_id", length = 255)
+    private String stripeSessionId;
+
+    /**
+     * Email the payer entered on the Stripe Checkout page. May differ from
+     * {@link #contactEmail}: the status link is a capability, so someone else
+     * (a teammate, a parent) can legitimately pay the request.
+     */
+    @Column(name = "payer_email", length = 255)
+    private String payerEmail;
+
     /** Library recording linked in by an admin as this request's delivery. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recording_id")

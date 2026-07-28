@@ -29,6 +29,8 @@ public interface RecordingRequestMapper {
             @Mapping(target = "adminNote", source = "adminNote"),
             @Mapping(target = "priceEurCents", source = "priceEurCents"),
             @Mapping(target = "paid", expression = "java(r.getPaidAt() != null)"),
+            @Mapping(target = "stripeSessionId", source = "stripeSessionId"),
+            @Mapping(target = "payerEmail", source = "payerEmail"),
             @Mapping(target = "hasVideo", expression = "java(r.getRecording() != null)"),
             @Mapping(target = "recordingUuid", source = "recording.uuid"),
             @Mapping(target = "recordingFileName", source = "recording.fileName"),
