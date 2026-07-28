@@ -31,12 +31,6 @@ public class RecordingRequestDto {
     private boolean paid;
     /** True when an mp4 was uploaded to MinIO ({@code videoObjectKey != null}). */
     private boolean hasVideo;
-    /**
-     * External delivery link. Populated ONLY for the owner when status is
-     * DELIVERED, and always for admins; null otherwise (set by the controller,
-     * never by the mapper).
-     */
-    private String deliveryUrl;
     /** Set once an admin links a library recording to this request. Null otherwise. */
     private UUID recordingUuid;
     private String recordingFileName;

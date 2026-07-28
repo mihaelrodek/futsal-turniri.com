@@ -26,9 +26,6 @@ public interface RecordingRequestMapper {
             @Mapping(target = "priceEurCents", source = "priceEurCents"),
             @Mapping(target = "paid", expression = "java(r.getPaidAt() != null)"),
             @Mapping(target = "hasVideo", expression = "java(r.getRecording() != null)"),
-            // deliveryUrl is visibility-gated (owner+DELIVERED or admin) - the
-            // controller decides, the mapper always leaves it null.
-            @Mapping(target = "deliveryUrl", ignore = true),
             @Mapping(target = "recordingUuid", source = "recording.uuid"),
             @Mapping(target = "recordingFileName", source = "recording.fileName"),
             @Mapping(target = "recordingSizeBytes", source = "recording.videoSizeBytes"),

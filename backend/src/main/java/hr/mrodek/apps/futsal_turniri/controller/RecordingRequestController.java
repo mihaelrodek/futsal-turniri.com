@@ -33,10 +33,12 @@ import java.util.UUID;
 
 /**
  * Paid match-recording requests (~20 EUR/match). A user asks for the video of
- * one match; an admin approves, marks it paid and delivers either an external
- * URL or a recording linked in from the admin's library
- * ({@link MatchRecordingController}) - uploads never happen against a request
- * directly. The user then fetches a presigned GET download link.
+ * one match; an admin approves, marks it paid and delivers it by linking in a
+ * recording from the admin's library ({@link MatchRecordingController}) - no
+ * external links are accepted, and uploads never happen against a request
+ * directly. The link can be re-pointed at any time (e.g. to fix a wrongly
+ * mapped recording), even after delivery. The user then fetches a presigned
+ * GET download link.
  *
  * Routes:
  *   POST   /recording-requests/by-match/{matchId}       - create (user)
@@ -44,9 +46,8 @@ import java.util.UUID;
  *   GET    /recording-requests?status=                  - list all (admin)
  *   PUT    /recording-requests/{uuid}/status            - approve/reject (admin)
  *   PUT    /recording-requests/{uuid}/paid              - toggle paid (admin)
- *   PUT    /recording-requests/{uuid}/deliver-url       - deliver external URL (admin)
- *   PUT    /recording-requests/{uuid}/link-recording    - deliver via a library recording (admin)
- *   GET    /recording-requests/{uuid}/download-link     - presigned GET / external URL (owner or admin)
+ *   PUT    /recording-requests/{uuid}/link-recording    - deliver / re-link a library recording (admin)
+ *   GET    /recording-requests/{uuid}/download-link     - presigned GET (owner or admin)
  *   DELETE /recording-requests/{uuid}                   - cancel (owner, only while REQUESTED)
  */
 @Path("/recording-requests")
@@ -79,8 +80,6 @@ public class RecordingRequestController {
 
     public record PaidBody(Boolean paid) {}
 
-    public record DeliverUrlBody(@Size(max = 1000) String url) {}
-
     public record LinkRecordingBody(UUID recordingUuid) {}
 
     public record DownloadLinkResponse(String url, int expiresInSeconds) {}
@@ -100,16 +99,8 @@ public class RecordingRequestController {
         return me != null && me.equals(r.getCreatedByUid());
     }
 
-    /**
-     * Map to DTO applying the deliveryUrl visibility rule: the raw URL is
-     * shown only to the owner once DELIVERED, and always to admins.
-     */
     private RecordingRequestDto toDto(MatchRecordingRequest r) {
-        RecordingRequestDto dto = mapper.toDto(r);
-        if (isAdmin() || (isOwner(r) && r.getStatus() == RecordingRequestStatus.DELIVERED)) {
-            dto.setDeliveryUrl(r.getDeliveryUrl());
-        }
-        return dto;
+        return mapper.toDto(r);
     }
 
     private List<RecordingRequestDto> toDtoList(List<MatchRecordingRequest> list) {
@@ -261,31 +252,12 @@ public class RecordingRequestController {
         return Response.ok(toDto(r)).build();
     }
 
-    @PUT
-    @Path("/{uuid}/deliver-url")
-    @RolesAllowed("admin")
-    @Transactional
-    public Response deliverUrl(@PathParam("uuid") UUID uuid, @Valid DeliverUrlBody body) {
-        var r = repo.findByUuid(uuid).orElse(null);
-        if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
-
-        String url = body == null || body.url() == null ? "" : body.url().trim();
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            throw new BadRequestException("url must start with http:// or https://");
-        }
-
-        r.setDeliveryUrl(url);
-        r.setStatus(RecordingRequestStatus.DELIVERED);
-        r.setUpdatedAt(OffsetDateTime.now());
-
-        notifyDelivered(r);
-        return Response.ok(toDto(r)).build();
-    }
-
     /**
-     * Deliver by linking in a library recording (see {@link MatchRecordingController}
-     * for the upload itself) - the admin never uploads against a request directly.
-     * The recording must belong to the SAME match as the request.
+     * Deliver, or re-link, a library recording (see {@link MatchRecordingController}
+     * for the upload itself) - the admin never uploads against a request directly,
+     * and no external URL is ever accepted. Callable again after DELIVERED to fix a
+     * wrongly mapped recording. The recording must belong to the SAME match as the
+     * request, and the request must already be APPROVED or DELIVERED.
      */
     @PUT
     @Path("/{uuid}/link-recording")
@@ -296,6 +268,9 @@ public class RecordingRequestController {
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
         if (body == null || body.recordingUuid() == null) {
             throw new BadRequestException("recordingUuid is required");
+        }
+        if (r.getStatus() != RecordingRequestStatus.APPROVED && r.getStatus() != RecordingRequestStatus.DELIVERED) {
+            return conflict("NOT_APPROVED");
         }
 
         MatchRecording rec = recordingRepo.findByUuid(body.recordingUuid()).orElse(null);
@@ -332,9 +307,6 @@ public class RecordingRequestController {
         }
         if (r.getStatus() != RecordingRequestStatus.DELIVERED) {
             return conflict("NOT_DELIVERED");
-        }
-        if (r.getDeliveryUrl() != null && !r.getDeliveryUrl().isBlank()) {
-            return Response.ok(new DownloadLinkResponse(r.getDeliveryUrl(), 0)).build();
         }
         if (r.getRecording() != null) {
             String url = recordingStorage.presignedGet(

@@ -5,7 +5,6 @@ import {
     Button,
     Card,
     HStack,
-    Input,
     Spinner,
     Stack,
     Text,
@@ -16,12 +15,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
     FiCheck,
     FiDollarSign,
+    FiEdit2,
     FiFilm,
     FiLink,
     FiX,
 } from "react-icons/fi"
 import {
-    deliverRecordingUrl,
     fetchRecordingDownloadLink,
     fetchRecordingRequests,
     linkRecordingToRequest,
@@ -39,10 +38,12 @@ import { qk } from "../queryClient"
  *
  * <p>Lifecycle handled here: an organizer/visitor REQUESTED a recording →
  * admin approves or rejects (optionally with a note) → admin marks the
- * request paid → admin delivers the video, either as an external URL or by
- * linking in a video already uploaded to the recording library (see the
- * "Baza snimki" tab - uploads never happen against a request directly) →
- * the requester fetches a time-limited download link.
+ * request paid → admin delivers the video by linking in a recording already
+ * uploaded to the recording library (see the "Baza snimki" tab - uploads
+ * never happen against a request directly, and no external link is ever
+ * accepted) → the requester fetches a time-limited download link. The link
+ * can be re-pointed at any time, even after delivery, to fix a wrongly
+ * mapped recording.
  */
 
 /** "ALL" disables server-side filtering; everything else maps 1:1 to the enum. */
@@ -98,8 +99,8 @@ export function AdminRecordingRequestsTab() {
                             <Text fontSize="lg" fontWeight="semibold">Zahtjevi za snimke</Text>
                             <Text fontSize="sm" color="fg.muted">
                                 Upravljanje zahtjevima za snimke utakmica - odobri ili odbij
-                                zahtjev, označi uplatu i isporuči snimku (vanjska poveznica ili
-                                upload datoteke).
+                                zahtjev, označi uplatu i isporuči snimku povezivanjem s bazom
+                                snimki.
                             </Text>
                         </Box>
 
@@ -143,8 +144,8 @@ export default AdminRecordingRequestsTab
 
 /* ──────────────────────────────────────────────────────────────────────
    One request row. Owns all per-row state (busy flags, reject note,
-   delivery URL input, upload progress) so a long list doesn't hoist a
-   pile of maps into the parent.
+   edit-recording toggle) so a long list doesn't hoist a pile of maps
+   into the parent.
    ────────────────────────────────────────────────────────────────────── */
 function RecordingRequestRow({
     req,
@@ -154,7 +155,7 @@ function RecordingRequestRow({
     onChanged: () => void
 }) {
     const [busy, setBusy] = useState<
-        null | "approve" | "reject" | "paid" | "deliverUrl" | "linkRecording" | "link"
+        null | "approve" | "reject" | "paid" | "linkRecording" | "link"
     >(null)
 
     // Reject flow: the button first reveals an inline textarea for the
@@ -162,18 +163,20 @@ function RecordingRequestRow({
     const [rejecting, setRejecting] = useState(false)
     const [rejectNote, setRejectNote] = useState("")
 
-    // External-URL delivery input.
-    const [deliveryUrlInput, setDeliveryUrlInput] = useState("")
+    // DELIVERED requests hide the library picker behind an "Uredi" toggle so
+    // the common case (already correctly linked) stays a one-liner.
+    const [editingRecording, setEditingRecording] = useState(false)
 
     const status = req.status as RecordingRequestStatus
 
     // Library recordings already uploaded for this match - the only delivery
-    // path other than the external URL above. Fetched lazily, only once the
-    // request is APPROVED (the section where it's shown).
+    // path a request can be fulfilled with. Fetched lazily: while APPROVED
+    // (the picker is always shown) or while DELIVERED and the admin opened
+    // the "Uredi" panel to fix a wrongly mapped recording.
     const { data: candidates, isLoading: candidatesLoading } = useQuery({
         queryKey: ["matchRecordings", "by-match", req.matchId],
         queryFn: () => fetchMatchRecordingsForMatch(req.matchId),
-        enabled: status === "APPROVED",
+        enabled: status === "APPROVED" || (status === "DELIVERED" && editingRecording),
     })
 
     async function approve() {
@@ -214,25 +217,12 @@ function RecordingRequestRow({
         }
     }
 
-    async function deliverExternalUrl() {
-        if (busy) return
-        const url = deliveryUrlInput.trim()
-        if (!url) return
-        try {
-            setBusy("deliverUrl")
-            await deliverRecordingUrl(req.uuid, url)
-            setDeliveryUrlInput("")
-            onChanged()
-        } finally {
-            setBusy(null)
-        }
-    }
-
     async function linkRecording(recordingUuid: string) {
         if (busy) return
         try {
             setBusy("linkRecording")
             await linkRecordingToRequest(req.uuid, recordingUuid)
+            setEditingRecording(false)
             onChanged()
         } finally {
             setBusy(null)
@@ -256,6 +246,39 @@ function RecordingRequestRow({
         } finally {
             setBusy(null)
         }
+    }
+
+    function libraryPicker() {
+        return candidatesLoading ? (
+            <HStack py="1"><Spinner size="xs" /></HStack>
+        ) : !candidates || candidates.length === 0 ? (
+            <Text fontSize="xs" color="fg.muted">
+                Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki" i uploadaj je tamo.
+            </Text>
+        ) : (
+            <Stack gap="1.5">
+                {candidates.map((rec) => (
+                    <HStack key={rec.uuid} gap="2" wrap="wrap">
+                        <Text fontSize="xs" truncate maxW="240px">
+                            {rec.fileName ?? rec.uuid}
+                            {rec.videoSizeBytes != null
+                                ? ` (${formatFileSize(rec.videoSizeBytes)})`
+                                : ""}
+                        </Text>
+                        <Button
+                            size="xs"
+                            variant="solid"
+                            colorPalette="pitch"
+                            disabled={busy != null || rec.uuid === req.recordingUuid}
+                            loading={busy === "linkRecording"}
+                            onClick={() => linkRecording(rec.uuid)}
+                        >
+                            <FiFilm /> {rec.uuid === req.recordingUuid ? "Povezano" : "Poveži"}
+                        </Button>
+                    </HStack>
+                ))}
+            </Stack>
+        )
     }
 
     return (
@@ -393,7 +416,7 @@ function RecordingRequestRow({
                             </Button>
                         </HStack>
 
-                        {/* Delivery a) external URL */}
+                        {/* Delivery: link a recording already in the library */}
                         <Box
                             p="2.5"
                             bg="bg.muted"
@@ -401,90 +424,28 @@ function RecordingRequestRow({
                             borderWidth="1px"
                             borderColor="border.subtle"
                         >
-                            <Stack gap="2">
-                                <Text fontSize="xs" color="fg.muted">ISPORUKA SNIMKE</Text>
-                                <HStack gap="2" wrap="wrap">
-                                    <Input
-                                        size="sm"
-                                        flex="1"
-                                        minW="220px"
-                                        placeholder="https://… vanjska poveznica na snimku"
-                                        value={deliveryUrlInput}
-                                        onChange={(e) => setDeliveryUrlInput(e.target.value)}
-                                    />
-                                    <Button
-                                        size="xs"
-                                        variant="outline"
-                                        colorPalette="pitch"
-                                        disabled={busy != null || !deliveryUrlInput.trim()}
-                                        loading={busy === "deliverUrl"}
-                                        onClick={deliverExternalUrl}
-                                    >
-                                        <FiLink /> Isporuči poveznicu
-                                    </Button>
-                                </HStack>
-
-                                {/* Delivery b) link a recording already in the library */}
-                                <Stack gap="1.5">
-                                    <Text fontSize="xs" color="fg.muted">
-                                        ILI POVEŽI SNIMKU IZ BAZE
-                                    </Text>
-                                    {candidatesLoading ? (
-                                        <HStack py="1"><Spinner size="xs" /></HStack>
-                                    ) : !candidates || candidates.length === 0 ? (
-                                        <Text fontSize="xs" color="fg.muted">
-                                            Nema snimke u bazi za ovu utakmicu — otvori „Baza snimki"
-                                            i uploadaj je tamo.
-                                        </Text>
-                                    ) : (
-                                        <Stack gap="1.5">
-                                            {candidates.map((rec) => (
-                                                <HStack key={rec.uuid} gap="2" wrap="wrap">
-                                                    <Text fontSize="xs" truncate maxW="240px">
-                                                        {rec.fileName ?? rec.uuid}
-                                                        {rec.videoSizeBytes != null
-                                                            ? ` (${formatFileSize(rec.videoSizeBytes)})`
-                                                            : ""}
-                                                    </Text>
-                                                    <Button
-                                                        size="xs"
-                                                        variant="solid"
-                                                        colorPalette="pitch"
-                                                        disabled={busy != null}
-                                                        loading={busy === "linkRecording"}
-                                                        onClick={() => linkRecording(rec.uuid)}
-                                                    >
-                                                        <FiFilm /> Poveži
-                                                    </Button>
-                                                </HStack>
-                                            ))}
-                                        </Stack>
-                                    )}
-                                </Stack>
+                            <Stack gap="1.5">
+                                <Text fontSize="xs" color="fg.muted">
+                                    POVEŽI SNIMKU IZ BAZE
+                                </Text>
+                                {libraryPicker()}
                             </Stack>
                         </Box>
                     </Stack>
                 )}
 
-                {/* ── DELIVERED: download link + delivery info ── */}
+                {/* ── DELIVERED: download link + delivery info + edit ── */}
                 {status === "DELIVERED" && (
                     <Stack gap="1.5">
-                        {req.deliveryUrl && (
-                            <Text fontSize="xs" color="fg.muted" truncate>
-                                Isporučeno poveznicom: <Text as="span" color="fg">{req.deliveryUrl}</Text>
+                        <Text fontSize="xs" color="fg.muted" truncate>
+                            Povezana snimka iz baze:{" "}
+                            <Text as="span" color="fg">
+                                {req.recordingFileName ?? req.recordingUuid}
+                                {req.recordingSizeBytes != null
+                                    ? ` (${formatFileSize(req.recordingSizeBytes)})`
+                                    : ""}
                             </Text>
-                        )}
-                        {req.hasVideo && !req.deliveryUrl && (
-                            <Text fontSize="xs" color="fg.muted" truncate>
-                                Povezana snimka iz baze:{" "}
-                                <Text as="span" color="fg">
-                                    {req.recordingFileName ?? req.recordingUuid}
-                                    {req.recordingSizeBytes != null
-                                        ? ` (${formatFileSize(req.recordingSizeBytes)})`
-                                        : ""}
-                                </Text>
-                            </Text>
-                        )}
+                        </Text>
                         <HStack gap="2">
                             <Button
                                 size="xs"
@@ -496,7 +457,31 @@ function RecordingRequestRow({
                             >
                                 <FiLink /> Poveznica
                             </Button>
+                            <Button
+                                size="xs"
+                                variant="ghost"
+                                disabled={busy != null}
+                                onClick={() => setEditingRecording((v) => !v)}
+                            >
+                                <FiEdit2 /> {editingRecording ? "Odustani" : "Uredi snimku"}
+                            </Button>
                         </HStack>
+                        {editingRecording && (
+                            <Box
+                                p="2.5"
+                                bg="bg.muted"
+                                rounded="md"
+                                borderWidth="1px"
+                                borderColor="border.subtle"
+                            >
+                                <Stack gap="1.5">
+                                    <Text fontSize="xs" color="fg.muted">
+                                        POVEŽI DRUGU SNIMKU IZ BAZE
+                                    </Text>
+                                    {libraryPicker()}
+                                </Stack>
+                            </Box>
+                        )}
                     </Stack>
                 )}
             </Stack>

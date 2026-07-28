@@ -13,10 +13,10 @@ import java.util.UUID;
 
 /**
  * One paid request for the video recording of a single match (~20 EUR).
- * Delivery is either an external {@link #deliveryUrl} or a {@link #recording}
- * linked in from the admin's recording library - never both required. The
- * admin never uploads a file directly against a request; uploads happen in
- * the library ({@link MatchRecording}) and get linked here.
+ * Delivery is exclusively a {@link #recording} linked in from the admin's
+ * recording library - no external links are accepted. The admin never
+ * uploads a file directly against a request; uploads happen in the library
+ * ({@link MatchRecording}) and get linked here.
  */
 @Entity
 @Table(name = "match_recording_requests")
@@ -60,10 +60,6 @@ public class MatchRecordingRequest {
     /** Set when the admin marks the request as paid; null = unpaid. */
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
-
-    /** External delivery link (e.g. a cloud-drive share) - alternative to a linked recording. */
-    @Column(name = "delivery_url", length = 1000)
-    private String deliveryUrl;
 
     /** Library recording linked in by an admin as this request's delivery. */
     @ManyToOne(fetch = FetchType.LAZY)

@@ -26,8 +26,6 @@ export type RecordingRequestDto = {
     paid: boolean
     /** True once a library recording has been linked in. */
     hasVideo: boolean
-    /** External delivery URL set by the admin (alternative to a linked recording). */
-    deliveryUrl: string | null
     /** Set once an admin links a library recording as this request's delivery. */
     recordingUuid: string | null
     recordingFileName: string | null
@@ -110,24 +108,12 @@ export async function setRecordingRequestPaid(
     return data
 }
 
-/** Admin: deliver via an external URL instead of an upload. */
-export async function deliverRecordingUrl(
-    uuid: string,
-    url: string,
-): Promise<RecordingRequestDto> {
-    const { data } = await http.put<RecordingRequestDto>(
-        `/recording-requests/${uuid}/deliver-url`,
-        { url },
-        { successMessage: "Poveznica na snimku je spremljena." },
-    )
-    return data
-}
-
 /**
- * Admin: deliver by linking in a recording from the library (see
+ * Admin: deliver, or re-link, a recording from the library (see
  * `api/matchRecordings.ts`) - uploads never happen against a request
- * directly. 409 {"code":"MATCH_MISMATCH"} when the recording belongs to a
- * different match than this request.
+ * directly, and no external URL is ever accepted. Callable again after
+ * DELIVERED to fix a wrongly mapped recording. 409 {"code":"MATCH_MISMATCH"}
+ * when the recording belongs to a different match than this request.
  */
 export async function linkRecordingToRequest(
     uuid: string,

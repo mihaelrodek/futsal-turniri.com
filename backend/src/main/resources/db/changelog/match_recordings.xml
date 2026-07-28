@@ -66,4 +66,9 @@
         <dropColumn tableName="match_recording_requests" columnName="video_object_key"/>
         <dropColumn tableName="match_recording_requests" columnName="video_size_bytes"/>
     </changeSet>
+
+    <!-- External-link delivery removed: a request may only be fulfilled by linking a library recording. -->
+    <changeSet id="2026-07-28-08-match-recording-requests-drop-delivery-url" author="mrodek">
+        <dropColumn tableName="match_recording_requests" columnName="delivery_url"/>
+    </changeSet>
 </databaseChangeLog>
