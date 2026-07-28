@@ -59,7 +59,7 @@
         <dependency>
             <groupId>com.stripe</groupId>
             <artifactId>stripe-java</artifactId>
-            <version>26.13.0</version>
+            <version>33.1.1</version>
         </dependency>
 
         <!-- For FilenameUtils used in StorageService. Bumped 2.15.1 -> 2.16.1
