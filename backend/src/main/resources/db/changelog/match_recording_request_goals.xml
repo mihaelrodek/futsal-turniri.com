@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Second flavour of a paid recording request: a clip of ONE goal (5 EUR)
+        instead of the whole match (20 EUR). `kind` discriminates; existing rows
+        backfill to FULL_MATCH. `match_event_id` points at the requested goal;
+        it is SET NULL on event delete, so goal_minute/goal_label keep a
+        human-readable snapshot taken at request time.
+    -->
+
+    <changeSet id="2026-07-28-09-match-recording-requests-kind" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="kind" type="varchar(20)" defaultValue="FULL_MATCH">
+                <constraints nullable="false"/>
+            </column>
+            <column name="match_event_id" type="bigint"/>
+            <column name="goal_minute" type="int"/>
+            <column name="goal_label" type="varchar(255)"/>
+        </addColumn>
+
+        <addForeignKeyConstraint baseTableName="match_recording_requests" baseColumnNames="match_event_id"
+                                 referencedTableName="match_events" referencedColumnNames="id"
+                                 onDelete="SET NULL" constraintName="fk_match_recording_requests_event"/>
+
+        <createIndex tableName="match_recording_requests" indexName="idx_match_recording_requests_event">
+            <column name="match_event_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

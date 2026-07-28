@@ -23,6 +23,14 @@ public class RecordingRequestDto {
     private String team2Name;
     private OffsetDateTime kickoffAt;
     private String status;        // REQUESTED | APPROVED | REJECTED | DELIVERED | CANCELLED
+    /** FULL_MATCH (whole match, 20 €) | GOAL (single goal clip, 5 €). */
+    private String kind;
+    /** The requested goal's event id - only for kind = GOAL, null otherwise. */
+    private Long matchEventId;
+    /** Snapshot of the requested goal's minute (kind = GOAL). */
+    private Integer goalMinute;
+    /** Readable snapshot of the requested goal, e.g. "12' - M. Rodek (Ekipa A)". */
+    private String goalLabel;
     private String note;
     private String contactEmail;
     private String adminNote;

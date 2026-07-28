@@ -4,7 +4,7 @@ import { FiAward, FiSearch, FiTarget, FiUsers } from "react-icons/fi"
 import { useQuery } from "@tanstack/react-query"
 import { useSearchParams } from "react-router-dom"
 import { fetchGlobalScorers, type GlobalScorer } from "../api/players"
-import { fetchTeamMedals, type TeamMedalsDto } from "../api/stats"
+import { fetchTeamMedals } from "../api/stats"
 import { MonoLabel, PageTitle, PillTabBar } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
@@ -37,16 +37,6 @@ function rankColor(rank: number): string {
     if (rank === 2) return MEDAL_COLORS.silver
     if (rank === 3) return MEDAL_COLORS.bronze
     return "var(--chakra-colors-fg-muted)"
-}
-
-/** Croatian numeral agreement (1 / 2-4 / 5+), e.g. pluralize(2, "naslov
- *  prvaka", "naslova prvaka", "naslova prvaka"). */
-function pluralize(n: number, one: string, few: string, many: string): string {
-    const mod10 = n % 10
-    const mod100 = n % 100
-    if (mod10 === 1 && mod100 !== 11) return one
-    if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return few
-    return many
 }
 
 export default function StatsPage() {
@@ -84,8 +74,12 @@ export default function StatsPage() {
 
     return (
         <VStack align="stretch" gap="5">
-            <PageTitle title="Statistika" />
+            {/* Tabs come FIRST - each pane carries its own list heading below
+                them. No page-level title: it only pushed the content down, and
+                the <title>/OG meta still carry "Statistika" for search +
+                sharing. */}
             <PillTabBar
+                size="sm"
                 tabs={TAB_KEYS.map((k) => TAB_LABELS[k])}
                 active={TAB_LABELS[tab]}
                 onChange={(label) => {
@@ -143,17 +137,19 @@ function IgraciPane() {
                 right of it so they share the header row instead of stacking
                 below. Wraps to full width under the title on mobile. */}
             <PageTitle
+                size="sm"
                 title="Vječna lista strijelaca"
                 action={
                     <HStack
-                        gap="3"
+                        gap="2"
                         wrap="wrap"
+                        align="center"
                         justify={{ base: "flex-start", md: "flex-end" }}
                         w={{ base: "100%", md: "auto" }}
                     >
                         {!loading && !error && scorers.length > 0 && (
                             <>
-                                <SummaryTile label="Strijelaca" value={scorers.length} />
+                                <SummaryTile label="Različitih strijelaca" value={scorers.length} />
                                 <SummaryTile label="Ukupno golova" value={totalGoals} />
                             </>
                         )}
@@ -303,22 +299,29 @@ function IgraciPane() {
     )
 }
 
+/**
+ * Compact inline counter ("41 STRIJELACA"). Value and label sit on ONE line and
+ * the tile is sized to match the search input's height, so the title, both
+ * counters and the search share a single header row instead of the counters
+ * stacking value-over-label and pushing the row taller.
+ */
 function SummaryTile({ label, value }: { label: string; value: number }) {
     return (
-        <Box
+        <HStack
+            gap="1.5"
             bg="bg.panel"
             borderWidth="1px"
             borderColor="border"
-            rounded="lg"
-            px="4"
-            py="2.5"
-            minW="120px"
+            rounded="md"
+            px="2.5"
+            h={{ base: "28px", md: "32px" }}
+            flexShrink={0}
         >
-            <Text fontFamily="heading" fontSize="22px" fontWeight={800} lineHeight={1} color="fg.ink">
+            <Text fontFamily="heading" fontSize="13px" fontWeight={800} lineHeight={1} color="fg.ink">
                 {value}
             </Text>
             <MonoLabel>{label.toUpperCase()}</MonoLabel>
-        </Box>
+        </HStack>
     )
 }
 
@@ -347,20 +350,6 @@ function EkipePane() {
         [medals],
     )
 
-    // "Po zlatu": the list is already sorted gold → silver → bronze → name,
-    // so row 0 is the gold leader (backend's own tiebreak order applies).
-    const topGold: TeamMedalsDto | undefined = medals[0]
-    // "Po medaljama": scan for the highest total; `>` (not `>=`) keeps the
-    // first team encountered - i.e. the backend's sort order - as the
-    // tiebreaker instead of re-sorting here.
-    const topTotal = useMemo<TeamMedalsDto | undefined>(() => {
-        if (medals.length === 0) return undefined
-        return medals.reduce((best, m) => {
-            const total = m.gold + m.silver + m.bronze
-            const bestTotal = best.gold + best.silver + best.bronze
-            return total > bestTotal ? m : best
-        }, medals[0])
-    }, [medals])
 
     return (
         <VStack align="stretch" gap="5">
@@ -389,59 +378,46 @@ function EkipePane() {
                 </Flex>
             ) : (
                 <>
-                    <HStack gap="3" wrap="wrap">
-                        {topGold && (
-                            <MedalSummaryCard
-                                label="Po zlatu"
-                                teamName={topGold.name}
-                                dotColor={MEDAL_COLORS.gold}
-                                text={`${topGold.gold} ${pluralize(topGold.gold, "naslov prvaka", "naslova prvaka", "naslova prvaka")}`}
-                            />
-                        )}
-                        {topTotal && (
-                            <MedalSummaryCard
-                                label="Po medaljama"
-                                teamName={topTotal.name}
-                                dotColor="pitch.500"
-                                text={`${topTotal.gold + topTotal.silver + topTotal.bronze} ${pluralize(
-                                    topTotal.gold + topTotal.silver + topTotal.bronze,
-                                    "medalja ukupno",
-                                    "medalje ukupno",
-                                    "medalja ukupno",
-                                )}`}
-                            />
-                        )}
-                        <Box position="relative" w={{ base: "100%", md: "240px" }} ml={{ base: "0", md: "auto" }}>
-                            <Box
-                                position="absolute"
-                                left="3"
-                                top="50%"
-                                transform="translateY(-50%)"
-                                color="pitch.500"
-                                pointerEvents="none"
-                            >
-                                <FiSearch />
+                    {/* Same quiet heading as the Igraci tab, so switching tabs
+                        swaps one list title for the other. The medal counts and
+                        the rank column in the rows below already say who is on
+                        the podium, so there are no separate summary cards. */}
+                    <PageTitle
+                        size="sm"
+                        title="Vječna lista plasmana"
+                        action={
+                            <Box position="relative" w={{ base: "100%", md: "240px" }}>
+                                <Box
+                                    position="absolute"
+                                    left="3"
+                                    top="50%"
+                                    transform="translateY(-50%)"
+                                    color="pitch.500"
+                                    pointerEvents="none"
+                                >
+                                    <FiSearch />
+                                </Box>
+                                <Input
+                                    pl="9"
+                                    size={{ base: "md", md: "sm" }}
+                                    h={{ base: "36px", md: "32px" }}
+                                    py="0"
+                                    fontSize={{ base: "16px", md: "sm" }}
+                                    placeholder="Pretraži ekipu…"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    borderColor="pitch.500"
+                                    borderWidth="1.5px"
+                                    bg="brand.subtle"
+                                    _hover={{ borderColor: "pitch.600" }}
+                                    _focusVisible={{
+                                        borderColor: "pitch.600",
+                                        boxShadow: "0 0 0 1px var(--chakra-colors-pitch-600)",
+                                    }}
+                                />
                             </Box>
-                            <Input
-                                pl="9"
-                                size={{ base: "md", md: "sm" }}
-                                h={{ base: "36px", md: "32px" }}
-                                py="0"
-                                fontSize={{ base: "16px", md: "sm" }}
-                                placeholder="Pretraži ekipu…"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                borderColor="pitch.500"
-                                borderWidth="1.5px"
-                                bg="brand.subtle"
-                                _hover={{ borderColor: "pitch.600" }}
-                                _focusVisible={{
-                                    borderColor: "pitch.600",
-                                    boxShadow: "0 0 0 1px var(--chakra-colors-pitch-600)",
-                                }}
-                            />
-                        </Box>
-                    </HStack>
+                        }
+                    />
 
                     {filtered.length === 0 ? (
                         <Text fontSize="sm" color="fg.muted" textAlign="center" py="4">
@@ -521,41 +497,6 @@ function EkipePane() {
                 </>
             )}
         </VStack>
-    )
-}
-
-function MedalSummaryCard({
-    label,
-    teamName,
-    text,
-    dotColor,
-}: {
-    label: string
-    teamName: string
-    text: string
-    dotColor: string
-}) {
-    return (
-        <Box
-            bg="bg.panel"
-            borderWidth="1px"
-            borderColor="border"
-            rounded="lg"
-            px="4"
-            py="2.5"
-            minW="180px"
-        >
-            <HStack gap="1.5" mb="1">
-                <Box w="8px" h="8px" rounded="full" bg={dotColor} flexShrink={0} />
-                <MonoLabel>{label}</MonoLabel>
-            </HStack>
-            <Text fontFamily="heading" fontSize="16px" fontWeight={800} color="fg.ink" truncate maxW="220px">
-                {teamName}
-            </Text>
-            <Text fontSize="xs" color="fg.muted" mt="0.5">
-                {text}
-            </Text>
-        </Box>
     )
 }
 

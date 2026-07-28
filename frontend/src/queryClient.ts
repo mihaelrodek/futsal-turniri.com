@@ -38,7 +38,7 @@ export const queryClient = new QueryClient({
  * cached payload's SHAPE changes in a breaking way (backend DTO change, key
  * restructure) so old persisted snapshots are discarded instead of rendered.
  */
-export const CACHE_BUSTER = "v1"
+export const CACHE_BUSTER = "v2"
 
 /** localStorage key the persister writes to (main.tsx). Cleared on logout. */
 export const PERSIST_KEY = "futsal-rq-cache"

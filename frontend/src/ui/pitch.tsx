@@ -477,19 +477,25 @@ export function PillTabBar<T extends string>({
     tabs,
     active,
     onChange,
+    size = "md",
     ...rest
 }: {
     tabs: T[]
     active: T
     onChange: (next: T) => void
-} & Omit<FlexProps, "onChange">) {
+    /** "sm" is the compact variant - a shorter bar with tighter pills, for
+     *  pages where the tabs are secondary navigation rather than the main
+     *  control (e.g. /statistika). */
+    size?: "sm" | "md"
+} & Omit<FlexProps, "onChange" | "size">) {
+    const compact = size === "sm"
     return (
         <Flex
             bg="bg.panel"
             borderWidth="1px"
             borderColor="border"
             rounded="full"
-            padding="6px"
+            padding={compact ? "3px" : "6px"}
             gap="2px"
             mb="6"
             overflowX="auto"
@@ -504,13 +510,13 @@ export function PillTabBar<T extends string>({
                         onClick={() => onChange(t)}
                         flex="1"
                         minW="fit-content"
-                        px="4"
-                        py="2.5"
+                        px={compact ? "3" : "4"}
+                        py={compact ? "1.5" : "2.5"}
                         rounded="full"
                         border="none"
                         bg={isActive ? "pitch.solid" : "transparent"}
                         color={isActive ? "pitch.contrast" : "fg.ink"}
-                        fontSize="14px"
+                        fontSize={compact ? "13px" : "14px"}
                         fontWeight={600}
                         cursor="pointer"
                         whiteSpace="nowrap"
@@ -901,6 +907,7 @@ export function PageTitle({
     status,
     statusLabel,
     action,
+    size = "md",
 }: {
     title: ReactNode
     kicker?: ReactNode
@@ -908,7 +915,12 @@ export function PageTitle({
     status?: StatusKind
     statusLabel?: string
     action?: ReactNode
+    /** "sm" is the quieter variant - a smaller heading with less space under
+     *  it, for list pages where the title labels the list rather than opening
+     *  the page (e.g. /statistika, whose tabs sit above it). */
+    size?: "sm" | "md"
 }) {
+    const compact = size === "sm"
     // Shrink a long title so it stays on the left and never pushes the action
     // buttons onto a new line (which used to waste a big band of vertical space
     // when the tournament name was long). Only measurable for string titles.
@@ -918,7 +930,7 @@ export function PageTitle({
             justify="space-between"
             align={{ base: "flex-start", md: "flex-start" }}
             gap="4"
-            mb="6"
+            mb={compact ? "3" : "6"}
             // Desktop: never wrap - the actions stay pinned top-right and the
             // title shrinks/clamps to fit. Mobile: allow the (icon-only) actions
             // to drop below the big title as before.
@@ -942,11 +954,13 @@ export function PageTitle({
                     as="h1"
                     fontFamily="heading"
                     fontSize={
-                        titleLen > 44
-                            ? { base: "20px", md: "26px" }
-                            : titleLen > 30
-                                ? { base: "23px", md: "30px" }
-                                : { base: "28px", md: "34px" }
+                        compact
+                            ? { base: "18px", md: "22px" }
+                            : titleLen > 44
+                                ? { base: "20px", md: "26px" }
+                                : titleLen > 30
+                                    ? { base: "23px", md: "30px" }
+                                    : { base: "28px", md: "34px" }
                     }
                     fontWeight={800}
                     letterSpacing="-0.025em"

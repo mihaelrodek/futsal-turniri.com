@@ -1,5 +1,6 @@
 package hr.mrodek.apps.futsal_turniri.model;
 
+import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestKind;
 import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -12,11 +13,14 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * One paid request for the video recording of a single match (~20 EUR).
- * Delivery is exclusively a {@link #recording} linked in from the admin's
- * recording library - no external links are accepted. The admin never
- * uploads a file directly against a request; uploads happen in the library
- * ({@link MatchRecording}) and get linked here.
+ * One paid request for match video. Two flavours, told apart by {@link #kind}:
+ * the whole match (~20 EUR) or a clip of a single goal (~5 EUR, with
+ * {@link #matchEvent} naming the goal).
+ *
+ * Delivery is identical for both and is exclusively a {@link #recording} linked
+ * in from the admin's recording library - no external links are accepted. The
+ * admin never uploads a file directly against a request; uploads happen in the
+ * library ({@link MatchRecording}) and get linked here.
  */
 @Entity
 @Table(name = "match_recording_requests")
@@ -36,6 +40,32 @@ public class MatchRecordingRequest {
     @JoinColumn(name = "match_id", nullable = false)
     private Matches match;
 
+    /** Whole match or a single goal clip. Drives the default price. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", length = 20, nullable = false)
+    private RecordingRequestKind kind = RecordingRequestKind.FULL_MATCH;
+
+    /**
+     * The requested goal - set only for {@link RecordingRequestKind#GOAL}.
+     * Nulled (not cascaded) if the event is later deleted, which is why
+     * {@link #goalMinute} / {@link #goalLabel} keep a snapshot of it.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "match_event_id")
+    private MatchEvent matchEvent;
+
+    /** Snapshot of the goal's minute at request time. */
+    @Column(name = "goal_minute")
+    private Integer goalMinute;
+
+    /**
+     * Human-readable snapshot of the requested goal ("12' - M. Rodek (Ekipa A)"),
+     * taken at request time so the row still reads correctly after the organizer
+     * corrects or deletes the underlying event.
+     */
+    @Column(name = "goal_label", length = 255)
+    private String goalLabel;
+
     /** Firebase UID of the requester. */
     @Column(name = "created_by_uid", length = 64, nullable = false)
     private String createdByUid;
@@ -53,9 +83,14 @@ public class MatchRecordingRequest {
     @Column(name = "admin_note", length = 1000)
     private String adminNote;
 
-    /** Price in euro cents; default 2000 = 20 EUR. */
+    /**
+     * Price in euro cents. Left null on a new row so {@link #onCreate()} can
+     * derive it from {@link #kind} (2000 = 20 EUR whole match, 500 = 5 EUR goal
+     * clip); once persisted it is authoritative and a later price change never
+     * rewrites it.
+     */
     @Column(name = "price_eur_cents", nullable = false)
-    private Integer priceEurCents = 2000;
+    private Integer priceEurCents;
 
     /** Set when the admin marks the request as paid; null = unpaid. */
     @Column(name = "paid_at")
@@ -78,6 +113,7 @@ public class MatchRecordingRequest {
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();
         if (status == null) status = RecordingRequestStatus.REQUESTED;
-        if (priceEurCents == null) priceEurCents = 2000;
+        if (kind == null) kind = RecordingRequestKind.FULL_MATCH;
+        if (priceEurCents == null) priceEurCents = kind.defaultPriceEurCents();
     }
 }

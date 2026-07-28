@@ -19,11 +19,14 @@ import {
     deleteRecordingRequest,
     fetchRecordingDownloadLink,
     listMyRecordingRequests,
+    GOAL_CLIP_REQUESTS_ENABLED,
     type RecordingRequestDto,
     type RecordingRequestStatus,
 } from "../api/recordingRequests"
 import { fetchTournaments } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
+import { fetchMatchEvents } from "../api/matchEvents"
+import type { MatchEventDto } from "../types/matchEvents"
 import { qk } from "../queryClient"
 import { showError } from "../toaster"
 import RecordingRequestDialog from "./RecordingRequestDialog"
@@ -64,6 +67,23 @@ function formatPrice(cents: number | null | undefined): string {
     return `${Number.isInteger(eur) ? eur : eur.toFixed(2).replace(".", ",")} €`
 }
 
+/** Only scored goals can be clipped - cards and missed penalties can't. */
+function isGoalEvent(e: MatchEventDto): boolean {
+    return e.type === "GOAL" || e.type === "OWN_GOAL" || e.type === "PENALTY_GOAL"
+}
+
+/** "12' — M. Rodek" label for the goal picker, mirroring the match timeline. */
+function goalOptionLabel(e: MatchEventDto): string {
+    const who =
+        e.type === "OWN_GOAL"
+            ? e.playerName
+                ? `${e.playerName} (ag)`
+                : "autogol"
+            : e.playerName ?? "nepoznat strijelac"
+    const when = e.type === "PENALTY_GOAL" ? "Penali" : `${e.minute}'`
+    return `${when} — ${who}`
+}
+
 export default function MyRecordingsTab() {
     const queryClient = useQueryClient()
 
@@ -76,6 +96,9 @@ export default function MyRecordingsTab() {
     const [pickerOpen, setPickerOpen] = useState(false)
     const [tournamentUuid, setTournamentUuid] = useState("")
     const [pickedMatchId, setPickedMatchId] = useState<number | null>(null)
+    // Whole match (20 €) or one goal of it (5 €); the goal is picked below.
+    const [pickedKind, setPickedKind] = useState<"FULL_MATCH" | "GOAL">("FULL_MATCH")
+    const [pickedGoalId, setPickedGoalId] = useState<number | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
 
     // Both status buckets merged - a recording usually concerns a started or
@@ -98,18 +121,48 @@ export default function MyRecordingsTab() {
         enabled: pickerOpen && !!tournamentUuid,
     })
 
-    // Only matches with both teams known can be requested meaningfully.
+    // Only matches with both teams known can be requested meaningfully. A whole
+    // match may be ordered upfront (any status); a goal clip only off a FINISHED
+    // match - while it's live an event can still be corrected or deleted, so the
+    // ordered goal wouldn't be stable. The backend enforces the same rule.
     const pickableMatches = useMemo(
-        () => (schedule?.matches ?? []).filter((m) => m.team1Name && m.team2Name),
-        [schedule],
+        () =>
+            (schedule?.matches ?? []).filter(
+                (m) =>
+                    m.team1Name &&
+                    m.team2Name &&
+                    (pickedKind === "FULL_MATCH" || m.status === "FINISHED"),
+            ),
+        [schedule, pickedKind],
     )
     const pickedMatch = pickableMatches.find((m) => m.matchId === pickedMatchId) ?? null
+
+    // Goals of the picked match - only needed once the user switches the picker
+    // to "snimka gola", so the fetch is gated on that.
+    const { data: goals, isLoading: goalsLoading } = useQuery({
+        queryKey: ["recordingRequests", "pickerGoals", tournamentUuid, pickedMatchId] as const,
+        queryFn: async () => {
+            const all = await fetchMatchEvents(tournamentUuid, pickedMatchId!)
+            return all.filter(isGoalEvent)
+        },
+        enabled: pickerOpen && pickedKind === "GOAL" && !!tournamentUuid && pickedMatchId != null,
+    })
+    const pickedGoal = (goals ?? []).find((g) => g.id === pickedGoalId) ?? null
+
+    /** Collapse the whole picker back to its initial state. */
+    function resetPicker() {
+        setTournamentUuid("")
+        setPickedMatchId(null)
+        setPickedKind("FULL_MATCH")
+        setPickedGoalId(null)
+    }
 
     // ── Per-row actions ─────────────────────────────────────────────────
     const [busyUuid, setBusyUuid] = useState<string | null>(null)
 
     async function onCancel(r: RecordingRequestDto) {
-        if (!confirm("Otkazati zahtjev za snimku ove utakmice?")) return
+        const what = r.kind === "GOAL" ? "gola" : "ove utakmice"
+        if (!confirm(`Otkazati zahtjev za snimku ${what}?`)) return
         try {
             setBusyUuid(r.uuid)
             await deleteRecordingRequest(r.uuid)
@@ -146,7 +199,9 @@ export default function MyRecordingsTab() {
                         <Box>
                             <Heading size="sm">Moje snimke</Heading>
                             <Text fontSize="xs" color="fg.muted">
-                                Zahtjevi za video snimke utakmica — 20 € po utakmici.
+                                {GOAL_CLIP_REQUESTS_ENABLED
+                                    ? "Zahtjevi za video snimke — 20 € cijela utakmica, 5 € pojedini gol."
+                                    : "Zahtjevi za video snimke utakmica — 20 € po utakmici."}
                             </Text>
                         </Box>
                         <Button
@@ -155,8 +210,7 @@ export default function MyRecordingsTab() {
                             colorPalette="pitch"
                             onClick={() => {
                                 setPickerOpen((v) => !v)
-                                setTournamentUuid("")
-                                setPickedMatchId(null)
+                                resetPicker()
                             }}
                         >
                             {pickerOpen ? <FiX /> : <FiPlus />}
@@ -191,6 +245,51 @@ export default function MyRecordingsTab() {
                                     </NativeSelect.Field>
                                 </NativeSelect.Root>
 
+                                {/* What is being ordered. Switching to "gol"
+                                    only reveals the goal list; the match stays
+                                    picked so toggling back and forth is free.
+                                    Hidden entirely while goal clips are off -
+                                    then the picker is whole-match only, exactly
+                                    as before the feature existed. */}
+                                {GOAL_CLIP_REQUESTS_ENABLED && (
+                                    <HStack gap="1.5" wrap="wrap">
+                                        <Button
+                                            size="2xs"
+                                            variant={pickedKind === "FULL_MATCH" ? "solid" : "outline"}
+                                            colorPalette={pickedKind === "FULL_MATCH" ? "pitch" : "gray"}
+                                            onClick={() => {
+                                                setPickedKind("FULL_MATCH")
+                                                setPickedGoalId(null)
+                                            }}
+                                        >
+                                            Cijela utakmica · 20 €
+                                        </Button>
+                                        <Button
+                                            size="2xs"
+                                            variant={pickedKind === "GOAL" ? "solid" : "outline"}
+                                            colorPalette={pickedKind === "GOAL" ? "pitch" : "gray"}
+                                            onClick={() => {
+                                                setPickedKind("GOAL")
+                                                // The match list narrows to FINISHED
+                                                // ones - drop a pick that just fell
+                                                // out of it.
+                                                if (pickedMatch && pickedMatch.status !== "FINISHED") {
+                                                    setPickedMatchId(null)
+                                                }
+                                            }}
+                                        >
+                                            Pojedini gol · 5 €
+                                        </Button>
+                                    </HStack>
+                                )}
+
+                                {pickedKind === "GOAL" && (
+                                    <Text fontSize="xs" color="fg.muted">
+                                        Snimku pojedinog gola možeš zatražiti samo za završene
+                                        utakmice. Snimku cijele utakmice možeš zatražiti i unaprijed.
+                                    </Text>
+                                )}
+
                                 {tournamentUuid && (
                                     scheduleLoading ? (
                                         <HStack gap="2" color="fg.muted">
@@ -199,7 +298,9 @@ export default function MyRecordingsTab() {
                                         </HStack>
                                     ) : pickableMatches.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
-                                            Ovaj turnir još nema utakmica s poznatim ekipama.
+                                            {pickedKind === "GOAL"
+                                                ? "Ovaj turnir još nema odigranih utakmica."
+                                                : "Ovaj turnir još nema utakmica s poznatim ekipama."}
                                         </Text>
                                     ) : (
                                         <NativeSelect.Root size="sm">
@@ -208,6 +309,8 @@ export default function MyRecordingsTab() {
                                                 onChange={(e) => {
                                                     const v = (e.target as HTMLSelectElement).value
                                                     setPickedMatchId(v ? Number(v) : null)
+                                                    // A goal belongs to one match only.
+                                                    setPickedGoalId(null)
                                                 }}
                                             >
                                                 <option value="">Odaberi utakmicu…</option>
@@ -222,15 +325,50 @@ export default function MyRecordingsTab() {
                                     )
                                 )}
 
+                                {/* Goal picker - only for a 5 € single-goal clip. */}
+                                {pickedKind === "GOAL" && pickedMatchId != null && (
+                                    goalsLoading ? (
+                                        <HStack gap="2" color="fg.muted">
+                                            <Spinner size="xs" />
+                                            <Text fontSize="sm">Učitavanje golova…</Text>
+                                        </HStack>
+                                    ) : (goals ?? []).length === 0 ? (
+                                        <Text fontSize="sm" color="fg.muted">
+                                            Na ovoj utakmici nema zabilježenih golova.
+                                        </Text>
+                                    ) : (
+                                        <NativeSelect.Root size="sm">
+                                            <NativeSelect.Field
+                                                value={pickedGoalId == null ? "" : String(pickedGoalId)}
+                                                onChange={(e) => {
+                                                    const v = (e.target as HTMLSelectElement).value
+                                                    setPickedGoalId(v ? Number(v) : null)
+                                                }}
+                                            >
+                                                <option value="">Odaberi gol…</option>
+                                                {(goals ?? []).map((g) => (
+                                                    <option key={g.id} value={String(g.id)}>
+                                                        {goalOptionLabel(g)}
+                                                    </option>
+                                                ))}
+                                            </NativeSelect.Field>
+                                        </NativeSelect.Root>
+                                    )
+                                )}
+
                                 <Button
                                     size="sm"
                                     variant="solid"
                                     colorPalette="pitch"
                                     alignSelf="flex-start"
-                                    disabled={pickedMatchId == null}
+                                    disabled={
+                                        pickedMatchId == null ||
+                                        (pickedKind === "GOAL" && pickedGoalId == null)
+                                    }
                                     onClick={() => setDialogOpen(true)}
                                 >
-                                    <FiVideo /> Zatraži snimku
+                                    <FiVideo />{" "}
+                                    {pickedKind === "GOAL" ? "Zatraži snimku gola" : "Zatraži snimku"}
                                 </Button>
                             </VStack>
                         </Box>
@@ -281,12 +419,14 @@ export default function MyRecordingsTab() {
                         // Collapse the picker after a filed request so the fresh
                         // row (invalidated by the dialog) is front and centre.
                         setPickerOpen(false)
-                        setTournamentUuid("")
-                        setPickedMatchId(null)
+                        resetPicker()
                     }}
                     matchId={pickedMatchId}
                     team1Name={pickedMatch?.team1Name ?? null}
                     team2Name={pickedMatch?.team2Name ?? null}
+                    kind={pickedKind}
+                    matchEventId={pickedGoalId}
+                    goalLabel={pickedGoal ? goalOptionLabel(pickedGoal) : null}
                 />
             )}
         </Card.Root>
@@ -323,6 +463,11 @@ function RequestRow({
                         {r.tournamentName}
                         {kickoff ? ` · ${kickoff}` : ""}
                     </Text>
+                    {r.kind === "GOAL" && (
+                        <Text fontSize="xs" color="pitch.fg" fontWeight={600} truncate maxW="full">
+                            ⚽ {r.goalLabel ?? "gol"}
+                        </Text>
+                    )}
                     {r.adminNote && (
                         <Text fontSize="xs" color="fg.muted">
                             Napomena: <chakra.span fontStyle="italic">{r.adminNote}</chakra.span>
@@ -331,6 +476,13 @@ function RequestRow({
                 </VStack>
                 <VStack align="end" gap="1" flexShrink={0}>
                     <HStack gap="1">
+                        <Badge
+                            variant="outline"
+                            colorPalette={r.kind === "GOAL" ? "pitch" : "gray"}
+                            size="sm"
+                        >
+                            {r.kind === "GOAL" ? "Gol" : "Utakmica"}
+                        </Badge>
                         {r.paid && (
                             <Badge variant="subtle" colorPalette="green" size="sm">
                                 Plaćeno

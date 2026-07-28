@@ -95,13 +95,43 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
     })
 }
 
+/** Library list order - the backend always returns newest-first, the rest is
+ *  applied client-side (the list is admin-only and small). */
+type LibrarySort = "newest" | "oldest" | "largest" | "name"
+
+const SORT_LABELS: Record<LibrarySort, string> = {
+    newest: "Najnovije prvo",
+    oldest: "Najstarije prvo",
+    largest: "Najveće prvo",
+    name: "Naziv (A-Ž)",
+}
+
 export function AdminRecordingsLibraryTab() {
     const queryClient = useQueryClient()
+
+    // ── Filters ─────────────────────────────────────────────────────────
+    // Tournament/match/text go to the BACKEND (it already accepts all three),
+    // so the filtered list is never assembled from a partially loaded page.
+    // Sorting stays local - it needs no round trip.
     const [query, setQuery] = useState("")
+    const [filterTournamentUuid, setFilterTournamentUuid] = useState("")
+    const [filterMatchId, setFilterMatchId] = useState<number | null>(null)
+    const [sort, setSort] = useState<LibrarySort>("newest")
 
     const { data: recordings, isLoading } = useQuery({
-        queryKey: ["matchRecordings", "library", query] as const,
-        queryFn: () => fetchMatchRecordings(query.trim() ? { q: query.trim() } : {}),
+        queryKey: [
+            "matchRecordings",
+            "library",
+            query,
+            filterTournamentUuid,
+            filterMatchId,
+        ] as const,
+        queryFn: () =>
+            fetchMatchRecordings({
+                q: query.trim() || undefined,
+                tournamentUuid: filterTournamentUuid || undefined,
+                matchId: filterMatchId ?? undefined,
+            }),
     })
 
     function invalidate() {
@@ -143,6 +173,46 @@ export function AdminRecordingsLibraryTab() {
     )
     const pickedMatch = pickableMatches.find((m) => m.matchId === pickedMatchId) ?? null
     const pickedTournamentName = (tournaments ?? []).find((t) => t.uuid === tournamentUuid)?.name ?? ""
+
+    // Matches of the tournament chosen in the FILTER bar - separate from the
+    // upload picker's selection. Same query key as the picker's schedule, so
+    // when both point at one tournament it's served from cache.
+    const { data: filterSchedule, isLoading: filterScheduleLoading } = useQuery({
+        queryKey: qk.schedule(filterTournamentUuid),
+        queryFn: () => fetchSchedule(filterTournamentUuid),
+        enabled: !!filterTournamentUuid,
+    })
+    const filterMatches = useMemo(
+        () => (filterSchedule?.matches ?? []).filter((m) => m.team1Name && m.team2Name),
+        [filterSchedule],
+    )
+
+    const sortedRecordings = useMemo(() => {
+        const list = [...(recordings ?? [])]
+        switch (sort) {
+            case "oldest":
+                return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            case "largest":
+                return list.sort((a, b) => (b.videoSizeBytes ?? 0) - (a.videoSizeBytes ?? 0))
+            case "name":
+                return list.sort((a, b) =>
+                    (a.fileName ?? a.uuid).localeCompare(b.fileName ?? b.uuid, "hr"),
+                )
+            default:
+                // The backend already sorts newest-first; keep its order (and its
+                // tiebreak) rather than re-sorting on a second-granularity string.
+                return list
+        }
+    }, [recordings, sort])
+
+    const filtersActive =
+        query.trim() !== "" || filterTournamentUuid !== "" || filterMatchId != null
+
+    function clearFilters() {
+        setQuery("")
+        setFilterTournamentUuid("")
+        setFilterMatchId(null)
+    }
 
     function pickMatch(matchId: number | null) {
         setPickedMatchId(matchId)
@@ -314,20 +384,101 @@ export function AdminRecordingsLibraryTab() {
                         </Box>
                     )}
 
-                    <Input
-                        size="sm"
-                        placeholder="Pretraži bazu (turnir, ekipa, naziv datoteke)…"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                    />
+                    {/* ── Filters ────────────────────────────────────────
+                        Text + turnir + utakmica are server-side; sort is local.
+                        The match select only appears once a tournament is
+                        chosen - a match list across every tournament would be
+                        thousands of rows long. */}
+                    <VStack align="stretch" gap="2">
+                        <Input
+                            size="sm"
+                            placeholder="Pretraži bazu (turnir, ekipa, naziv datoteke)…"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                        />
+                        <HStack gap="2" wrap="wrap" align="center">
+                            <NativeSelect.Root size="sm" w={{ base: "100%", md: "240px" }}>
+                                <NativeSelect.Field
+                                    value={filterTournamentUuid}
+                                    onChange={(e) => {
+                                        setFilterTournamentUuid((e.target as HTMLSelectElement).value)
+                                        // A match belongs to one tournament only.
+                                        setFilterMatchId(null)
+                                    }}
+                                >
+                                    <option value="">Svi turniri</option>
+                                    {(tournaments ?? []).map((t) => (
+                                        <option key={t.uuid} value={t.uuid}>{t.name}</option>
+                                    ))}
+                                </NativeSelect.Field>
+                            </NativeSelect.Root>
+
+                            {filterTournamentUuid && (
+                                filterScheduleLoading ? (
+                                    <HStack gap="2" color="fg.muted">
+                                        <Spinner size="xs" />
+                                        <Text fontSize="sm">Učitavanje utakmica…</Text>
+                                    </HStack>
+                                ) : (
+                                    <NativeSelect.Root size="sm" w={{ base: "100%", md: "260px" }}>
+                                        <NativeSelect.Field
+                                            value={filterMatchId == null ? "" : String(filterMatchId)}
+                                            onChange={(e) => {
+                                                const v = (e.target as HTMLSelectElement).value
+                                                setFilterMatchId(v ? Number(v) : null)
+                                            }}
+                                        >
+                                            <option value="">Sve utakmice</option>
+                                            {filterMatches.map((m) => (
+                                                <option key={m.matchId} value={String(m.matchId)}>
+                                                    {m.team1Name} – {m.team2Name}
+                                                    {m.kickoffAt ? `, ${formatKickoff(m.kickoffAt)}` : ""}
+                                                </option>
+                                            ))}
+                                        </NativeSelect.Field>
+                                    </NativeSelect.Root>
+                                )
+                            )}
+
+                            <NativeSelect.Root size="sm" w={{ base: "100%", md: "170px" }}>
+                                <NativeSelect.Field
+                                    value={sort}
+                                    onChange={(e) =>
+                                        setSort((e.target as HTMLSelectElement).value as LibrarySort)
+                                    }
+                                >
+                                    {(Object.keys(SORT_LABELS) as LibrarySort[]).map((s) => (
+                                        <option key={s} value={s}>{SORT_LABELS[s]}</option>
+                                    ))}
+                                </NativeSelect.Field>
+                            </NativeSelect.Root>
+
+                            {filtersActive && (
+                                <Button size="xs" variant="ghost" onClick={clearFilters}>
+                                    <FiX /> Očisti filtere
+                                </Button>
+                            )}
+
+                            {!isLoading && (
+                                <Text fontSize="xs" color="fg.muted" ml={{ base: "0", md: "auto" }}>
+                                    {sortedRecordings.length}{" "}
+                                    {sortedRecordings.length === 1 ? "snimka" : "snimki"}
+                                </Text>
+                            )}
+                        </HStack>
+                    </VStack>
 
                     {isLoading ? (
                         <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
-                    ) : !recordings || recordings.length === 0 ? (
-                        <Text py="2" fontSize="sm" color="fg.muted">Baza je prazna.</Text>
+                    ) : sortedRecordings.length === 0 ? (
+                        <Text py="2" fontSize="sm" color="fg.muted">
+                            {filtersActive
+                                ? "Nijedna snimka ne odgovara filterima."
+                                : "Baza je prazna."}
+                        </Text>
                     ) : (
                         <VStack align="stretch" gap="2">
-                            {recordings.map((rec) => (
+                            {sortedRecordings.map((rec) => (
                                 <RecordingRow
                                     key={rec.uuid}
                                     rec={rec}
