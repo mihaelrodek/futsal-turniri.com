@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Recording requests no longer require a signed-in requester: an
+        anonymous visitor can request a match video by supplying a
+        contact_email instead of a Firebase UID. The uuid itself becomes the
+        capability token for the status page, payment and cancellation, so
+        created_by_uid is now nullable - null means "anonymous request,
+        identified only by contact_email".
+    -->
+
+    <changeSet id="2026-07-28-09-recording-requests-anonymous-uid" author="mrodek">
+        <dropNotNullConstraint tableName="match_recording_requests" columnName="created_by_uid"
+                                columnDataType="varchar(64)"/>
+    </changeSet>
+</databaseChangeLog>

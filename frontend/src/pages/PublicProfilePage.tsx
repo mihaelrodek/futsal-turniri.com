@@ -92,6 +92,11 @@ function teamKey(name: string): string {
     return name.trim().toLowerCase()
 }
 
+/** Payment flow (Stripe Checkout) is live end-to-end - the user-facing
+ *  "Moje snimke" tab is shown. The admin tabs (Zahtjevi za snimke, Baza
+ *  snimki) are untouched. */
+const RECORDING_REQUEST_ENABLED = true
+
 export default function PublicProfilePage() {
     const { slug } = useParams<{ slug: string }>()
     const { user, mySlug, isAdmin, loading: authLoading } = useAuth()
@@ -344,13 +349,15 @@ export default function PublicProfilePage() {
                     {/* Recording requests of THIS user (any signed-in account) -
                         request status, cancel, and the download link once a
                         recording is delivered. */}
-                    <Button
-                        size="sm"
-                        variant={profileTab === "moje-snimke" ? "solid" : "ghost"}
-                        onClick={() => setProfileTab("moje-snimke")}
-                    >
-                        Moje snimke
-                    </Button>
+                    {RECORDING_REQUEST_ENABLED && (
+                        <Button
+                            size="sm"
+                            variant={profileTab === "moje-snimke" ? "solid" : "ghost"}
+                            onClick={() => setProfileTab("moje-snimke")}
+                        >
+                            Moje snimke
+                        </Button>
+                    )}
                     {/* Admin-only Dashboard tab - for retroactively attaching
                         legacy tournament teams to registered users. Gated on
                         the Firebase role=admin custom claim; non-admins never
@@ -543,7 +550,7 @@ export default function PublicProfilePage() {
             {isOwner && profileTab === "postavke" && <SettingsCard />}
 
             {/* === MOJE SNIMKE tab - owner-only: recording requests === */}
-            {isOwner && profileTab === "moje-snimke" && <MyRecordingsTab />}
+            {RECORDING_REQUEST_ENABLED && isOwner && profileTab === "moje-snimke" && <MyRecordingsTab />}
 
             {/* === DASHBOARD tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "dashboard" && (

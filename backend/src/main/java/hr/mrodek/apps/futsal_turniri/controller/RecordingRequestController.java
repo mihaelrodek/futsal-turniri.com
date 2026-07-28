@@ -6,15 +6,15 @@ import hr.mrodek.apps.futsal_turniri.mappers.RecordingRequestMapper;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecording;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
-import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
+import hr.mrodek.apps.futsal_turniri.services.RecordingRequestNotifier;
 import hr.mrodek.apps.futsal_turniri.services.RecordingStorageService;
+import hr.mrodek.apps.futsal_turniri.services.StripeService;
 import io.quarkus.security.Authenticated;
-import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -30,25 +30,33 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
- * Paid match-recording requests (~20 EUR/match). A user asks for the video of
- * one match; an admin approves, marks it paid and delivers it by linking in a
- * recording from the admin's library ({@link MatchRecordingController}) - no
- * external links are accepted, and uploads never happen against a request
- * directly. The link can be re-pointed at any time (e.g. to fix a wrongly
- * mapped recording), even after delivery. The user then fetches a presigned
- * GET download link.
+ * Paid match-recording requests (~20 EUR/match). A request may come from a
+ * signed-in user OR anonymously (contact email only) - either way, an admin
+ * approves it, the requester pays via Stripe Checkout, and delivery is
+ * exclusively a {@link MatchRecording} linked in from the admin's library
+ * ({@link MatchRecordingController}) - no external links are accepted, and
+ * uploads never happen against a request directly. The link can be re-pointed
+ * at any time (e.g. to fix a wrongly mapped recording), even after delivery.
+ *
+ * <p>For an anonymous request the {@code uuid} itself IS the capability
+ * token: whoever holds the status-page link (emailed to {@code contactEmail})
+ * can view status, pay and cancel. A signed-in user's requests are also
+ * reachable this way, plus via {@link #mine()}.
  *
  * Routes:
- *   POST   /recording-requests/by-match/{matchId}       - create (user)
+ *   POST   /recording-requests/by-match/{matchId}       - create (public: authenticated or anonymous)
+ *   GET    /recording-requests/{uuid}/public            - limited public status view (public)
+ *   POST   /recording-requests/{uuid}/checkout          - create a Stripe Checkout session (public, uuid capability)
  *   GET    /recording-requests/mine                     - own requests (user)
  *   GET    /recording-requests?status=                  - list all (admin)
- *   PUT    /recording-requests/{uuid}/status            - approve/reject (admin)
- *   PUT    /recording-requests/{uuid}/paid              - toggle paid (admin)
- *   PUT    /recording-requests/{uuid}/link-recording    - deliver / re-link a library recording (admin)
- *   GET    /recording-requests/{uuid}/download-link     - presigned GET (owner or admin)
- *   DELETE /recording-requests/{uuid}                   - cancel (owner, only while REQUESTED)
+ *   PUT    /recording-requests/{uuid}/status             - approve/reject (admin)
+ *   PUT    /recording-requests/{uuid}/paid               - toggle paid (admin, manual override)
+ *   PUT    /recording-requests/{uuid}/link-recording      - deliver / re-link a library recording (admin)
+ *   GET    /recording-requests/{uuid}/download-link      - presigned GET (public, uuid capability; requires paid + delivered)
+ *   DELETE /recording-requests/{uuid}                    - cancel (owner, or anonymous via uuid; only while REQUESTED)
  */
 @Path("/recording-requests")
 @Produces(MediaType.APPLICATION_JSON)
@@ -58,15 +66,18 @@ public class RecordingRequestController {
     /** Presigned GET validity for the requester's download (48 h). */
     private static final int DOWNLOAD_EXPIRY_SECONDS = 172_800;
 
+    /** local@domain.tld, TLD at least 2 letters - deliberately simple, not RFC-exhaustive. */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$");
+
     @Inject MatchRecordingRequestRepository repo;
     @Inject MatchRecordingRepository recordingRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject RecordingRequestMapper mapper;
     @Inject RecordingStorageService recordingStorage;
-    @Inject AppSettingsRepository settings;
     @Inject EmailService emailService;
     @Inject PushService pushService;
-    @Inject SecurityIdentity identity;
+    @Inject StripeService stripeService;
+    @Inject RecordingRequestNotifier notifier;
     @Inject JsonWebToken jwt;
 
     /* ─────────────────────────── request bodies ─────────────────────────── */
@@ -84,11 +95,14 @@ public class RecordingRequestController {
 
     public record DownloadLinkResponse(String url, int expiresInSeconds) {}
 
-    /* ─────────────────────────── helpers ─────────────────────────── */
+    public record CheckoutResponse(String url) {}
 
-    private boolean isAdmin() {
-        return identity != null && identity.hasRole("admin");
-    }
+    /** Limited status view for the public capability-link page - no contactEmail/adminNote. */
+    public record PublicRequestView(
+            UUID uuid, String team1Name, String team2Name, String tournamentName,
+            String kickoffAt, String status, int priceEurCents, boolean paid, boolean hasVideo) {}
+
+    /* ─────────────────────────── helpers ─────────────────────────── */
 
     private String currentUid() {
         return jwt != null ? jwt.getSubject() : null;
@@ -113,67 +127,77 @@ public class RecordingRequestController {
         return Response.status(Response.Status.CONFLICT).entity(Map.of("code", code)).build();
     }
 
-    /** "Team A - Team B" with graceful fallbacks for undecided knockout slots. */
-    private static String matchLabel(Matches m) {
-        String t1 = m.getTeam1() != null ? m.getTeam1().getName() : "TBD";
-        String t2 = m.getTeam2() != null ? m.getTeam2().getName() : "TBD";
-        return t1 + " - " + t2;
+    /** Trim + lower-case; blank collapses to null. */
+    private static String normalizeEmail(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t.toLowerCase();
+    }
+
+    private static boolean isValidEmail(String email) {
+        if (email == null) return false;
+        String t = email.trim();
+        return !t.isEmpty() && t.length() <= 255 && EMAIL_PATTERN.matcher(t).matches();
     }
 
     /* ─────────────────────────── user endpoints ─────────────────────────── */
 
+    /**
+     * Create a request - either as a signed-in user (contactEmail optional,
+     * falls back to the Firebase token's email claim) or fully anonymously
+     * (contactEmail mandatory; {@code createdByUid} stays null and the uuid
+     * itself becomes the requester's only handle on the request).
+     */
     @POST
     @Path("/by-match/{matchId}")
-    @Authenticated
     @Transactional
     public Response create(@PathParam("matchId") Long matchId, @Valid CreateRecordingRequestBody body) {
         Matches match = matchesRepo.findByIdOptional(matchId).orElse(null);
         if (match == null) return Response.status(Response.Status.NOT_FOUND).build();
 
         String me = currentUid();
-        if (repo.existsOpenForUserAndMatch(me, matchId)) {
-            return conflict("DUPLICATE");
+        String contactEmail = normalizeEmail(body == null ? null : body.contactEmail());
+
+        if (me != null) {
+            if (contactEmail == null) {
+                Object emailClaim = jwt.getClaim("email");
+                contactEmail = normalizeEmail(emailClaim == null ? null : emailClaim.toString());
+            }
+            if (contactEmail == null) {
+                throw new BadRequestException("contactEmail is required");
+            }
+            if (!isValidEmail(contactEmail)) {
+                throw new BadRequestException("Neispravna email adresa.");
+            }
+            if (repo.existsOpenForUserAndMatch(me, matchId)) {
+                return conflict("DUPLICATE");
+            }
+        } else {
+            if (contactEmail == null) {
+                throw new BadRequestException("contactEmail is required");
+            }
+            if (!isValidEmail(contactEmail)) {
+                throw new BadRequestException("Neispravna email adresa.");
+            }
+            if (repo.existsOpenForEmailAndMatch(contactEmail, matchId)) {
+                return conflict("DUPLICATE");
+            }
         }
 
         var r = new MatchRecordingRequest();
         r.setMatch(match);
         r.setCreatedByUid(me);
+        r.setContactEmail(contactEmail);
         if (body != null) {
             r.setNote(body.note() == null || body.note().isBlank() ? null : body.note().trim());
-            r.setContactEmail(body.contactEmail() == null || body.contactEmail().isBlank()
-                    ? null : body.contactEmail().trim());
         }
         r.setStatus(RecordingRequestStatus.REQUESTED);
         repo.save(r);
 
-        notifyAdminByEmail(r, match);
+        notifier.notifyAdmin(r, match);
+        notifier.notifyRequestReceived(r, match);
 
         return Response.status(Response.Status.CREATED).entity(toDto(r)).build();
-    }
-
-    /**
-     * Fire-and-forget admin notification. Everything the email needs is
-     * resolved HERE on the request thread (lazy relations must never be
-     * touched from the reactive mailer); sendHtml itself never throws.
-     */
-    private void notifyAdminByEmail(MatchRecordingRequest r, Matches match) {
-        String notifyEmail = settings.get("recording_notify_email");
-        if (notifyEmail == null || notifyEmail.isBlank() || !emailService.isReady()) return;
-
-        String label = matchLabel(match);
-        String tournamentName = match.getTournament() != null ? match.getTournament().getName() : "";
-        String link = emailService.baseUrl() + "/profil";
-        String html = emailService.shell(
-                "Novi zahtjev za snimku utakmice",
-                "<p>Zaprimljen je novi zahtjev za snimku utakmice <strong>"
-                        + EmailService.escapeHtml(label) + "</strong>"
-                        + (tournamentName.isBlank()
-                                ? "" : " (turnir " + EmailService.escapeHtml(tournamentName) + ")")
-                        + ".</p>"
-                        + (r.getNote() == null
-                                ? "" : "<p>Napomena: " + EmailService.escapeHtml(r.getNote()) + "</p>"),
-                link, "Otvori");
-        emailService.sendHtml(notifyEmail, "Novi zahtjev za snimku utakmice", html);
     }
 
     @GET
@@ -181,6 +205,61 @@ public class RecordingRequestController {
     @Authenticated
     public List<RecordingRequestDto> mine() {
         return toDtoList(repo.findByCreatedByUid(currentUid()));
+    }
+
+    /**
+     * Limited, public status view for the capability-link page - resolves the
+     * same match/tournament labels as the full DTO but never leaks
+     * {@code contactEmail} or {@code adminNote}.
+     */
+    @GET
+    @Path("/{uuid}/public")
+    public Response publicView(@PathParam("uuid") UUID uuid) {
+        var r = repo.findByUuid(uuid).orElse(null);
+        if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
+
+        Matches match = r.getMatch();
+        String tournamentName = match.getTournament() != null ? match.getTournament().getName() : null;
+        String team1 = match.getTeam1() != null ? match.getTeam1().getName() : null;
+        String team2 = match.getTeam2() != null ? match.getTeam2().getName() : null;
+        String kickoff = match.getKickoffAt() != null ? match.getKickoffAt().toString() : null;
+
+        return Response.ok(new PublicRequestView(
+                r.getUuid(), team1, team2, tournamentName, kickoff,
+                r.getStatus().name(), r.getPriceEurCents(), r.getPaidAt() != null, r.getRecording() != null
+        )).build();
+    }
+
+    /**
+     * Creates a Stripe Checkout session for an approved-but-unpaid request.
+     * Public: the uuid (only ever shared with the requester by email) is the
+     * capability that authorizes payment - no login is required or possible
+     * for an anonymous request.
+     */
+    @POST
+    @Path("/{uuid}/checkout")
+    public Response checkout(@PathParam("uuid") UUID uuid) {
+        var r = repo.findByUuid(uuid).orElse(null);
+        if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (r.getStatus() != RecordingRequestStatus.APPROVED && r.getStatus() != RecordingRequestStatus.DELIVERED) {
+            return conflict("NOT_APPROVED");
+        }
+        if (r.getPaidAt() != null) {
+            return conflict("ALREADY_PAID");
+        }
+        if (!stripeService.isConfigured()) {
+            return conflict("NOT_CONFIGURED");
+        }
+
+        Matches match = r.getMatch();
+        String productName = "Snimka utakmice: " + RecordingRequestNotifier.matchLabel(match);
+        String base = emailService.baseUrl() + "/snimke/zahtjev/" + uuid;
+        String successUrl = base + "?placanje=uspjeh";
+        String cancelUrl = base + "?placanje=odustao";
+
+        String url = stripeService.createCheckoutSession(
+                uuid.toString(), r.getPriceEurCents(), productName, successUrl, cancelUrl);
+        return Response.ok(new CheckoutResponse(url)).build();
     }
 
     /* ─────────────────────────── admin endpoints ─────────────────────────── */
@@ -221,6 +300,9 @@ public class RecordingRequestController {
             return conflict("NOT_REQUESTED");
         }
 
+        // Resolve the match on THIS request thread before any email work below.
+        Matches match = r.getMatch();
+
         r.setStatus(target);
         if (body.adminNote() != null && !body.adminNote().isBlank()) {
             r.setAdminNote(body.adminNote().trim());
@@ -234,6 +316,12 @@ public class RecordingRequestController {
                         ? "Tvoj zahtjev za snimku utakmice je odobren. Detalji su na tvom profilu."
                         : "Tvoj zahtjev za snimku utakmice je odbijen. Detalji su na tvom profilu.",
                 "/profil"));
+
+        if (approved) {
+            notifier.notifyApproved(r, match);
+        } else {
+            notifier.notifyRejected(r, match);
+        }
 
         return Response.ok(toDto(r)).build();
     }
@@ -284,6 +372,9 @@ public class RecordingRequestController {
         r.setUpdatedAt(OffsetDateTime.now());
 
         notifyDelivered(r);
+        if (r.getPaidAt() != null) {
+            notifier.notifyDownloadReady(r);
+        }
         return Response.ok(toDto(r)).build();
     }
 
@@ -296,36 +387,45 @@ public class RecordingRequestController {
 
     /* ─────────────────────────── delivery download ─────────────────────────── */
 
+    /**
+     * Presigned GET for the delivered recording. Public: the uuid is the
+     * capability (only ever emailed to the requester's contactEmail, or
+     * visible to the signed-in owner / an admin). Requires the request to be
+     * both paid AND delivered.
+     */
     @GET
     @Path("/{uuid}/download-link")
-    @Authenticated
     public Response downloadLink(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
-        if (!isAdmin() && !isOwner(r)) {
-            throw new ForbiddenException("Only the requester or an admin can fetch the download link.");
-        }
-        if (r.getStatus() != RecordingRequestStatus.DELIVERED) {
+        if (r.getStatus() != RecordingRequestStatus.DELIVERED || r.getRecording() == null) {
             return conflict("NOT_DELIVERED");
         }
-        if (r.getRecording() != null) {
-            String url = recordingStorage.presignedGet(
-                    r.getRecording().getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, r.getRecording().getFileName());
-            return Response.ok(new DownloadLinkResponse(url, DOWNLOAD_EXPIRY_SECONDS)).build();
+        if (r.getPaidAt() == null) {
+            return conflict("NOT_PAID");
         }
-        return conflict("NOT_DELIVERED");
+        String url = recordingStorage.presignedGet(
+                r.getRecording().getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, r.getRecording().getFileName());
+        return Response.ok(new DownloadLinkResponse(url, DOWNLOAD_EXPIRY_SECONDS)).build();
     }
 
     /* ─────────────────────────── cancel ─────────────────────────── */
 
+    /**
+     * Cancel a still-open request. A signed-in owner may cancel their own
+     * request as before; an anonymous request (no {@code createdByUid}) may
+     * be cancelled by anyone holding its uuid, since the uuid IS the
+     * capability for that request. A request created by a signed-in user can
+     * only be cancelled by that same user, never by a stranger who merely
+     * guesses/observes the uuid.
+     */
     @DELETE
     @Path("/{uuid}")
-    @Authenticated
     @Transactional
     public Response cancel(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
-        if (!isOwner(r)) {
+        if (r.getCreatedByUid() != null && !isOwner(r)) {
             throw new ForbiddenException("Only the requester can cancel this request.");
         }
         if (r.getStatus() != RecordingRequestStatus.REQUESTED) {

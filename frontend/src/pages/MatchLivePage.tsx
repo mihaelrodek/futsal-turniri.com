@@ -14,7 +14,6 @@ import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
 import { ZapisnikExportDialog } from "../export/zapisnik/ZapisnikExportDialog"
 import RecordingRequestDialog from "../components/RecordingRequestDialog"
-import { useAuth } from "../auth/AuthContext"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
@@ -51,6 +50,12 @@ import type { Bracket, BracketMatch } from "../types/bracket"
    ────────────────────────────────────────────────────────────────────────── */
 
 const POLL_MS = 5_000
+
+/** Payment flow (Stripe Checkout) is live end-to-end - the request-a-
+ *  recording entry point is shown on the match page. Anonymous visitors
+ *  can request too (the dialog collects a mandatory contact email for
+ *  them instead of gating on login). */
+const RECORDING_REQUEST_ENABLED = true
 
 /** Tournament meta the poster header uses (not carried by the schedule). */
 type PosterMetaBits = {
@@ -104,9 +109,6 @@ export default function MatchLivePage() {
     const [exportOpen, setExportOpen] = useState(false)
     const [zapisnikOpen, setZapisnikOpen] = useState(false)
     const [recordingOpen, setRecordingOpen] = useState(false)
-    // For the "Zatraži snimku" login gate - anonymous viewers are sent to
-    // /prijava first (the request is tied to their account).
-    const { user } = useAuth()
     const [loading, setLoading] = useState(!cachedSchedule)
     const [tab, setTab] = useState<MatchInfoTab>("timeline")
     const [lineups, setLineups] = useState<{ team1: PlayerDto[] | null; team2: PlayerDto[] | null }>({
@@ -452,26 +454,17 @@ export default function MatchLivePage() {
                         )}
                     </VStack>
                     <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
-                        <IconButton
-                            aria-label="Zatraži snimku"
-                            title="Zatraži snimku utakmice"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                // Anonymous viewers can't file a request (it's
-                                // tied to their account) - send them to log in,
-                                // then back to this page.
-                                if (!user) {
-                                    navigate("/prijava", {
-                                        state: { from: `${location.pathname}${location.search}` },
-                                    })
-                                    return
-                                }
-                                setRecordingOpen(true)
-                            }}
-                        >
-                            <FiVideo />
-                        </IconButton>
+                        {RECORDING_REQUEST_ENABLED && (
+                            <IconButton
+                                aria-label="Zatraži snimku"
+                                title="Zatraži snimku utakmice"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setRecordingOpen(true)}
+                            >
+                                <FiVideo />
+                            </IconButton>
+                        )}
                         <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
                             <FiShare2 />
                         </IconButton>
@@ -780,13 +773,15 @@ export default function MatchLivePage() {
             />
 
             {/* Request a paid video recording of this match (~20 €). */}
-            <RecordingRequestDialog
-                open={recordingOpen}
-                onClose={() => setRecordingOpen(false)}
-                matchId={matchId}
-                team1Name={scheduled?.team1Name ?? live?.team1Name ?? null}
-                team2Name={scheduled?.team2Name ?? live?.team2Name ?? null}
-            />
+            {RECORDING_REQUEST_ENABLED && (
+                <RecordingRequestDialog
+                    open={recordingOpen}
+                    onClose={() => setRecordingOpen(false)}
+                    matchId={matchId}
+                    team1Name={scheduled?.team1Name ?? live?.team1Name ?? null}
+                    team2Name={scheduled?.team2Name ?? live?.team2Name ?? null}
+                />
+            )}
         </Flex>
     )
 }

@@ -154,3 +154,45 @@ export async function deleteRecordingRequest(uuid: string): Promise<void> {
         { successMessage: "Zahtjev je otkazan." },
     )
 }
+
+/** Public (no-auth) status view of a request - the shape shown on the
+ *  `/snimke/zahtjev/{uuid}` page reached from approval/payment emails. */
+export type PublicRecordingRequest = {
+    uuid: string
+    team1Name: string | null
+    team2Name: string | null
+    tournamentName: string
+    kickoffAt: string | null
+    status: RecordingRequestStatus
+    priceEurCents: number
+    paid: boolean
+    hasVideo: boolean
+}
+
+/** Fetch the public status view of a request by its uuid - no auth required. */
+export async function fetchPublicRecordingRequest(uuid: string): Promise<PublicRecordingRequest> {
+    const { data } = await http.get<PublicRecordingRequest>(
+        `/recording-requests/${uuid}/public`,
+        { silent: true },
+    )
+    return data
+}
+
+export type RecordingCheckoutSession = {
+    url: string
+}
+
+/**
+ * Start a Stripe Checkout session for an APPROVED, not-yet-paid request.
+ * Redirect the browser to the returned url. 409 {"code": ...} for
+ * NOT_APPROVED / ALREADY_PAID / NOT_CONFIGURED - callers branch on
+ * err.response.data.code and show their own message.
+ */
+export async function createRecordingCheckout(uuid: string): Promise<RecordingCheckoutSession> {
+    const { data } = await http.post<RecordingCheckoutSession>(
+        `/recording-requests/${uuid}/checkout`,
+        {},
+        { silent: true, silentErrorStatuses: [409] },
+    )
+    return data
+}

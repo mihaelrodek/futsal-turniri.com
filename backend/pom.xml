@@ -54,6 +54,14 @@
             <version>8.5.8</version>
         </dependency>
 
+        <!-- Stripe Checkout for the recording-request payment flow
+             (RecordingRequestController#checkout / StripeWebhookController). -->
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>26.13.0</version>
+        </dependency>
+
         <!-- For FilenameUtils used in StorageService. Bumped 2.15.1 -> 2.16.1
              so we no longer downgrade below the Quarkus-BOM-managed version. -->
         <dependency>

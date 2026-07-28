@@ -42,4 +42,16 @@ public class MatchRecordingRequestRepository implements AppRepository<MatchRecor
                 uid, matchId,
                 List.of(RecordingRequestStatus.REQUESTED, RecordingRequestStatus.APPROVED)) > 0;
     }
+
+    /**
+     * Same duplicate guard as {@link #existsOpenForUserAndMatch}, but keyed by
+     * contact email instead of a Firebase UID - used for anonymous requests,
+     * which have no {@code createdByUid}. Case-insensitive since the email is
+     * stored lowercased but a defensive lower() keeps this correct either way.
+     */
+    public boolean existsOpenForEmailAndMatch(String email, Long matchId) {
+        return count("lower(contactEmail) = ?1 and match.id = ?2 and status in ?3",
+                email == null ? null : email.toLowerCase(), matchId,
+                List.of(RecordingRequestStatus.REQUESTED, RecordingRequestStatus.APPROVED)) > 0;
+    }
 }

@@ -72,6 +72,7 @@ const PublicProfilePage = lazyWithReload(() => import('./pages/PublicProfilePage
 const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
 const ClaimNamePage = lazyWithReload(() => import('./pages/ClaimNamePage'))
 const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournamentPage'))
+const RecordingRequestStatusPage = lazyWithReload(() => import('./pages/RecordingRequestStatusPage'))
 
 /** Suspense fallback while a route chunk is being fetched. Sized to
  *  the main content area so the page doesn't jump when the real page
@@ -299,6 +300,11 @@ export default function App() {
                         below. */}
                     <Route path="/preuzmi-ekipu/:token" element={<ClaimTeamPage />} />
                     <Route path="/preuzmi-ime/:token" element={<ClaimNamePage />} />
+                    {/* Public status page for a paid recording request - the
+                        link sent in approval/payment emails, and the only
+                        way an anonymous requester (no profile) tracks or
+                        pays for their request. */}
+                    <Route path="/snimke/zahtjev/:uuid" element={<RecordingRequestStatusPage />} />
 
                     {/* Legacy English aliases - client-side Navigate for any
                         in-app link or typed URL that slips past Caddy's

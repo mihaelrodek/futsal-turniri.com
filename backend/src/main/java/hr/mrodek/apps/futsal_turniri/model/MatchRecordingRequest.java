@@ -17,6 +17,11 @@ import java.util.UUID;
  * recording library - no external links are accepted. The admin never
  * uploads a file directly against a request; uploads happen in the library
  * ({@link MatchRecording}) and get linked here.
+ *
+ * <p>A request may be made anonymously (no Firebase account): in that case
+ * {@link #createdByUid} is null and {@link #contactEmail} is mandatory - the
+ * request's {@link #uuid} then acts as the sole capability token for the
+ * public status page, Stripe checkout and cancellation.
  */
 @Entity
 @Table(name = "match_recording_requests")
@@ -36,8 +41,8 @@ public class MatchRecordingRequest {
     @JoinColumn(name = "match_id", nullable = false)
     private Matches match;
 
-    /** Firebase UID of the requester. */
-    @Column(name = "created_by_uid", length = 64, nullable = false)
+    /** Firebase UID of the requester; null for an anonymous request (see {@link #contactEmail}). */
+    @Column(name = "created_by_uid", length = 64)
     private String createdByUid;
 
     @Column(name = "contact_email", length = 255)

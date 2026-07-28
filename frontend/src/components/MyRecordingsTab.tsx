@@ -13,9 +13,10 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiDownload, FiPlus, FiVideo, FiX } from "react-icons/fi"
+import { FiCreditCard, FiDownload, FiPlus, FiVideo, FiX } from "react-icons/fi"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+    createRecordingCheckout,
     deleteRecordingRequest,
     fetchRecordingDownloadLink,
     listMyRecordingRequests,
@@ -62,6 +63,13 @@ function formatPrice(cents: number | null | undefined): string {
     if (cents == null) return ""
     const eur = cents / 100
     return `${Number.isInteger(eur) ? eur : eur.toFixed(2).replace(".", ",")} €`
+}
+
+/** Pull `{"code": "..."}` out of a 409 response body, if present. */
+function errorCode(err: unknown): string | undefined {
+    if (!isAxiosError(err) || err.response?.status !== 409) return undefined
+    const data = err.response.data as { code?: string } | undefined
+    return data?.code
 }
 
 export default function MyRecordingsTab() {
@@ -129,8 +137,32 @@ export default function MyRecordingsTab() {
             const { url } = await fetchRecordingDownloadLink(r.uuid)
             window.open(url, "_blank")
         } catch (err) {
-            if (isAxiosError(err) && err.response?.status === 409) {
+            const code = errorCode(err)
+            if (code === "NOT_PAID") {
+                showError("Snimka još nije plaćena", "Plati snimku prije preuzimanja.")
+            } else if (isAxiosError(err) && err.response?.status === 409) {
                 showError("Snimka još nije dostupna", "Pokušaj ponovno malo kasnije.")
+            }
+            /* other errors toasted by the interceptor */
+        } finally {
+            setBusyUuid(null)
+        }
+    }
+
+    async function onCheckout(r: RecordingRequestDto) {
+        try {
+            setBusyUuid(r.uuid)
+            const { url } = await createRecordingCheckout(r.uuid)
+            window.location.href = url
+        } catch (err) {
+            const code = errorCode(err)
+            if (code === "NOT_CONFIGURED") {
+                showError("Plaćanje trenutno nije dostupno", "Pokušaj ponovno za koji trenutak.")
+            } else if (code === "ALREADY_PAID") {
+                showError("Snimka je već plaćena")
+                queryClient.invalidateQueries({ queryKey: qk.myRecordingRequests })
+            } else if (code === "NOT_APPROVED") {
+                showError("Zahtjev još nije odobren")
             }
             /* other errors toasted by the interceptor */
         } finally {
@@ -147,6 +179,9 @@ export default function MyRecordingsTab() {
                             <Heading size="sm">Moje snimke</Heading>
                             <Text fontSize="xs" color="fg.muted">
                                 Zahtjevi za video snimke utakmica — 20 € po utakmici.
+                            </Text>
+                            <Text fontSize="xs" color="fg.muted">
+                                Nakon odobrenja plaćaš karticom, zatim preuzimaš snimku.
                             </Text>
                         </Box>
                         <Button
@@ -266,6 +301,7 @@ export default function MyRecordingsTab() {
                                     busy={busyUuid === r.uuid}
                                     onCancel={() => onCancel(r)}
                                     onDownload={() => onDownload(r)}
+                                    onCheckout={() => onCheckout(r)}
                                 />
                             ))}
                         </VStack>
@@ -298,14 +334,22 @@ function RequestRow({
     busy,
     onCancel,
     onDownload,
+    onCheckout,
 }: {
     r: RecordingRequestDto
     busy: boolean
     onCancel: () => void
     onDownload: () => void
+    onCheckout: () => void
 }) {
     const meta = STATUS_META[r.status] ?? { label: r.status, palette: "gray" }
     const kickoff = formatKickoff(r.kickoffAt)
+    // Payment is due whenever a request has moved past REQUESTED but hasn't
+    // been paid yet - the normal APPROVED-then-pay step, plus a
+    // DELIVERED-before-paid edge (video linked ahead of payment), in which
+    // case the download button below stays visible but 409s with NOT_PAID.
+    const paymentDue = !r.paid && (r.status === "APPROVED" || r.status === "DELIVERED")
+    const showActions = r.status === "REQUESTED" || r.status === "DELIVERED" || paymentDue
     return (
         <Box
             borderWidth="1px"
@@ -346,8 +390,8 @@ function RequestRow({
                 </VStack>
             </HStack>
 
-            {(r.status === "REQUESTED" || r.status === "DELIVERED") && (
-                <HStack justify="flex-end" mt="1.5" gap="2">
+            {showActions && (
+                <HStack justify="flex-end" mt="1.5" gap="2" wrap="wrap">
                     {r.status === "REQUESTED" && (
                         <Button
                             size="2xs"
@@ -359,10 +403,21 @@ function RequestRow({
                             <FiX /> Otkaži
                         </Button>
                     )}
-                    {r.status === "DELIVERED" && (
+                    {paymentDue && (
                         <Button
                             size="2xs"
                             variant="solid"
+                            colorPalette="pitch"
+                            loading={busy}
+                            onClick={onCheckout}
+                        >
+                            <FiCreditCard /> Plati snimku
+                        </Button>
+                    )}
+                    {r.status === "DELIVERED" && (
+                        <Button
+                            size="2xs"
+                            variant={paymentDue ? "outline" : "solid"}
                             colorPalette="pitch"
                             loading={busy}
                             onClick={onDownload}
