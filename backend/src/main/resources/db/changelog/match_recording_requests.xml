@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Paid match-recording requests: a user asks for the video of one match
+        (~20 EUR), an admin approves / marks paid and delivers either an
+        external URL or an mp4 uploaded straight to MinIO via presigned PUT.
+        Cancellation flips status to CANCELLED (row is kept for the audit trail).
+    -->
+
+    <changeSet id="2026-07-28-01-match-recording-requests-seq" author="mrodek">
+        <createSequence sequenceName="seq_match_recording_requests_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-28-02-match-recording-requests" author="mrodek">
+        <createTable tableName="match_recording_requests">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="uuid" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="match_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <!-- requester (Firebase UID); gates /mine, download-link and cancel -->
+            <column name="created_by_uid" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="contact_email" type="varchar(255)"/>
+            <column name="note" type="varchar(1000)"/>
+            <column name="status" type="varchar(20)" defaultValue="REQUESTED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="admin_note" type="varchar(1000)"/>
+            <column name="price_eur_cents" type="int" defaultValueNumeric="2000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="paid_at" type="timestamptz"/>
+            <!-- delivery: either an uploaded MinIO object OR an external URL -->
+            <column name="video_object_key" type="varchar(255)"/>
+            <column name="video_size_bytes" type="bigint"/>
+            <column name="delivery_url" type="varchar(1000)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="match_recording_requests" baseColumnNames="match_id"
+                                 referencedTableName="matches" referencedColumnNames="id" onDelete="CASCADE"
+                                 constraintName="fk_match_recording_requests_match"/>
+
+        <createIndex tableName="match_recording_requests" indexName="idx_match_recording_requests_match">
+            <column name="match_id"/>
+        </createIndex>
+        <createIndex tableName="match_recording_requests" indexName="idx_match_recording_requests_created_by">
+            <column name="created_by_uid"/>
+        </createIndex>
+        <createIndex tableName="match_recording_requests" indexName="idx_match_recording_requests_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

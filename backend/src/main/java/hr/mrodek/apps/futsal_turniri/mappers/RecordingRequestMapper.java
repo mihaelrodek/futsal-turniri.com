@@ -1,0 +1,38 @@
+package hr.mrodek.apps.futsal_turniri.mappers;
+
+import hr.mrodek.apps.futsal_turniri.dtos.RecordingRequestDto;
+import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
+import org.mapstruct.*;
+
+import java.util.List;
+
+@Mapper(componentModel = "cdi", unmappedTargetPolicy = ReportingPolicy.IGNORE)
+public interface RecordingRequestMapper {
+
+    @Mappings({
+            @Mapping(target = "uuid", source = "uuid"),
+            @Mapping(target = "matchId", source = "match.id"),
+            @Mapping(target = "tournamentUuid", source = "match.tournament.uuid"),
+            @Mapping(target = "tournamentName", source = "match.tournament.name"),
+            // Nested-path mappings are null-safe in MapStruct: a knockout match
+            // with an undecided slot simply yields a null team name.
+            @Mapping(target = "team1Name", source = "match.team1.name"),
+            @Mapping(target = "team2Name", source = "match.team2.name"),
+            @Mapping(target = "kickoffAt", source = "match.kickoffAt"),
+            @Mapping(target = "status", expression = "java(r.getStatus() == null ? null : r.getStatus().name())"),
+            @Mapping(target = "note", source = "note"),
+            @Mapping(target = "contactEmail", source = "contactEmail"),
+            @Mapping(target = "adminNote", source = "adminNote"),
+            @Mapping(target = "priceEurCents", source = "priceEurCents"),
+            @Mapping(target = "paid", expression = "java(r.getPaidAt() != null)"),
+            @Mapping(target = "hasVideo", expression = "java(r.getVideoObjectKey() != null)"),
+            // deliveryUrl is visibility-gated (owner+DELIVERED or admin) - the
+            // controller decides, the mapper always leaves it null.
+            @Mapping(target = "deliveryUrl", ignore = true),
+            @Mapping(target = "createdAt", source = "createdAt"),
+            @Mapping(target = "updatedAt", source = "updatedAt"),
+    })
+    RecordingRequestDto toDto(MatchRecordingRequest r);
+
+    List<RecordingRequestDto> toDtoList(List<MatchRecordingRequest> list);
+}

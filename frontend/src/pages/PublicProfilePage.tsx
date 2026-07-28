@@ -53,6 +53,8 @@ import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
 import SpectoConnectionCard from "../components/SpectoConnectionCard"
 import AdminPlayersListTab from "../components/AdminPlayersListTab"
+import MyRecordingsTab from "../components/MyRecordingsTab"
+import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /** Country dial codes shared with FindTeam / CreateTournament. */
@@ -105,7 +107,7 @@ export default function PublicProfilePage() {
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
     // see Turniri only.
-    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "dashboard" | "popis-igraca" | "live-stream">("turniri")
+    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "moje-snimke" | "dashboard" | "popis-igraca" | "live-stream" | "zahtjevi-snimke">("turniri")
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -338,6 +340,16 @@ export default function PublicProfilePage() {
                     >
                         Postavke
                     </Button>
+                    {/* Recording requests of THIS user (any signed-in account) -
+                        request status, cancel, and the download link once a
+                        recording is delivered. */}
+                    <Button
+                        size="sm"
+                        variant={profileTab === "moje-snimke" ? "solid" : "ghost"}
+                        onClick={() => setProfileTab("moje-snimke")}
+                    >
+                        Moje snimke
+                    </Button>
                     {/* Admin-only Dashboard tab - for retroactively attaching
                         legacy tournament teams to registered users. Gated on
                         the Firebase role=admin custom claim; non-admins never
@@ -375,6 +387,18 @@ export default function PublicProfilePage() {
                             onClick={() => setProfileTab("live-stream")}
                         >
                             Live stream
+                        </Button>
+                    )}
+                    {/* Admin-only recording-request queue - review, approve,
+                        mark paid and deliver the requested match recordings. */}
+                    {isAdmin && (
+                        <Button
+                            size="sm"
+                            variant={profileTab === "zahtjevi-snimke" ? "solid" : "ghost"}
+                            colorPalette="purple"
+                            onClick={() => setProfileTab("zahtjevi-snimke")}
+                        >
+                            Zahtjevi za snimke
                         </Button>
                     )}
                 </HStack>
@@ -505,6 +529,9 @@ export default function PublicProfilePage() {
             {/* === POSTAVKE tab - owner-only: app preferences (theme, etc.) === */}
             {isOwner && profileTab === "postavke" && <SettingsCard />}
 
+            {/* === MOJE SNIMKE tab - owner-only: recording requests === */}
+            {isOwner && profileTab === "moje-snimke" && <MyRecordingsTab />}
+
             {/* === DASHBOARD tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "dashboard" && (
                 <AdminDashboardTab />
@@ -522,6 +549,11 @@ export default function PublicProfilePage() {
                 was replaced per product request - the component file remains. */}
             {isOwner && isAdmin && profileTab === "live-stream" && (
                 <SpectoConnectionCard />
+            )}
+
+            {/* === ZAHTJEVI ZA SNIMKE tab - admin-only, on own profile === */}
+            {isOwner && isAdmin && profileTab === "zahtjevi-snimke" && (
+                <AdminRecordingRequestsTab />
             )}
         </VStack>
     )

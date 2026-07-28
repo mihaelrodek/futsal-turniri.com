@@ -57,4 +57,7 @@ export const qk = {
     scorers: (uuid: string) => ["scorers", uuid] as const,
     teamColors: (uuid: string) => ["teamColors", uuid] as const,
     liveMatches: ["liveMatches"] as const,
+    myRecordingRequests: ["recordingRequests", "mine"] as const,
+    adminRecordingRequests: (status?: string) =>
+        ["recordingRequests", "admin", status ?? "all"] as const,
 }

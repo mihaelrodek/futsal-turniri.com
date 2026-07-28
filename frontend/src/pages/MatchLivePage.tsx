@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Box, chakra, Flex, Grid, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { FiArrowLeft, FiDownload, FiShare2 } from "react-icons/fi"
+import { FiArrowLeft, FiDownload, FiFileText, FiShare2, FiVideo } from "react-icons/fi"
 import { BracketBoard, ZoomableBracket, ZoomControls, type ZoomableBracketHandle } from "../components/BracketBoard"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
@@ -12,6 +12,9 @@ import { fetchBracket } from "../api/bracket"
 import { fetchStreamBanner, readStreamBannerHint, type StreamBanner } from "../api/streamBanner"
 import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { ExportDialog, type ExportMeta, type MatchExportData } from "../components/TournamentExport"
+import { ZapisnikExportDialog } from "../export/zapisnik/ZapisnikExportDialog"
+import RecordingRequestDialog from "../components/RecordingRequestDialog"
+import { useAuth } from "../auth/AuthContext"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { GoalscorersPanel, LiveClock } from "../components/liveMatch"
@@ -99,6 +102,11 @@ export default function MatchLivePage() {
     const [tournamentName, setTournamentName] = useState<string | null>(cachedName)
     const [tMeta, setTMeta] = useState<PosterMetaBits | null>(cachedDetails ? toMetaBits(cachedDetails) : null)
     const [exportOpen, setExportOpen] = useState(false)
+    const [zapisnikOpen, setZapisnikOpen] = useState(false)
+    const [recordingOpen, setRecordingOpen] = useState(false)
+    // For the "Zatraži snimku" login gate - anonymous viewers are sent to
+    // /prijava first (the request is tied to their account).
+    const { user } = useAuth()
     const [loading, setLoading] = useState(!cachedSchedule)
     const [tab, setTab] = useState<MatchInfoTab>("timeline")
     const [lineups, setLineups] = useState<{ team1: PlayerDto[] | null; team2: PlayerDto[] | null }>({
@@ -444,6 +452,26 @@ export default function MatchLivePage() {
                         )}
                     </VStack>
                     <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
+                        <IconButton
+                            aria-label="Zatraži snimku"
+                            title="Zatraži snimku utakmice"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                // Anonymous viewers can't file a request (it's
+                                // tied to their account) - send them to log in,
+                                // then back to this page.
+                                if (!user) {
+                                    navigate("/prijava", {
+                                        state: { from: `${location.pathname}${location.search}` },
+                                    })
+                                    return
+                                }
+                                setRecordingOpen(true)
+                            }}
+                        >
+                            <FiVideo />
+                        </IconButton>
                         <IconButton aria-label="Podijeli" variant="ghost" size="sm" onClick={share}>
                             <FiShare2 />
                         </IconButton>
@@ -584,18 +612,31 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </Flex>
-                    <IconButton
-                        aria-label="Preuzmi"
-                        variant="ghost"
-                        size="sm"
+                    <HStack
+                        gap="0"
                         position="absolute"
                         right="0"
                         top="50%"
                         transform="translateY(-50%)"
-                        onClick={() => setExportOpen(true)}
                     >
-                        <FiDownload />
-                    </IconButton>
+                        <IconButton
+                            aria-label="Preuzmi zapisnik"
+                            title="Zapisnik"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setZapisnikOpen(true)}
+                        >
+                            <FiFileText />
+                        </IconButton>
+                        <IconButton
+                            aria-label="Preuzmi"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setExportOpen(true)}
+                        >
+                            <FiDownload />
+                        </IconButton>
+                    </HStack>
                 </Box>
 
                 {/* Penalty shootout result under the score (centred). */}
@@ -728,6 +769,23 @@ export default function MatchLivePage() {
                 kind="match"
                 meta={exportMeta}
                 match={matchExport}
+            />
+
+            {/* FIFA-style zapisnik form (XLSX / PDF) for this match. */}
+            <ZapisnikExportDialog
+                open={zapisnikOpen}
+                onClose={() => setZapisnikOpen(false)}
+                uuid={uuid!}
+                matchId={matchId}
+            />
+
+            {/* Request a paid video recording of this match (~20 €). */}
+            <RecordingRequestDialog
+                open={recordingOpen}
+                onClose={() => setRecordingOpen(false)}
+                matchId={matchId}
+                team1Name={scheduled?.team1Name ?? live?.team1Name ?? null}
+                team2Name={scheduled?.team2Name ?? live?.team2Name ?? null}
             />
         </Flex>
     )
