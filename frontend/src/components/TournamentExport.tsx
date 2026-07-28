@@ -3086,7 +3086,7 @@ function rankScorers(scorers: ScorerDto[]): RankedScorer[] {
 /** One scorer row: rank medallion · player name + (muted) team · big goals.
  *  `rank <= 3` upgrades the row to the podium treatment (medal colour + a
  *  larger, bolder layout). */
-function ScorerPosterRow({ scorer, rank }: RankedScorer) {
+function ScorerPosterRow({ scorer, rank, hasGroups }: RankedScorer & { hasGroups: boolean }) {
     const podium = rank <= 3
     const medal = podium ? SCORER_MEDAL[rank - 1] : null
     // Full-tournament tally shown only when it differs from the counted one -
@@ -3184,7 +3184,10 @@ function ScorerPosterRow({ scorer, rank }: RankedScorer) {
                             whiteSpace: "nowrap",
                         }}
                     >
-                        s grupama {scorer.goalsAll}
+                        {/* A KNOCKOUT_ONLY tournament never has group goals - the
+                            gap is a narrower knockout-round scope ("Od
+                            polufinala" etc.), not groups, so don't claim it is. */}
+                        {hasGroups ? `s grupama ${scorer.goalsAll}` : `ukupno ${scorer.goalsAll}`}
                     </span>
                 ) : null}
             </div>
@@ -3193,32 +3196,44 @@ function ScorerPosterRow({ scorer, rank }: RankedScorer) {
 }
 
 /** The top-scorers poster body - the "NAJBOLJI STRIJELCI" heading (mirrors the
- *  group poster's "Utakmice · Grupa X" heading treatment) over the ranked rows. */
-function ScorersPosterBody({ scorers }: { scorers: ScorerDto[] }) {
-    const ranked = rankScorers(scorers)
+ *  group poster's "Utakmice · Grupa X" heading treatment) over the ranked rows.
+ *  `showHeading` is false on a continuation page - it already carries its own
+ *  compact "tournament name · Stranica X/Y" header, so repeating this one
+ *  would be redundant (and cost pixels the pagination budget already spent). */
+function ScorersPosterBody({
+    ranked,
+    hasGroups,
+    showHeading,
+}: {
+    ranked: RankedScorer[]
+    hasGroups: boolean
+    showHeading: boolean
+}) {
     return (
         <div>
-            {/* Heading + hairline rule (same lockup as GroupMatchesSection). */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                <span
-                    style={{
-                        fontFamily: F_MONO,
-                        fontSize: "14px",
-                        fontWeight: 800,
-                        letterSpacing: "0.1em",
-                        color: C.green,
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                    }}
-                >
-                    Najbolji strijelci
-                </span>
-                <span style={{ flex: 1, height: "1px", background: C.line }} />
-            </div>
+            {showHeading && (
+                /* Heading + hairline rule (same lockup as GroupMatchesSection). */
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+                    <span
+                        style={{
+                            fontFamily: F_MONO,
+                            fontSize: "14px",
+                            fontWeight: 800,
+                            letterSpacing: "0.1em",
+                            color: C.green,
+                            textTransform: "uppercase",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        Najbolji strijelci
+                    </span>
+                    <span style={{ flex: 1, height: "1px", background: C.line }} />
+                </div>
+            )}
             {ranked.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {ranked.map(({ scorer, rank }) => (
-                        <ScorerPosterRow key={scorer.playerId} scorer={scorer} rank={rank} />
+                        <ScorerPosterRow key={scorer.playerId} scorer={scorer} rank={rank} hasGroups={hasGroups} />
                     ))}
                 </div>
             ) : (
@@ -3230,10 +3245,58 @@ function ScorersPosterBody({ scorers }: { scorers: ScorerDto[] }) {
     )
 }
 
-/** Top-scorers poster pages - always a single portrait A4 page (the top-10
- *  list fits comfortably). */
-function buildScorersPages(scorers: ScorerDto[]): ReactNode[] {
-    return [<ScorersPosterBody scorers={scorers} />]
+/* Pixel-height model for scorer-poster pagination - same guarantee as the
+   schedule poster: NEVER clip a row against the footer. The "top 10" cap
+   assumed 10 rows always fit a single sheet; true for a short title, false
+   for a long one, because PosterPage's body is `flex:1, overflow:"hidden"` -
+   a taller header (long title wraps to more lines) shrinks the body and
+   silently clips whatever didn't fit, with zero visual indication. This
+   poster shares PosterPage's exact header/footer with the schedule poster, so
+   scheduleFirstPx/SCHED_REST_SAFE_PX's budgets apply completely unchanged;
+   only the PER-ROW cost differs (a scorer row vs. a match row). Rounded up
+   generously, same as SCHED_ROW_PX, so an estimate error can only leave a
+   page a little emptier - never overflow it. */
+function scorerRowPx(rank: number): number {
+    // Podium rows (top 3) get the bigger medallion + bolder type - visibly
+    // taller than the rest.
+    return rank <= 3 ? 90 : 64
+}
+/** "Najbolji strijelci" heading + its 16px bottom margin - counted only on
+ *  the first page (see ScorersPosterBody's `showHeading`). */
+const SCORER_HEADING_PX = 36
+
+function paginateScorers(ranked: RankedScorer[], firstPx: number): RankedScorer[][] {
+    const pages: RankedScorer[][] = []
+    let page: RankedScorer[] = []
+    let usedPx = SCORER_HEADING_PX
+    let budgetPx = firstPx
+    for (const r of ranked) {
+        const rowPx = scorerRowPx(r.rank)
+        if (page.length > 0 && usedPx + rowPx > budgetPx) {
+            pages.push(page)
+            page = []
+            usedPx = 0 // no heading cost - continuation pages don't repeat it
+            budgetPx = SCHED_REST_SAFE_PX
+        }
+        page.push(r)
+        usedPx += rowPx
+    }
+    if (page.length > 0) pages.push(page)
+    return pages
+}
+
+/** Top-scorers poster pages - top-10 list, one portrait A4 page for the usual
+ *  case. Paginated under the real per-row pixel budget (see paginateScorers)
+ *  so a long tournament name never pushes a row off the bottom uncounted -
+ *  it spills onto a continuation page instead. */
+function buildScorersPages(scorers: ScorerDto[], hasGroups: boolean, meta: ExportMeta): ReactNode[] {
+    const ranked = rankScorers(scorers)
+    if (ranked.length === 0) {
+        return [<ScorersPosterBody ranked={[]} hasGroups={hasGroups} showHeading />]
+    }
+    return paginateScorers(ranked, scheduleFirstPx(meta)).map((pageRanked, i) => (
+        <ScorersPosterBody ranked={pageRanked} hasGroups={hasGroups} showHeading={i === 0} />
+    ))
 }
 
 /* ── Export dialog ─────────────────────────────────────────────────────── */
@@ -3268,6 +3331,7 @@ export function ExportDialog({
     teamColors,
     match,
     scorers,
+    hasGroups,
     initialScope,
 }: {
     open: boolean
@@ -3293,6 +3357,11 @@ export function ExportDialog({
      *  the Statistika section's active-scope tally). Ranked on the poster with
      *  standard-competition ("1224") ranking and capped at the top 10. */
     scorers?: ScorerDto[]
+    /** kind="scorers" only - whether the tournament format ever plays a group
+     *  stage (GROUPS_KNOCKOUT). A KNOCKOUT_ONLY tournament never has group
+     *  goals, so `goalsAll` differing from `goals` (a narrower knockout-round
+     *  scope) is NOT "s grupama" - see ScorerPosterRow. */
+    hasGroups?: boolean
     /** Scope to preselect on open (e.g. "g:5" for a single group); resets to
      *  it every time the dialog reopens. Defaults to "all". */
     initialScope?: string
@@ -3474,7 +3543,7 @@ export function ExportDialog({
     } else if (kind === "match") {
         pageBodies = buildMatchPages(match, matchEvents)
     } else if (kind === "scorers") {
-        pageBodies = buildScorersPages(scorers ?? [])
+        pageBodies = buildScorersPages(scorers ?? [], hasGroups ?? true, meta)
     } else if (kind === "groups") {
         const single = activeScope !== "all"
         const shown = single ? (groups ?? []).filter((g) => `g:${g.id}` === activeScope) : groups ?? []

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "SpectoStream Events API",
-    "description": "Slanje eventa utakmice u SpectoStream s vanjskog sustava.\n\nPostavi collection varijable: `baseUrl`, `apiKey` (sps_...), `streamId`.\n\nSvi zahtjevi koriste `Authorization: Bearer {{apiKey}}`. `idempotency_key` se generira automatski ({{$guid}}) — u produkciji koristite deterministički ključ (npr. `<matchId>-<tip>-<redniBroj>`) da retry ne stvori duplikat.\n\nDetalji: docs/integrations/events-api.md",
+    "description": "Slanje eventa utakmice u SpectoStream s vanjskog sustava + kompletan portal/admin API.\n\nPostavi collection varijable: `baseUrl`, `apiKey` (sps_...), `streamId`.\n\nSekcije 1–5 su VANJSKI Events API (Bearer `{{apiKey}}`). Sekcije 6–10 su PORTAL/ADMIN (Bearer `{{sessionToken}}` iz 0.1 login) — NE slati vanjskom timu. Sekcija 11 su interni MediaMTX hookovi (server-to-server), 12 je cleanup.\n\n`idempotency_key` se generira automatski ({{$guid}}) — u produkciji koristite deterministički ključ (npr. `<matchId>-<tip>-<redniBroj>`) da retry ne stvori duplikat.\n\nDetalji: docs/integrations/events-api.md",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,7 +16,10 @@
     { "key": "adminPass", "value": "", "type": "string" },
     { "key": "sessionToken", "value": "", "type": "string" },
     { "key": "apiKeyId", "value": "", "type": "string" },
-    { "key": "tournamentId", "value": "00000000-0000-4000-8000-000000000001", "type": "string" }
+    { "key": "tournamentId", "value": "00000000-0000-4000-8000-000000000001", "type": "string" },
+    { "key": "advertiserId", "value": "", "type": "string" },
+    { "key": "creativeId", "value": "", "type": "string" },
+    { "key": "campaignId", "value": "", "type": "string" }
   ],
   "event": [
     {
@@ -64,7 +67,7 @@
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{adminUser}}\",\n  \"password\": \"{{adminPass}}\"\n}"
             },
-            "description": "Portal login — sprema session token (ssn_...) u {{sessionToken}}. Vrijedi 30 dana."
+            "description": "Portal login — sprema session token (ssn_...) u {{sessionToken}}. Vrijedi 30 dana. username 1-100, password 1-200 znakova."
           }
         },
         {
@@ -93,7 +96,7 @@
               "mode": "raw",
               "raw": "{\n  \"label\": \"postman-test-{{$guid}}\"\n}"
             },
-            "description": "Kreira API key (sps_...) i sprema ga u {{apiKey}} — key se vraća u plaintextu SAMO ovdje. Svi ostali zahtjevi u kolekciji ga koriste automatski."
+            "description": "Kreira API key (sps_...) i sprema ga u {{apiKey}} — key se vraća u plaintextu SAMO ovdje. Svi ostali zahtjevi u kolekciji ga koriste automatski. label 1-100 znakova, jedinstven."
           }
         },
         {
@@ -123,7 +126,7 @@
               "mode": "raw",
               "raw": "{\n  \"name\": \"Postman test turnir\"\n}"
             },
-            "description": "Upsert turnira (koristi {{apiKey}}, kao i vanjski web) — automatski provisionira stream i sprema {{streamId}}. Idempotentno: slobodno ponovi."
+            "description": "Upsert turnira (koristi {{apiKey}}, kao i vanjski web) — automatski provisionira stream i sprema {{streamId}}. Idempotentno: slobodno ponovi. Auth: API key ILI session token. name 1-200 znakova, {{tournamentId}} mora biti UUID."
           }
         }
       ]
@@ -139,9 +142,22 @@
             "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"match_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"home_name\": \"VK Mladost\",\n    \"home_short\": \"MLA\",\n    \"away_name\": \"VK Jug\",\n    \"away_short\": \"JUG\"\n  }\n}"
+              "raw": "{\n  \"type\": \"match_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"home_name\": \"VK Mladost\",\n    \"home_short\": \"MLA\",\n    \"away_name\": \"VK Jug\",\n    \"away_short\": \"JUG\",\n    \"home_jersey\": \"#1e3a8a\",\n    \"home_shorts\": \"#0b1120\",\n    \"away_jersey\": \"#f59e0b\",\n    \"away_shorts\": \"#111827\"\n  }\n}"
             },
-            "description": "Početak utakmice — resetira rezultat na 0:0. OBAVEZNO prije svih ostalih eventa te utakmice. home_name/away_name 1-100 znakova, home_short/away_short 1-6 znakova."
+            "description": "Početak utakmice — resetira rezultat na 0:0. OBAVEZNO prije svih ostalih eventa te utakmice. home_name/away_name 1-100 znakova, home_short/away_short 1-6 znakova. home_jersey/home_shorts/away_jersey/away_shorts su opcionalni, hex boja (#RRGGBB) dresa/hlača za tu utakmicu."
+          }
+        },
+        {
+          "name": "reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"reset\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {}\n}"
+            },
+            "description": "Reset trenutne utakmice — sve na nulu: rezultat 0:0, period 0, sat na 0 (zaustavljen), briše strijelce, kartone i isključenja. Status = live. Ekipe (imena/kratice/boje), postave i najava sljedeće utakmice OSTAJU (isto stanje kao netom nakon match_start). Za nastavak igre pošalji period_start."
           }
         },
         {
@@ -178,9 +194,9 @@
             "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"match_end\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {}\n}"
+              "raw": "{\n  \"type\": \"match_end\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"next_home_name\": \"VK Primorje\",\n    \"next_home_short\": \"PRI\",\n    \"next_away_name\": \"VK Medveščak\",\n    \"next_away_short\": \"MED\",\n    \"next_home_jersey\": \"#0ea5e9\",\n    \"next_home_shorts\": \"#0b1120\",\n    \"next_away_jersey\": \"#dc2626\",\n    \"next_away_shorts\": \"#111827\",\n    \"next_kickoff_at\": \"2026-07-23T20:30:00Z\"\n  }\n}"
             },
-            "description": "Kraj utakmice — sat staje, status = ended."
+            "description": "Kraj utakmice — sat staje, status = ended, briše sastave. Svi next_* su OPCIONALNI — najava SLJEDEĆE utakmice, prikazuje se gledatelju do idućeg match_start: next_home_name/next_away_name ≤100, next_home_short/next_away_short ≤6, next_*_jersey/next_*_shorts hex (#RRGGBB), next_kickoff_at ISO-8601 datetime. Prazan payload {} = završi bez najave sljedeće."
           }
         }
       ]
@@ -224,7 +240,7 @@
               "mode": "raw",
               "raw": "{\n  \"type\": \"exclusion\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"away\",\n    \"player_name\": \"M. Kovač\"\n  }\n}"
             },
-            "description": "Isključenje 2 min — automatski istječe 2 minute od occurred_at."
+            "description": "Isključenje 2 min — automatski istječe 2 minute od occurred_at. player_name je opcionalan, samo za prikaz — bez njega se isključenje i dalje evidentira i broji unatrag za tim."
           }
         },
         {
@@ -238,6 +254,19 @@
               "raw": "{\n  \"type\": \"clock_sync\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"clock_seconds\": 245\n  }\n}"
             },
             "description": "Korekcija sata na točnu vrijednost (u sekundama) — koristiti kad se overlay sat razlikuje od semafora."
+          }
+        },
+        {
+          "name": "clock_visibility",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"clock_visibility\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"visible\": false\n  }\n}"
+            },
+            "description": "Pali/gasi prikaz sata na semaforu (sat i dalje interno teče, samo se skriva). visible:false sakrije sat (npr. za vrijeme prekida), visible:true (ili prazan payload {}) ga vraća. match_start i reset uvijek vraćaju sat na vidljivo."
           }
         }
       ]
@@ -255,7 +284,7 @@
               "mode": "raw",
               "raw": "{\n  \"type\": \"card\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"away\",\n    \"player_name\": \"P. Perić\",\n    \"color\": \"yellow\"\n  }\n}"
             },
-            "description": "Karton — payload je slobodan objekt, koristi se samo za prikaz."
+            "description": "Karton — payload je slobodan objekt, koristi se samo za prikaz. player_name i color su opcionalni; bez color polja karton se prikazuje kao žuti (default)."
           }
         },
         {
@@ -279,9 +308,9 @@
             "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"lineup\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\",\n    \"players\": [\"I. Horvat\", \"A. Anić\", \"B. Babić\"]\n  }\n}"
+              "raw": "{\n  \"type\": \"lineup\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"home\": [\n      { \"number\": 1, \"name\": \"I. Horvat\" },\n      { \"number\": 7, \"name\": \"A. Anić\" },\n      { \"number\": 4, \"name\": \"B. Babić\" }\n    ],\n    \"away\": [\n      { \"number\": 12, \"name\": \"M. Kovač\" },\n      { \"number\": 9, \"name\": \"P. Perić\" }\n    ]\n  }\n}"
             },
-            "description": "Postava — payload je slobodan objekt, samo za prikaz."
+            "description": "Sastavi — opcionalno `home` i/ili `away`, niz { number, name } (number opcionalan 0-999, name 1-100, do 40 igrača po strani). Embed player prikaže popup sastava (broj + ime po timu) na 10 s. Poslana strana zamjenjuje prethodnu; izostavljena ostaje netaknuta. Zadnji sastav dohvatljiv preko GET /v1/streams/:id/lineups (sekcija 5). match_end briše sastave."
           }
         },
         {
@@ -310,9 +339,9 @@
             "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"stream_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"payload\": {}\n}"
+              "raw": "{\n  \"type\": \"stream_start\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"payload\": {\n    \"next_home_name\": \"VK Mladost\",\n    \"next_home_short\": \"MLA\",\n    \"next_away_name\": \"VK Jug\",\n    \"next_away_short\": \"JUG\",\n    \"next_home_jersey\": \"#1e3a8a\",\n    \"next_home_shorts\": \"#0b1120\",\n    \"next_away_jersey\": \"#f59e0b\",\n    \"next_away_shorts\": \"#111827\",\n    \"next_kickoff_at\": \"2026-07-23T19:00:00Z\"\n  }\n}"
             },
-            "description": "Kamera je počela emitirati — neovisno o utakmici."
+            "description": "Kamera je počela emitirati — broadcasting=true, gledatelju se skida „Uskoro\". Ide ODMAH gledatelju (bez odgode / camera_offseta), za razliku od svih ostalih eventa. Svi next_* su OPCIONALNI — najava PRVE utakmice, prikazuje se dok ne stigne match_start: next_home_name/next_away_name ≤100, next_home_short/next_away_short ≤6, next_*_jersey/next_*_shorts hex (#RRGGBB), next_kickoff_at ISO-8601 datetime. Prazan payload {} = samo upali kanal bez najave."
           }
         },
         {
@@ -374,11 +403,394 @@
             "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/state", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "state"] },
             "description": "Isti endpoint sa session tokenom — admin vidi evente ODMAH, bez odgode. Idealno za brzu provjeru da je event sjeo (traži 0.1 login)."
           }
+        },
+        {
+          "name": "GET lineups",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status je 200', () => pm.response.to.have.status(200));",
+                  "console.log(JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/lineups", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "lineups"] },
+            "description": "Sastavi trenutne utakmice (broj + ime po timu) iz zadnjeg `lineup` eventa → { home: [{number, name}], away: [...] }. Javno, s istom odgodom kao /state (gledatelj vidi tek vidljive evente). match_end briše sastave. Sa session tokenom (admin) vidi se odmah, bez odgode."
+          }
+        },
+        {
+          "name": "GET master.m3u8 (HLS playlist)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/master.m3u8", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "master.m3u8"] },
+            "description": "Master HLS playlist (adaptivni bitrate: 720p + 480p renditioni). Javno, bez auth-a — embed player je anoniman. Vraća text/vnd.apple.mpegurl. Passthrough (originalna kvaliteta) NIJE u masteru; direktni {hls}/{id}/index.m3u8 radi za debug."
+          }
         }
       ]
     },
     {
-      "name": "6. Cleanup (interno — obriši testne podatke)",
+      "name": "6. Portal — Auth & korisnici (session token)",
+      "description": "Portal/admin endpointi. Svi traže Bearer {{sessionToken}} (0.1 login). NE slati vanjskom timu.",
+      "item": [
+        {
+          "name": "GET auth/me",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/auth/me", "host": ["{{baseUrl}}"], "path": ["v1", "auth", "me"] },
+            "description": "Tko je prijavljen → { user: { username } }. Provjera valjanosti session tokena."
+          }
+        },
+        {
+          "name": "POST auth/logout",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["v1", "auth", "logout"] },
+            "description": "Poništava trenutni session token. Bez body-a."
+          }
+        },
+        {
+          "name": "POST users (dodaj korisnika)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/users", "host": ["{{baseUrl}}"], "path": ["v1", "users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"novi.korisnik\",\n  \"password\": \"tajna-lozinka-123\"\n}"
+            },
+            "description": "Dodaje portal korisnika firme (samo prijavljeni korisnik može dodati novog). username 3-100, password 8-200 znakova. Username mora biti jedinstven."
+          }
+        },
+        {
+          "name": "GET users",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/users", "host": ["{{baseUrl}}"], "path": ["v1", "users"] },
+            "description": "Lista korisnika → { users: [{ id, username, created_at, last_login_at }] }."
+          }
+        },
+        {
+          "name": "GET api-keys",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/api-keys", "host": ["{{baseUrl}}"], "path": ["v1", "api-keys"] },
+            "description": "Lista API ključeva (uklj. plaintext key jer je trajno vidljiv na portalu) → { api_keys: [{ id, label, key, created_at, revoked_at, last_used_at }] }. Kreiranje: 0.2, revoke: sekcija 12."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Portal — Streamovi (session token)",
+      "description": "Ručno upravljanje streamovima i statistika. Sve traži Bearer {{sessionToken}}, osim master.m3u8 (javno).",
+      "item": [
+        {
+          "name": "POST streams (kreiraj)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams", "host": ["{{baseUrl}}"], "path": ["v1", "streams"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"VK Mladost vs VK Jug\",\n  \"home_name\": \"VK Mladost\",\n  \"home_short\": \"MLA\",\n  \"away_name\": \"VK Jug\",\n  \"away_short\": \"JUG\",\n  \"delay_offset_ms\": 30000,\n  \"tournament_id\": \"{{tournamentId}}\",\n  \"gate_broadcast\": false,\n  \"delay_auto\": true,\n  \"id\": \"mla-jug-01\"\n}"
+            },
+            "description": "Ručno kreira stream (turniri ga inače auto-provisioniraju kroz 0.3). OBAVEZNO: title (1-200), home_name/away_name (1-100), home_short/away_short (1-6). OPCIONALNO: delay_offset_ms (0-120000, default iz configa), tournament_id (UUID, mora postojati), gate_broadcast (bool, default false), delay_auto (bool, default true), id (^[a-z0-9-]{3,32}$; bez njega se generira). Vraća stream s RTMP podacima."
+          }
+        },
+        {
+          "name": "GET streams (lista)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams", "host": ["{{baseUrl}}"], "path": ["v1", "streams"] },
+            "description": "Svi streamovi (admin shape, uklj. RTMP ključeve) → { streams: [...] }, sortirano po created_at desc."
+          }
+        },
+        {
+          "name": "PATCH streams/{id} (izmijeni)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Novi naslov\",\n  \"delay_offset_ms\": 45000,\n  \"camera_offset_ms\": 8000,\n  \"gate_broadcast\": true,\n  \"delay_auto\": false\n}"
+            },
+            "description": "Djelomični update — šalji SAMO polja koja mijenjaš (barem jedno). Dopušteno: title (1-200), home_name/away_name (1-100), home_short/away_short (1-6), delay_offset_ms (0-120000), camera_offset_ms (0-300000), tournament_id (UUID), gate_broadcast (bool), delay_auto (bool). Nepoznato polje → 400."
+          }
+        },
+        {
+          "name": "GET streams/{id}/events (povijest)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events?limit=200", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"], "query": [{ "key": "limit", "value": "200" }] },
+            "description": "Povijest eventa streama (debug), najnoviji prvi → { events: [...] }. limit opcionalan (default 200, max 500)."
+          }
+        },
+        {
+          "name": "GET streams/{id}/stats (gledanost)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/stats", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "stats"] },
+            "description": "Gledanost jednog streama → current_viewers, peak_viewers, avg_viewers, viewer_minutes, series (do 180 min unatrag), current_sessions (aktivne veze s latencijom)."
+          }
+        },
+        {
+          "name": "GET streams/{id}/requests (log)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/requests", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "requests"] },
+            "description": "Zadnjih 100 HTTP zahtjeva za taj stream (debug integracije) → { requests: [...] } s headerima."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Portal — Turniri & overlay (session token)",
+      "description": "Statistika turnira i grafički overlay (tema). Sve traži Bearer {{sessionToken}}. (Upsert/brisanje turnira: 0.3 i sekcija 12.)",
+      "item": [
+        {
+          "name": "GET tournaments (lista + stats)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/tournaments", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments"] },
+            "description": "Svi turniri s agregatima → { tournaments: [{ id, name, created_at, stream_count, live_count, peak_viewers, viewer_minutes, trend }] }. Hrani dashboard portala."
+          }
+        },
+        {
+          "name": "GET tournaments/{id}/stats",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}/stats", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}", "stats"] },
+            "description": "Gledanost po turniru → { tournament, totals: { streams, peak_viewers, viewer_minutes }, streams: [po utakmici] }. {{tournamentId}} mora biti UUID."
+          }
+        },
+        {
+          "name": "GET tournaments/{id}/overlay",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}/overlay", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}", "overlay"] },
+            "description": "Grafička tema overlaya turnira → { overlay: {...} }. Ako tema još nije spremljena, vraća default."
+          }
+        },
+        {
+          "name": "PUT tournaments/{id}/overlay",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}/overlay", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}", "overlay"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"layout\": \"A\",\n  \"positions\": {\n    \"scoreboard\": { \"x\": 50, \"y\": 8 },\n    \"logo\": { \"x\": 92, \"y\": 8 },\n    \"banner\": { \"x\": 50, \"y\": 92 }\n  },\n  \"primary_color\": \"#1e3a8a\",\n  \"secondary_color\": \"#f59e0b\",\n  \"text_color\": \"#ffffff\",\n  \"font\": \"Inter\",\n  \"team_a_short\": \"MLA\",\n  \"team_b_short\": \"JUG\",\n  \"logo_data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n}"
+            },
+            "description": "Upsert grafičke teme (idempotentno po turniru). OBAVEZNO: layout ('A' ili 'B'), positions.scoreboard/logo/banner sa x,y (0-100, postotak ekrana), primary_color, secondary_color, text_color, font, team_a_short (1-6), team_b_short (1-6). OPCIONALNO: logo_data_url (base64 data URL, max 2 MB)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Portal — Oglašavanje (session token)",
+      "description": "Oglašivači, kreative i kampanje. Sve traži Bearer {{sessionToken}}.",
+      "item": [
+        {
+          "name": "POST advertisers (kreiraj)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('advertiserId', pm.response.json().advertiser.id); console.log('advertiserId:', pm.response.json().advertiser.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/advertisers", "host": ["{{baseUrl}}"], "path": ["v1", "advertisers"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sponzor d.o.o.\",\n  \"contact\": \"marketing@sponzor.hr\"\n}"
+            },
+            "description": "Kreira oglašivača i sprema {{advertiserId}}. name 1-200 znakova (obavezno), contact opcionalan (slobodan tekst)."
+          }
+        },
+        {
+          "name": "GET advertisers (lista)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/advertisers", "host": ["{{baseUrl}}"], "path": ["v1", "advertisers"] },
+            "description": "Svi oglašivači → { advertisers: [{ id, name, contact, created_at, campaign_count }] }."
+          }
+        },
+        {
+          "name": "POST ad-creatives (upload slike)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('creativeId', pm.response.json().creative.id); console.log('creativeId:', pm.response.json().creative.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/ad-creatives", "host": ["{{baseUrl}}"], "path": ["v1", "ad-creatives"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Banner 1200x300\",\n  \"mime_type\": \"image/png\",\n  \"width\": 1200,\n  \"height\": 300,\n  \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n}"
+            },
+            "description": "Upload kreative (slike) i sprema {{creativeId}}. name 1-200 (obavezno), mime_type mora počinjati s 'image/' (obavezno), data_url base64 data URL (obavezno, max 5 MB), width/height opcionalni (px)."
+          }
+        },
+        {
+          "name": "GET ad-creatives (lista)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/ad-creatives", "host": ["{{baseUrl}}"], "path": ["v1", "ad-creatives"] },
+            "description": "Sve kreative → { creatives: [...] }, najnovije prve."
+          }
+        },
+        {
+          "name": "POST campaigns (kreiraj)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('campaignId', pm.response.json().campaign.id); console.log('campaignId:', pm.response.json().campaign.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/campaigns", "host": ["{{baseUrl}}"], "path": ["v1", "campaigns"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ljetna kampanja\",\n  \"advertiser_id\": \"{{advertiserId}}\",\n  \"tournament_id\": \"{{tournamentId}}\",\n  \"creative_id\": \"{{creativeId}}\",\n  \"active_from\": \"2026-07-01T00:00:00Z\",\n  \"active_to\": \"2026-08-31T23:59:59Z\",\n  \"priority\": 5,\n  \"slot\": \"ingame_banner\"\n}"
+            },
+            "description": "Kreira kampanju. OBAVEZNO: name (1-200), advertiser_id (UUID), tournament_id (UUID). OPCIONALNO: creative_id (UUID), active_from/active_to (ISO-8601), priority (1-10, default 5), slot (jedan od: ingame_banner, halftime, pregame, postgame, goal-sponsor; default ingame_banner)."
+          }
+        },
+        {
+          "name": "GET campaigns (lista + filteri)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/campaigns?tournament_id={{tournamentId}}&status=active", "host": ["{{baseUrl}}"], "path": ["v1", "campaigns"], "query": [{ "key": "tournament_id", "value": "{{tournamentId}}" }, { "key": "status", "value": "active" }] },
+            "description": "Kampanje s nazivima oglašivača/turnira/kreative → { campaigns: [...] }. Query filteri opcionalni: tournament_id (UUID), status (npr. active). Bez filtera vraća sve."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Realtime & health",
+      "item": [
+        {
+          "name": "GET live (SSE, javno)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/event-stream" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/live?last_event_id=0", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "live"], "query": [{ "key": "last_event_id", "value": "0" }, { "key": "token", "value": "{{sessionToken}}", "disabled": true }] },
+            "description": "Server-Sent Events kanal — player prima evente uživo. Javni gledatelj vidi evente u visible_at (s odgodom); admin ODMAH ako se doda ?token={{sessionToken}}. last_event_id opcionalan — server pošalje backlog eventa novijih od tog id-a. Napomena: Postman ne renderira live SSE stream idealno; koristi za brzu provjeru veze."
+          }
+        },
+        {
+          "name": "POST heartbeat (javno)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/heartbeat", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "heartbeat"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{$guid}}\",\n  \"latency_ms\": 3200\n}"
+            },
+            "description": "Player javlja 'gledam' svakih ~15-30 s (anonimno). session_id 8-64 znakova (obavezno), latency_ms 0-600000 (opcionalno). Vraća { ok, viewers } — trenutni broj gledatelja za prikaz na overlayu."
+          }
+        },
+        {
+          "name": "GET healthz (javno)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] },
+            "description": "Healthcheck → { ok: true }. Bez auth-a."
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. MediaMTX hookovi (interno — server-to-server)",
+      "description": "Zove ih isključivo MediaMTX medijski server, NE vanjski tim ni portal. Ovdje samo radi kompletnosti / debuga.",
+      "item": [
+        {
+          "name": "POST media/auth",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/media/auth", "host": ["{{baseUrl}}"], "path": ["v1", "media", "auth"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"publish\",\n  \"path\": \"{{streamId}}\",\n  \"query\": \"pass=STREAM_KEY_OVDJE\"\n}"
+            },
+            "description": "MediaMTX authHTTPAddress hook — validira publish stream keyem (read je slobodan). action != 'publish' → uvijek ok. Za publish: pass (u query ili password polju) mora odgovarati stream_key streama (uklj. -720p/-480p renditione). Vraća 200 { ok } ili 401."
+          }
+        },
+        {
+          "name": "POST media/status",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/media/status", "host": ["{{baseUrl}}"], "path": ["v1", "media", "status"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"{{streamId}}\",\n  \"ready\": true\n}"
+            },
+            "description": "MediaMTX runOnReady/runOnNotReady hook — postavlja status streama: ready:true → 'live', ready:false → 'idle'. path je id streama (obavezno)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Cleanup (interno — obriši testne podatke)",
       "description": "Nakon testiranja: obriši testni stream i turnir te revociraj testni API key. Sve traži {{sessionToken}} (0.1 login).",
       "item": [
         {
@@ -386,7 +798,8 @@
           "request": {
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
             "method": "DELETE",
-            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}"] }
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}"] },
+            "description": "Briše stream i sve njegove evente. Vraća { ok } ili 404 ako ne postoji."
           }
         },
         {
@@ -394,7 +807,8 @@
           "request": {
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
             "method": "DELETE",
-            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}"] }
+            "url": { "raw": "{{baseUrl}}/v1/tournaments/{{tournamentId}}", "host": ["{{baseUrl}}"], "path": ["v1", "tournaments", "{{tournamentId}}"] },
+            "description": "Briše turnir. {{tournamentId}} mora biti UUID. Vraća { ok } ili 404."
           }
         },
         {
@@ -402,7 +816,8 @@
           "request": {
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sessionToken}}", "type": "string" }] },
             "method": "POST",
-            "url": { "raw": "{{baseUrl}}/v1/api-keys/{{apiKeyId}}/revoke", "host": ["{{baseUrl}}"], "path": ["v1", "api-keys", "{{apiKeyId}}", "revoke"] }
+            "url": { "raw": "{{baseUrl}}/v1/api-keys/{{apiKeyId}}/revoke", "host": ["{{baseUrl}}"], "path": ["v1", "api-keys", "{{apiKeyId}}", "revoke"] },
+            "description": "Revocira API key po {{apiKeyId}} (iz 0.2). Bez body-a. Vraća { ok } ili 404 ako je nepoznat/već revociran."
           }
         }
       ]

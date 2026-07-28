@@ -77,7 +77,11 @@ ops/maintenance/ENABLED
 .ds-sync/
 ds-bundle/
 .design-sync/.cache/
+
+# Claude Code worktrees - per-session scratch checkouts, never committed.
+.claude/worktrees/
 .design-sync/learnings/
 .design-sync/node_modules
 
 .idea
+promo-video/

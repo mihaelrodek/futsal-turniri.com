@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.CreateTournamentRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.TournamentCardDto;
 import hr.mrodek.apps.futsal_turniri.dtos.TournamentDetailsResponse;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
+import hr.mrodek.apps.futsal_turniri.enums.Surface;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
@@ -64,6 +65,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "surface", source = "surface", qualifiedByName = "enumToName"),
             @Mapping(target = "organizerName", source = "organizerName"),
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "enumToName"),
             @Mapping(target = "rewardFirst", source = "rewardFirst"),
@@ -125,6 +127,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "surface", source = "surface"),
             @Mapping(target = "organizerName", source = "organizerName", qualifiedByName = "trimToNull"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
@@ -184,6 +187,7 @@ public interface TournamentMapper {
             @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "gameSystem", source = "gameSystem"),
             @Mapping(target = "websiteUrl", source = "websiteUrl"),
+            @Mapping(target = "surface", source = "surface"),
             @Mapping(target = "organizerName", source = "organizerName", qualifiedByName = "trimToNull"),
 
             @Mapping(target = "rewardType", source = "rewardType", qualifiedByName = "nameToRewardType"),
@@ -233,6 +237,7 @@ public interface TournamentMapper {
         if (t.getStatus() == null) t.setStatus(TournamentStatus.DRAFT);
         // maxTeams left null = unlimited (no cap); never coerce it to a number.
         if (t.getFormat() == null) t.setFormat(TournamentFormat.GROUPS_KNOCKOUT);
+        if (t.getSurface() == null) t.setSurface(Surface.ASFALT);
 
         if (t.getEntryPrice() == null) t.setEntryPrice(BigDecimal.ZERO);
     }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Portal, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
@@ -6,6 +6,7 @@ import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
 
 import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
+import { BracketBoard, ZoomableBracket, ZoomControls, type ZoomableBracketHandle } from "./BracketBoard"
 import { PulseDot } from "../ui/pitch"
 import { usePolling } from "../hooks/usePolling"
 import { useBroadcastDelayMs, useTick, withinBroadcast } from "../hooks/useBroadcastDelay"
@@ -515,7 +516,7 @@ function MatchTickerBody({
             >
                 <HStack gap="1.5" justify="flex-end" minW="0">
                     <TeamKitChip colors={colors} teamId={match.team1Id} size={9} />
-                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="right" lineClamp={2} minW="0">
+                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="right" lineClamp={3} minW="0" css={{ overflowWrap: "anywhere" }}>
                         {match.team1Name ?? "-"}
                     </Text>
                 </HStack>
@@ -530,7 +531,7 @@ function MatchTickerBody({
                     {match.score1 ?? 0}:{match.score2 ?? 0}
                 </Text>
                 <HStack gap="1.5" justify="flex-start" minW="0">
-                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="left" lineClamp={2} minW="0">
+                    <Text fontSize="xs" fontWeight={700} color="fg.ink" textAlign="left" lineClamp={3} minW="0" css={{ overflowWrap: "anywhere" }}>
                         {match.team2Name ?? "-"}
                     </Text>
                     <TeamKitChip colors={colors} teamId={match.team2Id} size={9} />
@@ -1507,7 +1508,31 @@ const ROUND_ABBR: Record<string, string> = {
     THIRD_PLACE: "3. mj.",
 }
 
+/** Compact BracketBoard sizing for the side-panel embed - roughly the old
+ *  MiniMatch column width, a fraction of the full Eliminacija tab's. */
+const MINI_CARD_W = 104
+const MINI_COL_GAP = 22
+const MINI_ROW_GAP = 10
+const MINI_MIN_CARD_H = 44
+const MINI_HEADER_H = 16
+const MINI_HEADER_GAP = 6
+
 function MiniBracket({ bracket, liveMatchId }: { bracket: Bracket | null; liveMatchId: number | null }) {
+    const zoomRef = useRef<ZoomableBracketHandle>(null)
+    const liveRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+    const autoFocusedRef = useRef<number | null>(null)
+
+    // Auto-centre on the live match once per match (not on every score poll -
+    // that would yank the view while someone is looking at another round).
+    useEffect(() => {
+        if (liveMatchId == null || autoFocusedRef.current === liveMatchId) return
+        autoFocusedRef.current = liveMatchId
+        const t = setTimeout(() => {
+            zoomRef.current?.centerOn(liveRefs.current.get(liveMatchId))
+        }, 100)
+        return () => clearTimeout(t)
+    }, [liveMatchId])
+
     if (!bracket || bracket.rounds.length === 0) {
         return (
             <Flex flex="1" align="center" justify="center" px="4">
@@ -1521,53 +1546,48 @@ function MiniBracket({ bracket, liveMatchId }: { bracket: Bracket | null; liveMa
         )
     }
 
+    const withRef = (m: BracketMatch, node: ReactNode) => (
+        <Box
+            ref={(el: HTMLDivElement | null) => {
+                if (el) liveRefs.current.set(m.matchId, el)
+                else liveRefs.current.delete(m.matchId)
+            }}
+        >
+            {node}
+        </Box>
+    )
+
     return (
-        <Box flex="1" minH="0" overflow="auto" p="2">
-            {/* Rounds as columns; each column spreads its matches over the full
-                height (space-around) so later rounds sit between their feeders -
-                the classic bracket look. Third place is a trailing column. */}
-            <Flex gap="2" h="full" css={{ minWidth: "min-content" }}>
-                {bracket.rounds.map((round) => (
-                    <Flex key={round.stage} direction="column" minW="104px" flexShrink={0}>
-                        <Text
-                            fontFamily="mono"
-                            fontSize="9px"
-                            fontWeight={800}
-                            letterSpacing="0.06em"
-                            color="fg.muted"
-                            textAlign="center"
-                            pb="1"
-                            flexShrink={0}
-                        >
-                            {(ROUND_ABBR[round.stage] ?? round.title ?? "").toUpperCase()}
-                        </Text>
-                        <Flex direction="column" flex="1" justify="space-around" gap="1.5">
-                            {round.matches.map((m) => (
-                                <MiniMatch key={m.matchId} m={m} live={m.matchId === liveMatchId} />
-                            ))}
-                        </Flex>
-                    </Flex>
-                ))}
-                {bracket.thirdPlace && (
-                    <Flex direction="column" minW="104px" flexShrink={0}>
-                        <Text
-                            fontFamily="mono"
-                            fontSize="9px"
-                            fontWeight={800}
-                            letterSpacing="0.06em"
-                            color="fg.muted"
-                            textAlign="center"
-                            pb="1"
-                            flexShrink={0}
-                        >
-                            3. MJ.
-                        </Text>
-                        <Flex direction="column" flex="1" justify="center">
-                            <MiniMatch m={bracket.thirdPlace} live={bracket.thirdPlace.matchId === liveMatchId} />
-                        </Flex>
-                    </Flex>
-                )}
-            </Flex>
+        <Box flex="1" minH="0" position="relative">
+            <ZoomableBracket
+                ref={zoomRef}
+                minScale={0.5}
+                maxScale={2.5}
+                wrapperStyle={{ height: "100%" }}
+                contentPadding="10px"
+            >
+                <BracketBoard
+                    rounds={bracket.rounds}
+                    cardWidth={MINI_CARD_W}
+                    colGap={MINI_COL_GAP}
+                    rowGap={MINI_ROW_GAP}
+                    minCardHeight={MINI_MIN_CARD_H}
+                    headerHeight={MINI_HEADER_H}
+                    headerGap={MINI_HEADER_GAP}
+                    roundLabel={(round) => (ROUND_ABBR[round.stage] ?? round.title ?? "").toUpperCase()}
+                    renderMatch={(m) => withRef(m, <MiniMatch m={m} live={m.matchId === liveMatchId} />)}
+                    thirdPlace={bracket.thirdPlace}
+                    renderThirdPlace={(m) => withRef(m, <MiniMatch m={m} live={m.matchId === liveMatchId} />)}
+                />
+            </ZoomableBracket>
+            <Box position="absolute" bottom="1.5" right="1.5" zIndex={2}>
+                <ZoomControls
+                    size="xs"
+                    onZoomOut={() => zoomRef.current?.zoomOut()}
+                    onZoomIn={() => zoomRef.current?.zoomIn()}
+                    onReset={() => zoomRef.current?.reset()}
+                />
+            </Box>
         </Box>
     )
 }
@@ -1605,8 +1625,11 @@ function MiniMatchRow({
     score: number | null
     winner: boolean
 }) {
+    // "brand.subtle" (the pitch-teal tint) matches the winner highlight on the
+    // full Eliminacija bracket's TeamRow - not the generic Chakra green, so
+    // the two bracket views read as the same colour scheme.
     return (
-        <Flex align="center" justify="space-between" gap="1" px="1.5" py="1" bg={winner ? "green.subtle" : undefined}>
+        <Flex align="center" justify="space-between" gap="1" px="1.5" py="1" bg={winner ? "brand.subtle" : undefined}>
             <Text
                 fontSize="10px"
                 fontWeight={winner ? 800 : 600}

@@ -3,7 +3,7 @@ import { Box, Flex, Grid, HStack, NativeSelect, Text, VStack } from "@chakra-ui/
 import { FiAward, FiDownload, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
 import { setScorerScope } from "../api/tournaments"
-import type { ScorerScope, TournamentDetails } from "../types/tournaments"
+import type { ScorerScope, TournamentDetails, TournamentFormat } from "../types/tournaments"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { Loader } from "../ui/primitives"
@@ -130,12 +130,17 @@ function ScorerRow({
     scorer,
     rank,
     splitTallies,
+    hasGroups,
 }: {
     scorer: ScorerDto
     rank: number
     /** True when group goals don't count - show the full tally next to the
      *  counted one so both reads stay visible. */
     splitTallies: boolean
+    /** False for a KNOCKOUT_ONLY tournament - the "goalsAll" gap then comes
+     *  from a narrower knockout-round scope, never from a group stage that
+     *  was never played, so the label must not say "s grupama". */
+    hasGroups: boolean
 }) {
     const medal = rank <= 3 ? MEDAL_COLORS[rank - 1] : null
     const num = jerseyNumber(scorer.playerId)
@@ -219,7 +224,7 @@ function ScorerRow({
                         whiteSpace="nowrap"
                         lineHeight="1.2"
                     >
-                        s grupama {scorer.goalsAll}
+                        {hasGroups ? `s grupama ${scorer.goalsAll}` : `ukupno ${scorer.goalsAll}`}
                     </Text>
                 )}
             </VStack>
@@ -230,6 +235,7 @@ function ScorerRow({
 export default function StatsSection({
     uuid,
     canEdit = false,
+    format,
     scorerScope,
     onTournamentChanged,
     exportMeta,
@@ -237,6 +243,9 @@ export default function StatsSection({
     uuid: string
     /** Organizer/admin - shows the "which goals count" picker. */
     canEdit?: boolean
+    /** Drives what the scope picker offers and how the secondary goal tally
+     *  is labelled - a KNOCKOUT_ONLY tournament never has a group stage. */
+    format?: TournamentFormat | null
     /** The tournament's scorer scope (from the details payload). */
     scorerScope?: ScorerScope | null
     /** Called with the fresh details DTO after the scope is saved. */
@@ -266,6 +275,11 @@ export default function StatsSection({
     const scope: ScorerScope = scorerScope ?? "KNOCKOUT"
     // When group goals don't count, every row shows both tallies.
     const splitTallies = scope !== "ALL"
+    // KNOCKOUT_ONLY never plays a group stage - "Grupe + eliminacija" is a
+    // meaningless choice there, and defaults to true (assume groups exist)
+    // for any caller that hasn't threaded `format` through yet.
+    const hasGroups = format !== "KNOCKOUT_ONLY"
+    const visibleScopeOrder = hasGroups ? SCOPE_ORDER : SCOPE_ORDER.filter((s) => s !== "ALL")
 
     useEffect(() => {
         if (!uuid) return
@@ -339,7 +353,7 @@ export default function StatsSection({
                     value={scope}
                     onChange={(e) => changeScope(e.currentTarget.value as ScorerScope)}
                 >
-                    {SCOPE_ORDER.map((s) => (
+                    {visibleScopeOrder.map((s) => (
                         <option key={s} value={s}>
                             {SCOPE_LABEL[s]}
                         </option>
@@ -459,7 +473,9 @@ export default function StatsSection({
                 title="Najbolji strijelci"
                 subtitle={
                     splitTallies
-                        ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
+                        ? hasGroups
+                            ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
+                            : `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi izvan tog kruga prikazani su odvojeno`
                         : "Lista strijelaca po broju postignutih golova"
                 }
                 action={
@@ -479,7 +495,7 @@ export default function StatsSection({
             >
                 <VStack align="stretch" gap="2">
                     {scorers.map((s, i) => (
-                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} />
+                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} hasGroups={hasGroups} />
                     ))}
                 </VStack>
             </SectionCard>
@@ -492,6 +508,7 @@ export default function StatsSection({
                 kind="scorers"
                 meta={effExportMeta}
                 scorers={scorers}
+                hasGroups={hasGroups}
             />
         </VStack>
     )

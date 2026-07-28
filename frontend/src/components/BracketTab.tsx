@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import {
     Badge,
     Box,
@@ -11,12 +11,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import {
-    SingleEliminationBracket,
-    createTheme,
-    type MatchComponentProps,
-    type MatchType,
-} from "@g-loot/react-tournament-brackets"
+import { BracketBoard, ZoomableBracket, type ZoomableBracketHandle } from "./BracketBoard"
 import {
     confirmBracket,
     fetchBracket,
@@ -30,7 +25,7 @@ import {
     type ManualBracketPairing,
     type ManualPositionPairing,
 } from "../api/bracket"
-import type { Bracket, BracketMatch, BracketRound } from "../types/bracket"
+import type { Bracket, BracketMatch } from "../types/bracket"
 import { fetchGroups, fetchThirdPlaced } from "../api/groups"
 import type { Group, ThirdPlacedTable } from "../types/groups"
 import { showError, toaster } from "../toaster"
@@ -49,130 +44,16 @@ import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { DateTimeField } from "./DateTimeField"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton } from "../ui/pitch"
-import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, MatchTimelineModal, PenaltyShootout, matchPhase } from "./liveMatch"
+import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, PenaltyShootout, matchPhase } from "./liveMatch"
 import { KitSwatch, useTeamColors, teamKit } from "./jersey"
 import type { TeamKit } from "../api/tournaments"
-import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiDownload, FiEdit2, FiRefreshCw, FiShare2, FiTrash2, FiX } from "react-icons/fi"
+import { FiCheck, FiChevronLeft, FiClock, FiCrosshair, FiDownload, FiEdit2, FiMaximize, FiMinus, FiPlus, FiRefreshCw, FiShare2, FiTrash2, FiX } from "react-icons/fi"
 import { LuRotateCcw, LuShuffle } from "react-icons/lu"
 import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { ExportDialog, isMultiDay, kickoffLabel, type ExportMeta } from "./TournamentExport"
 import { buildKoMatchCodes } from "../utils/knockoutCodes"
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Library data-shape adapter.
-
-   `@g-loot/react-tournament-brackets` consumes a flat MatchType[] where each
-   match carries a `nextMatchId` pointing to its successor. We compute that
-   by walking adjacent rounds: matches[i] in round R feeds match[floor(i/2)]
-   in round R+1. The library handles all column layout + SVG connectors
-   from there; we just provide identity + ordering.
-
-   Round titles come straight from our backend (BracketRound.title) - set
-   on the lib via `tournamentRoundText` which the lib renders as the column
-   heading. State maps PLAYED/RUNNING/SCHEDULED so the lib's hover and
-   "winner" styles can fire (though our custom matchComponent ignores
-   most of them in favour of the BracketMatch).
-
-   The 3rd-place fixture is intentionally NOT in this list - it stays as a
-   separate Panel below the bracket. Putting it in the chain would force
-   the lib to draw a spurious connector to the Finale.
-   ────────────────────────────────────────────────────────────────────── */
-/* Pitch-themed bracket theme - what the library uses for round-header
-   pills, connector lines, the SVG canvas background, and the default
-   text colour. We pass it via the `theme` prop; without it the library
-   falls back to its dark "g-loot" theme (the navy/black round headers
-   in the bug screenshot).
-
-   Note: the public ThemeType in the lib's typings is slightly stale -
-   it declares `roundHeaders.background`, but the actual createTheme
-   implementation reads `roundHeader.backgroundColor` (singular,
-   no `s`). The cast to `any` here lets us pass the real schema. */
-const bracketTheme = createTheme({
-    textColor: {
-        main: "#0B1522",       // fg.ink → Specto navy ink
-        highlighted: "#0E8A81", // Specto cyan text (readable on light)
-        dark: "#3a4046",
-        disabled: "#9ca3af",
-    } as any,
-    matchBackground: {
-        wonColor: "#E3F7F5",   // very subtle cyan tint
-        lostColor: "#ffffff",
-    },
-    score: {
-        background: {
-            wonColor: "#E3F7F5",
-            lostColor: "#f3f4f6",
-        },
-        text: {
-            highlightedWonColor: "#0E8A81",
-            highlightedLostColor: "#6b7280",
-        },
-    },
-    border: {
-        color: "#e5e7eb",          // border
-        highlightedColor: "#2AD4C8", // Specto cyan accent line
-    },
-    // The lib reads `roundHeader.backgroundColor` (singular). Light
-    // pitch-tinted pill on a clean cream label.
-    roundHeader: {
-        backgroundColor: "#E3F7F5", // subtle cyan tint
-        fontColor: "#0E8A81",        // Specto cyan text
-    },
-    connectorColor: "#C2D9D6",       // muted cyan-grey so connectors sit in the Specto palette
-    connectorColorHighlight: "#2AD4C8",
-    svgBackground: "transparent",
-    fontFamily: "'Inter', system-ui, sans-serif",
-    transitionTimingFunction: "ease-out",
-    disabledColor: "#9ca3af",
-} as any)
-
-function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
-    if (rounds.length === 0) return []
-    const out: MatchType[] = []
-    rounds.forEach((round, roundIdx) => {
-        const nextRound = rounds[roundIdx + 1]
-        round.matches.forEach((m, matchIdx) => {
-            // Pair (0,1) → 0; (2,3) → 1; …
-            const successor = nextRound?.matches[Math.floor(matchIdx / 2)]
-            const state =
-                m.status === "FINISHED"
-                    ? "DONE"
-                    : m.status === "LIVE"
-                        ? "RUNNING"
-                        : "SCHEDULED"
-            out.push({
-                id: m.matchId,
-                nextMatchId: successor ? successor.matchId : null,
-                tournamentRoundText: round.title,
-                startTime: "",
-                state,
-                participants: [
-                    {
-                        id: m.team1Id ?? `slot-${m.matchId}-1`,
-                        name: m.team1Name ?? "",
-                        isWinner:
-                            m.winnerTeamId != null &&
-                            m.winnerTeamId === m.team1Id,
-                        status: null,
-                        resultText: m.score1 != null ? String(m.score1) : null,
-                    },
-                    {
-                        id: m.team2Id ?? `slot-${m.matchId}-2`,
-                        name: m.team2Name ?? "",
-                        isWinner:
-                            m.winnerTeamId != null &&
-                            m.winnerTeamId === m.team2Id,
-                        status: null,
-                        resultText: m.score2 != null ? String(m.score2) : null,
-                    },
-                ],
-            })
-        })
-    })
-    return out
-}
 
 /**
  * "Eliminacija" tab - the knockout bracket.
@@ -187,88 +68,6 @@ function bracketToLibraryMatches(rounds: BracketRound[]): MatchType[] {
  * recompute the score, so the bracket is re-fetched after live actions.
  */
 type EditForm = { s1: string; s2: string; p1: string; p2: string }
-
-/**
- * Drag-to-pan for the bracket. Grab with the mouse (or pen) and drag to scroll
- * the bracket in any direction; touch keeps the browser's native momentum
- * scrolling, so we only hijack mouse/pen. A small move threshold tells a real
- * pan apart from a click, and the click that ends a pan is swallowed so it
- * doesn't open a match dialog.
- */
-function useDragPan() {
-    const ref = useRef<HTMLDivElement>(null)
-    const drag = useRef({ down: false, x: 0, y: 0, left: 0, top: 0, moved: false })
-    const [dragging, setDragging] = useState(false)
-
-    const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-        if (e.pointerType === "touch") return // native scroll on touch
-        // Clear any stale "moved" from a previous drag that didn't end in a
-        // click, so it can't wrongly swallow this press's click.
-        drag.current.moved = false
-        // Don't start a pan when pressing an interactive control (Start menu,
-        // result inputs, edit buttons, links…) - otherwise the swallow-click
-        // logic below eats their click and e.g. the "Start" menu never opens.
-        // Pan only from the empty bracket background / non-interactive areas.
-        const target = e.target as HTMLElement | null
-        if (
-            target?.closest(
-                'button, a, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [data-scope="menu"]',
-            )
-        ) {
-            return
-        }
-        const el = ref.current
-        if (!el) return
-        drag.current = {
-            down: true,
-            x: e.clientX,
-            y: e.clientY,
-            left: el.scrollLeft,
-            top: el.scrollTop,
-            moved: false,
-        }
-        // NOTE: do NOT setDragging(true) here. A press that turns out to be a
-        // plain click must not trigger a re-render between pointerdown and the
-        // click - the library re-renders each match inside an SVG foreignObject,
-        // which would replace the card's DOM node and the browser would then
-        // never fire the click (so "open timeline" silently failed on desktop;
-        // touch was unaffected because it returns early above). Flip to the
-        // grabbing cursor only once a real drag actually starts (in move).
-    }
-    const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-        const d = drag.current
-        if (!d.down) return
-        const el = ref.current
-        if (!el) return
-        const dx = e.clientX - d.x
-        const dy = e.clientY - d.y
-        if (!d.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
-            d.moved = true
-            setDragging(true) // real drag → grabbing cursor (and click-swallow)
-        }
-        el.scrollLeft = d.left - dx
-        el.scrollTop = d.top - dy
-    }
-    const end = () => {
-        if (!drag.current.down) return
-        drag.current.down = false
-        setDragging(false)
-    }
-    // Swallow the click that ends a real drag so it doesn't open a match card.
-    const onClickCapture = (e: ReactMouseEvent) => {
-        if (drag.current.moved) {
-            e.preventDefault()
-            e.stopPropagation()
-            drag.current.moved = false
-        }
-    }
-
-    return {
-        ref,
-        dragging,
-        handlers: { onPointerDown, onPointerMove, onPointerUp: end, onPointerLeave: end, onClickCapture },
-    }
-}
 
 /** `canEdit` - true when the viewer is the tournament owner or an admin.
  *  Drives all mutating UI: regenerate bracket, enter result, start a live
@@ -542,8 +341,6 @@ export default function BracketTab({
     /** matchId of the card whose "start live" call is in flight. */
     /** The match currently open in the live dialog, or null. */
     const [liveMatch, setLiveMatch] = useState<BracketMatch | null>(null)
-    /** Match whose read-only timeline modal is open (any viewer can open it). */
-    const [timelineMatch, setTimelineMatch] = useState<BracketMatch | null>(null)
     /** Branded "Završnica" bracket poster dialog. */
     const [exportOpen, setExportOpen] = useState(false)
     // Half config (schedule) so inline row clocks count UP + freeze at each
@@ -767,10 +564,6 @@ export default function BracketTab({
         () => buildKoMatchCodes(safeRounds.flatMap((r) => r.matches)),
         [safeRounds],
     )
-    const libraryMatches = useMemo(
-        () => bracketToLibraryMatches(safeRounds),
-        [safeRounds],
-    )
     const matchById = useMemo(() => {
         const m = new Map<string | number, BracketMatch>()
         for (const r of safeRounds) {
@@ -810,7 +603,13 @@ export default function BracketTab({
                 const kb = b.kickoffAt ? new Date(b.kickoffAt).getTime() : Number.POSITIVE_INFINITY
                 return ka - kb
             })[0]
-        return next?.matchId ?? null
+        if (next) return next.matchId
+        // Nothing LIVE or SCHEDULED - the bracket is fully played out. Land on
+        // the Finale instead of wherever the board happens to start, so
+        // opening a finished tournament's Eliminacija tab shows the result
+        // that actually matters.
+        const finalMatch = safeRounds[safeRounds.length - 1]?.matches[0]
+        return finalMatch?.matchId ?? null
     }, [safeRounds, bracket?.thirdPlace])
 
     /* The match that wears the reddish "on deck" border in the bracket - the
@@ -829,7 +628,10 @@ export default function BracketTab({
             ...(bracket?.thirdPlace ? [bracket.thirdPlace] : []),
         ]
         const target = all.find((m) => m.matchId === focusTargetId)
-        if (!target || target.team1Id == null || target.team2Id == null) return null
+        // The FINISHED-bracket fallback above can point focusTargetId at the
+        // Finale even though nothing is actually "next" - only a genuinely
+        // upcoming (SCHEDULED, teams known) match gets the on-deck ring.
+        if (!target || target.status !== "SCHEDULED" || target.team1Id == null || target.team2Id == null) return null
         return focusTargetId
     }, [liveMatchId, focusTargetId, safeRounds, bracket?.thirdPlace])
 
@@ -847,30 +649,30 @@ export default function BracketTab({
 
     const liveRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
-    /** Scroll the LIVE / next match into the centre of the bracket viewport. */
-    function focusMatch() {
-        if (focusTargetId == null) return
-        const el = liveRefs.current.get(focusTargetId)
-        if (el && typeof el.scrollIntoView === "function") {
-            el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
-        }
-    }
+    /* Zoom + pan, via react-zoom-pan-pinch. It replaced both the old
+       grab-to-pan hook and scrollIntoView: the board is CSS-transformed, so a
+       scroll offset means nothing to it - `zoomToElement` is what actually
+       centres a card. Kept at the current scale so focusing never zooms the
+       organizer out from where they were working. */
+    const zoomRef = useRef<ZoomableBracketHandle>(null)
+
+    const centreOn = useCallback((matchId: number | null | undefined) => {
+        if (matchId == null) return
+        zoomRef.current?.centerOn(liveRefs.current.get(matchId))
+    }, [])
+
+    /** Centre the LIVE / next match - the floating "Na redu" button. */
+    const focusMatch = useCallback(() => {
+        centreOn(focusTargetId)
+    }, [centreOn, focusTargetId])
+
     useEffect(() => {
         if (liveMatchId == null) return
-        // Defer one tick so the library's foreignObject has mounted
-        // by the time we look up its ref.
-        const t = setTimeout(() => {
-            const el = liveRefs.current.get(liveMatchId)
-            if (el && typeof el.scrollIntoView === "function") {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "nearest",
-                    inline: "center",
-                })
-            }
-        }, 80)
+        // One tick so the freshly-rendered card is in liveRefs before we look
+        // it up.
+        const t = setTimeout(() => centreOn(liveMatchId), 80)
         return () => clearTimeout(t)
-    }, [liveMatchId])
+    }, [liveMatchId, centreOn])
 
     // On open, auto-centre the on-deck match once - the same jump the "Na redu"
     // button does, run automatically so landing on the Eliminacija tab focuses
@@ -881,17 +683,9 @@ export default function BracketTab({
     useEffect(() => {
         if (autoFocusedRef.current || focusTargetId == null) return
         autoFocusedRef.current = true
-        const timer = setTimeout(() => {
-            const el = liveRefs.current.get(focusTargetId)
-            if (el && typeof el.scrollIntoView === "function") {
-                el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
-            }
-        }, 120)
+        const timer = setTimeout(() => centreOn(focusTargetId), 120)
         return () => clearTimeout(timer)
-    }, [focusTargetId])
-
-    // Grab-to-pan the bracket viewport (mouse/pen; touch scrolls natively).
-    const pan = useDragPan()
+    }, [focusTargetId, centreOn])
 
     // Kit (dres + hlače) colours → the initials tile on every team row.
     const kitColors = useTeamColors(uuid)
@@ -927,49 +721,6 @@ export default function BracketTab({
             setSharing(false)
         }
     }
-
-    // Place the 3rd-place card directly under the Finale. The library centres
-    // the final vertically, so we measure the final card's actual position
-    // (relative to the scroll content) and pin the 3rd-place card just below it
-    // - anchoring to the bracket bottom would drift far away on tall brackets.
-    const contentRef = useRef<HTMLDivElement>(null)
-    const finalCardRef = useRef<HTMLDivElement>(null)
-    const [thirdPos, setThirdPos] = useState<
-        { top: number; right: number; width: number } | null
-    >(null)
-    useLayoutEffect(() => {
-        if (!bracket?.thirdPlace) {
-            setThirdPos(null)
-            return
-        }
-        const compute = () => {
-            const content = contentRef.current
-            const fin = finalCardRef.current
-            if (!content || !fin) return
-            const c = content.getBoundingClientRect()
-            const f = fin.getBoundingClientRect()
-            if (f.width === 0) return
-            setThirdPos({
-                top: f.bottom - c.top + 16, // 16px below the final card
-                right: Math.max(0, c.right - f.right), // align right edges
-                width: f.width,
-            })
-        }
-        // Measure now (before paint) so it lands under the final without a
-        // visible jump; re-measure after the library's foreignObject layout
-        // settles (mirrors the auto-scroll defer) and on size/viewport changes.
-        compute()
-        const id = setTimeout(compute, 90)
-        const ro =
-            typeof ResizeObserver !== "undefined" ? new ResizeObserver(compute) : null
-        if (ro && contentRef.current) ro.observe(contentRef.current)
-        window.addEventListener("resize", compute)
-        return () => {
-            clearTimeout(id)
-            ro?.disconnect()
-            window.removeEventListener("resize", compute)
-        }
-    }, [bracket, editingId, liveMatch])
 
     // ─── Manual draw - organizer arranges teams into first-round slots ───
     const nextPow2 = (x: number) => {
@@ -1655,18 +1406,15 @@ export default function BracketTab({
                     (m.status === "FINISHED" && m.team1Id != null && m.team2Id != null),
             )
 
-    // `libraryMatches` + `matchById` are computed above (before the
-    // early returns) - re-aliasing here for readability only. Each
-    // matchComponent invocation looks up the ORIGINAL BracketMatch by
-    // id to recover all the live state the lib doesn't carry (score,
-    // liveStartedAt, status, etc.).
-
-    // Stage of the final round, used to flag Finale rendering in the
-    // matchComponent (yellow theme + trophy header).
-    // `liveMatchId`, `liveRefs` and the auto-scroll useEffect were
-    // hoisted ABOVE the early returns at the top of the function to
-    // satisfy React's hook-order rule (see comment up there).
-    const finalStage = bracket.rounds[roundCount - 1]?.stage ?? null
+    // `matchById` is computed above (before the early returns); the penalty
+    // dialog below resolves the match being edited through it.
+    //
+    // `liveMatchId`, `liveRefs` and the auto-centre effects were hoisted ABOVE
+    // the early returns at the top of the function to satisfy React's
+    // hook-order rule (see comment up there).
+    //
+    // The Finale flag no longer needs a stage lookup: BracketBoard tells the
+    // renderer which round is last.
 
     // The knockout draw still needs the organizer's confirmation before matches
     // can be started / results entered (KNOCKOUT_ONLY never requires it).
@@ -1700,73 +1448,74 @@ export default function BracketTab({
     const handleEdit = (m: BracketMatch) => { if (guardUnlocked() && guardConfirmed()) startEdit(m) }
     const handleOpenLive = (m: BracketMatch) => { if (guardUnlocked() && guardConfirmed()) setLiveMatch(m) }
 
-    const renderLibraryMatch = (props: MatchComponentProps) => {
-        const original = matchById.get(props.match.id)
-        if (!original) return null
-        const isFinalCard = original.stage === finalStage && roundCount > 0
-        // The library renders us inside a fixed-size SVG foreignObject
-        // (`width` × `boxHeight` from options.style) and draws bracket
-        // connectors from BOX-CENTER to next BOX-CENTER. If our card
-        // renders shorter than the foreignObject (e.g. an empty card
-        // with just two "- -" placeholder rows), it sits at the TOP of
-        // the box and the connector line visually misses it.
-        //
-        // Wrapping the card in a flex container that fills the
-        // foreignObject and centres its child vertically restores the
-        // alignment: short cards render at the box midpoint, tall
-        // cards (live + edit buttons) overflow symmetrically.
-        return (
-            <Box
-                w="100%"
-                h="100%"
-                display="flex"
-                alignItems="center"
-                justifyContent="stretch"
-                // NOTE: do NOT put a CSS transform (e.g. translateZ(0)) on
-                // anything inside the SVG <foreignObject> here. WebKit (iOS
-                // Safari) positions transformed foreignObject content relative
-                // to the SVG ROOT instead of its own box - every card then
-                // renders stacked at the top-left corner of the bracket. A
-                // previous "compositing layer" nudge did exactly that and
-                // broke the whole bracket on iPhones.
-                ref={(el: HTMLDivElement | null) => {
-                    // Track refs for every match by id. The auto-scroll
-                    // effect picks the LIVE one out of this map and
-                    // calls scrollIntoView on it. We register every
-                    // card (not just live) because the live status can
-                    // change between renders and we want the ref ready
-                    // by the time the effect fires.
-                    if (el) liveRefs.current.set(original.matchId, el)
-                    else liveRefs.current.delete(original.matchId)
-                }}
-            >
-                <Box flex="1" minW="0" ref={isFinalCard ? finalCardRef : undefined}>
-                    <MatchCard
-                        match={original}
-                        code={original.knockoutCode ?? koCodes.get(original.matchId) ?? null}
-                        canEdit={canEdit}
-                        isFinal={isFinalCard}
-                        isOnDeck={original.matchId === onDeckId}
-                        multiDay={bracketMultiDay}
-                        editing={editingId === original.matchId}
-                        form={form}
-                        showPenaltyRow={showPenaltyRow}
-                        saving={saving}
-                        halfLengthMin={halfLengthMin}
-                        halfCount={halfCount}
-                        onEdit={handleEdit}
-                        uuid={uuid}
-                        colors={kitColors}
-                        onSave={saveResult}
-                        onCancel={() => setEditingId(null)}
-                        onFormChange={setForm}
-                        onOpenLive={handleOpenLive}
-                        onOpenTimeline={setTimelineMatch}
-                    />
-                </Box>
-            </Box>
-        )
-    }
+    /** One card on the board. The wrapper only carries the ref used to centre
+     *  a match; BracketBoard handles all positioning, so the card is free to be
+     *  whatever height it needs (an open result editor simply grows). */
+    const renderBoardMatch = (m: BracketMatch, { isFinal }: { isFinal: boolean }) => (
+        <Box
+            ref={(el: HTMLDivElement | null) => {
+                // Register EVERY card, not just the live one - live status
+                // changes between renders and the centring effects need the
+                // ref ready by the time they fire.
+                if (el) liveRefs.current.set(m.matchId, el)
+                else liveRefs.current.delete(m.matchId)
+            }}
+        >
+            <MatchCard
+                match={m}
+                code={m.knockoutCode ?? koCodes.get(m.matchId) ?? null}
+                canEdit={canEdit}
+                isFinal={isFinal && roundCount > 0}
+                isOnDeck={m.matchId === onDeckId}
+                multiDay={bracketMultiDay}
+                editing={editingId === m.matchId}
+                form={form}
+                showPenaltyRow={showPenaltyRow}
+                saving={saving}
+                halfLengthMin={halfLengthMin}
+                halfCount={halfCount}
+                onEdit={handleEdit}
+                uuid={uuid}
+                colors={kitColors}
+                onSave={saveResult}
+                onCancel={() => setEditingId(null)}
+                onFormChange={setForm}
+                onOpenLive={handleOpenLive}
+            />
+        </Box>
+    )
+
+    /** Third-place playoff - same card, rendered by BracketBoard in its own row
+     *  under the Finale column (no connector, by design). */
+    const renderBoardThirdPlace = (m: BracketMatch) => (
+        <Box
+            ref={(el: HTMLDivElement | null) => {
+                if (el) liveRefs.current.set(m.matchId, el)
+                else liveRefs.current.delete(m.matchId)
+            }}
+        >
+            <MatchCard
+                match={m}
+                canEdit={canEdit}
+                isThirdPlace
+                isOnDeck={m.matchId === onDeckId}
+                multiDay={bracketMultiDay}
+                editing={editingId === m.matchId}
+                form={form}
+                showPenaltyRow={showPenaltyRow}
+                saving={saving}
+                halfLengthMin={halfLengthMin}
+                halfCount={halfCount}
+                onEdit={handleEdit}
+                uuid={uuid}
+                colors={kitColors}
+                onSave={saveResult}
+                onCancel={() => setEditingId(null)}
+                onFormChange={setForm}
+                onOpenLive={handleOpenLive}
+            />
+        </Box>
+    )
 
     // Owner draw controls. Hidden once any match is LIVE/FINISHED
     // (re-drawing would destroy real results). The "Podijeli bracket"
@@ -1879,131 +1628,22 @@ export default function BracketTab({
                 (same as the pre-draw path), so it works for re-draws too. */}
             {canEdit && !started && !finishedLocked && manualOpen && (sketchOpen ? sketchPanel : manualBracketPanel)}
 
-            {/* ── Bracket - driven by @g-loot/react-tournament-brackets.
-                 The library renders the SVG layout + connectors; our
-                 custom matchComponent feeds each match into the same
-                 MatchCard we used before, so the Pitch theme (yellow
-                 Finale, live red border, edit / Pokreni uživo buttons)
-                 stays visually identical. The 3rd-place fixture renders
-                 in its own Panel BELOW the bracket - keeping it out of
-                 the matches[] array prevents the lib from drawing a
-                 spurious connector to the Finale. */}
+            {/* ── Bracket board. Layout + connectors are ours (BracketBoard),
+                 zoom/pan is react-zoom-pan-pinch. The card is the same
+                 MatchCard as before, so the Pitch look (yellow Finale, live red
+                 border, edit / Pokreni uživo buttons) is unchanged - but the
+                 card is no longer boxed into a fixed-height SVG foreignObject,
+                 so an open result editor just grows instead of padding every
+                 other card to match. */}
             <Panel p="0" overflow="hidden" position="relative">
-                <Box
-                    ref={pan.ref}
-                    overflow="auto"
-                    maxH={{ base: "70vh", md: "78vh" }}
-                    px={{ base: "3", md: "5" }}
-                    py="5"
-                    cursor={pan.dragging ? "grabbing" : "grab"}
-                    userSelect="none"
-                    {...pan.handlers}
-                >
-                    {/* inline-block shrink-wraps to the bracket SVG width so the
-                        3rd-place card can be absolutely placed under the Finale
-                        column even when the bracket is wider than the viewport. */}
-                    <Box ref={contentRef} display="inline-block" minW="100%" position="relative">
-                    {(() => {
-                        // SingleEliminationBracket's typings carry the
-                        // older JSX.Element global that React 19 removed,
-                        // so we cast to `any` once at the call site.
-                        const Bracket: any = SingleEliminationBracket
-                        return (
-                            <Bracket
-                                matches={libraryMatches}
-                                matchComponent={renderLibraryMatch}
-                                theme={bracketTheme}
-                                options={{
-                                    style: {
-                                        roundHeader: {
-                                            isShown: true,
-                                            height: 32,
-                                            marginBottom: 16,
-                                            fontSize: 11,
-                                            fontFamily:
-                                                "'JetBrains Mono', ui-monospace, monospace",
-                                            // Override the lib's
-                                            // "Round {N}" default - return
-                                            // OUR backend round titles
-                                            // ("Četvrtfinale", "Polufinale",
-                                            // "Finale", …). 1-indexed.
-                                            roundTextGenerator: (
-                                                currentRoundNumber: number,
-                                            ) => {
-                                                const r =
-                                                    bracket.rounds[
-                                                        currentRoundNumber - 1
-                                                    ]
-                                                return r?.title ?? undefined
-                                            },
-                                        },
-                                        // Compact match-box dimensions. Editing
-                                        // controls may add height, while normal
-                                        // read-only cards stay visually tight.
-                                        width: 236,
-                                        boxHeight: 220,
-                                        canvasPadding: 16,
-                                        spaceBetweenColumns: 56,
-                                        spaceBetweenRows: 34,
-                                        roundSeparatorWidth: 24,
-                                    },
-                                }}
-                            />
-                        )
-                    })()}
-
-                    {/* 3rd-place playoff sits directly under the Finale -
-                        positioned from the measured final-card geometry
-                        (thirdPos). Until measured it falls back to the
-                        bottom-right corner. Kept out of the lib's match chain so
-                        no connector is drawn to it. */}
-                    {bracket.thirdPlace && (
-                        <Box
-                            position="absolute"
-                            ref={(el: HTMLDivElement | null) => {
-                                // Register so the "Na redu" focus button can
-                                // scroll to a live/next 3rd-place match too.
-                                const id = bracket.thirdPlace?.matchId
-                                if (id == null) return
-                                if (el) liveRefs.current.set(id, el)
-                                else liveRefs.current.delete(id)
-                            }}
-                            {...(thirdPos
-                                ? {
-                                      top: `${thirdPos.top}px`,
-                                      right: `${thirdPos.right}px`,
-                                      w: `${thirdPos.width}px`,
-                                  }
-                                : { bottom: "16px", right: "16px", w: "236px" })}
-                        >
-                            <Box>
-                                
-                                <MatchCard
-                                    match={bracket.thirdPlace}
-                                    canEdit={canEdit}
-                                    isThirdPlace
-                                    isOnDeck={bracket.thirdPlace.matchId === onDeckId}
-                                    multiDay={bracketMultiDay}
-                                    editing={editingId === bracket.thirdPlace.matchId}
-                                    form={form}
-                                    showPenaltyRow={showPenaltyRow}
-                                    saving={saving}
-                                    halfLengthMin={halfLengthMin}
-                                    halfCount={halfCount}
-                                    onEdit={handleEdit}
-                                    uuid={uuid}
-                                    colors={kitColors}
-                                    onSave={saveResult}
-                                    onCancel={() => setEditingId(null)}
-                                    onFormChange={setForm}
-                                    onOpenLive={handleOpenLive}
-                                    onOpenTimeline={setTimelineMatch}
-                                />
-                            </Box>
-                        </Box>
-                    )}
-                    </Box>
-                </Box>
+                <ZoomableBracket ref={zoomRef} wrapperStyle={{ maxHeight: "78vh" }}>
+                    <BracketBoard
+                        rounds={bracket.rounds}
+                        renderMatch={renderBoardMatch}
+                        thirdPlace={bracket.thirdPlace}
+                        renderThirdPlace={renderBoardThirdPlace}
+                    />
+                </ZoomableBracket>
 
                 {/* Floating action bar - anchored to the bottom-centre of the
                     bracket panel itself (not the viewport), floating over the
@@ -2034,11 +1674,47 @@ export default function BracketTab({
                         title={
                             liveMatchId != null
                                 ? "Idi na utakmicu koja se igra uživo"
-                                : "Idi na sljedeću utakmicu na rasporedu"
+                                : onDeckId != null
+                                    ? "Idi na sljedeću utakmicu na rasporedu"
+                                    : "Idi na finale"
                         }
                     >
                         <FiCrosshair size={15} />
-                        {liveMatchId != null ? "Uživo" : "Na redu"}
+                        {liveMatchId != null ? "Uživo" : onDeckId != null ? "Na redu" : "Finale"}
+                    </Button>
+                    <Box w="1px" alignSelf="stretch" my="1" bg="border" />
+                    {/* Zoom. Driven through the ZoomableBracket handle so the bar
+                        can stay outside the transformed content (it must not
+                        scale with the bracket). */}
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        px="2"
+                        onClick={() => zoomRef.current?.zoomOut()}
+                        title="Odzumiraj"
+                        aria-label="Odzumiraj"
+                    >
+                        <FiMinus size={15} />
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        px="2"
+                        onClick={() => zoomRef.current?.zoomIn()}
+                        title="Zumiraj"
+                        aria-label="Zumiraj"
+                    >
+                        <FiPlus size={15} />
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        px="2"
+                        onClick={() => zoomRef.current?.reset()}
+                        title="Vrati na početni prikaz"
+                        aria-label="Vrati na početni prikaz"
+                    >
+                        <FiMaximize size={15} />
                     </Button>
                     <Box w="1px" alignSelf="stretch" my="1" bg="border" />
                     <Button
@@ -2112,16 +1788,6 @@ export default function BracketTab({
                     />
                 )
             })()}
-
-            {/* Read-only timeline modal - opens for anyone clicking a match. */}
-            {timelineMatch && (
-                <MatchTimelineModal
-                    uuid={uuid}
-                    match={timelineMatch}
-                    halfLengthMin={halfLengthMin}
-                    onClose={() => setTimelineMatch(null)}
-                />
-            )}
 
             {/* Confirm-draw dialog: offers to edit knockout times first, then
                 confirms the draw so the knockout can start. */}
@@ -2384,8 +2050,6 @@ type MatchCardProps = {
     onCancel: () => void
     onFormChange: (updater: (prev: EditForm) => EditForm) => void
     onOpenLive: (m: BracketMatch) => void
-    /** Open the read-only timeline (tijek) - clicking the match result. */
-    onOpenTimeline: (m: BracketMatch) => void
 }
 
 function MatchCard({
@@ -2406,13 +2070,18 @@ function MatchCard({
     onSave,
     onCancel,
     onFormChange,
-    onOpenTimeline,
 }: MatchCardProps) {
     const navigate = useNavigate()
     const w1 = m.winnerTeamId != null && m.winnerTeamId === m.team1Id
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
-    const isFinished = m.status === "FINISHED"
     const isLive = m.status === "LIVE"
+    // Both sides decided → a real match with a detail page to send someone
+    // to: FINISHED (played), LIVE, or SCHEDULED-upcoming (the match page
+    // renders the kickoff time in place of the score for those). A team still
+    // undecided - a bye's free side, or a feeder slot like "Pobjednik ČF1"
+    // not yet resolved - has no opponent and no detail page, so the whole
+    // card is inert rather than opening an empty timeline.
+    const bothDecided = m.team1Id != null && m.team2Id != null
 
     // Live and on-deck both wear the red border; only the live card gets the
     // extra halo + red header strip below, so the two stay visually distinct.
@@ -2441,20 +2110,21 @@ function MatchCard({
             rounded="lg"
             shadow={isFinal ? "md" : "xs"}
             overflow="hidden"
-            cursor={editing ? "default" : "pointer"}
+            cursor={editing || !bothDecided ? "default" : "pointer"}
             // Soft red halo while live - same convention as the MiniBracket.
             css={
                 isLive
                     ? { boxShadow: "0 0 0 3px color-mix(in srgb, var(--chakra-colors-accent-red) 18%, transparent)" }
                     : undefined
             }
-            // Click anywhere on the card → a played (FINISHED) match opens the
-            // full "detalji utakmice" page; anything else opens the read-only
-            // match timeline (tijek) modal. Clicks on the action controls (start
-            // menu, edit/score inputs, live/result buttons) are ignored so they
-            // keep their own behaviour.
+            // Click anywhere on the card → opens the full "detalji utakmice"
+            // page, for any match with both sides decided (FINISHED, LIVE, or
+            // an upcoming SCHEDULED one). A team still undecided has no detail
+            // page, so the card is inert. Clicks on the action controls (start
+            // menu, edit/score inputs, live/result buttons) are ignored so
+            // they keep their own behaviour.
             onClick={(e) => {
-                if (editing) return
+                if (editing || !bothDecided) return
                 const t = e.target as HTMLElement
                 if (
                     t.closest(
@@ -2463,11 +2133,7 @@ function MatchCard({
                 ) {
                     return
                 }
-                if (isFinished) {
-                    navigate(`/turniri/${uuid}/utakmica/${m.matchId}`)
-                } else {
-                    onOpenTimeline(m)
-                }
+                navigate(`/turniri/${uuid}/utakmica/${m.matchId}`)
             }}
         >
             {/* Header strip - the SafeFlow "mlabel": tag + kickoff left, live

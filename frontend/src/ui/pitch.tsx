@@ -977,7 +977,12 @@ export function PageTitle({
                     {action}
                 </Flex>
             ) : (
-                <HStack gap="3" align="center" flexShrink={0}>
+                // w=100% on mobile: without it this HStack hugs its content's
+                // max-content width (flexShrink:0, no width of its own), so an
+                // action child asking for its OWN "100%" (e.g. a full-width
+                // mobile search box) resolves against that hugged width
+                // instead of the actual viewport - overflowing past the edge.
+                <HStack gap="3" align="center" flexShrink={0} w={{ base: "100%", md: "auto" }} wrap="wrap">
                     {action}
                 </HStack>
             )}

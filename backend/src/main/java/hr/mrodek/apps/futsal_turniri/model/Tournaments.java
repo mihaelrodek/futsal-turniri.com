@@ -4,6 +4,7 @@ import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
 import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
+import hr.mrodek.apps.futsal_turniri.enums.Surface;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import jakarta.persistence.*;
@@ -174,6 +175,11 @@ public class Tournaments {
     // Futsal play system, e.g. "4+1", "5+1", "3vs3", or a free-text custom value.
     @Column(name = "game_system", length = 40)
     private String gameSystem;
+
+    /** Playing surface. See {@link Surface}. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "surface", length = 20, nullable = false)
+    private Surface surface = Surface.ASFALT;
 
     // External organizer link (Facebook event, club page, …). Shown as a
     // clickable link on the tournament detail page.

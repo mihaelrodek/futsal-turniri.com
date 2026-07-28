@@ -1720,11 +1720,24 @@ public class TournamentController {
         Teams team = resolveTeamInTournament(uuid, teamId);
         assertCanEdit(team.getTournament());
 
-        Player player = new Player();
-        player.setTeam(team);
         // Players are stored uppercase so the same person aggregates cleanly
         // on the all-time scorer list regardless of how the name was typed.
-        player.setName(normalizePlayerName(body.name()));
+        String name = normalizePlayerName(body.name());
+        // Block the same name existing on two different rosters within one
+        // tournament (a real person can't play for two teams at once) - the
+        // same check also covers bulk import, which calls this endpoint once
+        // per pasted line.
+        playerRepo.findByTournamentAndName(team.getTournament().getId(), name, null)
+                .ifPresent(existing -> {
+                    throw new ClientErrorException(
+                            "Igrač \"" + name + "\" već postoji u ekipi \"" + existing.getTeam().getName()
+                                    + "\" u ovom turniru.",
+                            Response.Status.CONFLICT);
+                });
+
+        Player player = new Player();
+        player.setTeam(team);
+        player.setName(name);
         player.setNumber(body.number());
         player.setCaptain(false);
 
@@ -1766,7 +1779,17 @@ public class TournamentController {
             throw new NotFoundException("Player not found");
         }
 
-        player.setName(normalizePlayerName(body.name()));
+        String name = normalizePlayerName(body.name());
+        // Same cross-team duplicate guard as addPlayer - a rename must not
+        // collide with an existing player elsewhere in this tournament.
+        playerRepo.findByTournamentAndName(team.getTournament().getId(), name, player.getId())
+                .ifPresent(existing -> {
+                    throw new ClientErrorException(
+                            "Igrač \"" + name + "\" već postoji u ekipi \"" + existing.getTeam().getName()
+                                    + "\" u ovom turniru.",
+                            Response.Status.CONFLICT);
+                });
+        player.setName(name);
         player.setNumber(body.number());
 
         if (body.captain() != null) {

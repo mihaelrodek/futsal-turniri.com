@@ -29,7 +29,8 @@ import { FormSectionCard } from "../ui/primitives"
 import { getProfile } from "../api/userMe"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
-import type { CreateTournamentPayload, TournamentFormat } from "../types/tournaments"
+import type { CreateTournamentPayload, Surface, TournamentFormat } from "../types/tournaments"
+import { SurfacePicker } from "../components/SurfacePicker"
 
 // Register the Croatian locale once for the calendar UI (month/day names,
 // week-starts-Monday, etc.). The format itself is forced via the dateFormat
@@ -58,6 +59,7 @@ type FormState = {
     contactPhoneCountry: string
     contactPhone: string
     gameSystem: string
+    surface: Surface
     websiteUrl: string
     selectedOptions: string[]
 }
@@ -205,6 +207,7 @@ export default function CreateTournamentPage() {
         contactPhoneCountry: "+385",
         contactPhone: "",
         gameSystem: "",
+        surface: "ASFALT",
         websiteUrl: "",
         selectedOptions: [],
     })
@@ -268,6 +271,7 @@ export default function CreateTournamentPage() {
         if (!form.location.trim()) missing.push("Lokacija")
         if (!form.startDate) missing.push("Datum")
         if (!form.startTime) missing.push("Vrijeme")
+        if (!form.gameSystem.trim()) missing.push("Sistem igre")
         if (
             !form.rewards.first.amount.trim() ||
             !form.rewards.second.amount.trim() ||
@@ -281,6 +285,7 @@ export default function CreateTournamentPage() {
         form.location,
         form.startDate,
         form.startTime,
+        form.gameSystem,
         form.rewards.first.amount,
         form.rewards.second.amount,
         form.rewards.third.amount,
@@ -394,6 +399,7 @@ export default function CreateTournamentPage() {
                 : null,
 
             gameSystem: form.gameSystem.trim() || null,
+            surface: form.surface,
             websiteUrl: form.websiteUrl.trim() || null,
 
             organizerName: form.organizerName.trim() || null,
@@ -935,13 +941,22 @@ export default function CreateTournamentPage() {
                 {step === 2 && (
                 <FormSectionCard>
                     <VStack align="stretch" gap="4">
+                        {/* Podloga - ahead of Sistem igre (product request).
+                            Always has a value (defaults to ASFALT), so no
+                            "required" marker/validation needed - unlike
+                            Sistem igre it can never be left empty. */}
+                        <Field.Root>
+                            <Field.Label>Podloga</Field.Label>
+                            <SurfacePicker value={form.surface} onChange={(s) => onChange("surface", s)} />
+                        </Field.Root>
+
                         {/* Sistem igre FIRST (product request): the organiser
                             picks how the game is played (3vs3 / 4+1 / 5+1)
                             before how the competition is structured. Moved
                             from "Osnovno"; the backend field
                             (form.gameSystem → payload.gameSystem) is
                             unchanged - only which step edits it moved. */}
-                        <Field.Root>
+                        <Field.Root required>
                             <Field.Label>Sistem igre</Field.Label>
                             <HStack gap="1.5" wrap="wrap" align="center">
                                 {["3vs3", "4+1", "5+1"].map((sys) => (

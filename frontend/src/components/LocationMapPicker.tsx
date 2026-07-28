@@ -9,6 +9,7 @@ import L from "leaflet"
 // and the map looks completely broken.
 import "leaflet/dist/leaflet.css"
 import { useColorMode } from "../color-mode"
+import { useUserLocation } from "../hooks/useUserLocation"
 
 /**
  * Build the same teardrop pin as the /karta page so the picker and the
@@ -30,6 +31,23 @@ function makePickerPinIcon(): L.DivIcon {
         iconSize: [32, 42],
         iconAnchor: [16, 40],
         popupAnchor: [0, -36],
+    })
+}
+
+/** Small teal dot marking the ORGANIZER's own position - same treatment as
+ *  the "Tvoja lokacija" marker on /karta, kept visually distinct from the
+ *  red venue pin above so the two are never confused. */
+function makeUserPinIcon(): L.DivIcon {
+    const html = `<div style="width:14px;height:14px;border-radius:50%;
+          background:#2AD4C8;border:3px solid white;
+          box-shadow:0 0 0 2px rgba(42,212,200,0.4),0 1px 4px rgba(0,0,0,0.4);">
+        </div>`
+    return L.divIcon({
+        html,
+        className: "map-pin-icon",
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -12],
     })
 }
 
@@ -74,8 +92,15 @@ export default function LocationMapPicker({
     // keeping it stable means React's <Marker icon=...> prop doesn't
     // trip its reconciler into rebuilding the underlying L.Marker.
     const pinIcon = useMemo(() => makePickerPinIcon(), [])
+    const userPinIcon = useMemo(() => makeUserPinIcon(), [])
     // Drives the basemap style (see the TileLayer below).
     const { colorMode } = useColorMode()
+    // Silent-only (see useUserLocation's own doc): shows the organizer's
+    // position when the browser ALREADY has geolocation permission granted
+    // from an earlier visit - never pops a fresh "Allow location?" prompt on
+    // this form, so picking a venue never gets interrupted by a permission
+    // dialog the organizer didn't ask for.
+    const { pos: userPos } = useUserLocation()
 
     // Default view: Croatia center + a country-wide zoom so the user
     // sees something familiar before they click. Once a `value` exists
@@ -144,6 +169,7 @@ export default function LocationMapPicker({
                 {value && (
                     <Marker position={[value.lat, value.lng]} icon={pinIcon} />
                 )}
+                {userPos && <Marker position={userPos} icon={userPinIcon} />}
             </MapContainer>
 
             {/* Click-prompt overlay - small hint at the top so the user

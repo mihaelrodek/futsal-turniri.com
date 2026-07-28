@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Playing surface (TRAVA | UMJETNA_TRAVA | ASFALT | DVORANA), organizer-set
+        on the create/edit form. Purely descriptive - shown as a coloured stat
+        tile on the detail page. Defaults existing rows to ASFALT, same default
+        the create form and the entity's Java field initializer use.
+    -->
+    <changeSet id="2026-07-28-tournament-surface" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="surface" type="varchar(20)" defaultValue="ASFALT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

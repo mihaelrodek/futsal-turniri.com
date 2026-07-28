@@ -2,6 +2,9 @@ export type RewardType = "FIXED" | "PERCENTAGE";
 export type TournamentStatus = "DRAFT" | "STARTED" | "FINISHED";
 export type TournamentFormat = "GROUPS_KNOCKOUT" | "KNOCKOUT_ONLY";
 export type BracketFill = "BYES" | "WILDCARDS";
+/** Playing surface - purely descriptive, shown as a coloured stat tile.
+ *  Default ASFALT (server-side, see TournamentMapper.applyDefaults). */
+export type Surface = "TRAVA" | "UMJETNA_TRAVA" | "ASFALT" | "DVORANA";
 /** Which goals count toward the best-scorer race (ranking + award
  *  suggestion). KNOCKOUT (default) = group-stage goals don't count. */
 export type ScorerScope =
@@ -77,6 +80,8 @@ export type TournamentDetails = {
 
     /** Futsal play system: "4+1" | "5+1" | "3vs3" | free-text custom. */
     gameSystem?: string | null;
+    /** Playing surface. Always set (server defaults to ASFALT). */
+    surface?: Surface | null;
     /** External organizer link (Facebook event, club page, …). */
     websiteUrl?: string | null;
     /** Public organizer display name (udruga, klub…). When set, shown as
@@ -154,6 +159,8 @@ export type CreateTournamentPayload = {
 
     // Futsal play system + external organizer link (both optional).
     gameSystem?: string | null;
+    // Playing surface. Omit/null defaults to ASFALT server-side.
+    surface?: Surface | null;
     websiteUrl?: string | null;
 
     // Public organizer display name (udruga, klub…) - optional; replaces

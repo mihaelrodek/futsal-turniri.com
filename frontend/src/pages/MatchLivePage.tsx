@@ -2,12 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Box, chakra, Flex, Grid, HStack, IconButton, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { FiArrowLeft, FiDownload, FiShare2 } from "react-icons/fi"
-import {
-    SingleEliminationBracket,
-    createTheme,
-    type MatchComponentProps,
-    type MatchType,
-} from "@g-loot/react-tournament-brackets"
+import { BracketBoard, ZoomableBracket, ZoomControls, type ZoomableBracketHandle } from "../components/BracketBoard"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches, matchPhaseLabel, type LiveMatch } from "../api/live"
 import { fetchTournamentDetails } from "../api/tournaments"
@@ -69,78 +64,6 @@ function splitPlayerDisplayName(name: string): { first: string; rest: string } {
     const parts = name.trim().split(/\s+/).filter(Boolean)
     if (parts.length <= 1) return { first: name.trim(), rest: "" }
     return { first: parts[0], rest: parts.slice(1).join(" ") }
-}
-
-const matchPageBracketTheme = createTheme({
-    textColor: {
-        main: "#0B1522",
-        highlighted: "#0E8A81",
-        dark: "#3a4046",
-        disabled: "#9ca3af",
-    } as any,
-    matchBackground: {
-        wonColor: "#E3F7F5",
-        lostColor: "#ffffff",
-    },
-    score: {
-        background: {
-            wonColor: "#E3F7F5",
-            lostColor: "#f3f4f6",
-        },
-        text: {
-            highlightedWonColor: "#0E8A81",
-            highlightedLostColor: "#6b7280",
-        },
-    },
-    border: {
-        color: "#e5e7eb",
-        highlightedColor: "#2AD4C8",
-    },
-    roundHeader: {
-        backgroundColor: "#E3F7F5",
-        fontColor: "#0E8A81",
-    },
-    connectorColor: "#C2D9D6",
-    connectorColorHighlight: "#2AD4C8",
-    svgBackground: "transparent",
-    fontFamily: "'Inter', system-ui, sans-serif",
-    transitionTimingFunction: "ease-out",
-    disabledColor: "#9ca3af",
-} as any)
-
-function matchPageBracketToLibraryMatches(rounds: Bracket["rounds"]): MatchType[] {
-    if (rounds.length === 0) return []
-    const out: MatchType[] = []
-    rounds.forEach((round, roundIdx) => {
-        const nextRound = rounds[roundIdx + 1]
-        round.matches.forEach((m, matchIdx) => {
-            const successor = nextRound?.matches[Math.floor(matchIdx / 2)]
-            out.push({
-                id: m.matchId,
-                nextMatchId: successor ? successor.matchId : null,
-                tournamentRoundText: round.title,
-                startTime: "",
-                state: m.status === "FINISHED" ? "DONE" : m.status === "LIVE" ? "RUNNING" : "SCHEDULED",
-                participants: [
-                    {
-                        id: m.team1Id ?? `slot-${m.matchId}-1`,
-                        name: m.team1Name ?? "",
-                        isWinner: m.winnerTeamId != null && m.winnerTeamId === m.team1Id,
-                        status: null,
-                        resultText: m.score1 != null ? String(m.score1) : null,
-                    },
-                    {
-                        id: m.team2Id ?? `slot-${m.matchId}-2`,
-                        name: m.team2Name ?? "",
-                        isWinner: m.winnerTeamId != null && m.winnerTeamId === m.team2Id,
-                        status: null,
-                        resultText: m.score2 != null ? String(m.score2) : null,
-                    },
-                ],
-            })
-        })
-    })
-    return out
 }
 
 export default function MatchLivePage() {
@@ -905,7 +828,8 @@ function TeamLineupCard({
                                 gridRow={1}
                                 gap="1"
                                 align="center"
-                                justify={align === "right" ? "flex-end" : "flex-start"}
+                                justify="center"
+                                w="full"
                                 flexShrink={0}
                             >
                                 {stat.goals > 0 && <PlayerGoalMark count={stat.goals} />}
@@ -1013,9 +937,14 @@ function playerMatchStats(events: ReturnType<typeof useRawMatchEvents>, playerId
 
 function PlayerGoalMark({ count }: { count: number }) {
     return (
-        <HStack
+        <Box
             as="span"
-            gap="0.5"
+            position="relative"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            w="22px"
+            h="18px"
             color="fg.ink"
             fontSize="12px"
             fontWeight={900}
@@ -1023,8 +952,28 @@ function PlayerGoalMark({ count }: { count: number }) {
             flexShrink={0}
         >
             <Box as="span" aria-label="Gol">⚽</Box>
-            {count > 1 && <Box as="span">{count}</Box>}
-        </HStack>
+            {count > 1 && (
+                <Box
+                    as="span"
+                    position="absolute"
+                    right="-2px"
+                    top="-5px"
+                    minW="12px"
+                    h="12px"
+                    px="0.5"
+                    rounded="full"
+                    bg="fg.ink"
+                    color="white"
+                    fontFamily="mono"
+                    fontSize="8px"
+                    fontWeight={900}
+                    lineHeight="12px"
+                    textAlign="center"
+                >
+                    {count}
+                </Box>
+            )}
+        </Box>
     )
 }
 
@@ -1154,16 +1103,15 @@ function BracketContextPanel({
     matchId: number
     colors: Record<string, TeamKit>
 }) {
+    const zoomRef = useRef<ZoomableBracketHandle>(null)
     const activeRef = useRef<HTMLDivElement | null>(null)
     const rounds = bracket?.rounds ?? []
     useEffect(() => {
         if (!bracket || rounds.length === 0) return
+        // One tick so the freshly-rendered card is mounted before we centre
+        // on it (mirrors the Eliminacija tab's own auto-focus defer).
         const timer = window.setTimeout(() => {
-            activeRef.current?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-                inline: "center",
-            })
+            zoomRef.current?.centerOn(activeRef.current)
         }, 120)
         return () => window.clearTimeout(timer)
     }, [bracket, matchId, rounds.length])
@@ -1171,79 +1119,57 @@ function BracketContextPanel({
     if (!bracket || rounds.length === 0) {
         return <EmptyContext title="Završnica nije dostupna" note="Eliminacijska ljestvica još nije generirana." />
     }
-    const libraryMatches = matchPageBracketToLibraryMatches(rounds)
     const koCodes = buildKoMatchCodes(rounds.flatMap((r) => r.matches))
-    const matchById = new Map<number, BracketMatch>()
-    for (const round of rounds) for (const m of round.matches) matchById.set(m.matchId, m)
-    if (bracket.thirdPlace) matchById.set(bracket.thirdPlace.matchId, bracket.thirdPlace)
 
-    const renderMatch = (props: MatchComponentProps) => {
-        const original = matchById.get(Number(props.match.id))
-        if (!original) return null
-        const active = original.matchId === matchId
-        return (
-            <Box
-                ref={active ? activeRef : undefined}
-                w="100%"
-                h="100%"
-                display="flex"
-                alignItems="center"
-            >
-                <ReadOnlyBracketMatch
-                    match={original}
-                    active={active}
-                    code={original.knockoutCode ?? koCodes.get(original.matchId) ?? null}
-                    colors={colors}
-                />
-            </Box>
-        )
-    }
-
-    const Bracket: any = SingleEliminationBracket
+    /* Read-only mini-bracket - same BracketBoard layout as the Eliminacija
+       tab, so the two never drift apart, with the same zoom/pan. Auto-centres
+       on the match being watched. */
     return (
-        <Box overflowX="auto" overflowY="hidden" pb="2">
-            <Box display="inline-block" minW="100%">
-                <Bracket
-                    matches={libraryMatches}
-                    matchComponent={renderMatch}
-                    theme={matchPageBracketTheme}
-                    options={{
-                        style: {
-                            roundHeader: {
-                                isShown: true,
-                                height: 30,
-                                marginBottom: 14,
-                                fontSize: 11,
-                                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                                roundTextGenerator: (roundNumber: number) =>
-                                    bracket.rounds[roundNumber - 1]?.title ?? undefined,
-                            },
-                            width: 230,
-                            boxHeight: 124,
-                            canvasPadding: 16,
-                            spaceBetweenColumns: 58,
-                            spaceBetweenRows: 38,
-                            roundSeparatorWidth: 18,
-                        },
+        <Box position="relative">
+            <ZoomableBracket ref={zoomRef} wrapperStyle={{ maxHeight: "65vh" }} contentPadding="12px">
+                <BracketBoard
+                    rounds={rounds}
+                    renderMatch={(m) => {
+                        const active = m.matchId === matchId
+                        return (
+                            <Box ref={active ? activeRef : undefined}>
+                                <ReadOnlyBracketMatch
+                                    match={m}
+                                    active={active}
+                                    code={m.knockoutCode ?? koCodes.get(m.matchId) ?? null}
+                                    colors={colors}
+                                />
+                            </Box>
+                        )
                     }}
+                    thirdPlace={bracket.thirdPlace}
+                    renderThirdPlace={(m) => (
+                        <Box ref={m.matchId === matchId ? activeRef : undefined}>
+                            <Text
+                                fontSize="xs"
+                                fontWeight={900}
+                                color="fg.muted"
+                                mb="2"
+                                textTransform="uppercase"
+                            >
+                                Za 3. mjesto
+                            </Text>
+                            <ReadOnlyBracketMatch
+                                match={m}
+                                active={m.matchId === matchId}
+                                code={m.knockoutCode ?? null}
+                                colors={colors}
+                            />
+                        </Box>
+                    )}
                 />
-                    {bracket.thirdPlace && (
-                    <Box
-                        ref={bracket.thirdPlace.matchId === matchId ? activeRef : undefined}
-                        mt="4"
-                        maxW="230px"
-                    >
-                        <Text fontSize="xs" fontWeight={900} color="fg.muted" mb="2" textTransform="uppercase">
-                            Za 3. mjesto
-                        </Text>
-                        <ReadOnlyBracketMatch
-                            match={bracket.thirdPlace}
-                            active={bracket.thirdPlace.matchId === matchId}
-                            code={bracket.thirdPlace.knockoutCode ?? null}
-                            colors={colors}
-                        />
-                    </Box>
-                )}
+            </ZoomableBracket>
+            <Box position="absolute" bottom="2" right="2" zIndex={2}>
+                <ZoomControls
+                    onZoomOut={() => zoomRef.current?.zoomOut()}
+                    onZoomIn={() => zoomRef.current?.zoomIn()}
+                    onReset={() => zoomRef.current?.reset()}
+                />
             </Box>
         </Box>
     )

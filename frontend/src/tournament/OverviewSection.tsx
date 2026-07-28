@@ -39,6 +39,8 @@ import {
 import { FaTrophy } from "react-icons/fa"
 
 import type { TournamentDetails, TournamentFormat } from "../types/tournaments"
+import { SURFACE_META } from "../utils/surface"
+import { SurfacePicker, SurfaceSwatch } from "../components/SurfacePicker"
 import { LocationAutocomplete } from "../components/LocationAutocomplete"
 import LocationMapPicker from "../components/LocationMapPicker"
 import { FormatSketch } from "../components/FormatSketch"
@@ -276,34 +278,6 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     />
                                 </Field.Root>
 
-                                {/* Sistem igre - quick presets + free text. */}
-                                <Field.Root>
-                                    <Field.Label>Sistem igre</Field.Label>
-                                    <HStack gap="1.5" wrap="wrap" align="center">
-                                        {["3vs3", "4+1", "5+1"].map((sys) => (
-                                            <Button
-                                                key={sys}
-                                                type="button"
-                                                size="sm"
-                                                flexShrink={0}
-                                                variant={editForm.gameSystem === sys ? "solid" : "outline"}
-                                                colorPalette="brand"
-                                                onClick={() => patchEdit("gameSystem", sys)}
-                                            >
-                                                {sys}
-                                            </Button>
-                                        ))}
-                                        <Input
-                                            flex="1"
-                                            minW="120px"
-                                            placeholder="ili upiši ručno"
-                                            value={editForm.gameSystem}
-                                            onChange={(e) => patchEdit("gameSystem", e.target.value)}
-                                            maxLength={40}
-                                        />
-                                    </HStack>
-                                </Field.Root>
-
                                 {/* Web stranica organizatora - external link. */}
                                 <Field.Root>
                                     <Field.Label>Web stranica organizatora</Field.Label>
@@ -476,6 +450,42 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     description="Odaberi kako je turnir strukturiran."
                 >
                     <VStack align="stretch" gap="4">
+                        {/* Podloga - ahead of Sistem igre, mirrors the create wizard.
+                            Always has a value (defaults to ASFALT), so no "required"
+                            marker - unlike Sistem igre it can never be left empty. */}
+                        <Field.Root>
+                            <Field.Label>Podloga</Field.Label>
+                            <SurfacePicker value={editForm.surface} onChange={(s) => patchEdit("surface", s)} />
+                        </Field.Root>
+
+                        {/* Sistem igre - quick presets + free text. */}
+                        <Field.Root required>
+                            <Field.Label>Sistem igre</Field.Label>
+                            <HStack gap="1.5" wrap="wrap" align="center">
+                                {["3vs3", "4+1", "5+1"].map((sys) => (
+                                    <Button
+                                        key={sys}
+                                        type="button"
+                                        size="sm"
+                                        flexShrink={0}
+                                        variant={editForm.gameSystem === sys ? "solid" : "outline"}
+                                        colorPalette="brand"
+                                        onClick={() => patchEdit("gameSystem", sys)}
+                                    >
+                                        {sys}
+                                    </Button>
+                                ))}
+                                <Input
+                                    flex="1"
+                                    minW="120px"
+                                    placeholder="ili upiši ručno"
+                                    value={editForm.gameSystem}
+                                    onChange={(e) => patchEdit("gameSystem", e.target.value)}
+                                    maxLength={40}
+                                />
+                            </HStack>
+                        </Field.Root>
+
                         {tournamentStarted ? (
                             <Box
                                 fontSize="sm"
@@ -922,8 +932,13 @@ function DetailsReadView({
                 {/* Meta overview: top row keeps the compact metrics together,
                     while location gets a full-width row below. */}
                 <VStack align="stretch" gap="3">
+                    {/* 4 tiles now (Ekipe / Kotizacija / Podloga / Sistem
+                        igre) - one extra column each on md+, and a clean 2x2
+                        on mobile (an even count, so the old "span full width"
+                        workaround the 3-tile layout needed for its odd item
+                        out is gone). */}
                     <Grid
-                        templateColumns={{ base: "1fr 1fr", md: "repeat(3, minmax(0, 1fr))" }}
+                        templateColumns={{ base: "1fr 1fr", md: "repeat(4, minmax(0, 1fr))" }}
                         gap="3"
                         alignItems="stretch"
                     >
@@ -931,8 +946,7 @@ function DetailsReadView({
                             accent="var(--chakra-colors-accent-amber)"
                             icon={<FiUsers size={12} />}
                             label="EKIPE"
-                            value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount}`}
-                            hint={typeof t.maxTeams === "number" ? undefined : "Neograničeno mjesta"}
+                            value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount} / ∞`}
                             h="full"
                         />
                         {typeof t.entryPrice === "number" ? (
@@ -946,18 +960,27 @@ function DetailsReadView({
                         ) : (
                             <Box display={{ base: "none", md: "block" }} />
                         )}
+                        {/* Always set (server defaults to ASFALT) - the accent
+                            colour AND the icon slot are the surface's own
+                            colour (a real swatch, not a generic icon), not a
+                            fixed brand colour like the other tiles. */}
+                        <AccentStat
+                            accent={SURFACE_META[t.surface ?? "ASFALT"].color}
+                            icon={<SurfaceSwatch color={SURFACE_META[t.surface ?? "ASFALT"].color} size="10px" />}
+                            label="PODLOGA"
+                            value={SURFACE_META[t.surface ?? "ASFALT"].label}
+                            h="full"
+                        />
                         {t.gameSystem ? (
-                            <Box gridColumn={{ base: "1 / -1", md: "auto" }} h="full">
-                                <AccentStat
-                                    accent="var(--chakra-colors-pitch-500)"
-                                    icon={<FiGrid size={12} />}
-                                    label="SISTEM IGRE"
-                                    value={t.gameSystem}
-                                    h="full"
-                                />
-                            </Box>
+                            <AccentStat
+                                accent="var(--chakra-colors-pitch-500)"
+                                icon={<FiGrid size={12} />}
+                                label="SISTEM IGRE"
+                                value={t.gameSystem}
+                                h="full"
+                            />
                         ) : (
-                            <Box gridColumn={{ base: "1 / -1", md: "auto" }} display={{ base: "none", md: "block" }} />
+                            <Box display={{ base: "none", md: "block" }} />
                         )}
                     </Grid>
                     {t.location ? (

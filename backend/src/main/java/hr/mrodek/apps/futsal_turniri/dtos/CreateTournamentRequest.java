@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.dtos;
 
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
+import hr.mrodek.apps.futsal_turniri.enums.Surface;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import jakarta.validation.constraints.DecimalMin;
@@ -55,6 +56,9 @@ public record CreateTournamentRequest(
         // Futsal play system: "4+1" | "5+1" | "3vs3" | free-text custom.
         @Size(max = 40, message = "gameSystem must be at most 40 characters")
         String gameSystem,
+
+        // Playing surface. Null defaults to ASFALT (see TournamentMapper.applyDefaults).
+        Surface surface,
 
         // External organizer link (Facebook event, club page, …).
         @Size(max = 500, message = "websiteUrl must be at most 500 characters")

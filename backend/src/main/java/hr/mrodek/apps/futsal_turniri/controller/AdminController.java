@@ -641,6 +641,7 @@ public class AdminController {
         m.put("contactName", t.getContactName());
         m.put("contactPhone", t.getContactPhone());
         m.put("gameSystem", t.getGameSystem());
+        m.put("surface", t.getSurface() != null ? t.getSurface().name() : null);
         m.put("websiteUrl", t.getWebsiteUrl());
         m.put("organizerName", t.getOrganizerName());
         m.put("rewardType", t.getRewardType() != null ? t.getRewardType().name() : null);

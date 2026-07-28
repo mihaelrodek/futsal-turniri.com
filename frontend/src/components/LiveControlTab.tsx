@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Box, Button, Flex, HStack, Menu, Portal, Text, VStack } from "@chakra-ui/react"
-import { FiChevronDown, FiEyeOff, FiInfo, FiMaximize2, FiPlay } from "react-icons/fi"
+import { FiCheckCircle, FiChevronDown, FiEyeOff, FiInfo, FiMaximize2, FiPlay } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
 import { fetchGroups } from "../api/groups"
@@ -277,6 +277,28 @@ export default function LiveControlTab({
         )
     }
 
+    // Every match already recorded, nothing pending - the tournament is done.
+    // A centred "završen" notice reads far better than the sparse card the
+    // "pending" branch below renders (which floats top-left, no context).
+    if (selectable.length === 0 && pending.length === 0) {
+        return (
+            <Panel>
+                <EmptyState
+                    icon={FiCheckCircle}
+                    title="Turnir je završen"
+                    description={`Sve utakmice (${finished.length}) su odigrane i zabilježene.`}
+                    action={
+                        !showFinished ? (
+                            <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => setShowFinished(true)}>
+                                Pokaži završene ({finished.length})
+                            </Button>
+                        ) : undefined
+                    }
+                />
+            </Panel>
+        )
+    }
+
     // Nothing to record yet, but the schedule already holds knockout fixtures
     // waiting on the draw: list them as upcoming "TBD" games instead of the
     // empty state, so it's clear the final/semifinal is scheduled.
@@ -287,33 +309,29 @@ export default function LiveControlTab({
                     <Flex align="center" gap="2">
                         <Box color="fg.muted" display="inline-flex"><LuRadioTower size={16} /></Box>
                         <Text fontSize="sm" fontWeight={800} color="fg.ink">
-                            {pending.length > 0 ? "Nadolazeće utakmice" : "Završene utakmice"}
+                            Nadolazeće utakmice
                         </Text>
                     </Flex>
-                    {pending.length > 0 && (
-                        <>
-                            <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
-                                Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
-                            </Text>
-                            <VStack align="stretch" gap="2">
-                                {pending.map((e) => (
-                                    <Flex
-                                        key={`pending-${e.match.matchId}`}
-                                        align="center"
-                                        gap="3"
-                                        borderWidth="1px"
-                                        borderColor="border"
-                                        rounded="lg"
-                                        px="3"
-                                        py="2.5"
-                                        minW="0"
-                                    >
-                                        <MatchCardContent meta={matchMeta(e, false)} />
-                                    </Flex>
-                                ))}
-                            </VStack>
-                        </>
-                    )}
+                    <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
+                        Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
+                    </Text>
+                    <VStack align="stretch" gap="2">
+                        {pending.map((e) => (
+                            <Flex
+                                key={`pending-${e.match.matchId}`}
+                                align="center"
+                                gap="3"
+                                borderWidth="1px"
+                                borderColor="border"
+                                rounded="lg"
+                                px="3"
+                                py="2.5"
+                                minW="0"
+                            >
+                                <MatchCardContent meta={matchMeta(e, false)} />
+                            </Flex>
+                        ))}
+                    </VStack>
                     {finished.length > 0 && !showFinished && (
                         <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => setShowFinished(true)} alignSelf="flex-start">
                             Pokaži završene ({finished.length})

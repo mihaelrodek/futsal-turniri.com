@@ -2257,6 +2257,11 @@ export default function TournamentsPage() {
                                 <Button
                                     h={{ base: "40px", md: "46px" }}
                                     px={{ base: "3", md: "4" }}
+                                    // Fixed on desktop (where the label shows) so picking a
+                                    // shorter/longer sort option never resizes the button and
+                                    // shifts the rest of the toolbar - sized to the longest
+                                    // label ("Najkasniji prvi"), not just whichever is active.
+                                    minW={{ base: "auto", md: "224px" }}
                                     flexShrink={1}
                                     bg="bg.panel"
                                     color="fg.ink"

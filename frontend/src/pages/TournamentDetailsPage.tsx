@@ -291,13 +291,16 @@ export default function TournamentDetailsPage() {
     // a knockout game, otherwise Grupe. On any fetch failure the current
     // sub-tab is left untouched. Only meaningful for GROUPS_KNOCKOUT -
     // KNOCKOUT_ONLY is pinned to Eliminacija by the format effect below.
-    const resolveDrawSub = useCallback(() => {
+    const resolveDrawSub = useCallback((noneOnDeck: DrawSubKey = "grupe") => {
         if (!uuid) return
         queryClient
             .fetchQuery({ queryKey: qk.schedule(uuid), queryFn: () => fetchSchedule(uuid), staleTime: 15_000 })
             .then((s) => {
                 const onDeck = pickOnDeckMatch(s.matches)
-                setDrawSub(onDeck && onDeck.stage !== "GROUP" ? "eliminacija" : "grupe")
+                // No LIVE/SCHEDULED match at all → nothing left to default to
+                // Grupe for; a finished tournament should land on Eliminacija
+                // (the caller passes "eliminacija" for that case).
+                setDrawSub(onDeck ? (onDeck.stage !== "GROUP" ? "eliminacija" : "grupe") : noneOnDeck)
             })
             .catch(() => { /* leave the current sub-tab on a fetch failure */ })
     }, [uuid, queryClient])
@@ -312,10 +315,15 @@ export default function TournamentDetailsPage() {
         if (t.status !== "STARTED" && t.status !== "FINISHED") return
         setSection("bracket")
         // For a GROUPS_KNOCKOUT tournament, also pick the draw sub-tab that
-        // matches what's being played right now (Grupe vs Eliminacija).
-        // KNOCKOUT_ONLY is already pinned to Eliminacija by the format effect
-        // below. Uses the cached schedule so it's cheap.
-        if (uuid && t.format === "GROUPS_KNOCKOUT") resolveDrawSub()
+        // matches what's being played right now (Grupe vs Eliminacija) - or,
+        // once the tournament is FINISHED and nothing is left on deck,
+        // Eliminacija (→ Finale, per BracketTab's own finished-bracket focus)
+        // rather than defaulting back to Grupe. KNOCKOUT_ONLY is already
+        // pinned to Eliminacija by the format effect below. Uses the cached
+        // schedule so it's cheap.
+        if (uuid && t.format === "GROUPS_KNOCKOUT") {
+            resolveDrawSub(t.status === "FINISHED" ? "eliminacija" : "grupe")
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [t])
 
@@ -677,6 +685,7 @@ export default function TournamentDetailsPage() {
         if (!editForm.location.trim()) missing.push("Lokacija")
         if (!editForm.startDate) missing.push("Datum")
         if (!editForm.startTime) missing.push("Vrijeme")
+        if (!editForm.gameSystem.trim()) missing.push("Sistem igre")
         if (
             !editForm.rewardFirst.trim() ||
             !editForm.rewardSecond.trim() ||
@@ -690,6 +699,7 @@ export default function TournamentDetailsPage() {
         editForm?.location,
         editForm?.startDate,
         editForm?.startTime,
+        editForm?.gameSystem,
         editForm?.rewardFirst,
         editForm?.rewardSecond,
         editForm?.rewardThird,
@@ -1652,6 +1662,7 @@ export default function TournamentDetailsPage() {
                     <StatsSection
                         uuid={t.uuid}
                         canEdit={canEdit}
+                        format={t.format}
                         scorerScope={t.scorerScope}
                         onTournamentChanged={(updated) => setT(updated)}
                         exportMeta={{

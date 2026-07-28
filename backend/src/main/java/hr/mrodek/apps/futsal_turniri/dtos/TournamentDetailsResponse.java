@@ -48,6 +48,8 @@ public record TournamentDetailsResponse(
         String gameSystem,
         String websiteUrl,
 
+        String surface,               // "TRAVA" | "UMJETNA_TRAVA" | "ASFALT" | "DVORANA"
+
         // Public organizer display name (udruga, klub, …). Optional; when
         // set, the SPA shows it as the organizer instead of createdByName.
         String organizerName,

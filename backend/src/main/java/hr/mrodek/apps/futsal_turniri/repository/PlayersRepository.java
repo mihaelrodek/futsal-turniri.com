@@ -49,6 +49,29 @@ public class PlayersRepository implements AppRepository<Player, Long> {
     }
 
     /**
+     * The first existing player in this tournament (any team) with exactly
+     * {@code name} (already normalized - trimmed + uppercase), other than
+     * {@code excludePlayerId} - used to block the same person's name existing
+     * on two different rosters in one tournament. Pass {@code null} for
+     * {@code excludePlayerId} on a create; pass the player's own id on a
+     * rename so it doesn't collide with itself. Team is join-fetched so the
+     * caller can name it in the error message without a second query.
+     */
+    public java.util.Optional<Player> findByTournamentAndName(Long tournamentId, String name, Long excludePlayerId) {
+        var query = em.createQuery(
+                        "select p from Player p join fetch p.team " +
+                        "where p.team.tournament.id = :tid and p.name = :name " +
+                        (excludePlayerId != null ? "and p.id != :pid " : "") +
+                        "order by p.id asc",
+                        Player.class)
+                .setParameter("tid", tournamentId)
+                .setParameter("name", name)
+                .setMaxResults(1);
+        if (excludePlayerId != null) query.setParameter("pid", excludePlayerId);
+        return query.getResultList().stream().findFirst();
+    }
+
+    /**
      * Distinct player names (already stored uppercase) matching the query
      * as a prefix or substring, for the roster autocomplete. Case-folded
      * compare so partial lowercase input still matches. Capped at {@code limit}.

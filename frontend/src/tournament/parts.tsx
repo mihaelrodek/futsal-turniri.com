@@ -6,6 +6,7 @@ import type {
     TournamentDetails,
     CreateTournamentPayload,
     TournamentFormat,
+    Surface,
 } from "../types/tournaments"
 import type { RoundDto, MatchDto } from "../types/round"
 
@@ -448,6 +449,7 @@ export type EditForm = {
     contactPhoneCountry: string
     contactPhone: string
     gameSystem: string
+    surface: Surface
     websiteUrl: string
     /** Public organizer display name (udruga, klub…) - optional. */
     organizerName: string
@@ -480,6 +482,7 @@ export function buildEditForm(t: TournamentDetails): EditForm {
         contactPhoneCountry: phone.country,
         contactPhone: phone.rest,
         gameSystem: t.gameSystem ?? "",
+        surface: t.surface ?? "ASFALT",
         websiteUrl: t.websiteUrl ?? "",
         organizerName: t.organizerName ?? "",
         format: t.format ?? "GROUPS_KNOCKOUT",
@@ -521,6 +524,7 @@ export function editFormToPayload(f: EditForm): CreateTournamentPayload {
             ? `${f.contactPhoneCountry} ${f.contactPhone.trim()}`
             : null,
         gameSystem: f.gameSystem.trim() || null,
+        surface: f.surface,
         websiteUrl: f.websiteUrl.trim() || null,
         organizerName: f.organizerName.trim() || null,
         rewardType: "FIXED",
