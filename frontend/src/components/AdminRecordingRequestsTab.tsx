@@ -462,7 +462,20 @@ function RecordingRequestRow({
                                     : ""}
                             </Text>
                         </Text>
-                        <HStack gap="2">
+                        <HStack gap="2" wrap="wrap">
+                            {/* Payment gates the download, so the manual paid
+                                toggle (the webhook stand-in) must stay
+                                available after delivery too. */}
+                            <Button
+                                size="xs"
+                                variant={req.paid ? "outline" : "solid"}
+                                colorPalette={req.paid ? "gray" : "green"}
+                                disabled={busy != null}
+                                loading={busy === "paid"}
+                                onClick={togglePaid}
+                            >
+                                <FiDollarSign /> {req.paid ? "Poništi plaćeno" : "Označi plaćeno"}
+                            </Button>
                             <Button
                                 size="xs"
                                 variant="outline"
