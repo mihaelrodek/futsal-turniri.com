@@ -20,10 +20,13 @@ import {
     LuCamera,
     LuCheck,
     LuFlame,
+    LuShoppingCart,
     LuSparkles,
     LuTarget,
+    LuTrash2,
     LuTrophy,
     LuVideo,
+    LuX,
 } from "react-icons/lu"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { MonoLabel, PitchBackdrop, GhostButton } from "../ui/pitch"
@@ -42,6 +45,9 @@ type Tier = {
     icon: ElementType
     name: string
     price: string
+    /** Euro amount as a plain number, for cart totals - `price` stays the
+     *  display string ("5 €") so formatting never has to be re-derived. */
+    priceValue: number
     tagline: string
     features: string[]
     highlight?: boolean
@@ -52,6 +58,7 @@ const TIERS: Tier[] = [
         icon: LuTarget,
         name: "Gol",
         price: "5 €",
+        priceValue: 5,
         tagline: "Jedan gol, spreman za dijeljenje.",
         features: [
             "Isječak jednog gola u HD kvaliteti",
@@ -63,6 +70,7 @@ const TIERS: Tier[] = [
         icon: LuVideo,
         name: "Tekma",
         price: "20 €",
+        priceValue: 20,
         tagline: "Cijela utakmica, oba poluvremena.",
         features: [
             "Snimka cijele utakmice",
@@ -74,6 +82,7 @@ const TIERS: Tier[] = [
         icon: LuFlame,
         name: "Hattrick",
         price: "50 €",
+        priceValue: 50,
         tagline: "3 utakmice s turnira po tvom izboru.",
         features: [
             "Snimke bilo koje 3 utakmice s turnira",
@@ -85,6 +94,7 @@ const TIERS: Tier[] = [
         icon: LuTrophy,
         name: "Zlatna kopačka",
         price: "100 €",
+        priceValue: 100,
         tagline: "Cijeli turnir, sve utakmice tvoje ekipe.",
         features: [
             "Snimke svih odigranih utakmica s turnira",
@@ -95,18 +105,37 @@ const TIERS: Tier[] = [
     },
 ]
 
-function PricingCard({ tier }: { tier: Tier }) {
+function PricingCard({
+    tier,
+    selected,
+    onToggle,
+}: {
+    tier: Tier
+    selected: boolean
+    onToggle: () => void
+}) {
     return (
-        <VStack
-            align="stretch"
+        <chakra.button
+            type="button"
+            display="flex"
+            flexDirection="column"
+            alignItems="stretch"
             gap="4"
-            bg="bg.panel"
-            borderWidth={tier.highlight ? "2px" : "1px"}
-            borderColor={tier.highlight ? "pitch.500" : "border"}
+            bg={selected ? "pitch.subtle" : "bg.panel"}
+            borderWidth={selected || tier.highlight ? "2px" : "1px"}
+            borderColor={selected ? "pitch.600" : tier.highlight ? "pitch.500" : "border"}
             rounded="xl"
             p="5"
             position="relative"
             shadow={tier.highlight ? "md" : "sm"}
+            cursor="pointer"
+            textAlign="left"
+            w="full"
+            transition="border-color .15s, background .15s, transform .1s"
+            _hover={{ borderColor: "pitch.500" }}
+            _active={{ transform: "scale(0.99)" }}
+            onClick={onToggle}
+            aria-pressed={selected}
         >
             {tier.highlight && (
                 <Badge
@@ -122,6 +151,25 @@ function PricingCard({ tier }: { tier: Tier }) {
                     Najbolja vrijednost
                 </Badge>
             )}
+            {/* Selection check - top-right so it never collides with the
+                "Najbolja vrijednost" ribbon (top-left). */}
+            <Flex
+                position="absolute"
+                top="4"
+                right="4"
+                w="24px"
+                h="24px"
+                rounded="full"
+                align="center"
+                justify="center"
+                borderWidth="1.5px"
+                borderColor={selected ? "pitch.600" : "border.emphasized"}
+                bg={selected ? "pitch.600" : "transparent"}
+                color="white"
+                transition="background .15s, border-color .15s"
+            >
+                {selected && <Icon as={LuCheck} boxSize="3.5" />}
+            </Flex>
             <Flex
                 w="44px"
                 h="44px"
@@ -154,7 +202,99 @@ function PricingCard({ tier }: { tier: Tier }) {
                     </HStack>
                 ))}
             </VStack>
-        </VStack>
+        </chakra.button>
+    )
+}
+
+/** "5 €" + "20 €" → "25 €" - both display strings are always plain whole
+ *  euros (see TIERS), so summing the numeric twin and re-appending " €"
+ *  is simpler than parsing the string back out. */
+function formatTotal(cents: number): string {
+    return `${cents} €`
+}
+
+function CartSummary({
+    tiers,
+    onRemove,
+    onClear,
+}: {
+    tiers: Tier[]
+    onRemove: (name: string) => void
+    onClear: () => void
+}) {
+    const total = tiers.reduce((sum, t) => sum + t.priceValue, 0)
+    return (
+        <Box
+            borderWidth="1px"
+            borderColor="pitch.500"
+            rounded="xl"
+            p={{ base: "4", md: "5" }}
+            bg="pitch.subtle"
+        >
+            <HStack justify="space-between" align="center" mb="3">
+                <HStack gap="2">
+                    <Icon as={LuShoppingCart} boxSize="5" color="pitch.700" />
+                    <Heading size="sm">Košarica</Heading>
+                    <Badge colorPalette="pitch" variant="solid">{tiers.length}</Badge>
+                </HStack>
+                <chakra.button
+                    type="button"
+                    onClick={onClear}
+                    display="inline-flex"
+                    alignItems="center"
+                    gap="1"
+                    fontSize="12.5px"
+                    fontWeight={600}
+                    color="fg.muted"
+                    bg="transparent"
+                    border="none"
+                    cursor="pointer"
+                    _hover={{ color: "fg.ink" }}
+                >
+                    <LuTrash2 size={13} /> Isprazni košaricu
+                </chakra.button>
+            </HStack>
+            <VStack align="stretch" gap="2">
+                {tiers.map((t) => (
+                    <HStack
+                        key={t.name}
+                        justify="space-between"
+                        bg="bg.panel"
+                        borderWidth="1px"
+                        borderColor="border"
+                        rounded="lg"
+                        px="3"
+                        py="2"
+                    >
+                        <HStack gap="2">
+                            <Icon as={t.icon} boxSize="4" color="pitch.500" />
+                            <Text fontSize="14px" fontWeight={600}>{t.name}</Text>
+                        </HStack>
+                        <HStack gap="3">
+                            <Text fontSize="14px" fontWeight={700}>{t.price}</Text>
+                            <chakra.button
+                                type="button"
+                                aria-label={`Ukloni ${t.name} iz košarice`}
+                                title="Ukloni"
+                                onClick={() => onRemove(t.name)}
+                                display="inline-flex"
+                                color="fg.muted"
+                                bg="transparent"
+                                border="none"
+                                cursor="pointer"
+                                _hover={{ color: "accent.red" }}
+                            >
+                                <LuX size={16} />
+                            </chakra.button>
+                        </HStack>
+                    </HStack>
+                ))}
+            </VStack>
+            <HStack justify="space-between" mt="3" pt="3" borderTopWidth="1px" borderColor="pitch.emphasized">
+                <Text fontWeight={700}>Ukupno</Text>
+                <Text fontWeight={800} fontSize="18px">{formatTotal(total)}</Text>
+            </HStack>
+        </Box>
     )
 }
 
@@ -341,6 +481,18 @@ export default function PricingPage() {
         description: "Snimke gola, utakmice ili cijelog turnira - odaberi paket koji ti odgovara.",
     })
 
+    const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
+    const selectedTiers = TIERS.filter((t) => selectedNames.has(t.name))
+
+    function toggle(name: string) {
+        setSelectedNames((prev) => {
+            const next = new Set(prev)
+            if (next.has(name)) next.delete(name)
+            else next.add(name)
+            return next
+        })
+    }
+
     return (
         <VStack align="stretch" gap="10" pb="4">
             {/* ── Hero ─────────────────────────────────────────────────── */}
@@ -387,15 +539,29 @@ export default function PricingPage() {
                 </VStack>
             </Box>
 
-            {/* ── Fixed-price packages ─────────────────────────────────── */}
+            {/* ── Fixed-price packages - click a card to add/remove it from
+                  the cart below. ─────────────────────────────────────── */}
             <Grid
                 templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }}
                 gap="4"
             >
                 {TIERS.map((tier) => (
-                    <PricingCard key={tier.name} tier={tier} />
+                    <PricingCard
+                        key={tier.name}
+                        tier={tier}
+                        selected={selectedNames.has(tier.name)}
+                        onToggle={() => toggle(tier.name)}
+                    />
                 ))}
             </Grid>
+
+            {selectedTiers.length > 0 && (
+                <CartSummary
+                    tiers={selectedTiers}
+                    onRemove={(name) => toggle(name)}
+                    onClear={() => setSelectedNames(new Set())}
+                />
+            )}
 
             {/* ── Camera package - price on request ────────────────────── */}
             <CameraPackageBand />

@@ -274,7 +274,6 @@ export default function NavBar() {
                         <PillNavLink to="/turniri/novi">{t.nav.createTournament}</PillNavLink>
                         <PillNavLink to="/karta">{t.nav.map}</PillNavLink>
                         <PillNavLink to="/statistika">{t.nav.stats}</PillNavLink>
-                        <PillNavLink to="/cjenik">{t.nav.pricing}</PillNavLink>
                     </HStack>
 
                     {/* Right cluster: install affordance + user pill. The
