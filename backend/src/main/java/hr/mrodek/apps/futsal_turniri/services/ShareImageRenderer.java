@@ -75,12 +75,15 @@ public final class ShareImageRenderer {
 
             drawStatusPill(g, t.getStatus());
 
-            // Title - large, wrapped at column width 1000.
+            // Title - large, wrapped at column width 1000. Capped at 2 lines
+            // (ellipsized beyond that) so a very long name can never push the
+            // meta row/podium further down than the fixed layout below
+            // expects - see the overlap bug this fixed.
             String name = safe(t.getName(), "Turnir");
             int titleY = 180;
             Font titleFont = new Font(Font.SANS_SERIF, Font.BOLD, 70);
             g.setColor(WHITE);
-            titleY = drawWrapped(g, name, 60, titleY, 1000, titleFont, 78);
+            titleY = drawWrapped(g, name, 60, titleY, 1000, titleFont, 78, 2);
 
             // Date + location row.
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 28));
@@ -88,12 +91,13 @@ public final class ShareImageRenderer {
             String dateStr = formatDate(t.getStartAt());
             String loc = safe(t.getLocation(), "");
             String meta = loc.isBlank() ? dateStr : dateStr + " · " + loc;
-            g.drawString(truncate(g, meta, 1000), 60, titleY + 24);
+            int metaY = titleY + 24;
+            g.drawString(truncate(g, meta, 1000), 60, metaY);
 
             if (t.getStatus() == TournamentStatus.FINISHED && hasContent(t.getWinnerName())) {
-                drawPodium(g, t.getWinnerName(), t.getSecondPlaceName(), t.getThirdPlaceName());
+                drawPodium(g, metaY, t.getWinnerName(), t.getSecondPlaceName(), t.getThirdPlaceName());
             } else if (t.getStatus() == TournamentStatus.STARTED) {
-                drawLiveBadge(g);
+                drawLiveBadge(g, metaY);
             }
 
             g.setFont(monoSm);
@@ -130,8 +134,10 @@ public final class ShareImageRenderer {
         g.drawString(label, x + 18, y + 25);
     }
 
-    private static void drawPodium(Graphics2D g, String first, String second, String third) {
-        int baseY = 360;
+    private static void drawPodium(Graphics2D g, int metaY, String first, String second, String third) {
+        // 360 is the default that fits a 1-2 line title; metaY + 40 is a
+        // floor so a taller title (still capped at 2 lines) never overlaps.
+        int baseY = Math.max(360, metaY + 40);
         int colW = 320;
         int gap = 32;
         int totalW = colW * 3 + gap * 2;
@@ -161,13 +167,15 @@ public final class ShareImageRenderer {
         g.drawString("★", x + w - 60, y + 56);
 
         g.setColor(WHITE);
+        // Capped at 2 lines too - a long team name shouldn't be able to
+        // grow the card past its fixed height (160-220px).
         drawWrapped(g, safe(name, "-"), x + 24, y + 100, w - 48,
-                new Font(Font.SANS_SERIF, Font.BOLD, 32), 38);
+                new Font(Font.SANS_SERIF, Font.BOLD, 32), 38, 2);
     }
 
-    private static void drawLiveBadge(Graphics2D g) {
+    private static void drawLiveBadge(Graphics2D g, int metaY) {
         int x = 60;
-        int y = 380;
+        int y = Math.max(380, metaY + 60);
         int w = 360;
         int h = 120;
         Color red = new Color(0xDC, 0x26, 0x26);
@@ -187,26 +195,34 @@ public final class ShareImageRenderer {
         return Math.round(a + (b - a) * t);
     }
 
-    private static int drawWrapped(Graphics2D g, String text, int x, int y, int maxWidth, Font font, int lineHeight) {
+    /** Greedy word-wrap capped at {@code maxLines} - text beyond that is
+     *  ellipsized onto the last line instead of growing the layout further
+     *  down (this is what fixed titles overlapping the podium/meta row). */
+    private static int drawWrapped(Graphics2D g, String text, int x, int y, int maxWidth, Font font, int lineHeight, int maxLines) {
         g.setFont(font);
         var fm = g.getFontMetrics();
         String[] words = text.split("\\s+");
+        java.util.List<String> lines = new java.util.ArrayList<>();
         StringBuilder line = new StringBuilder();
-        int yy = y;
         for (String w : words) {
             String candidate = line.length() == 0 ? w : line + " " + w;
             if (fm.stringWidth(candidate) <= maxWidth) {
                 line = new StringBuilder(candidate);
             } else {
-                if (line.length() > 0) {
-                    g.drawString(line.toString(), x, yy);
-                    yy += lineHeight;
-                }
+                if (line.length() > 0) lines.add(line.toString());
                 line = new StringBuilder(w);
             }
         }
-        if (line.length() > 0) {
-            g.drawString(line.toString(), x, yy);
+        if (line.length() > 0) lines.add(line.toString());
+
+        boolean overflow = lines.size() > maxLines;
+        int drawCount = Math.min(lines.size(), maxLines);
+        int yy = y;
+        for (int i = 0; i < drawCount; i++) {
+            boolean isLastDrawn = i == drawCount - 1;
+            String lineText = isLastDrawn && overflow ? ellipsize(g, lines.get(i), maxWidth) : lines.get(i);
+            g.drawString(lineText, x, yy);
+            if (!isLastDrawn) yy += lineHeight;
         }
         return yy;
     }
@@ -214,7 +230,16 @@ public final class ShareImageRenderer {
     private static String truncate(Graphics2D g, String s, int maxWidth) {
         var fm = g.getFontMetrics();
         if (fm.stringWidth(s) <= maxWidth) return s;
+        return ellipsize(g, s, maxWidth);
+    }
+
+    /** Appends "…", trimming characters from the end until it fits - unlike
+     *  {@link #truncate}, always adds the ellipsis even if {@code s} itself
+     *  already fits (used when more text follows that we're dropping). */
+    private static String ellipsize(Graphics2D g, String s, int maxWidth) {
+        var fm = g.getFontMetrics();
         String ellipsis = "…";
+        if (fm.stringWidth(s + ellipsis) <= maxWidth) return s + ellipsis;
         StringBuilder b = new StringBuilder();
         for (char c : s.toCharArray()) {
             if (fm.stringWidth(b + ellipsis + c) > maxWidth) break;
