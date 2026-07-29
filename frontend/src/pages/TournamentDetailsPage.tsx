@@ -398,6 +398,20 @@ export default function TournamentDetailsPage() {
     const [editPickedCoords, setEditPickedCoords] = useState<{ lat: number; lng: number } | null>(null)
     const [savingDetails, setSavingDetails] = useState(false)
 
+    // Tournament SETTINGS (format, name, location, ...) have no realtime push
+    // of their own - only live-match events do (see useLiveSocket above). An
+    // already-open tab that isn't the one making the edit would otherwise show
+    // a stale format/name until the page is reloaded. Skipped while THIS tab
+    // has its own unsaved edit open (`editingDetails`), so a background poll
+    // can never clobber in-progress local changes.
+    const refreshTournamentDetails = useCallback(() => {
+        if (!uuid) return
+        fetchTournamentDetails(uuid)
+            .then(setT)
+            .catch(() => { /* transient failure - keep last known */ })
+    }, [uuid])
+    usePolling(refreshTournamentDetails, 30000, liveOverviewEnabled && !editingDetails)
+
     /* ---------- Poster edit state ---------- */
     const [posterFile, setPosterFile] = useState<File | null>(null)
     const [posterPreviewUrl, setPosterPreviewUrl] = useState<string | null>(null)
