@@ -23,6 +23,7 @@ import { Link as RouterLink, useNavigate, useParams } from "react-router-dom"
 import { FaTrophy } from "react-icons/fa"
 import {
     FiAlertCircle,
+    FiAtSign,
     FiCalendar,
     FiChevronDown,
     FiChevronRight,
@@ -35,7 +36,6 @@ import {
     FiMoon,
     FiPhone,
     FiRadio,
-    FiSettings,
     FiUser,
     FiShare2,
     FiShield,
@@ -112,7 +112,6 @@ const RECORDING_REQUEST_ENABLED = true
 type ProfileTabKey =
     | "profil"
     | "turniri"
-    | "postavke"
     | "moje-snimke"
     | "dashboard"
     | "popis-igraca"
@@ -131,7 +130,6 @@ const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
     // the top of the sidebar instead), but the icon map covers every key.
     profil: <FiUser size={15} />,
     turniri: <FiList size={15} />,
-    postavke: <FiSettings size={15} />,
     "moje-snimke": <FiVideo size={15} />,
     dashboard: <FiGrid size={15} />,
     "popis-igraca": <FiUsers size={15} />,
@@ -407,7 +405,6 @@ export default function PublicProfilePage() {
     // to the profile owner; a visitor has nothing to switch between.
     const userTabs: Array<{ key: ProfileTabKey; label: string }> = [
         { key: "turniri", label: "Turniri" },
-        { key: "postavke", label: "Postavke" },
         // Recording requests of THIS user (any signed-in account) - request
         // status, cancel, and the download link once a recording is delivered.
         ...(RECORDING_REQUEST_ENABLED
@@ -450,26 +447,27 @@ export default function PublicProfilePage() {
      *  shell it's sitting in. */
     const bodyContent = (
         <>
-            {/* Profile header - the identity card. Visitors always see it
-                above the content; the OWNER gets it in the desktop sidebar
-                (first thing in the menu) and, on mobile, as the content of
-                the "Profil" tab (first pill) - so it never pushes the other
-                tabs' content down. */}
-            {(!isOwner || profileTab === "profil") && (
-                <Box display={isOwner ? { base: "block", lg: "none" } : undefined}>
-                    <ProfileHeader
-                        profile={profile}
-                        isOwner={isOwner}
-                        onProfileChanged={refreshProfile}
-                    />
-                </Box>
+            {/* Profile header - the identity card. Only for VISITORS here -
+                the owner's own name/avatar lives in the desktop sidebar and,
+                on mobile, in the persistent header above the tab bar, so it
+                never needs repeating inside a tab. */}
+            {!isOwner && (
+                <ProfileHeader
+                    profile={profile}
+                    isOwner={isOwner}
+                    onProfileChanged={refreshProfile}
+                />
             )}
 
-            {/* === PROFIL panel - owner-only. This is what the desktop
-                  sidebar pencil switches the main column to, and what
-                  mobile's "Profil" tab shows automatically. === */}
+            {/* === PROFIL panel - owner-only. Account details + app settings
+                  (Postavke folded in here rather than getting its own tab).
+                  This is what the desktop sidebar pencil switches the main
+                  column to, and what mobile's "Profil" tab shows automatically. === */}
             {isOwner && profileTab === "profil" && (
-                <ProfileDetailsSection onSaved={refreshProfile} />
+                <>
+                    <ProfileDetailsSection onSaved={refreshProfile} />
+                    <SettingsCard />
+                </>
             )}
 
             {/* === KARIJERA card - always above the Turniri tab. Visible to
@@ -594,9 +592,6 @@ export default function PublicProfilePage() {
                 </Card.Root>
             )}
 
-            {/* === POSTAVKE tab - owner-only: app preferences (theme, etc.) === */}
-            {isOwner && profileTab === "postavke" && <SettingsCard />}
-
             {/* === MOJE SNIMKE tab - owner-only: recording requests === */}
             {RECORDING_REQUEST_ENABLED && isOwner && profileTab === "moje-snimke" && <MyRecordingsTab />}
 
@@ -654,8 +649,9 @@ export default function PublicProfilePage() {
     return (
         <>
             {/* ── Mobile / tablet shell (base → lg): ONE compact sticky bar -
-                mini avatar/name row + pill tab bar(s). Sticky lives on THIS
-                box (parent is the page-tall route outlet), same trap as
+                mini avatar/name row (view-only - editing lives in the Profil
+                tab below) + pill tab bar(s). Sticky lives on THIS box (parent
+                is the page-tall route outlet), same trap as
                 TournamentDetailsPage: a sticky child one level down would
                 unpin the moment this short box scrolled past. Hidden on lg+,
                 where the sidebar carries all of it. ── */}
@@ -669,6 +665,43 @@ export default function PublicProfilePage() {
                 pt={{ base: "28px", md: "36px" }}
                 pb="2"
             >
+                <HStack gap="2.5" align="center" mb="2" px="0.5">
+                    <AvatarPreview
+                        src={profile.avatarUrl}
+                        alt={profile.displayName ?? "Profilna slika"}
+                    >
+                        <Box
+                            w="34px"
+                            h="34px"
+                            rounded="full"
+                            overflow="hidden"
+                            bg="blue.subtle"
+                            color="blue.fg"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            fontWeight="bold"
+                            fontSize="xs"
+                            flexShrink={0}
+                        >
+                            {profile.avatarUrl ? (
+                                <Image
+                                    src={profile.avatarUrl}
+                                    alt={profile.displayName ?? "Profilna slika"}
+                                    w="100%"
+                                    h="100%"
+                                    objectFit="cover"
+                                />
+                            ) : (
+                                initialsOf(profile.displayName)
+                            )}
+                        </Box>
+                    </AvatarPreview>
+                    <Text fontWeight={700} fontSize="15px" lineClamp={1}>
+                        {profile.displayName ?? "Bezimeni igrač"}
+                    </Text>
+                </HStack>
+
                 {/* One primary row: Profil, user tabs, then a single
                     "Administracija" pill. Tapping it expands the admin
                     row below instead of always showing two crowded rows. */}
@@ -1162,32 +1195,41 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
-                <VStack align="stretch" gap="3">
-                    <HStack justify="space-between">
-                        <Heading size="md">Moji podaci</Heading>
-                        <IconButton
-                            aria-label="Uredi profil"
-                            title="Uredi profil"
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => setEditing(true)}
-                        >
-                            <FiEdit2 />
-                        </IconButton>
+                <VStack align="stretch" gap="4">
+                    <HStack justify="space-between" align="center">
+                        <Box>
+                            <Heading size="sm">Moji podaci</Heading>
+                            <Text fontSize="xs" color="fg.muted">
+                                Ime, korisničko ime i broj telefona.
+                            </Text>
+                        </Box>
+                        <Button size="xs" variant="outline" onClick={() => setEditing(true)}>
+                            <FiEdit2 /> Uredi
+                        </Button>
                     </HStack>
                     {loading || !data ? (
                         <VStack align="stretch" gap="2">
-                            <Skeleton h="6" />
-                            <Skeleton h="6" />
-                            <Skeleton h="6" />
+                            <Skeleton h="14" rounded="lg" />
+                            <Skeleton h="14" rounded="lg" />
+                            <Skeleton h="14" rounded="lg" />
                         </VStack>
                     ) : (
-                        <VStack align="stretch" gap="2.5">
-                            <DetailRow label="Ime i prezime" value={`${data.firstName} ${data.lastName}`.trim() || "-"} />
-                            <DetailRow label="Korisničko ime" value={data.username || "-"} />
+                        <VStack align="stretch" gap="0">
                             <DetailRow
+                                icon={<FiUser size={15} />}
+                                label="Ime i prezime"
+                                value={`${data.firstName} ${data.lastName}`.trim() || "-"}
+                            />
+                            <DetailRow
+                                icon={<FiAtSign size={15} />}
+                                label="Korisničko ime"
+                                value={data.username || "-"}
+                            />
+                            <DetailRow
+                                icon={<FiPhone size={15} />}
                                 label="Broj telefona"
                                 value={data.phone ? `${data.phoneCountry ? data.phoneCountry + " " : ""}${data.phone}` : "Nije upisan"}
+                                isLast
                             />
                         </VStack>
                     )}
@@ -1197,11 +1239,53 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
     )
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+/** One row of the Profil panel's read-only data summary - icon tile + a
+ *  small uppercase label above the actual value. */
+function DetailRow({
+    icon,
+    label,
+    value,
+    isLast = false,
+}: {
+    icon: React.ReactNode
+    label: string
+    value: string
+    isLast?: boolean
+}) {
     return (
-        <HStack justify="space-between" gap="3" fontSize="sm">
-            <Text color="fg.muted">{label}</Text>
-            <Text fontWeight={600} textAlign="right">{value}</Text>
+        <HStack
+            gap="3"
+            py="3"
+            borderBottomWidth={isLast ? "0" : "1px"}
+            borderColor="border.emphasized"
+            align="center"
+        >
+            <Flex
+                w="36px"
+                h="36px"
+                rounded="lg"
+                bg="bg.subtle"
+                color="pitch.500"
+                align="center"
+                justify="center"
+                flexShrink={0}
+            >
+                {icon}
+            </Flex>
+            <VStack align="stretch" gap="0" flex="1" minW="0">
+                <Text
+                    fontSize="11px"
+                    fontWeight={700}
+                    letterSpacing="0.06em"
+                    color="fg.muted"
+                    textTransform="uppercase"
+                >
+                    {label}
+                </Text>
+                <Text fontSize="sm" fontWeight={600} lineClamp={1}>
+                    {value}
+                </Text>
+            </VStack>
         </HStack>
     )
 }
@@ -1903,11 +1987,11 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Postavke tab - app-level preferences. Right now just the theme
- * toggle (which used to live on the navbar). Theme is persisted per
- * user via PUT /user/me/profile colorMode, so the choice follows
- * the user across devices. ThemeSync handles the read direction on
- * login.
+ * App-level preferences, rendered inside the Profil panel (no separate
+ * tab). Right now just the theme toggle (which used to live on the
+ * navbar). Theme is persisted per user via PUT /user/me/profile colorMode,
+ * so the choice follows the user across devices. ThemeSync handles the
+ * read direction on login.
  */
 function SettingsCard() {
     const { colorMode, setColorMode } = useColorMode()
