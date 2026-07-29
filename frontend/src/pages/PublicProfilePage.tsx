@@ -465,6 +465,13 @@ export default function PublicProfilePage() {
                 </Box>
             )}
 
+            {/* === PROFIL panel - owner-only. This is what the desktop
+                  sidebar pencil switches the main column to, and what
+                  mobile's "Profil" tab shows automatically. === */}
+            {isOwner && profileTab === "profil" && (
+                <ProfileDetailsSection onSaved={refreshProfile} />
+            )}
+
             {/* === KARIJERA card - always above the Turniri tab. Visible to
                   everyone, owner or visitor. Hidden until career fetch
                   resolves and the user has actually played anything. === */}
@@ -738,13 +745,15 @@ export default function PublicProfilePage() {
                             gap="0.5"
                         >
                             {/* Identity block - the user's own profile card is
-                                the FIRST thing in the menu. Edit opens inline
-                                fields right here (no modal). */}
+                                the FIRST thing in the menu. The pencil switches
+                                the main content column to the "profil" panel
+                                instead of expanding inline here. */}
                             <ProfileHeader
                                 profile={profile}
                                 isOwner={isOwner}
                                 onProfileChanged={refreshProfile}
                                 variant="sidebar"
+                                onEditClick={() => setProfileTab("profil")}
                             />
                             <Box
                                 borderTopWidth="1px"
@@ -819,6 +828,7 @@ function ProfileHeader({
     isOwner,
     onProfileChanged,
     variant = "card",
+    onEditClick,
 }: {
     profile: PublicProfile
     isOwner: boolean
@@ -826,8 +836,11 @@ function ProfileHeader({
     /** "card" = standalone card (mobile body / visitor); "sidebar" = compact
      *  block at the top of the owner's desktop sidebar menu. */
     variant?: "card" | "sidebar"
+    /** Sidebar-only: the pencil doesn't edit inline here anymore - it hands
+     *  off to the parent, which switches the main content column to the
+     *  "profil" panel (ProfileDetailsSection). */
+    onEditClick?: () => void
 }) {
-    const [editOpen, setEditOpen] = useState(false)
     const [uploading, setUploading] = useState(false)
     const fileInputRef = useRef<HTMLInputElement | null>(null)
     // For the "blurred phone → click to log in" affordance below.
@@ -968,19 +981,6 @@ function ProfileHeader({
         </Button>
     )
 
-    // Inline edit form - replaces the old modal. Rendered in place, inside
-    // whichever shell (sidebar / card) the header is sitting in.
-    const editFormEl = isOwner && editOpen && (
-        <EditProfileForm
-            compact={variant === "sidebar"}
-            onCancel={() => setEditOpen(false)}
-            onSaved={async () => {
-                setEditOpen(false)
-                await onProfileChanged()
-            }}
-        />
-    )
-
     const phoneEl = profile.phone ? (
                         <chakra.a
                             href={`tel:${(profile.phoneCountry ?? "")}${profile.phone}`.replace(/\s+/g, "")}
@@ -1064,7 +1064,7 @@ function ProfileHeader({
                                 aria-label="Uredi profil"
                                 size="xs"
                                 variant="ghost"
-                                onClick={() => setEditOpen((v) => !v)}
+                                onClick={onEditClick}
                                 title="Uredi profil"
                             >
                                 <FiEdit2 />
@@ -1073,15 +1073,14 @@ function ProfileHeader({
                     </HStack>
                 </HStack>
                 {phoneEl}
-                {/* Remove-avatar only while editing - keeps the resting
-                    sidebar clean of destructive actions. */}
-                {editOpen && removeAvatarEl}
-                {editFormEl}
+                {removeAvatarEl}
             </VStack>
         )
     }
 
-    // ── Card variant: mobile body (owner) + any visitor view. ──
+    // ── Card variant: mobile body (owner) + any visitor view. Editing
+    //    (owner) doesn't happen here - it's the ProfileDetailsSection panel
+    //    rendered right below, automatically, on the "Profil" tab. ──
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "3", md: "5" }}>
@@ -1089,37 +1088,121 @@ function ProfileHeader({
                     <HStack gap={{ base: "2", md: "3" }} align="start">
                         {avatarEl}
                         <VStack align="stretch" gap="0.5" flex="1" minW="0">
-                            <HStack gap="1" align="center" minW="0">
-                                <Heading
-                                    size={{ base: "sm", md: "md" }}
-                                    lineHeight="short"
-                                    lineClamp={2}
-                                    flex="1"
-                                    minW="0"
-                                >
-                                    {profile.displayName ?? "Bezimeni igrač"}
-                                </Heading>
-                                {isOwner && (
-                                    <IconButton
-                                        aria-label="Uredi profil"
-                                        size="xs"
-                                        variant="ghost"
-                                        onClick={() => setEditOpen((v) => !v)}
-                                        title="Uredi profil"
-                                    >
-                                        <FiEdit2 />
-                                    </IconButton>
-                                )}
-                            </HStack>
+                            <Heading
+                                size={{ base: "sm", md: "md" }}
+                                lineHeight="short"
+                                lineClamp={2}
+                            >
+                                {profile.displayName ?? "Bezimeni igrač"}
+                            </Heading>
                             {removeAvatarEl}
                         </VStack>
                     </HStack>
 
                     {phoneEl}
-                    {editFormEl}
                 </VStack>
             </Card.Body>
         </Card.Root>
+    )
+}
+
+/**
+ * Owner-only "Profil" panel - the main-content destination the desktop
+ * sidebar pencil switches to, and what mobile's "Profil" tab shows
+ * automatically. Defaults to a read-only summary of the account data with
+ * an edit pencil that swaps in the actual EditProfileForm.
+ */
+function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | void }) {
+    const [editing, setEditing] = useState(false)
+    const [loading, setLoading] = useState(true)
+    const [data, setData] = useState<{
+        firstName: string
+        lastName: string
+        username: string
+        phoneCountry: string | null
+        phone: string | null
+    } | null>(null)
+
+    async function load() {
+        setLoading(true)
+        try {
+            const p = await getProfile()
+            setData({
+                firstName: p.firstName ?? "",
+                lastName: p.lastName ?? "",
+                username: p.slug ?? "",
+                phoneCountry: p.phoneCountry ?? null,
+                phone: p.phone ?? null,
+            })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    useEffect(() => { load() }, [])
+
+    if (editing) {
+        return (
+            <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+                <Card.Body p={{ base: "4", md: "5" }}>
+                    <EditProfileForm
+                        bordered={false}
+                        onCancel={() => setEditing(false)}
+                        onSaved={async () => {
+                            setEditing(false)
+                            await load()
+                            await onSaved()
+                        }}
+                    />
+                </Card.Body>
+            </Card.Root>
+        )
+    }
+
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "4", md: "5" }}>
+                <VStack align="stretch" gap="3">
+                    <HStack justify="space-between">
+                        <Heading size="md">Moji podaci</Heading>
+                        <IconButton
+                            aria-label="Uredi profil"
+                            title="Uredi profil"
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setEditing(true)}
+                        >
+                            <FiEdit2 />
+                        </IconButton>
+                    </HStack>
+                    {loading || !data ? (
+                        <VStack align="stretch" gap="2">
+                            <Skeleton h="6" />
+                            <Skeleton h="6" />
+                            <Skeleton h="6" />
+                        </VStack>
+                    ) : (
+                        <VStack align="stretch" gap="2.5">
+                            <DetailRow label="Ime i prezime" value={`${data.firstName} ${data.lastName}`.trim() || "-"} />
+                            <DetailRow label="Korisničko ime" value={data.username || "-"} />
+                            <DetailRow
+                                label="Broj telefona"
+                                value={data.phone ? `${data.phoneCountry ? data.phoneCountry + " " : ""}${data.phone}` : "Nije upisan"}
+                            />
+                        </VStack>
+                    )}
+                </VStack>
+            </Card.Body>
+        </Card.Root>
+    )
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+    return (
+        <HStack justify="space-between" gap="3" fontSize="sm">
+            <Text color="fg.muted">{label}</Text>
+            <Text fontWeight={600} textAlign="right">{value}</Text>
+        </HStack>
     )
 }
 
@@ -1159,10 +1242,14 @@ function slugify(s: string): string {
  */
 function EditProfileForm({
     compact = false,
+    bordered = true,
     onCancel,
     onSaved,
 }: {
     compact?: boolean
+    /** false when embedded standalone in its own Card (ProfileDetailsSection) -
+     *  the separator border only makes sense when sitting under another block. */
+    bordered?: boolean
     onCancel: () => void
     onSaved: () => Promise<void> | void
 }) {
@@ -1286,10 +1373,10 @@ function EditProfileForm({
 
     return (
         <Box
-            borderTopWidth="1px"
+            borderTopWidth={bordered ? "1px" : "0"}
             borderColor="border.emphasized"
-            pt="3"
-            mt="1"
+            pt={bordered ? "3" : "0"}
+            mt={bordered ? "1" : "0"}
         >
             <form onSubmit={onSubmit}>
                 <VStack align="stretch" gap="3">
