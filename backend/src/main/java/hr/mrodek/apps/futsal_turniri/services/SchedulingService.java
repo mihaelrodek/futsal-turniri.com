@@ -503,7 +503,7 @@ public class SchedulingService {
      * non-negative {@code beforeOrderPos} and {@code minutes} in 1..24*60.
      * A null/empty list is fine (no pauses). 400 on any violation.
      */
-    private static void validateBreaks(List<SchedulePlanRequest.Break> breaks) {
+    private void validateBreaks(List<SchedulePlanRequest.Break> breaks) {
         if (breaks == null) return;
         for (SchedulePlanRequest.Break b : breaks) {
             if (b == null) continue;

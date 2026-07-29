@@ -1143,10 +1143,10 @@ public class TournamentController {
                     if (email != null && !email.isBlank()) {
                         String url = emailService.baseUrl() + "/turniri/"
                                 + (t.getSlug() != null ? t.getSlug() : t.getUuid());
-                        String body = MailTemplates.render("tournament-subscribed",
+                        String mailBody = MailTemplates.render("tournament-subscribed",
                                 Map.of("body", messages.t("mail.tournament.subscribed.body", EmailService.escapeHtml(t.getName()))));
                         String html = emailService.shell(
-                                messages.t("mail.tournament.subscribed.heading"), body, url,
+                                messages.t("mail.tournament.subscribed.heading"), mailBody, url,
                                 messages.t("mail.tournament.subscribed.cta"));
                         emailService.sendHtml(email, messages.t("mail.tournament.subscribed.subject", t.getName()), html);
                     }
