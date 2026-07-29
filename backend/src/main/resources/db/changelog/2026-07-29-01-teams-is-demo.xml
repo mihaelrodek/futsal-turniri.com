@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Marks teams seeded for showcase/demo tournaments, or otherwise
+        flagged by an admin as a test entry - mirrors player_is_demo.xml.
+        Demo teams are excluded from the global team-name autocomplete /
+        cross-tournament search so they are never offered while adding a
+        real team, and the flag makes them trivially bulk-deletable later:
+            DELETE FROM teams WHERE is_demo;
+    -->
+    <changeSet id="2026-07-29-01-teams-is-demo" author="mrodek">
+        <addColumn tableName="teams">
+            <column name="is_demo" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

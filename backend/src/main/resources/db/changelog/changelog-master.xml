@@ -69,4 +69,6 @@
     <include file="db/changelog/match_recording_request_goals.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_recording_requests_anonymous.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/match_recording_requests_payment_ref.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-29-01-teams-is-demo.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-29-02-team-default-kits.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

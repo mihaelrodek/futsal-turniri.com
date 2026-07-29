@@ -361,6 +361,8 @@ export const hr = {
         bulkImportSuccessDesc: (n: number) => `Dodano ${n} igrača.`,
         loadRosterError: "Neuspješno učitavanje sastava.",
         done: "Gotovo",
+        defaultKitsAppliedTitle: "Boje dresa učitane",
+        defaultKitsAppliedDesc: "Ova ekipa je već imala spremljene boje - automatski su preuzete.",
     },
 
     matchLive: {

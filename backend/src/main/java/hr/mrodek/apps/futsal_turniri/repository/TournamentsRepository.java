@@ -115,6 +115,26 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
         return out;
     }
 
+    /**
+     * Merge support (admin duplicate-name merge): the podium fields
+     * ({@code winnerName}/{@code secondPlaceName}/{@code thirdPlaceName})
+     * are denormalized team-name snapshots on FINISHED tournaments (see
+     * {@code teamMedalCounts} above, and {@code TeamsSection.tsx}'s podium
+     * card matching) - they must be repointed to the canonical spelling too,
+     * or the all-time medal table and the podium UI would silently split a
+     * merged team's history across the old and new names. Case-sensitive
+     * exact match against the raw variants the caller collected for the
+     * duplicate group. Returns the total number of column values updated.
+     */
+    public int renamePodiumNames(java.util.Collection<String> names, String canonicalName) {
+        if (names == null || names.isEmpty()) return 0;
+        int n = 0;
+        n += update("winnerName = ?1 where winnerName in ?2", canonicalName, names);
+        n += update("secondPlaceName = ?1 where secondPlaceName in ?2", canonicalName, names);
+        n += update("thirdPlaceName = ?1 where thirdPlaceName in ?2", canonicalName, names);
+        return n;
+    }
+
     public Optional<Tournaments> findByUuid(UUID uuid) {
         return find("uuid", uuid).firstResultOptional();
     }

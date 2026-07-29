@@ -32,7 +32,7 @@ import { FaTrophy } from "react-icons/fa"
 
 import type { TournamentDetails } from "../types/tournaments"
 import type { TeamShort } from "../types/teams"
-import { setTeamJerseyColor, setTeamShortsColor, type TeamKit } from "../api/tournaments"
+import { fetchTeamDefaultKits, setTeamJerseyColor, setTeamShortsColor, type TeamKit } from "../api/tournaments"
 import { KitSwatch } from "../components/jersey"
 import TeamNameAutocomplete from "../components/TeamNameAutocomplete"
 import { queryClient } from "../queryClient"
@@ -1113,6 +1113,28 @@ function RosterPanel({
         }
     }
 
+    // Picking an existing team NAME from the cross-tournament database means
+    // this is very likely the same real-world club - so pre-fill its most
+    // recently saved kit (jersey + shorts) automatically. The organiser can
+    // still change either colour afterwards via the normal picker. Silent
+    // no-op when the identity has never had a kit saved.
+    async function applyDefaultKitForPickedName(name: string) {
+        try {
+            const kits = await fetchTeamDefaultKits(name)
+            const kit = kits[0]
+            if (!kit) return
+            let updated = team
+            if (kit.jersey) updated = await setTeamJerseyColor(uuid, team.id, kit.jersey, { silent: true })
+            if (kit.shorts) updated = await setTeamShortsColor(uuid, team.id, kit.shorts, { silent: true })
+            if (kit.jersey || kit.shorts) {
+                onTeamUpdated(updated)
+                showSuccess(t.teams.defaultKitsAppliedTitle, t.teams.defaultKitsAppliedDesc)
+            }
+        } catch {
+            /* best-effort pre-fill - failures stay silent */
+        }
+    }
+
     async function removePlayer(p: PlayerDto) {
         if (!confirm(t.teams.confirmRemovePlayer(p.name))) return
         try {
@@ -1167,6 +1189,7 @@ function RosterPanel({
                                     onChange={onRenameTeam}
                                     onBlur={onCommitRename}
                                     onCommit={onCommitRename}
+                                    onPick={applyDefaultKitForPickedName}
                                     placeholder={t.autocomplete.teamNamePlaceholder}
                                     fontWeight="semibold"
                                 />

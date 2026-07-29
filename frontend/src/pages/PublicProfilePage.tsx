@@ -7,6 +7,7 @@ import {
     chakra,
     Dialog,
     Field,
+    Flex,
     Heading,
     HStack,
     IconButton,
@@ -27,13 +28,23 @@ import {
     FiChevronDown,
     FiChevronRight,
     FiEdit2,
+    FiFolder,
+    FiGrid,
+    FiInbox,
+    FiList,
     FiMapPin,
     FiMoon,
     FiPhone,
+    FiRadio,
+    FiSettings,
     FiShare2,
+    FiShield,
     FiSun,
     FiTrash2,
+    FiUsers,
+    FiVideo,
 } from "react-icons/fi"
+import { PillTabBar } from "../ui/pitch"
 import { useColorMode } from "../color-mode"
 import {
     getCareerStats,
@@ -53,6 +64,7 @@ import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
 import SpectoConnectionCard from "../components/SpectoConnectionCard"
 import AdminPlayersListTab from "../components/AdminPlayersListTab"
+import AdminTeamDatabaseTab from "../components/AdminTeamDatabaseTab"
 import MyRecordingsTab from "../components/MyRecordingsTab"
 import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
 import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
@@ -97,6 +109,77 @@ function teamKey(name: string): string {
  *  snimki) are untouched. */
 const RECORDING_REQUEST_ENABLED = true
 
+type ProfileTabKey =
+    | "turniri"
+    | "postavke"
+    | "moje-snimke"
+    | "dashboard"
+    | "popis-igraca"
+    | "baza-ekipa"
+    | "live-stream"
+    | "zahtjevi-snimke"
+    | "baza-snimki"
+
+/** Icon per tab, shared between the desktop sidebar and (implicitly, via
+ *  the same lookup) anywhere else a tab needs one. */
+const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
+    turniri: <FiList size={15} />,
+    postavke: <FiSettings size={15} />,
+    "moje-snimke": <FiVideo size={15} />,
+    dashboard: <FiGrid size={15} />,
+    "popis-igraca": <FiUsers size={15} />,
+    "baza-ekipa": <FiShield size={15} />,
+    "live-stream": <FiRadio size={15} />,
+    "zahtjevi-snimke": <FiInbox size={15} />,
+    "baza-snimki": <FiFolder size={15} />,
+}
+
+/** One desktop-sidebar navigation row - same shape/spacing as
+ *  TournamentDetailsPage's SidebarNavItem. `palette` switches the active
+ *  fill from pitch-green (user-facing tabs) to purple (admin-only tabs),
+ *  mirroring the purple accent the admin tab buttons already used. */
+function ProfileNavItem({
+    icon,
+    label,
+    active,
+    onClick,
+    palette = "pitch",
+}: {
+    icon?: React.ReactNode
+    label: string
+    active: boolean
+    onClick: () => void
+    palette?: "pitch" | "purple"
+}) {
+    const activeBg = palette === "purple" ? "purple.solid" : "pitch.500"
+    const activeColor = palette === "purple" ? "purple.contrast" : "white"
+    return (
+        <chakra.button
+            type="button"
+            onClick={onClick}
+            display="flex"
+            alignItems="center"
+            gap="2.5"
+            w="full"
+            textAlign="left"
+            pl="3"
+            pr="3"
+            py="2"
+            rounded="lg"
+            fontSize="14px"
+            fontWeight={active ? 700 : 600}
+            bg={active ? activeBg : "transparent"}
+            color={active ? activeColor : "fg.muted"}
+            cursor="pointer"
+            transition="background 120ms"
+            _hover={{ bg: active ? activeBg : "bg.subtle" }}
+        >
+            {icon}
+            {label}
+        </chakra.button>
+    )
+}
+
 export default function PublicProfilePage() {
     const { slug } = useParams<{ slug: string }>()
     const { user, mySlug, isAdmin, loading: authLoading } = useAuth()
@@ -113,7 +196,7 @@ export default function PublicProfilePage() {
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
     // see Turniri only.
-    const [profileTab, setProfileTab] = useState<"turniri" | "postavke" | "moje-snimke" | "dashboard" | "popis-igraca" | "live-stream" | "zahtjevi-snimke" | "baza-snimki">("turniri")
+    const [profileTab, setProfileTab] = useState<ProfileTabKey>("turniri")
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -308,121 +391,51 @@ export default function PublicProfilePage() {
         } catch { /* ignore */ }
     }
 
-    return (
-        <VStack
-            align="stretch"
-            gap="4"
-            maxW="900px"
-            mx="auto"
-            w="full"
-        >
+    // Sidebar / mobile tab navigation config - user-facing tabs first,
+    // admin-only tabs grouped separately (rendered below a divider on
+    // desktop, in their own labelled pill row on mobile). Only ever shown
+    // to the profile owner; a visitor has nothing to switch between.
+    const userTabs: Array<{ key: ProfileTabKey; label: string }> = [
+        { key: "turniri", label: "Turniri" },
+        { key: "postavke", label: "Postavke" },
+        // Recording requests of THIS user (any signed-in account) - request
+        // status, cancel, and the download link once a recording is delivered.
+        ...(RECORDING_REQUEST_ENABLED
+            ? [{ key: "moje-snimke" as ProfileTabKey, label: "Moje snimke" }]
+            : []),
+    ]
+    // Admin-only tabs, gated on the Firebase role=admin custom claim.
+    const adminTabs: Array<{ key: ProfileTabKey; label: string }> = isAdmin
+        ? [
+            { key: "dashboard", label: "Dashboard" },
+            { key: "popis-igraca", label: "Popis igrača" },
+            { key: "baza-ekipa", label: "Baza ekipa" },
+            { key: "live-stream", label: "Live stream" },
+            { key: "zahtjevi-snimke", label: "Zahtjevi za snimke" },
+            { key: "baza-snimki", label: "Baza snimki" },
+        ]
+        : []
+
+    const userTabLabels = userTabs.map((tab) => tab.label)
+    const activeUserLabel = userTabs.find((tab) => tab.key === profileTab)?.label ?? ""
+    const adminTabLabels = adminTabs.map((tab) => tab.label)
+    const activeAdminLabel = adminTabs.find((tab) => tab.key === profileTab)?.label ?? ""
+
+    /** Everything but the shell: identity card + whichever tab is active.
+     *  Shared between the visitor (no nav) and owner (sidebar/pill nav)
+     *  render paths so the tab content itself never has to know which
+     *  shell it's sitting in. */
+    const bodyContent = (
+        <>
             {/* Profile header is always visible - it's the identity card.
                 Avatar, name, and (for the owner) inline edit affordances
-                sit above the tab strip so they don't get hidden when the
+                sit above the tab content so they don't get hidden when the
                 user is on a non-default tab. */}
             <ProfileHeader
                 profile={profile}
                 isOwner={isOwner}
                 onProfileChanged={refreshProfile}
             />
-
-            {/* Tabs. Postavke + Računi are owner-only - visitors viewing
-                someone else's profile just see Turniri (no tab strip at all
-                when there's only one option). */}
-            {isOwner && (
-                <HStack gap="2" wrap="wrap">
-                    <Button
-                        size="sm"
-                        variant={profileTab === "turniri" ? "solid" : "ghost"}
-                        colorPalette="pitch"
-                        onClick={() => setProfileTab("turniri")}
-                    >
-                        Turniri
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant={profileTab === "postavke" ? "solid" : "ghost"}
-                        onClick={() => setProfileTab("postavke")}
-                    >
-                        Postavke
-                    </Button>
-                    {/* Recording requests of THIS user (any signed-in account) -
-                        request status, cancel, and the download link once a
-                        recording is delivered. */}
-                    {RECORDING_REQUEST_ENABLED && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "moje-snimke" ? "solid" : "ghost"}
-                            onClick={() => setProfileTab("moje-snimke")}
-                        >
-                            Moje snimke
-                        </Button>
-                    )}
-                    {/* Admin-only Dashboard tab - for retroactively attaching
-                        legacy tournament teams to registered users. Gated on
-                        the Firebase role=admin custom claim; non-admins never
-                        see the button. */}
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "dashboard" ? "solid" : "ghost"}
-                            colorPalette="purple"
-                            onClick={() => setProfileTab("dashboard")}
-                        >
-                            Dashboard
-                        </Button>
-                    )}
-                    {/* Admin-only Popis igrača tab - full list of all
-                        registered users with a one-click jump to their
-                        profile page. Same admin-claim gate as Dashboard. */}
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "popis-igraca" ? "solid" : "ghost"}
-                            colorPalette="purple"
-                            onClick={() => setProfileTab("popis-igraca")}
-                        >
-                            Popis igrača
-                        </Button>
-                    )}
-                    {/* Admin-only Live stream tab - controls the site-wide
-                        home-page stream banner (streaming / paused / ads / off). */}
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "live-stream" ? "solid" : "ghost"}
-                            colorPalette="purple"
-                            onClick={() => setProfileTab("live-stream")}
-                        >
-                            Live stream
-                        </Button>
-                    )}
-                    {/* Admin-only recording-request queue - review, approve,
-                        mark paid and deliver the requested match recordings. */}
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "zahtjevi-snimke" ? "solid" : "ghost"}
-                            colorPalette="purple"
-                            onClick={() => setProfileTab("zahtjevi-snimke")}
-                        >
-                            Zahtjevi za snimke
-                        </Button>
-                    )}
-                    {/* Admin-only recording library - upload once per match,
-                        link into requests from the tab above. */}
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant={profileTab === "baza-snimki" ? "solid" : "ghost"}
-                            colorPalette="purple"
-                            onClick={() => setProfileTab("baza-snimki")}
-                        >
-                            Baza snimki
-                        </Button>
-                    )}
-                </HStack>
-            )}
 
             {/* === KARIJERA card - always above the Turniri tab. Visible to
                   everyone, owner or visitor. Hidden until career fetch
@@ -562,6 +575,11 @@ export default function PublicProfilePage() {
                 <AdminPlayersListTab />
             )}
 
+            {/* === BAZA EKIPA tab - admin-only, on own profile === */}
+            {isOwner && isAdmin && profileTab === "baza-ekipa" && (
+                <AdminTeamDatabaseTab />
+            )}
+
             {/* === LIVE STREAM tab - admin-only, on own profile === */}
             {/* "Live stream" tab now hosts the SpectoStream connection card
                 (attach an EXISTING platform stream to a tournament + preview
@@ -580,7 +598,201 @@ export default function PublicProfilePage() {
             {isOwner && isAdmin && profileTab === "baza-snimki" && (
                 <AdminRecordingsLibraryTab />
             )}
-        </VStack>
+        </>
+    )
+
+    // Visitor viewing someone else's profile: no nav at all (there's only
+    // ever the Turniri card to show them) - keep the original narrow,
+    // centered single-column layout.
+    if (!isOwner) {
+        return (
+            <VStack align="stretch" gap="4" maxW="900px" mx="auto" w="full">
+                {bodyContent}
+            </VStack>
+        )
+    }
+
+    // Owner shell - mirrors TournamentDetailsPage's structure exactly:
+    // a compact sticky mobile bar (base → lg) carrying a mini identity row
+    // + pill tab bar(s), and a fixed left sidebar on desktop (lg+) that
+    // never moves with the page scroll.
+    return (
+        <>
+            {/* ── Mobile / tablet shell (base → lg): ONE compact sticky bar -
+                mini avatar/name row + pill tab bar(s). Sticky lives on THIS
+                box (parent is the page-tall route outlet), same trap as
+                TournamentDetailsPage: a sticky child one level down would
+                unpin the moment this short box scrolled past. Hidden on lg+,
+                where the sidebar carries all of it. ── */}
+            <Box
+                display={{ base: "block", lg: "none" }}
+                position="sticky"
+                top={{ base: "52px", md: "56px" }}
+                zIndex={100}
+                bg="bg.canvas"
+                mt={{ base: "-20px", md: "-28px" }}
+                pt={{ base: "28px", md: "36px" }}
+                pb="2"
+            >
+                <Flex align="center" gap="2" mb="2">
+                    <Box
+                        w="22px"
+                        h="22px"
+                        rounded="full"
+                        overflow="hidden"
+                        bg="blue.subtle"
+                        color="blue.fg"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        fontWeight="bold"
+                        fontSize="9px"
+                        flexShrink={0}
+                    >
+                        {profile.avatarUrl ? (
+                            <Image src={profile.avatarUrl} alt="" w="100%" h="100%" objectFit="cover" />
+                        ) : (
+                            initialsOf(profile.displayName)
+                        )}
+                    </Box>
+                    <Text fontSize="13px" fontWeight={700} lineHeight="short" truncate>
+                        {profile.displayName ?? "Bezimeni igrač"}
+                    </Text>
+                </Flex>
+
+                <PillTabBar
+                    tabs={userTabLabels}
+                    active={activeUserLabel}
+                    onChange={(label) => {
+                        const next = userTabs.find((tab) => tab.label === label)
+                        if (next) setProfileTab(next.key)
+                    }}
+                    padding="4px"
+                    mb={adminTabs.length > 0 ? "2" : "0"}
+                />
+
+                {adminTabs.length > 0 && (
+                    <>
+                        <Text
+                            fontFamily="mono"
+                            fontSize="10px"
+                            fontWeight={800}
+                            letterSpacing="0.12em"
+                            color="fg.muted"
+                            px="1"
+                            mb="1"
+                        >
+                            ADMINISTRACIJA
+                        </Text>
+                        <PillTabBar
+                            tabs={adminTabLabels}
+                            active={activeAdminLabel}
+                            onChange={(label) => {
+                                const next = adminTabs.find((tab) => tab.label === label)
+                                if (next) setProfileTab(next.key)
+                            }}
+                            size="sm"
+                            padding="4px"
+                            mb="0"
+                        />
+                    </>
+                )}
+            </Box>
+
+            {/* ── Desktop shell (lg+): FIXED sidebar left, content right - same
+                construction as TournamentDetailsPage: a flow placeholder Box
+                reserves the 230px column, the actual nav Flex inside it is
+                position:FIXED (bound only by the viewport, so it can never
+                move with page scroll), and only ITS OWN content scrolls once
+                taller than the space between the navbar and viewport bottom. ── */}
+            <Flex align="flex-start" gap={{ base: "0", lg: "5" }}>
+                <Box w="230px" flexShrink={0} display={{ base: "none", lg: "block" }}>
+                    <Flex
+                        direction="column"
+                        w="230px"
+                        position="fixed"
+                        top="85px"
+                        bottom="12px"
+                        overflowY="auto"
+                        css={{
+                            scrollbarWidth: "thin",
+                            scrollbarColor: "var(--chakra-colors-border-emphasized) transparent",
+                            "&::-webkit-scrollbar": { width: "6px" },
+                            "&::-webkit-scrollbar-track": { background: "transparent" },
+                            "&::-webkit-scrollbar-thumb": {
+                                background: "var(--chakra-colors-border-emphasized)",
+                                borderRadius: "999px",
+                            },
+                            overscrollBehavior: "contain",
+                        }}
+                        gap="2.5"
+                        pb="1"
+                    >
+                        <Flex
+                            direction="column"
+                            flexShrink={0}
+                            bg="bg.panel"
+                            borderWidth="1px"
+                            borderColor="border.emphasized"
+                            rounded="2xl"
+                            p="3"
+                            gap="0.5"
+                        >
+                            {userTabs.map((tab) => (
+                                <ProfileNavItem
+                                    key={tab.key}
+                                    icon={PROFILE_TAB_ICONS[tab.key]}
+                                    label={tab.label}
+                                    active={profileTab === tab.key}
+                                    onClick={() => setProfileTab(tab.key)}
+                                />
+                            ))}
+
+                            {/* Admin group - visually separated from the
+                                user-facing tabs above by a divider + small
+                                caption, and by the purple (vs. pitch-green)
+                                active fill on each row. */}
+                            {adminTabs.length > 0 && (
+                                <>
+                                    <Box
+                                        borderTopWidth="1px"
+                                        borderColor="border.emphasized"
+                                        mt="2"
+                                        pt="2.5"
+                                        pb="0.5"
+                                        px="1.5"
+                                    >
+                                        <Text
+                                            fontFamily="mono"
+                                            fontSize="10px"
+                                            fontWeight={800}
+                                            letterSpacing="0.12em"
+                                            color="fg.muted"
+                                        >
+                                            ADMINISTRACIJA
+                                        </Text>
+                                    </Box>
+                                    {adminTabs.map((tab) => (
+                                        <ProfileNavItem
+                                            key={tab.key}
+                                            icon={PROFILE_TAB_ICONS[tab.key]}
+                                            label={tab.label}
+                                            active={profileTab === tab.key}
+                                            onClick={() => setProfileTab(tab.key)}
+                                            palette="purple"
+                                        />
+                                    ))}
+                                </>
+                            )}
+                        </Flex>
+                    </Flex>
+                </Box>
+
+                <VStack align="stretch" gap="4" flex="1" minW="0">
+                    {bodyContent}
+                </VStack>
+            </Flex>
+        </>
     )
 }
 
@@ -651,22 +863,25 @@ function ProfileHeader({
 
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "5", md: "5" }}>
-                <VStack align="stretch" gap="3">
-                    <HStack gap="3" align="start">
+            <Card.Body p={{ base: "3", md: "5" }}>
+                <VStack align="stretch" gap={{ base: "2", md: "3" }}>
+                    <HStack gap={{ base: "2", md: "3" }} align="start">
                         {/* Avatar - image when uploaded, initials otherwise.
                             Wrapped in AvatarPreview so hovering / tapping
                             the circle opens a full-screen lightbox of the
                             picture. The wrapper is a no-op when there's no
-                            avatarUrl, so initials stay un-clickable. */}
+                            avatarUrl, so initials stay un-clickable. Smaller
+                            on mobile - this card sits above the sticky tab
+                            bar on every screen, so it needs to be quick to
+                            scroll past. */}
                         <Box position="relative" flexShrink={0}>
                             <AvatarPreview
                                 src={profile.avatarUrl}
                                 alt={profile.displayName ?? "Profilna slika"}
                             >
                                 <Box
-                                    w="48px"
-                                    h="48px"
+                                    w={{ base: "40px", md: "48px" }}
+                                    h={{ base: "40px", md: "48px" }}
                                     rounded="full"
                                     overflow="hidden"
                                     bg="blue.subtle"
@@ -675,7 +890,7 @@ function ProfileHeader({
                                     alignItems="center"
                                     justifyContent="center"
                                     fontWeight="bold"
-                                    fontSize="md"
+                                    fontSize={{ base: "sm", md: "md" }}
                                 >
                                     {profile.avatarUrl ? (
                                         <Image
@@ -719,7 +934,13 @@ function ProfileHeader({
                         </Box>
                         <VStack align="stretch" gap="0.5" flex="1" minW="0">
                             <HStack gap="1" align="center" minW="0">
-                                <Heading size="md" lineHeight="short" lineClamp={2} flex="1" minW="0">
+                                <Heading
+                                    size={{ base: "sm", md: "md" }}
+                                    lineHeight="short"
+                                    lineClamp={2}
+                                    flex="1"
+                                    minW="0"
+                                >
                                     {profile.displayName ?? "Bezimeni igrač"}
                                 </Heading>
                                 {isOwner && (
@@ -734,6 +955,10 @@ function ProfileHeader({
                                     </IconButton>
                                 )}
                             </HStack>
+                            {/* Icon-only on mobile - the full label pushes the
+                                header taller than it needs to be on a screen
+                                where this is a rarely-tapped destructive
+                                action; the tooltip/aria-label still carries it. */}
                             {isOwner && profile.avatarUrl && (
                                 <Button
                                     size="2xs"
@@ -742,8 +967,13 @@ function ProfileHeader({
                                     onClick={onRemoveAvatar}
                                     loading={uploading}
                                     alignSelf="flex-start"
+                                    aria-label="Ukloni profilnu sliku"
+                                    title="Ukloni profilnu sliku"
                                 >
-                                    <FiTrash2 /> Ukloni profilnu sliku
+                                    <FiTrash2 />
+                                    <chakra.span display={{ base: "none", md: "inline" }}>
+                                        Ukloni profilnu sliku
+                                    </chakra.span>
                                 </Button>
                             )}
                         </VStack>

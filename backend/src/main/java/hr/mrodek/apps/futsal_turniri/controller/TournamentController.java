@@ -79,6 +79,7 @@ public class TournamentController {
     @Inject UserProfileRepository userProfileRepo;
     @Inject UserTeamPresetRepository userTeamPresetRepo;
     @Inject hr.mrodek.apps.futsal_turniri.repository.TournamentEditorRepository editorRepo;
+    @Inject hr.mrodek.apps.futsal_turniri.repository.TeamDefaultKitRepository teamDefaultKitRepo;
 
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
@@ -1339,6 +1340,10 @@ public class TournamentController {
                     .entity("JERSEY_COLOR_INVALID").build();
         }
         team.setJerseyColor(color == null ? null : color.toLowerCase(Locale.ROOT));
+        // Remember the team's current full kit as a default for this cross-
+        // tournament identity, so a later tournament can pre-fill it from the
+        // autocomplete. Never deletes a previously-saved different combo (1:N).
+        teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
         return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
     }
 
@@ -1365,6 +1370,8 @@ public class TournamentController {
                     .entity("SHORTS_COLOR_INVALID").build();
         }
         team.setShortsColor(color == null ? null : color.toLowerCase(Locale.ROOT));
+        // See setTeamJerseyColor - same "remember the full kit" upsert.
+        teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
         return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
     }
 

@@ -137,15 +137,62 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
      * substring, for the cross-tournament name autocomplete (mirrors
      * PlayersRepository.searchDistinctNames). Case-folded compare so
      * partial lowercase input still matches. Capped at {@code limit}.
+     * Demo/test teams (is_demo) are excluded - they must never be offered
+     * while adding a real team.
      */
     public List<String> searchDistinctNames(String q, int limit) {
         String like = "%" + q.trim().toLowerCase() + "%";
         return em.createQuery(
                         "select distinct p.name from Teams p " +
                         "where lower(p.name) like :like " +
+                        "and p.demo = false " +
                         "order by p.name asc", String.class)
                 .setParameter("like", like)
                 .setMaxResults(limit)
                 .getResultList();
+    }
+
+    /**
+     * Every distinct raw team name across all tournaments with its row count
+     * (how many per-tournament Teams rows use it), the number of distinct
+     * tournaments it appears in, and whether EVERY row sharing that exact
+     * name is currently flagged demo. Backs the admin "Baza ekipa" list and
+     * the duplicate-name finder - both need the full (non-filtered) name
+     * inventory, unlike {@link #searchDistinctNames} which is the public
+     * autocomplete.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object[]> findAllNameStats() {
+        return em.createQuery("""
+                        select p.name, count(p), count(distinct p.tournament.id),
+                               sum(case when p.demo then 1 else 0 end)
+                        from Teams p
+                        group by p.name
+                        order by p.name asc
+                        """)
+                .getResultList();
+    }
+
+    /**
+     * Bulk-toggle the demo flag for every Teams row with this EXACT name
+     * (trimmed, case-insensitive) - the admin action operates on the whole
+     * cross-tournament identity, not a single per-tournament row, since
+     * that's the unit "hide from the database" actually means to an
+     * organizer. Returns the number of rows updated.
+     */
+    public int setDemoByName(String name, boolean demo) {
+        if (name == null || name.isBlank()) return 0;
+        return update("demo = ?1 where lower(trim(name)) = ?2", demo, name.trim().toLowerCase());
+    }
+
+    /**
+     * Merge support (admin duplicate-name merge): rename every Teams row
+     * whose name is one of {@code names} (exact match, case-sensitive - the
+     * caller passes the precise raw variants observed in the duplicate
+     * group) to {@code canonicalName}. Returns the number of rows renamed.
+     */
+    public int renameTeams(java.util.Collection<String> names, String canonicalName) {
+        if (names == null || names.isEmpty()) return 0;
+        return update("name = ?1 where name in ?2", canonicalName, names);
     }
 }

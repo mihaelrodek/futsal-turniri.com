@@ -251,6 +251,22 @@ export async function fetchTournamentAccess(
 export type TeamKit = { jersey: string | null; shorts: string | null }
 
 /**
+ * Every kit colour combination ever saved for a team IDENTITY (matched by
+ * normalized name, across all tournaments), most-recently-used first. Used
+ * to pre-fill a returning team's kit right after its name is picked from
+ * the cross-tournament autocomplete (see TeamNameAutocomplete's `onPick`).
+ * Empty when this team has never had a kit colour saved under this name.
+ */
+export async function fetchTeamDefaultKits(name: string): Promise<TeamKit[]> {
+    if (!name.trim()) return []
+    const { data } = await http.get<TeamKit[]>(
+        `/teams/default-kits`,
+        { params: { name }, silent: true },
+    )
+    return data
+}
+
+/**
  * Kit colours per team ({@code teamId → {jersey, shorts}}) for a tournament, so
  * the live/timeline views can mark each side with its kit. Only teams with at
  * least one colour set are included. One request; silent (background).
@@ -273,11 +289,17 @@ export async function setTeamJerseyColor(
     tournamentUuid: string,
     teamId: number,
     color: string | null,
+    /** Pass `{ silent: true }` when the caller already shows its own summary
+     *  toast - e.g. the default-kit pre-fill applies both colours at once
+     *  and would otherwise stack three toasts for one user action. */
+    opts?: { silent?: boolean },
 ): Promise<TeamShort> {
     const { data } = await http.put<TeamShort>(
         `/tournaments/${tournamentUuid}/teams/${teamId}/jersey-color`,
         { color },
-        { successMessage: color ? "Boja dresa je spremljena." : "Boja dresa je uklonjena." } as any,
+        opts?.silent
+            ? { silent: true }
+            : { successMessage: color ? "Boja dresa je spremljena." : "Boja dresa je uklonjena." },
     )
     return data
 }
@@ -290,11 +312,15 @@ export async function setTeamShortsColor(
     tournamentUuid: string,
     teamId: number,
     color: string | null,
+    /** See {@link setTeamJerseyColor}'s `opts` doc. */
+    opts?: { silent?: boolean },
 ): Promise<TeamShort> {
     const { data } = await http.put<TeamShort>(
         `/tournaments/${tournamentUuid}/teams/${teamId}/shorts-color`,
         { color },
-        { successMessage: color ? "Boja hlača je spremljena." : "Boja hlača je uklonjena." } as any,
+        opts?.silent
+            ? { silent: true }
+            : { successMessage: color ? "Boja hlača je spremljena." : "Boja hlača je uklonjena." },
     )
     return data
 }

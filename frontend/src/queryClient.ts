@@ -60,4 +60,8 @@ export const qk = {
     myRecordingRequests: ["recordingRequests", "mine"] as const,
     adminRecordingRequests: (status?: string) =>
         ["recordingRequests", "admin", status ?? "all"] as const,
+    // Admin "Baza ekipa" tab - cross-tournament team identity list + the
+    // duplicate-name finder. Both are admin-only, low-traffic reads.
+    adminTeamIdentities: ["admin", "teamIdentities"] as const,
+    adminTeamDuplicates: ["admin", "teamDuplicates"] as const,
 }

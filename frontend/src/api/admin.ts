@@ -252,3 +252,81 @@ export async function adminExportTournament(uuid: string): Promise<unknown> {
     const { data } = await http.get<unknown>(`/admin/tournaments/${uuid}/export`)
     return data
 }
+
+/* ───────────────────── Team database (Baza ekipa) ─────────────────────
+   Cross-tournament team-identity management: the hidden/test flag and the
+   duplicate-name finder + merge tool. Team identity is name-based (no
+   shared id across a team's rows in different tournaments), so every
+   action here targets a NAME rather than a single row. Admin-only. */
+
+/** One distinct team name in the database with its usage stats. */
+export type AdminTeamIdentityDto = {
+    name: string
+    rowCount: number
+    tournamentsCount: number
+    /** True when every Teams row sharing this exact name is flagged demo/hidden. */
+    demo: boolean
+}
+
+/** Every distinct team name, alphabetical, with usage stats + demo flag. */
+export async function adminListTeamIdentities(): Promise<AdminTeamIdentityDto[]> {
+    const { data } = await http.get<AdminTeamIdentityDto[]>("/admin/team-database/teams")
+    return data
+}
+
+/** Bulk-toggle the demo/hidden flag for every Teams row with this exact name. */
+export async function adminSetTeamDemo(name: string, demo: boolean): Promise<{ updated: number }> {
+    const { data } = await http.put<{ updated: number }>(
+        "/admin/team-database/teams/demo",
+        { name, demo },
+        { successMessage: demo ? "Ekipa je sakrivena iz baze." : "Ekipa je vraćena u bazu." },
+    )
+    return data
+}
+
+/** One name variant inside a duplicate group. */
+export type TeamNameVariantDto = {
+    name: string
+    rowCount: number
+    tournamentsCount: number
+}
+
+/** A group of likely-duplicate team names. EXACT = same normalized form
+ *  (case/whitespace variants); SUGGESTED = near-equal (small edit distance),
+ *  e.g. a typo. */
+export type TeamDuplicateGroupDto = {
+    type: "EXACT" | "SUGGESTED"
+    variants: TeamNameVariantDto[]
+    suggestedCanonical: string
+}
+
+/** Scans every team name and groups likely duplicates for the merge tool. */
+export async function adminListTeamDuplicates(): Promise<TeamDuplicateGroupDto[]> {
+    const { data } = await http.get<TeamDuplicateGroupDto[]>("/admin/team-database/duplicates")
+    return data
+}
+
+export type TeamMergeResponse = {
+    teamsRenamed: number
+    podiumFieldsRenamed: number
+    presetsRenamed: number
+    defaultKitsRepointed: number
+}
+
+/**
+ * Renames every Teams row (plus every other denormalized team-name string -
+ * tournament podium snapshots, saved "par" presets, default kits) whose
+ * name is in `names` to `canonicalName`. Destructive/irreversible - the UI
+ * must confirm before calling this.
+ */
+export async function adminMergeTeams(
+    names: string[],
+    canonicalName: string,
+): Promise<TeamMergeResponse> {
+    const { data } = await http.post<TeamMergeResponse>(
+        "/admin/team-database/merge",
+        { names, canonicalName },
+        { successMessage: "Ekipe su spojene." },
+    )
+    return data
+}

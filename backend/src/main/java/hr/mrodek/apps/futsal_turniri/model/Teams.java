@@ -109,6 +109,20 @@ public class Teams {
     @Column(name = "co_submitted_by_uid", length = 64)
     private String coSubmittedByUid;
 
+    /**
+     * True for teams seeded as part of a showcase/demo tournament, or
+     * otherwise flagged by an admin as a test entry. Mirrors
+     * {@link Player#isDemo()}: demo teams are excluded from the global
+     * team-name autocomplete / cross-tournament search (they must never be
+     * offered while adding a real team) and the flag makes them easy to
+     * bulk-delete later: {@code DELETE FROM teams WHERE is_demo}. Toggled
+     * from the admin "Baza ekipa" tab, in bulk by exact team name (identity
+     * is name-based across tournaments - see {@link
+     * hr.mrodek.apps.futsal_turniri.repository.TeamsRepository}).
+     */
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo = false;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

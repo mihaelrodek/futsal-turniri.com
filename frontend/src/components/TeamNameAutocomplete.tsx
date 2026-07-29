@@ -20,6 +20,7 @@ export default function TeamNameAutocomplete({
     value,
     onChange,
     onCommit,
+    onPick,
     onBlur,
     onEnter,
     placeholder,
@@ -36,6 +37,11 @@ export default function TeamNameAutocomplete({
      *  Deferred to the next tick so the parent has re-rendered with the
      *  fresh value before it reads its own state. */
     onCommit?: () => void
+    /** Fired synchronously with the picked name whenever a suggestion from
+     *  the DATABASE is chosen (not on plain typing/blur/Enter) - lets the
+     *  caller reuse more than just the name, e.g. pre-filling that team's
+     *  saved default kit colours. */
+    onPick?: (name: string) => void
     /** Native blur - e.g. to flush a rename when the organiser tabs away
      *  without picking a suggestion. */
     onBlur?: () => void
@@ -113,6 +119,7 @@ export default function TeamNameAutocomplete({
         setSuggestions([])
         setOpen(false)
         setHighlight(-1)
+        onPick?.(name)
         if (onCommit) {
             // Defer to the next tick: `onChange` just scheduled a state
             // update in the parent, and `onCommit` (the parent's blur/commit

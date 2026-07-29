@@ -353,6 +353,8 @@ export const en: Dictionary = {
         bulkImportSuccessDesc: (n: number) => `Added ${n} players.`,
         loadRosterError: "Failed to load roster.",
         done: "Done",
+        defaultKitsAppliedTitle: "Kit colours loaded",
+        defaultKitsAppliedDesc: "This team already had saved colours - they were applied automatically.",
     },
 
     matchLive: {

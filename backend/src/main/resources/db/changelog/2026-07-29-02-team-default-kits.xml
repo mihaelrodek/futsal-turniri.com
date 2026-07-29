@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Default kits (jersey + shorts colour) remembered per cross-tournament
+        team IDENTITY - 1:N, keyed by the normalized team name (identity is
+        name-based, there's no shared Teams id across tournaments). Populated
+        automatically whenever an organizer sets a team's kit colour on the
+        Ekipe tab; read back to pre-fill the kit when that team name is
+        picked from the database autocomplete in a later tournament.
+    -->
+
+    <changeSet id="2026-07-29-02-team-default-kits-seq" author="mrodek">
+        <createSequence sequenceName="seq_team_default_kits_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-29-03-team-default-kits" author="mrodek">
+        <createTable tableName="team_default_kits">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="normalized_name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_name" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="jersey_color" type="varchar(9)"/>
+            <column name="shorts_color" type="varchar(9)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="team_default_kits" indexName="idx_team_default_kits_normalized_name">
+            <column name="normalized_name"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>
