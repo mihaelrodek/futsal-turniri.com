@@ -15,10 +15,14 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.OffsetDateTime;
 
 /**
- * A lead for the "custom camera package" pricing tier (/cjenik) - price is
- * on request, so this just captures the inquiry (name + contact + optional
- * tournament/message) for an admin to follow up manually. No lifecycle,
- * status, or payment - just a record + an admin email notification.
+ * A "zatraži ponudu" lead for the custom camera package (/cjenik) - price is
+ * on request, so this just captures the inquiry for an admin to follow up
+ * manually. Name, contact email + phone, tournament name and a description
+ * are all mandatory (see CameraInquiryController for validation) so an admin
+ * always has enough to act on. No lifecycle, status, or payment - just a
+ * record + an admin notification + a "received" confirmation to the
+ * requester. Submitting doesn't require an account, though the email may
+ * happen to belong to one.
  */
 @Entity
 @Table(name = "camera_package_inquiries")
@@ -34,16 +38,16 @@ public class CameraPackageInquiry {
     @Column(nullable = false, length = 150)
     private String name;
 
-    @Column(name = "contact_email", length = 255)
+    @Column(name = "contact_email", nullable = false, length = 255)
     private String contactEmail;
 
-    @Column(name = "contact_phone", length = 40)
+    @Column(name = "contact_phone", nullable = false, length = 40)
     private String contactPhone;
 
-    @Column(name = "tournament_name", length = 255)
+    @Column(name = "tournament_name", nullable = false, length = 255)
     private String tournamentName;
 
-    @Column(length = 2000)
+    @Column(nullable = false, length = 2000)
     private String message;
 
     @CreationTimestamp

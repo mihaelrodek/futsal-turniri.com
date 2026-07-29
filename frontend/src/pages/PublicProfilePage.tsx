@@ -28,6 +28,7 @@ import {
     FiChevronDown,
     FiChevronRight,
     FiEdit2,
+    FiFileText,
     FiFolder,
     FiGrid,
     FiInbox,
@@ -68,6 +69,7 @@ import AdminTeamDatabaseTab from "../components/AdminTeamDatabaseTab"
 import MyRecordingsTab from "../components/MyRecordingsTab"
 import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
 import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
+import AdminCameraInquiriesTab from "../components/AdminCameraInquiriesTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 
 /** Country dial codes shared with FindTeam / CreateTournament. */
@@ -119,6 +121,7 @@ type ProfileTabKey =
     | "live-stream"
     | "zahtjevi-snimke"
     | "baza-snimki"
+    | "zahtjevi-ponude"
 
 /** Icon per tab, shared between the desktop sidebar and (implicitly, via
  *  the same lookup) anywhere else a tab needs one. */
@@ -137,6 +140,7 @@ const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
     "live-stream": <FiRadio size={15} />,
     "zahtjevi-snimke": <FiInbox size={15} />,
     "baza-snimki": <FiFolder size={15} />,
+    "zahtjevi-ponude": <FiFileText size={15} />,
 }
 
 /** One desktop-sidebar navigation row - same shape/spacing as
@@ -420,6 +424,7 @@ export default function PublicProfilePage() {
             { key: "live-stream", label: "Live stream" },
             { key: "zahtjevi-snimke", label: "Zahtjevi za snimke" },
             { key: "baza-snimki", label: "Baza snimki" },
+            { key: "zahtjevi-ponude", label: "Zahtjevi za ponudu" },
         ]
         : []
 
@@ -627,6 +632,12 @@ export default function PublicProfilePage() {
             {/* === BAZA SNIMKI tab - admin-only, on own profile === */}
             {isOwner && isAdmin && profileTab === "baza-snimki" && (
                 <AdminRecordingsLibraryTab />
+            )}
+
+            {/* === ZAHTJEVI ZA PONUDU tab - admin-only, on own profile ===
+                  "Zatraži ponudu" leads for the custom camera package. === */}
+            {isOwner && isAdmin && profileTab === "zahtjevi-ponude" && (
+                <AdminCameraInquiriesTab />
             )}
         </>
     )

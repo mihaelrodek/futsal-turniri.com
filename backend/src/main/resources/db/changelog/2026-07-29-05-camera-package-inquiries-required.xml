@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Contact email, phone, tournament name and description are all now
+        mandatory on the "zatraži ponudu" form (they were optional/either-or
+        when the table was first created a few commits ago and hasn't shipped
+        yet) - see CameraInquiryController for the matching validation.
+    -->
+    <changeSet id="2026-07-29-05-camera-package-inquiries-required" author="mrodek">
+        <addNotNullConstraint tableName="camera_package_inquiries" columnName="contact_email" columnDataType="varchar(255)"/>
+        <addNotNullConstraint tableName="camera_package_inquiries" columnName="contact_phone" columnDataType="varchar(40)"/>
+        <addNotNullConstraint tableName="camera_package_inquiries" columnName="tournament_name" columnDataType="varchar(255)"/>
+        <addNotNullConstraint tableName="camera_package_inquiries" columnName="message" columnDataType="varchar(2000)"/>
+    </changeSet>
+</databaseChangeLog>

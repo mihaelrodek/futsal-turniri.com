@@ -64,4 +64,5 @@ export const qk = {
     // duplicate-name finder. Both are admin-only, low-traffic reads.
     adminTeamIdentities: ["admin", "teamIdentities"] as const,
     adminTeamDuplicates: ["admin", "teamDuplicates"] as const,
+    adminCameraInquiries: ["admin", "cameraInquiries"] as const,
 }

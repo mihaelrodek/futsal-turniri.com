@@ -302,6 +302,11 @@ function CartSummary({
 
 type InquiryState = "idle" | "sending" | "sent"
 
+/** Mirrors the backend's simple, non-exhaustive patterns (CameraInquiryController)
+ *  so obviously-fake input ("asdf", "123") gets caught before a round-trip. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/
+const PHONE_RE = /^\+?[0-9]{6,15}$/
+
 function CameraInquiryForm({ onSent }: { onSent: () => void }) {
     const [name, setName] = useState("")
     const [contactEmail, setContactEmail] = useState("")
@@ -310,23 +315,29 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
     const [message, setMessage] = useState("")
     const [state, setState] = useState<InquiryState>("idle")
 
-    const hasContact = contactEmail.trim().length > 0 || contactPhone.trim().length > 0
-    const canSubmit = name.trim().length > 0 && hasContact
+    const emailOk = EMAIL_RE.test(contactEmail.trim())
+    const phoneOk = PHONE_RE.test(contactPhone.replace(/\s+/g, ""))
+    const canSubmit =
+        name.trim().length > 0
+        && emailOk
+        && phoneOk
+        && tournamentName.trim().length > 0
+        && message.trim().length > 0
 
     async function onSubmit(e: FormEvent) {
         e.preventDefault()
         if (!canSubmit) {
-            showError("Nedostaju podaci", "Upiši ime i barem jedan kontakt (email ili telefon).")
+            showError("Nedostaju podaci", "Ime, email, broj telefona, naziv turnira i opis su obavezni.")
             return
         }
         try {
             setState("sending")
             await submitCameraInquiry({
                 name: name.trim(),
-                contactEmail: contactEmail.trim() || undefined,
-                contactPhone: contactPhone.trim() || undefined,
-                tournamentName: tournamentName.trim() || undefined,
-                message: message.trim() || undefined,
+                contactEmail: contactEmail.trim(),
+                contactPhone: contactPhone.trim(),
+                tournamentName: tournamentName.trim(),
+                message: message.trim(),
             })
             setState("sent")
             onSent()
@@ -340,7 +351,7 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
             <VStack align="stretch" gap="1" py="2">
                 <Text fontWeight={700}>Upit je poslan.</Text>
                 <Text fontSize="sm" color="fg.muted">
-                    Javit ćemo se s ponudom na kontakt koji si ostavio/la.
+                    Javit ćemo se s ponudom na kontakt koji si ostavio/la - potvrda je poslana i na tvoj email.
                 </Text>
             </VStack>
         )
@@ -359,8 +370,8 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
                             placeholder="Ime i prezime"
                         />
                     </Field.Root>
-                    <Field.Root flex="1" minW="200px">
-                        <Field.Label>Naziv turnira</Field.Label>
+                    <Field.Root required flex="1" minW="200px">
+                        <Field.Label>Naziv turnira <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             value={tournamentName}
@@ -371,8 +382,8 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
                 </HStack>
 
                 <HStack gap="3" align="start" wrap="wrap">
-                    <Field.Root flex="1" minW="200px">
-                        <Field.Label>Email</Field.Label>
+                    <Field.Root required flex="1" minW="200px" invalid={contactEmail.trim().length > 0 && !emailOk}>
+                        <Field.Label>Email <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             type="email"
@@ -380,9 +391,12 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
                             onChange={(e) => setContactEmail(e.target.value)}
                             placeholder="ime@email.com"
                         />
+                        {contactEmail.trim().length > 0 && !emailOk && (
+                            <Field.ErrorText>Email adresa nije ispravna.</Field.ErrorText>
+                        )}
                     </Field.Root>
-                    <Field.Root flex="1" minW="200px">
-                        <Field.Label>Broj telefona</Field.Label>
+                    <Field.Root required flex="1" minW="200px" invalid={contactPhone.trim().length > 0 && !phoneOk}>
+                        <Field.Label>Broj telefona <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             type="tel"
@@ -390,14 +404,14 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
                             onChange={(e) => setContactPhone(e.target.value)}
                             placeholder="+385 91 234 5678"
                         />
+                        {contactPhone.trim().length > 0 && !phoneOk && (
+                            <Field.ErrorText>Broj telefona nije ispravan.</Field.ErrorText>
+                        )}
                     </Field.Root>
                 </HStack>
-                {!hasContact && (
-                    <Field.HelperText mt="-2">Upiši barem jedno - email ili telefon.</Field.HelperText>
-                )}
 
-                <Field.Root>
-                    <Field.Label>Poruka</Field.Label>
+                <Field.Root required>
+                    <Field.Label>Opis <Field.RequiredIndicator /></Field.Label>
                     <Textarea
                         size="sm"
                         rows={3}
