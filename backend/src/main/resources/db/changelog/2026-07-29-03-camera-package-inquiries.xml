@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Leads for the "custom camera package" pricing tier (/cjenik) - price
+        is on request, so instead of a checkout flow this just captures the
+        inquiry and emails the admin (recording_notify_email) to follow up.
+        No FK to any tournament - the caller types the name freely, they may
+        not have created it in the app yet.
+    -->
+
+    <changeSet id="2026-07-29-03-camera-package-inquiries-seq" author="mrodek">
+        <createSequence sequenceName="seq_camera_package_inquiries_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-29-04-camera-package-inquiries" author="mrodek">
+        <createTable tableName="camera_package_inquiries">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="varchar(150)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="contact_email" type="varchar(255)"/>
+            <column name="contact_phone" type="varchar(40)"/>
+            <column name="tournament_name" type="varchar(255)"/>
+            <column name="message" type="varchar(2000)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

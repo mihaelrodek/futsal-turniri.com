@@ -67,6 +67,7 @@ const MapPage = lazyWithReload(() => import('./pages/MapPage'))
 const StatsPage = lazyWithReload(() => import('./pages/StatsPage'))
 const PrivacyPage = lazyWithReload(() => import('./pages/PrivacyPage'))
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
+const PricingPage = lazyWithReload(() => import('./pages/PricingPage'))
 const ProfileRedirect = lazyWithReload(() => import('./pages/ProfileRedirect'))
 const PublicProfilePage = lazyWithReload(() => import('./pages/PublicProfilePage'))
 const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
@@ -288,6 +289,9 @@ export default function App() {
                     <Route path="/stats" element={<Navigate to="/statistika" replace />} />
                     <Route path="/privatnost" element={<PrivacyPage />} />
                     <Route path="/vodic" element={<GuidePage />} />
+                    <Route path="/cjenik" element={<PricingPage />} />
+                    {/* English alias for the pricing page. */}
+                    <Route path="/pricing" element={<Navigate to="/cjenik" replace />} />
                     <Route path="/pronadi-ekipu" element={<FindTeamPage />} />
                     {/* /profil bounces to /profil/{my-slug} once the backend
                         has synced. /profil/:slug is publicly visible per
