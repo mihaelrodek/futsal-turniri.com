@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<title>SpectoStream overlay — render za DaVinci (transparent PNG)</title>
+
+<!--
+  ============================================================================
+  RENDER VERZIJA overlay-layout.html — za headless Chrome screenshot s alfom.
+  ============================================================================
+
+  Razlike od originala:
+    - pozadina POTPUNO PROZIRNA (html/body/.sps-wrap), bez videa, bez demo bara
+    - fiksni canvas 1920x1080 (matcha --window-size i Resolve timeline)
+    - stanje se postavlja QUERY PARAMETRIMA (vidi popis dolje)
+
+  Render (macOS):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --default-background-color=00000000 \
+      --hide-scrollbars --window-size=1920,1080 --virtual-time-budget=2000 \
+      --screenshot=out.png "file:///.../overlay-render.html?hg=1&ag=0"
+
+  Ili preko skripte: ./render-overlay.sh 'hg=1&ag=0&scorers=L. Modrić' 1-0.png
+
+  QUERY PARAMETRI (svi opcionalni):
+
+  Semafor:
+    home, away        imena ekipa
+    hg, ag            golovi (score se složi kao "H : A"); ili score=2:1
+    pens              penali, npr. "0:2" — mali red ISPOD rezultata (semafor
+                      i sažetak), rezultat ostaje centriran
+    clock             npr. 18:42  (prazan clock= sakrije sat)
+    period            broj poluvremena (prazan period= sakrije badge)
+    live=0            makni crvenu LIVE točku
+    hj, hs, aj, as    boje dresa/gaćica home/away, hex BEZ # (hj=1b3fa0)
+    board=0           sakrij semafor
+
+  Chipovi ispod semafora:
+    scorers           strijelci domaćih: "L. Modrić*2,I. Perišić" (*N = ×N)
+    scorersAway       strijelci gostiju (chip poravnat desno)
+    cards             kartoni domaćih: "M. Horvat" (žuti) ili "r:I. Perišić" (crveni)
+    cardsAway         kartoni gostiju
+    excl              isključenja: "I. Perišić — 1:47|0:23" (| razdvaja chipove)
+    penGoal           zabijeni penal domaćih (lopta + zelena kvačica): "T. Pihler"
+    penGoalAway       zabijeni penal gostiju
+    penMiss           promašeni penal domaćih (crveni X): "Promašaj"
+    penMissAway       promašeni penal gostiju
+
+  Najava utakmice (centrirano gore; obično uz board=0):
+    announce=1        pokaži najavu (imena/dresovi iz home/away/hj/hs/aj/as)
+    kickoff           termin, npr. "08. 07. 12:30"
+
+  Sažetak "Kraj utakmice" (kartica u sredini; obično uz board=0):
+    summary=1         pokaži sažetak (imena + rezultat iz home/away/score|hg/ag)
+    sumGoals          golovi domaćih: "T. Pihler (ag),L. Modrić*2"
+    sumGoalsAway      golovi gostiju
+    sumYellow         žuti kartoni domaćih: "D. Vida"
+    sumYellowAway     žuti kartoni gostiju
+    sumRed            isključenja domaćih: "I. Perišić"
+    sumRedAway        isključenja gostiju
+    sumNote           slobodan tekst ispod rezultata umjesto penala,
+                      npr. "Čekaju se penali"
+    (sekcija se pokaže samo ako ima podataka za bilo koju stranu)
+
+  Sastavi (kartica u sredini; obično uz board=0):
+    lineups=1         pokaži sastave
+    lineupHome        "1:D. Livaković,6:J. Šutalo,10:L. Modrić" (broj:Ime)
+    lineupAway        isto za goste
+
+  Ostalo:
+    toast             tekst obavijesti dolje lijevo; toastCard=y|r doda kvadratić
+    viewers           npr. 1.2k — pokaže chip gledatelja
+    banner            tekst sponzorske trake
+    s                 zoom faktor overlaya (npr. s=1.5 za krupniji semafor)
+  ============================================================================
+-->
+
+<style>
+/* --- overlay CSS, verbatim iz player.js, uz izmjene označene [RENDER] --- */
+html,body{margin:0;padding:0;background:transparent} /* [RENDER] */
+.sps-wrap{position:relative;width:1920px;height:1080px;background:transparent;overflow:hidden; /* [RENDER] */
+font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.sps-overlay{position:absolute;inset:0;pointer-events:none;color:#fff}
+.sps-board{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:10px;
+max-width:calc(100% - 24px);box-sizing:border-box;
+background:rgba(12,17,26,.88);padding:9px 16px;border-radius:8px;font-weight:700;font-size:15px;
+letter-spacing:.02em;box-shadow:0 2px 10px rgba(0,0,0,.4);opacity:0;transition:none} /* [RENDER] bez tranzicije */
+.sps-board.show{opacity:1}
+.sps-board.sps-board-announce{top:12px;left:50%;transform:translateX(-50%);flex-direction:column;
+align-items:center;gap:8px;background:transparent;box-shadow:none;padding:0}
+.sps-board-eyebrow{display:flex;align-items:center;gap:6px;background:rgba(12,17,26,.82);
+padding:5px 14px;border-radius:20px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+color:#ffd76a}
+.sps-board-row{display:flex;align-items:center;gap:10px;max-width:100%;box-sizing:border-box;
+background:rgba(12,17,26,.88);padding:9px 16px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.sps-board .sps-board-team{max-width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;
+white-space:nowrap;line-height:1.25}
+.sps-board .sps-score{flex-shrink:0;color:#ffd76a;font-variant-numeric:tabular-nums;padding:0 12px;
+border-left:1px solid rgba(255,255,255,.18);border-right:1px solid rgba(255,255,255,.18)}
+.sps-board .sps-score.sps-has-pens{display:flex;flex-direction:column;align-items:center;line-height:1.15}
+.sps-board .sps-pens{font-size:10px;font-weight:600;color:#cfd8e3}
+/* [RENDER] najava: ime ekipe smije u dva reda da kartica ostane kompaktna */
+.sps-board-announce .sps-board-team{white-space:normal;text-align:center;line-height:1.2;max-width:130px}
+.sps-board .sps-clock{flex-shrink:0;font-weight:600;color:#cfd8e3;font-variant-numeric:tabular-nums;min-width:44px}
+.sps-board .sps-period{display:inline-flex;align-items:center;justify-content:center;
+min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:rgba(255,215,106,.16);
+color:#ffd76a;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+.sps-board .sps-kit{flex-shrink:0;display:block}
+.sps-live-dot{flex-shrink:0;width:8px;height:8px;border-radius:50%;background:#ff4d4d}
+/* [RENDER] bez pulse animacije — still frame */
+.sps-scorers{display:none;width:100%}
+.sps-scorers.show{display:flex;justify-content:flex-start}
+.sps-scorers.show.sps-away{justify-content:flex-end}
+.sps-scorer-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(12,17,26,.82);
+padding:5px 13px;border-radius:6px;font-weight:600;font-size:13px;line-height:1.25;
+box-shadow:0 2px 10px rgba(0,0,0,.4);white-space:nowrap}
+.sps-scorer-chip .sps-scorer-x{color:#ffd76a;font-weight:800}
+.sps-scorer-chip .sps-ball{flex-shrink:0;display:block}
+.sps-scorer-chip .sps-card-sq{display:inline-block;width:10px;height:14px;border-radius:2px;flex-shrink:0}
+.sps-cards{display:none;width:100%}
+.sps-cards.show{display:flex;justify-content:flex-start}
+.sps-cards.show.sps-away{justify-content:flex-end}
+.sps-toast{position:absolute;left:12px;bottom:56px;background:rgba(12,17,26,.88);padding:8px 14px;
+border-radius:6px;font-size:14px;font-weight:600;opacity:0;transform:translateY(8px);transition:none}
+.sps-toast.show{opacity:1;transform:none}
+.sps-toast .sps-card-chip{display:inline-block;width:10px;height:14px;border-radius:2px;margin-right:8px;vertical-align:-2px}
+.sps-banner{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:none;max-width:70%;
+background:rgba(12,17,26,.85);border-radius:6px;padding:6px 16px;font-size:13px;font-weight:600}
+.sps-under{position:absolute;top:52px;left:12px;display:flex;flex-direction:column;gap:8px;
+align-items:flex-start;max-width:66%}
+.sps-excl{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.sps-excl-chip{background:rgba(210,80,10,.92);padding:6px 12px;border-radius:6px;font-weight:700;
+font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.4);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sps-viewers{position:absolute;bottom:46px;left:10px;display:none;align-items:center;gap:6px;
+background:rgba(12,17,26,.72);padding:6px 11px;border-radius:16px;font-size:12px;font-weight:700;
+color:#fff;line-height:1;box-shadow:0 2px 10px rgba(0,0,0,.4);font-variant-numeric:tabular-nums}
+.sps-viewers.show{display:inline-flex}
+.sps-viewers .sps-eye{display:block;opacity:.85}
+.sps-summary{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+box-sizing:border-box;width:min(82%,440px);max-height:86%;overflow-y:auto;display:flex;
+flex-direction:column;gap:12px;text-align:center;
+background:linear-gradient(160deg,rgba(9,14,22,.97),rgba(16,26,40,.97));
+border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:18px 20px;
+box-shadow:0 14px 44px rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:none}
+.sps-summary.show{opacity:1}
+.sps-summary .sps-sum-eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#8fa3bd;font-weight:700}
+.sps-summary .sps-sum-head{display:flex;align-items:center;justify-content:center;gap:12px}
+.sps-summary .sps-sum-team{flex:1;font-weight:700;font-size:15px;line-height:1.25;min-width:0;text-align:center}
+.sps-summary .sps-sum-team-away{text-align:center}
+.sps-summary .sps-sum-score{font-size:30px;font-weight:800;color:#ffd76a;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sps-summary .sps-sum-pens{font-size:12px;color:#8fa3bd;font-weight:600;margin-top:2px;line-height:1.2}
+.sps-summary .sps-sum-section{border-top:1px solid rgba(255,255,255,.1);padding-top:10px;text-align:left}
+.sps-summary .sps-sum-section-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+color:#8fa3bd;font-weight:700;margin-bottom:6px}
+.sps-summary .sps-sum-row{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:2px 0}
+.sps-summary .sps-sum-x{color:#ffd76a;font-weight:800}
+.sps-summary .sps-sum-card{display:inline-block;width:9px;height:13px;border-radius:2px;flex-shrink:0}
+.sps-summary .sps-sum-cols{display:flex;gap:14px;align-items:flex-start}
+.sps-summary .sps-sum-col{flex:1;min-width:0}
+.sps-summary .sps-sum-col-away{text-align:right}
+.sps-summary .sps-sum-col-away .sps-sum-row{justify-content:flex-end}
+.sps-lineups .sps-sum-head .sps-sum-team{display:flex;align-items:center;gap:8px;text-align:left}
+.sps-lineups .sps-sum-head .sps-sum-team-away{justify-content:flex-end;text-align:right}
+.sps-lineups .sps-sum-head .sps-kit{flex-shrink:0;display:block}
+.sps-lineups .sps-sum-num{color:#ffd76a;font-weight:800;font-variant-numeric:tabular-nums;min-width:20px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="sps-wrap">
+  <div class="sps-overlay" id="overlay">
+
+    <!-- SEMAFOR -->
+    <div class="sps-board show" id="board">
+      <span class="sps-board-team">Domaći</span>
+      <svg class="sps-kit" data-kit="home" viewBox="0 0 20 26" width="16" height="21">
+        <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#ffffff" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#1b3fa0" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <span class="sps-score">0 : 0</span>
+      <svg class="sps-kit" data-kit="away" viewBox="0 0 20 26" width="16" height="21">
+        <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#111111" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#d61f26" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <span class="sps-board-team">Gosti</span>
+      <span class="sps-period">1</span>
+      <span class="sps-clock">00:00</span>
+      <span class="sps-live-dot"></span>
+    </div>
+
+    <!-- NAJAVA UTAKMICE (announce=1) -->
+    <div class="sps-board sps-board-announce" id="announce">
+      <div class="sps-board-eyebrow">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <span>Sljedeća utakmica</span>
+      </div>
+      <div class="sps-board-row">
+        <span class="sps-board-team" id="annHome">Domaći</span>
+        <svg class="sps-kit" data-kit="home" viewBox="0 0 20 26" width="16" height="21">
+          <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#ffffff" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#1b3fa0" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <span class="sps-clock" id="annKickoff">--:--</span>
+        <svg class="sps-kit" data-kit="away" viewBox="0 0 20 26" width="16" height="21">
+          <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#111111" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#d61f26" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <span class="sps-board-team" id="annAway">Gosti</span>
+      </div>
+    </div>
+
+    <!-- STRIJELCI / KARTONI / ISKLJUČENJA -->
+    <div class="sps-under" id="under">
+      <div class="sps-scorers" id="scorers"></div>
+      <div class="sps-scorers sps-away" id="scorersAway"></div>
+      <div class="sps-cards" id="cards"></div>
+      <div class="sps-cards sps-away" id="cardsAway"></div>
+      <div class="sps-excl" id="excl" style="display:none"></div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="sps-toast" id="toast"></div>
+
+    <!-- GLEDATELJI -->
+    <div class="sps-viewers" id="viewers">
+      <span class="sps-eye">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </span>
+      <span id="viewersCount">0</span>
+    </div>
+
+    <!-- SPONZOR -->
+    <div class="sps-banner" id="banner"></div>
+
+    <!-- SAŽETAK (summary=1) -->
+    <div class="sps-summary" id="summary">
+      <div class="sps-sum-eyebrow">Kraj utakmice</div>
+      <div class="sps-sum-head">
+        <span class="sps-sum-team" id="sumHome">Domaći</span>
+        <span class="sps-sum-score" id="sumScore">0 : 0</span>
+        <span class="sps-sum-team sps-sum-team-away" id="sumAway">Gosti</span>
+      </div>
+      <div class="sps-sum-section" id="secGoals" style="display:none">
+        <div class="sps-sum-section-title">Golovi</div>
+        <div class="sps-sum-cols">
+          <div class="sps-sum-col" id="colGoalsHome"></div>
+          <div class="sps-sum-col sps-sum-col-away" id="colGoalsAway"></div>
+        </div>
+      </div>
+      <div class="sps-sum-section" id="secYellow" style="display:none">
+        <div class="sps-sum-section-title">Žuti kartoni</div>
+        <div class="sps-sum-cols">
+          <div class="sps-sum-col" id="colYellowHome"></div>
+          <div class="sps-sum-col sps-sum-col-away" id="colYellowAway"></div>
+        </div>
+      </div>
+      <div class="sps-sum-section" id="secRed" style="display:none">
+        <div class="sps-sum-section-title">Isključenja</div>
+        <div class="sps-sum-cols">
+          <div class="sps-sum-col" id="colRedHome"></div>
+          <div class="sps-sum-col sps-sum-col-away" id="colRedAway"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SASTAVI (lineups=1) -->
+    <div class="sps-summary sps-lineups" id="lineups">
+      <div class="sps-sum-eyebrow">Sastavi</div>
+      <div class="sps-sum-head">
+        <span class="sps-sum-team">
+          <span id="luHome">Domaći</span>
+          <svg class="sps-kit" data-kit="home" viewBox="0 0 20 26" width="15" height="20">
+            <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#ffffff" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#1b3fa0" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </span>
+        <span class="sps-sum-team sps-sum-team-away">
+          <svg class="sps-kit" data-kit="away" viewBox="0 0 20 26" width="15" height="20">
+            <path d="M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z" fill="#111111" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            <path d="M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z" fill="#d61f26" stroke="rgba(255,255,255,.55)" stroke-width="0.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <span id="luAway">Gosti</span>
+        </span>
+      </div>
+      <div class="sps-sum-cols">
+        <div class="sps-sum-col" id="luColHome"></div>
+        <div class="sps-sum-col sps-sum-col-away" id="luColAway"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var board = document.getElementById('board');
+
+  var BALL = '<svg class="sps-ball" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">'
+    + '<circle cx="12" cy="12" r="9.4" fill="#fff" stroke="#0c111a" stroke-width="1.2"/>'
+    + '<path fill="#0c111a" d="M12 8.6 L15.23 10.95 L14 14.75 L10 14.75 L8.77 10.95 Z"/>'
+    + '<path fill="none" stroke="#0c111a" stroke-width="1" stroke-linecap="round" '
+    + 'd="M12 8.6V3 M15.23 10.95 20.56 9.22 M14 14.75 17.29 19.28 M10 14.75 6.71 19.28 M8.77 10.95 3.44 9.22"/></svg>';
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  // "Ime*2" -> { name, x } (x = null bez množitelja)
+  function nameX(s) {
+    var m = s.trim().match(/^(.*?)\*(\d+)$/);
+    return { name: m ? m[1].trim() : s.trim(), x: m ? m[2] : null };
+  }
+
+  // --- semafor ---
+  if (q.get('board') === '0') board.classList.remove('show');
+  var teams = board.querySelectorAll('.sps-board-team');
+  var home = q.get('home'), away = q.get('away');
+  if (home) teams[0].textContent = home;
+  if (away) teams[1].textContent = away;
+
+  var score = q.get('score');
+  if (!score && (q.has('hg') || q.has('ag'))) score = (q.get('hg') || '0') + ' : ' + (q.get('ag') || '0');
+  var scoreEl = board.querySelector('.sps-score');
+  if (score) scoreEl.textContent = score.replace(/\s*:\s*/, ' : ');
+  var pens = q.get('pens');
+  if (pens) {
+    scoreEl.classList.add('sps-has-pens');
+    scoreEl.innerHTML = '<span>' + esc(scoreEl.textContent) + '</span><span class="sps-pens">('
+      + esc(pens) + ')</span>';
+  }
+
+  var clock = board.querySelector('.sps-clock');
+  if (q.has('clock')) { q.get('clock') ? clock.textContent = q.get('clock') : clock.style.display = 'none'; }
+  var period = board.querySelector('.sps-period');
+  if (q.has('period')) { q.get('period') ? period.textContent = q.get('period') : period.style.display = 'none'; }
+  if (q.get('live') === '0') board.querySelector('.sps-live-dot').style.display = 'none';
+
+  // --- dresovi (svi kit SVG-ovi): path[0] = gaćice, path[1] = dres, hex bez # ---
+  document.querySelectorAll('svg[data-kit]').forEach(function (svg) {
+    var homeKit = svg.getAttribute('data-kit') === 'home';
+    var jersey = q.get(homeKit ? 'hj' : 'aj'), shorts = q.get(homeKit ? 'hs' : 'as');
+    var p = svg.querySelectorAll('path');
+    if (shorts) p[0].setAttribute('fill', '#' + shorts);
+    if (jersey) p[1].setAttribute('fill', '#' + jersey);
+  });
+
+  // --- strijelci: "L. Modrić*2,I. Perišić" ---
+  function scorerChips(id, spec) {
+    if (!spec) return;
+    var el = document.getElementById(id);
+    el.innerHTML = spec.split(',').map(function (s) {
+      var n = nameX(s);
+      var x = n.x ? '<span class="sps-scorer-x">×' + n.x + '</span>' : '';
+      return '<div class="sps-scorer-chip">' + BALL + '<span>' + esc(n.name) + '</span>' + x + '</div>';
+    }).join('');
+    el.classList.add('show');
+  }
+  scorerChips('scorers', q.get('scorers'));
+  scorerChips('scorersAway', q.get('scorersAway'));
+
+  // --- kartoni: "M. Horvat" (žuti) ili "r:I. Perišić" (crveni) ---
+  function cardChips(id, spec) {
+    if (!spec) return;
+    var el = document.getElementById(id);
+    el.innerHTML = spec.split(',').map(function (s) {
+      s = s.trim();
+      var red = s.indexOf('r:') === 0;
+      var name = red ? s.slice(2).trim() : s;
+      return '<div class="sps-scorer-chip"><span class="sps-card-sq" style="background:'
+        + (red ? '#e33' : '#ffd400') + '"></span><span>' + esc(name) + '</span></div>';
+    }).join('');
+    el.classList.add('show');
+  }
+  cardChips('cards', q.get('cards'));
+  cardChips('cardsAway', q.get('cardsAway'));
+
+  // --- penali: zabijeni (lopta + kvačica) / promašeni (crveni X) ---
+  var PEN_X = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">'
+    + '<path d="M5 5 19 19 M19 5 5 19" stroke="#e33" stroke-width="3.2" stroke-linecap="round" fill="none"/></svg>';
+  var PEN_CHECK = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">'
+    + '<path d="M4 12.5 10 18.5 20 6" stroke="#2ecc71" stroke-width="3.2" stroke-linecap="round" fill="none"/></svg>';
+  function penChips(id, spec, scored) {
+    if (!spec) return;
+    var el = document.getElementById(id);
+    el.innerHTML += spec.split(',').map(function (s) {
+      return '<div class="sps-scorer-chip">' + (scored ? BALL : PEN_X)
+        + '<span>' + esc(s.trim()) + '</span>' + (scored ? PEN_CHECK : '') + '</div>';
+    }).join('');
+    el.classList.add('show');
+  }
+  penChips('scorers', q.get('penGoal'), true);
+  penChips('scorersAway', q.get('penGoalAway'), true);
+  penChips('scorers', q.get('penMiss'), false);
+  penChips('scorersAway', q.get('penMissAway'), false);
+
+  // --- isključenja: "I. Perišić — 1:47|0:23" ---
+  if (q.get('excl')) {
+    var ex = document.getElementById('excl');
+    ex.innerHTML = q.get('excl').split('|').map(function (s) {
+      return '<div class="sps-excl-chip">' + esc(s.trim()) + '</div>';
+    }).join('');
+    ex.style.display = 'flex';
+  }
+
+  // --- toast ---
+  if (q.get('toast')) {
+    var t = document.getElementById('toast');
+    var chip = q.get('toastCard');
+    t.innerHTML = (chip ? '<span class="sps-card-chip" style="background:'
+      + (chip === 'r' ? '#e33' : '#ffd400') + '"></span>' : '') + esc(q.get('toast'));
+    t.classList.add('show');
+  }
+
+  // --- gledatelji / banner ---
+  if (q.get('viewers')) {
+    document.getElementById('viewersCount').textContent = q.get('viewers');
+    document.getElementById('viewers').classList.add('show');
+  }
+  if (q.get('banner')) {
+    var b = document.getElementById('banner');
+    b.textContent = q.get('banner');
+    b.style.display = 'block';
+  }
+
+  // --- najava utakmice ---
+  if (q.get('announce') === '1') {
+    if (home) document.getElementById('annHome').textContent = home;
+    if (away) document.getElementById('annAway').textContent = away;
+    if (q.get('kickoff')) document.getElementById('annKickoff').textContent = q.get('kickoff');
+    document.getElementById('announce').classList.add('show');
+    // izjednači širine imena da termin (i eyebrow) budu točno u sredini kartice
+    var annTeams = document.querySelectorAll('#announce .sps-board-team');
+    var annW = Math.max(annTeams[0].offsetWidth, annTeams[1].offsetWidth);
+    annTeams[0].style.width = annTeams[1].style.width = annW + 'px';
+  }
+
+  // --- sažetak ---
+  if (q.get('summary') === '1') {
+    if (home) document.getElementById('sumHome').textContent = home;
+    if (away) document.getElementById('sumAway').textContent = away;
+    var sumScore = document.getElementById('sumScore');
+    if (score) sumScore.textContent = score.replace(/\s*:\s*/, ' : ');
+    if (pens) {
+      sumScore.innerHTML = esc(sumScore.textContent)
+        + '<div class="sps-sum-pens">(' + esc(pens.replace(/\s*:\s*/, ' : ')) + ')</div>';
+    } else if (q.get('sumNote')) {
+      sumScore.innerHTML = esc(sumScore.textContent)
+        + '<div class="sps-sum-pens">' + esc(q.get('sumNote')) + '</div>';
+    }
+
+    // goal red: "Ime ×N"; card red: kvadratić + ime
+    function goalRows(spec) {
+      return spec.split(',').map(function (s) {
+        var n = nameX(s);
+        var x = n.x ? ' <span class="sps-sum-x">×' + n.x + '</span>' : '';
+        return '<div class="sps-sum-row">' + esc(n.name) + x + '</div>';
+      }).join('');
+    }
+    function cardRows(spec, color) {
+      return spec.split(',').map(function (s) {
+        return '<div class="sps-sum-row"><span class="sps-sum-card" style="background:'
+          + color + '"></span>' + esc(s.trim()) + '</div>';
+      }).join('');
+    }
+    function section(secId, hId, aId, hSpec, aSpec, render) {
+      if (!hSpec && !aSpec) return;
+      if (hSpec) document.getElementById(hId).innerHTML = render(hSpec);
+      if (aSpec) document.getElementById(aId).innerHTML = render(aSpec);
+      document.getElementById(secId).style.display = 'block';
+    }
+    section('secGoals', 'colGoalsHome', 'colGoalsAway', q.get('sumGoals'), q.get('sumGoalsAway'), goalRows);
+    section('secYellow', 'colYellowHome', 'colYellowAway', q.get('sumYellow'), q.get('sumYellowAway'),
+      function (s) { return cardRows(s, '#ffd400'); });
+    section('secRed', 'colRedHome', 'colRedAway', q.get('sumRed'), q.get('sumRedAway'),
+      function (s) { return cardRows(s, '#e33'); });
+
+    document.getElementById('summary').classList.add('show');
+  }
+
+  // --- sastavi: "1:D. Livaković,6:J. Šutalo" (broj:Ime) ---
+  if (q.get('lineups') === '1') {
+    if (home) document.getElementById('luHome').textContent = home;
+    if (away) document.getElementById('luAway').textContent = away;
+    function luRows(id, spec, numLast) {
+      if (!spec) return;
+      document.getElementById(id).innerHTML = spec.split(',').map(function (s) {
+        var i = s.indexOf(':');
+        var num = i > -1 ? s.slice(0, i).trim() : '';
+        var name = i > -1 ? s.slice(i + 1).trim() : s.trim();
+        var badge = num ? '<span class="sps-sum-num">' + esc(num) + '</span>' : '';
+        return '<div class="sps-sum-row">' + (numLast ? esc(name) + badge : badge + esc(name)) + '</div>';
+      }).join('');
+    }
+    luRows('luColHome', q.get('lineupHome'), false);
+    luRows('luColAway', q.get('lineupAway'), true);
+    document.getElementById('lineups').classList.add('show');
+  }
+
+  // --- zoom (s=1.5 → krupniji overlay) ---
+  if (q.get('s')) document.getElementById('overlay').style.zoom = q.get('s');
+
+  // kao player.js:776 — lijevi stupac poravnat po širini semafora
+  document.getElementById('under').style.width = board.offsetWidth + 'px';
+})();
+</script>
+</body>
+</html>

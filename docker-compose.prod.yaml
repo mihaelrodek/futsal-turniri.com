@@ -136,9 +136,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
-      # MinIO - internal endpoint name. The backend never touches the
-      # public URL; the /api/resources/{id}/image proxy streams bytes.
+      # MinIO - internal endpoint name, used for all bucket operations and
+      # as the fallback signing host. Most media goes through the
+      # /api/resources/{id}/image proxy and never needs a public URL, but
+      # recording upload/download uses presigned URLs handed straight to the
+      # browser - those must be signed against MINIO_PUBLIC_ENDPOINT (proxied
+      # by the `storage.futsal-turniri.com` block in the Caddyfile), or the
+      # browser gets an unreachable http://minio:9000 URL.
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}

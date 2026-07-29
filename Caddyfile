@@ -36,6 +36,17 @@ www.futsal-turniri.com {
 	redir https://futsal-turniri.com{uri} permanent
 }
 
+# Public host for MinIO presigned URLs (recording upload/download). Must be
+# a plain host proxy with NO path rewriting: presigned S3 URLs are path-style
+# (/{bucket}/{key}?X-Amz-Signature=...) and the signature covers that path, so
+# stripping/adding any prefix here would make MinIO recompute a different
+# signature than the client signed and reject the request. Backend signs
+# against MINIO_PUBLIC_ENDPOINT=https://storage.futsal-turniri.com (see
+# docker-compose.prod.yaml / .env.prod) - keep both in sync if this changes.
+storage.futsal-turniri.com {
+	reverse_proxy minio:9000
+}
+
 futsal-turniri.com {
 	encode zstd gzip
 
