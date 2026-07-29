@@ -59,6 +59,7 @@ export const hr = {
         createShort: "Kreiraj",
         map: "Karta",
         stats: "Statistika",
+        pricing: "Cjenik",
         login: "Prijava",
         profile: "Profil",
         logout: "Odjavi se",

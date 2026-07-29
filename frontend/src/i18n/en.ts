@@ -52,6 +52,7 @@ export const en: Dictionary = {
         createShort: "Create",
         map: "Map",
         stats: "Stats",
+        pricing: "Pricing",
         login: "Sign in",
         profile: "Profile",
         logout: "Sign out",
