@@ -39,6 +39,11 @@ import { qk } from "../queryClient"
         snapshots, saved "par" presets, default kits).
    ────────────────────────────────────────────────────────────────────── */
 
+/** Select value that switches the merge dialog to a free-text canonical-name
+ *  input. Team names are trimmed server-side, so a value with leading/
+ *  trailing spaces can never collide with a real name. */
+const CUSTOM_SENTINEL = " __custom__ "
+
 export default function AdminTeamDatabaseTab() {
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
@@ -257,8 +262,15 @@ function MergeDialog({
     onMerged: () => void
 }) {
     const [canonical, setCanonical] = useState<string>(group?.suggestedCanonical ?? "")
+    // "__custom__" in the select switches to a free-text input, so the admin
+    // can keep a spelling that isn't among the observed variants (e.g. fix
+    // the capitalisation to „Ekipa 1" even if only „ekipa 1"/„EKIPA 1" exist).
+    const [customName, setCustomName] = useState("")
     const [confirming, setConfirming] = useState(false)
     const [busy, setBusy] = useState(false)
+
+    const isCustom = canonical === CUSTOM_SENTINEL
+    const effectiveCanonical = isCustom ? customName.trim() : (canonical || group?.suggestedCanonical || "")
 
     // Reset local state whenever a DIFFERENT group is opened (the dialog
     // component instance itself never unmounts, only `group` swaps).
@@ -266,16 +278,17 @@ function MergeDialog({
     useEffect(() => {
         if (group) {
             setCanonical(group.suggestedCanonical)
+            setCustomName("")
             setConfirming(false)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupIdentity])
 
     async function submit() {
-        if (!group) return
+        if (!group || !effectiveCanonical) return
         setBusy(true)
         try {
-            await adminMergeTeams(group.variants.map((v) => v.name), canonical || group.suggestedCanonical)
+            await adminMergeTeams(group.variants.map((v) => v.name), effectiveCanonical)
             onMerged()
         } catch {
             /* toaster surfaces the error */
@@ -319,19 +332,32 @@ function MergeDialog({
                                         >
                                             {group.variants.map((v) => (
                                                 <option key={v.name} value={v.name}>
-                                                    {v.name} ({v.rowCount})
+                                                    {v.name} — {v.rowCount === 1 ? "1 nastup" : `${v.rowCount} nastupa`}
                                                 </option>
                                             ))}
+                                            <option value={CUSTOM_SENTINEL}>Drugi naziv (upiši ručno)…</option>
                                         </NativeSelect.Field>
                                         <NativeSelect.Indicator />
                                     </NativeSelect.Root>
+                                    {isCustom && (
+                                        <Input
+                                            size="sm"
+                                            autoFocus
+                                            placeholder="npr. Ekipa 1"
+                                            value={customName}
+                                            onChange={(e) => setCustomName(e.target.value)}
+                                        />
+                                    )}
+                                    <Text fontSize="xs" color="fg.muted">
+                                        Broj iza crtice je broj nastupa — sprema se samo naziv.
+                                    </Text>
                                 </Stack>
                             )}
                             {group && confirming && (
                                 <Stack gap="2">
                                     <Text fontSize="sm">
                                         Svi nastupi ({group.variants.map((v) => v.name).join(", ")})
-                                        bit će preimenovani u <strong>{canonical || group.suggestedCanonical}</strong>.
+                                        bit će preimenovani u <strong>{effectiveCanonical}</strong>.
                                     </Text>
                                     <Text fontSize="sm" color="red.fg" fontWeight="medium">
                                         Ova radnja je nepovratna. Nastaviti?
@@ -342,7 +368,11 @@ function MergeDialog({
                         <Dialog.Footer>
                             <Button variant="ghost" onClick={onClose} disabled={busy}>Odustani</Button>
                             {!confirming ? (
-                                <Button colorPalette="brand" onClick={() => setConfirming(true)}>
+                                <Button
+                                    colorPalette="brand"
+                                    onClick={() => setConfirming(true)}
+                                    disabled={isCustom && !customName.trim()}
+                                >
                                     Dalje
                                 </Button>
                             ) : (

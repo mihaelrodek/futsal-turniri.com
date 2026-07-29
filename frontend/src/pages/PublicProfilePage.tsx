@@ -5,7 +5,6 @@ import {
     Button,
     Card,
     chakra,
-    Dialog,
     Field,
     Flex,
     Heading,
@@ -37,6 +36,7 @@ import {
     FiPhone,
     FiRadio,
     FiSettings,
+    FiUser,
     FiShare2,
     FiShield,
     FiSun,
@@ -110,6 +110,7 @@ function teamKey(name: string): string {
 const RECORDING_REQUEST_ENABLED = true
 
 type ProfileTabKey =
+    | "profil"
     | "turniri"
     | "postavke"
     | "moje-snimke"
@@ -122,7 +123,13 @@ type ProfileTabKey =
 
 /** Icon per tab, shared between the desktop sidebar and (implicitly, via
  *  the same lookup) anywhere else a tab needs one. */
+/** Label of the mobile pill that expands the admin tab row. */
+const ADMIN_PILL_LABEL = "Administracija"
+
 const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
+    // "profil" is a mobile-only tab (desktop carries the identity block at
+    // the top of the sidebar instead), but the icon map covers every key.
+    profil: <FiUser size={15} />,
     turniri: <FiList size={15} />,
     postavke: <FiSettings size={15} />,
     "moje-snimke": <FiVideo size={15} />,
@@ -197,6 +204,9 @@ export default function PublicProfilePage() {
     // only show for the profile owner; visitors viewing someone else's page
     // see Turniri only.
     const [profileTab, setProfileTab] = useState<ProfileTabKey>("turniri")
+    // Mobile-only: whether the "Administracija" pill has expanded the row
+    // of admin tabs beneath the primary tab row.
+    const [mobileAdminOpen, setMobileAdminOpen] = useState(false)
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -416,8 +426,21 @@ export default function PublicProfilePage() {
         ]
         : []
 
-    const userTabLabels = userTabs.map((tab) => tab.label)
-    const activeUserLabel = userTabs.find((tab) => tab.key === profileTab)?.label ?? ""
+    // Mobile: ONE primary pill row - Profil first, then the user tabs, then
+    // a single "Administracija" pill that expands the admin row below it
+    // on tap (instead of always showing a second crowded row).
+    const mobileTabs: Array<{ key: ProfileTabKey; label: string }> = [
+        { key: "profil", label: "Profil" },
+        ...userTabs,
+    ]
+    const isOnAdminTab = adminTabs.some((tab) => tab.key === profileTab)
+    const mobileLabels = [
+        ...mobileTabs.map((tab) => tab.label),
+        ...(adminTabs.length > 0 ? [ADMIN_PILL_LABEL] : []),
+    ]
+    const activeMobileLabel = isOnAdminTab || mobileAdminOpen
+        ? ADMIN_PILL_LABEL
+        : (mobileTabs.find((tab) => tab.key === profileTab)?.label ?? "")
     const adminTabLabels = adminTabs.map((tab) => tab.label)
     const activeAdminLabel = adminTabs.find((tab) => tab.key === profileTab)?.label ?? ""
 
@@ -427,15 +450,20 @@ export default function PublicProfilePage() {
      *  shell it's sitting in. */
     const bodyContent = (
         <>
-            {/* Profile header is always visible - it's the identity card.
-                Avatar, name, and (for the owner) inline edit affordances
-                sit above the tab content so they don't get hidden when the
-                user is on a non-default tab. */}
-            <ProfileHeader
-                profile={profile}
-                isOwner={isOwner}
-                onProfileChanged={refreshProfile}
-            />
+            {/* Profile header - the identity card. Visitors always see it
+                above the content; the OWNER gets it in the desktop sidebar
+                (first thing in the menu) and, on mobile, as the content of
+                the "Profil" tab (first pill) - so it never pushes the other
+                tabs' content down. */}
+            {(!isOwner || profileTab === "profil") && (
+                <Box display={isOwner ? { base: "block", lg: "none" } : undefined}>
+                    <ProfileHeader
+                        profile={profile}
+                        isOwner={isOwner}
+                        onProfileChanged={refreshProfile}
+                    />
+                </Box>
+            )}
 
             {/* === KARIJERA card - always above the Turniri tab. Visible to
                   everyone, owner or visitor. Hidden until career fetch
@@ -634,68 +662,39 @@ export default function PublicProfilePage() {
                 pt={{ base: "28px", md: "36px" }}
                 pb="2"
             >
-                <Flex align="center" gap="2" mb="2">
-                    <Box
-                        w="22px"
-                        h="22px"
-                        rounded="full"
-                        overflow="hidden"
-                        bg="blue.subtle"
-                        color="blue.fg"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontWeight="bold"
-                        fontSize="9px"
-                        flexShrink={0}
-                    >
-                        {profile.avatarUrl ? (
-                            <Image src={profile.avatarUrl} alt="" w="100%" h="100%" objectFit="cover" />
-                        ) : (
-                            initialsOf(profile.displayName)
-                        )}
-                    </Box>
-                    <Text fontSize="13px" fontWeight={700} lineHeight="short" truncate>
-                        {profile.displayName ?? "Bezimeni igrač"}
-                    </Text>
-                </Flex>
-
+                {/* One primary row: Profil, user tabs, then a single
+                    "Administracija" pill. Tapping it expands the admin
+                    row below instead of always showing two crowded rows. */}
                 <PillTabBar
-                    tabs={userTabLabels}
-                    active={activeUserLabel}
+                    tabs={mobileLabels}
+                    active={activeMobileLabel}
                     onChange={(label) => {
-                        const next = userTabs.find((tab) => tab.label === label)
-                        if (next) setProfileTab(next.key)
+                        if (label === ADMIN_PILL_LABEL) {
+                            setMobileAdminOpen((v) => !v)
+                            return
+                        }
+                        const next = mobileTabs.find((tab) => tab.label === label)
+                        if (next) {
+                            setMobileAdminOpen(false)
+                            setProfileTab(next.key)
+                        }
                     }}
                     padding="4px"
-                    mb={adminTabs.length > 0 ? "2" : "0"}
+                    mb={(mobileAdminOpen || isOnAdminTab) && adminTabs.length > 0 ? "2" : "0"}
                 />
 
-                {adminTabs.length > 0 && (
-                    <>
-                        <Text
-                            fontFamily="mono"
-                            fontSize="10px"
-                            fontWeight={800}
-                            letterSpacing="0.12em"
-                            color="fg.muted"
-                            px="1"
-                            mb="1"
-                        >
-                            ADMINISTRACIJA
-                        </Text>
-                        <PillTabBar
-                            tabs={adminTabLabels}
-                            active={activeAdminLabel}
-                            onChange={(label) => {
-                                const next = adminTabs.find((tab) => tab.label === label)
-                                if (next) setProfileTab(next.key)
-                            }}
-                            size="sm"
-                            padding="4px"
-                            mb="0"
-                        />
-                    </>
+                {(mobileAdminOpen || isOnAdminTab) && adminTabs.length > 0 && (
+                    <PillTabBar
+                        tabs={adminTabLabels}
+                        active={activeAdminLabel}
+                        onChange={(label) => {
+                            const next = adminTabs.find((tab) => tab.label === label)
+                            if (next) setProfileTab(next.key)
+                        }}
+                        size="sm"
+                        padding="4px"
+                        mb="0"
+                    />
                 )}
             </Box>
 
@@ -738,6 +737,21 @@ export default function PublicProfilePage() {
                             p="3"
                             gap="0.5"
                         >
+                            {/* Identity block - the user's own profile card is
+                                the FIRST thing in the menu. Edit opens inline
+                                fields right here (no modal). */}
+                            <ProfileHeader
+                                profile={profile}
+                                isOwner={isOwner}
+                                onProfileChanged={refreshProfile}
+                                variant="sidebar"
+                            />
+                            <Box
+                                borderTopWidth="1px"
+                                borderColor="border.emphasized"
+                                mt="2"
+                                mb="2"
+                            />
                             {userTabs.map((tab) => (
                                 <ProfileNavItem
                                     key={tab.key}
@@ -804,10 +818,14 @@ function ProfileHeader({
     profile,
     isOwner,
     onProfileChanged,
+    variant = "card",
 }: {
     profile: PublicProfile
     isOwner: boolean
     onProfileChanged: () => Promise<void> | void
+    /** "card" = standalone card (mobile body / visitor); "sidebar" = compact
+     *  block at the top of the owner's desktop sidebar menu. */
+    variant?: "card" | "sidebar"
 }) {
     const [editOpen, setEditOpen] = useState(false)
     const [uploading, setUploading] = useState(false)
@@ -861,125 +879,109 @@ function ProfileHeader({
         }
     }
 
-    return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "3", md: "5" }}>
-                <VStack align="stretch" gap={{ base: "2", md: "3" }}>
-                    <HStack gap={{ base: "2", md: "3" }} align="start">
-                        {/* Avatar - image when uploaded, initials otherwise.
-                            Wrapped in AvatarPreview so hovering / tapping
-                            the circle opens a full-screen lightbox of the
-                            picture. The wrapper is a no-op when there's no
-                            avatarUrl, so initials stay un-clickable. Smaller
-                            on mobile - this card sits above the sticky tab
-                            bar on every screen, so it needs to be quick to
-                            scroll past. */}
-                        <Box position="relative" flexShrink={0}>
-                            <AvatarPreview
-                                src={profile.avatarUrl}
-                                alt={profile.displayName ?? "Profilna slika"}
-                            >
-                                <Box
-                                    w={{ base: "40px", md: "48px" }}
-                                    h={{ base: "40px", md: "48px" }}
-                                    rounded="full"
-                                    overflow="hidden"
-                                    bg="blue.subtle"
-                                    color="blue.fg"
-                                    display="flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                    fontWeight="bold"
-                                    fontSize={{ base: "sm", md: "md" }}
-                                >
-                                    {profile.avatarUrl ? (
-                                        <Image
-                                            src={profile.avatarUrl}
-                                            alt={profile.displayName ?? "Profilna slika"}
-                                            w="100%"
-                                            h="100%"
-                                            objectFit="cover"
-                                        />
-                                    ) : (
-                                        initialsOf(profile.displayName)
-                                    )}
-                                </Box>
-                            </AvatarPreview>
-                            {isOwner && (
-                                <>
-                                    <IconButton
-                                        aria-label={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
-                                        title={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
-                                        size="2xs"
-                                        position="absolute"
-                                        bottom="-2px"
-                                        right="-2px"
-                                        rounded="full"
-                                        colorPalette="pitch"
-                                        variant="solid"
-                                        loading={uploading}
-                                        onClick={onPickAvatar}
-                                    >
-                                        <FiEdit2 />
-                                    </IconButton>
-                                    <chakra.input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        display="none"
-                                        onChange={onAvatarChosen}
-                                    />
-                                </>
-                            )}
-                        </Box>
-                        <VStack align="stretch" gap="0.5" flex="1" minW="0">
-                            <HStack gap="1" align="center" minW="0">
-                                <Heading
-                                    size={{ base: "sm", md: "md" }}
-                                    lineHeight="short"
-                                    lineClamp={2}
-                                    flex="1"
-                                    minW="0"
-                                >
-                                    {profile.displayName ?? "Bezimeni igrač"}
-                                </Heading>
-                                {isOwner && (
-                                    <IconButton
-                                        aria-label="Uredi ime"
-                                        size="xs"
-                                        variant="ghost"
-                                        onClick={() => setEditOpen(true)}
-                                        title="Uredi ime"
-                                    >
-                                        <FiEdit2 />
-                                    </IconButton>
-                                )}
-                            </HStack>
-                            {/* Icon-only on mobile - the full label pushes the
-                                header taller than it needs to be on a screen
-                                where this is a rarely-tapped destructive
-                                action; the tooltip/aria-label still carries it. */}
-                            {isOwner && profile.avatarUrl && (
-                                <Button
-                                    size="2xs"
-                                    variant="ghost"
-                                    colorPalette="red"
-                                    onClick={onRemoveAvatar}
-                                    loading={uploading}
-                                    alignSelf="flex-start"
-                                    aria-label="Ukloni profilnu sliku"
-                                    title="Ukloni profilnu sliku"
-                                >
-                                    <FiTrash2 />
-                                    <chakra.span display={{ base: "none", md: "inline" }}>
-                                        Ukloni profilnu sliku
-                                    </chakra.span>
-                                </Button>
-                            )}
-                        </VStack>
-                    </HStack>
+    // Avatar - image when uploaded, initials otherwise. Wrapped in
+    // AvatarPreview so hovering / tapping the circle opens a full-screen
+    // lightbox of the picture. The wrapper is a no-op when there's no
+    // avatarUrl, so initials stay un-clickable. Shared by both variants.
+    const avatarSize = variant === "sidebar" ? "40px" : { base: "40px", md: "48px" }
+    const avatarEl = (
+        <Box position="relative" flexShrink={0}>
+            <AvatarPreview
+                src={profile.avatarUrl}
+                alt={profile.displayName ?? "Profilna slika"}
+            >
+                <Box
+                    w={avatarSize}
+                    h={avatarSize}
+                    rounded="full"
+                    overflow="hidden"
+                    bg="blue.subtle"
+                    color="blue.fg"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontWeight="bold"
+                    fontSize={variant === "sidebar" ? "sm" : { base: "sm", md: "md" }}
+                >
+                    {profile.avatarUrl ? (
+                        <Image
+                            src={profile.avatarUrl}
+                            alt={profile.displayName ?? "Profilna slika"}
+                            w="100%"
+                            h="100%"
+                            objectFit="cover"
+                        />
+                    ) : (
+                        initialsOf(profile.displayName)
+                    )}
+                </Box>
+            </AvatarPreview>
+            {isOwner && (
+                <>
+                    <IconButton
+                        aria-label={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
+                        title={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
+                        size="2xs"
+                        position="absolute"
+                        bottom="-2px"
+                        right="-2px"
+                        rounded="full"
+                        colorPalette="pitch"
+                        variant="solid"
+                        loading={uploading}
+                        onClick={onPickAvatar}
+                    >
+                        <FiEdit2 />
+                    </IconButton>
+                    <chakra.input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        display="none"
+                        onChange={onAvatarChosen}
+                    />
+                </>
+            )}
+        </Box>
+    )
 
-                    {profile.phone ? (
+    // "Ukloni profilnu sliku" - icon-only on small widths (mobile card AND
+    // the narrow sidebar), full label otherwise; the tooltip/aria-label
+    // always carries the text.
+    const removeAvatarEl = isOwner && profile.avatarUrl && (
+        <Button
+            size="2xs"
+            variant="ghost"
+            colorPalette="red"
+            onClick={onRemoveAvatar}
+            loading={uploading}
+            alignSelf="flex-start"
+            aria-label="Ukloni profilnu sliku"
+            title="Ukloni profilnu sliku"
+        >
+            <FiTrash2 />
+            {variant === "card" && (
+                <chakra.span display={{ base: "none", md: "inline" }}>
+                    Ukloni profilnu sliku
+                </chakra.span>
+            )}
+        </Button>
+    )
+
+    // Inline edit form - replaces the old modal. Rendered in place, inside
+    // whichever shell (sidebar / card) the header is sitting in.
+    const editFormEl = isOwner && editOpen && (
+        <EditProfileForm
+            compact={variant === "sidebar"}
+            onCancel={() => setEditOpen(false)}
+            onSaved={async () => {
+                setEditOpen(false)
+                await onProfileChanged()
+            }}
+        />
+    )
+
+    const phoneEl = profile.phone ? (
                         <chakra.a
                             href={`tel:${(profile.phoneCountry ?? "")}${profile.phone}`.replace(/\s+/g, "")}
                             color="blue.fg"
@@ -1036,20 +1038,87 @@ function ProfileHeader({
                                 (prijavi se)
                             </chakra.span>
                         </chakra.button>
-                    ) : null}
+                    ) : null
+
+    // ── Sidebar variant: the FIRST item of the owner's desktop menu - a
+    //    compact identity row; the pencil expands the edit fields inline,
+    //    right here in the sidebar (no modal). ──
+    if (variant === "sidebar") {
+        return (
+            <VStack align="stretch" gap="1.5" px="1" pt="1">
+                <HStack gap="2.5" align="center" minW="0">
+                    {avatarEl}
+                    <HStack gap="1" align="center" flex="1" minW="0">
+                        <Text
+                            fontWeight={700}
+                            fontSize="14px"
+                            lineHeight="short"
+                            lineClamp={2}
+                            flex="1"
+                            minW="0"
+                        >
+                            {profile.displayName ?? "Bezimeni igrač"}
+                        </Text>
+                        {isOwner && (
+                            <IconButton
+                                aria-label="Uredi profil"
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => setEditOpen((v) => !v)}
+                                title="Uredi profil"
+                            >
+                                <FiEdit2 />
+                            </IconButton>
+                        )}
+                    </HStack>
+                </HStack>
+                {phoneEl}
+                {/* Remove-avatar only while editing - keeps the resting
+                    sidebar clean of destructive actions. */}
+                {editOpen && removeAvatarEl}
+                {editFormEl}
+            </VStack>
+        )
+    }
+
+    // ── Card variant: mobile body (owner) + any visitor view. ──
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "3", md: "5" }}>
+                <VStack align="stretch" gap={{ base: "2", md: "3" }}>
+                    <HStack gap={{ base: "2", md: "3" }} align="start">
+                        {avatarEl}
+                        <VStack align="stretch" gap="0.5" flex="1" minW="0">
+                            <HStack gap="1" align="center" minW="0">
+                                <Heading
+                                    size={{ base: "sm", md: "md" }}
+                                    lineHeight="short"
+                                    lineClamp={2}
+                                    flex="1"
+                                    minW="0"
+                                >
+                                    {profile.displayName ?? "Bezimeni igrač"}
+                                </Heading>
+                                {isOwner && (
+                                    <IconButton
+                                        aria-label="Uredi profil"
+                                        size="xs"
+                                        variant="ghost"
+                                        onClick={() => setEditOpen((v) => !v)}
+                                        title="Uredi profil"
+                                    >
+                                        <FiEdit2 />
+                                    </IconButton>
+                                )}
+                            </HStack>
+                            {removeAvatarEl}
+                        </VStack>
+                    </HStack>
+
+                    {phoneEl}
+                    {editFormEl}
                 </VStack>
             </Card.Body>
-
-            {isOwner && (
-                <EditProfileDialog
-                    open={editOpen}
-                    onClose={() => setEditOpen(false)}
-                    onSaved={async () => {
-                        setEditOpen(false)
-                        await onProfileChanged()
-                    }}
-                />
-            )}
         </Card.Root>
     )
 }
@@ -1083,13 +1152,18 @@ function slugify(s: string): string {
         .replace(/(^-|-$)/g, "")
 }
 
-function EditProfileDialog({
-    open,
-    onClose,
+/**
+ * Inline profile-edit fields (name, username, phone) - expands in place
+ * under the identity row (sidebar or card) instead of opening a modal.
+ * `compact` stacks the name fields vertically for the narrow sidebar.
+ */
+function EditProfileForm({
+    compact = false,
+    onCancel,
     onSaved,
 }: {
-    open: boolean
-    onClose: () => void
+    compact?: boolean
+    onCancel: () => void
     onSaved: () => Promise<void> | void
 }) {
     const navigate = useNavigate()
@@ -1104,10 +1178,10 @@ function EditProfileDialog({
     const [error, setError] = useState<string | null>(null)
     const [uStatus, setUStatus] = useState<UsernameStatus>({ state: "idle" })
 
-    // Re-seed every time the dialog opens - covers cancel-and-reopen and the
-    // case where the underlying profile was changed elsewhere in the meantime.
+    // Seed on mount - the form is unmounted on cancel/save, so a reopen
+    // always re-fetches the current values (covers the case where the
+    // underlying profile was changed elsewhere in the meantime).
     useEffect(() => {
-        if (!open) return
         setError(null)
         setUStatus({ state: "idle" })
         setLoadingPhone(true)
@@ -1127,7 +1201,7 @@ function EditProfileDialog({
                 setLoadingPhone(false)
             }
         })()
-    }, [open])
+    }, [])
 
     // Debounced username-availability check. Skipped when unchanged from the
     // current username (which would otherwise report as "taken" by yourself).
@@ -1191,7 +1265,7 @@ function EditProfileDialog({
             // /profil/{slug} so the page doesn't 404 on the old slug.
             const newSlug = updated.slug ?? null
             if (newSlug && newSlug !== originalUsernameRef.current) {
-                onClose()
+                onCancel()
                 navigate(`/profil/${newSlug}`, { replace: true })
                 return
             }
@@ -1206,19 +1280,21 @@ function EditProfileDialog({
         }
     }
 
+    // The name fields sit side by side in the wide card, stacked in the
+    // narrow sidebar (`compact`).
+    const NameFields = compact ? VStack : HStack
+
     return (
-        <Dialog.Root
-            open={open}
-            onOpenChange={(e) => { if (!e.open && !saving) onClose() }}
+        <Box
+            borderTopWidth="1px"
+            borderColor="border.emphasized"
+            pt="3"
+            mt="1"
         >
-            <Dialog.Backdrop />
-            <Dialog.Positioner>
-                <Dialog.Content maxW="md">
-                    <form onSubmit={onSubmit}>
-                        <Dialog.Header>Uredi profil</Dialog.Header>
-                        <Dialog.Body>
-                            <VStack align="stretch" gap="4">
-                                <HStack gap="3" align="start">
+            <form onSubmit={onSubmit}>
+                <VStack align="stretch" gap="3">
+                    <Text fontWeight={700} fontSize="sm">Uredi profil</Text>
+                                <NameFields gap={compact ? "3" : "3"} align={compact ? "stretch" : "start"}>
                                     <Field.Root required>
                                         <Field.Label>Ime <Field.RequiredIndicator /></Field.Label>
                                         <Input
@@ -1238,7 +1314,7 @@ function EditProfileDialog({
                                             placeholder="Marković"
                                         />
                                     </Field.Root>
-                                </HStack>
+                                </NameFields>
 
                                 <Field.Root required>
                                     <Field.Label>Korisničko ime <Field.RequiredIndicator /></Field.Label>
@@ -1276,8 +1352,8 @@ function EditProfileDialog({
                                     {loadingPhone ? (
                                         <Skeleton h="9" />
                                     ) : (
-                                        <HStack gap="2">
-                                            <NativeSelect.Root size="sm" w="120px" flexShrink={0}>
+                                        <NameFields gap="2" align="stretch" w="full">
+                                            <NativeSelect.Root size="sm" w={compact ? "full" : "120px"} flexShrink={0}>
                                                 <NativeSelect.Field
                                                     value={country}
                                                     onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
@@ -1301,7 +1377,7 @@ function EditProfileDialog({
                                                 // separate select.
                                                 onChange={(e) => setPhone(e.target.value.replace(/[^\d\s]/g, ""))}
                                             />
-                                        </HStack>
+                                        </NameFields>
                                     )}
                                 </Field.Root>
 
@@ -1310,26 +1386,25 @@ function EditProfileDialog({
                                         <Text fontSize="sm" color="red.fg">{error}</Text>
                                     </Box>
                                 )}
-                            </VStack>
-                        </Dialog.Body>
-                        <Dialog.Footer>
-                            <Button variant="ghost" type="button" onClick={onClose} disabled={saving}>
-                                Odustani
-                            </Button>
-                            <Button
-                                variant="solid"
-                                colorPalette="pitch"
-                                type="submit"
-                                loading={saving}
-                                disabled={saving || loadingPhone || !firstName.trim() || !lastName.trim() || !usernameValid}
-                            >
-                                Spremi
-                            </Button>
-                        </Dialog.Footer>
-                    </form>
-                </Dialog.Content>
-            </Dialog.Positioner>
-        </Dialog.Root>
+
+                    <HStack justify="flex-end" gap="2">
+                        <Button size="sm" variant="ghost" type="button" onClick={onCancel} disabled={saving}>
+                            Odustani
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="solid"
+                            colorPalette="pitch"
+                            type="submit"
+                            loading={saving}
+                            disabled={saving || loadingPhone || !firstName.trim() || !lastName.trim() || !usernameValid}
+                        >
+                            Spremi
+                        </Button>
+                    </HStack>
+                </VStack>
+            </form>
+        </Box>
     )
 }
 
