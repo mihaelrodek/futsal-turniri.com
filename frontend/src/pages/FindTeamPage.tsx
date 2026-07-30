@@ -25,6 +25,7 @@ import {
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
+import { useTranslation } from "../i18n"
 import {
     FiCalendar,
     FiCheck,
@@ -114,6 +115,7 @@ function TeamAvatar({ name, matched }: { name: string; matched?: boolean }) {
 }
 
 export default function FindTeamPage() {
+    const t = useTranslation()
     const { user, isAdmin } = useAuth()
     const navigate = useNavigate()
     const location = useLocation()
@@ -211,7 +213,7 @@ export default function FindTeamPage() {
             )
             setRequests(data)
         } catch (e: any) {
-            setRequestsError(e?.message ?? "Greška pri dohvaćanju zahtjeva.")
+            setRequestsError(e?.message ?? t.pages.findTeamPage.fetchError)
             setRequests([])
         } finally {
             setLoadingRequests(false)
@@ -269,11 +271,11 @@ export default function FindTeamPage() {
         e.preventDefault()
         setFormError(null)
         if (!selectedTournamentUuid) {
-            setFormError("Odaberi turnir.")
+            setFormError(t.pages.findTeamPage.validationSelectTournament)
             return
         }
         if (!playerName.trim()) {
-            setFormError("Ime je obavezno.")
+            setFormError(t.pages.findTeamPage.validationNameRequired)
             return
         }
         try {
@@ -300,7 +302,9 @@ export default function FindTeamPage() {
             setFormError(
                 e?.response?.data
                     ?? e?.message
-                    ?? (editingUuid ? "Neuspjelo spremanje izmjena." : "Neuspjelo objavljivanje zahtjeva."),
+                    ?? (editingUuid
+                        ? t.pages.findTeamPage.saveFailedEdit
+                        : t.pages.findTeamPage.saveFailedCreate),
             )
         } finally {
             setSubmitting(false)
@@ -313,26 +317,26 @@ export default function FindTeamPage() {
             setRequests((rs) => rs.map((r) => (r.uuid === uuid ? updated : r)))
         } catch (e: any) {
             showError(
-                "Greška",
-                String(e?.response?.data ?? e?.message ?? "Neuspjelo označavanje."),
+                t.pages.findTeamPage.errorTitle,
+                String(e?.response?.data ?? e?.message ?? t.pages.findTeamPage.matchFailed),
             )
         }
     }
     async function onDelete(uuid: string) {
-        if (!confirm("Obrisati zahtjev?")) return
+        if (!confirm(t.pages.findTeamPage.confirmDelete)) return
         try {
             await deleteTeamRequest(uuid)
             setRequests((rs) => rs.filter((r) => r.uuid !== uuid))
         } catch (e: any) {
             showError(
-                "Greška pri brisanju",
-                String(e?.response?.data ?? e?.message ?? "Zahtjev nije obrisan."),
+                t.pages.findTeamPage.deleteErrorTitle,
+                String(e?.response?.data ?? e?.message ?? t.pages.findTeamPage.deleteFailed),
             )
         }
     }
 
     const selectedTournament = useMemo(
-        () => tournaments.find((t) => t.uuid === selectedTournamentUuid),
+        () => tournaments.find((tour) => tour.uuid === selectedTournamentUuid),
         [tournaments, selectedTournamentUuid],
     )
 
@@ -364,8 +368,8 @@ export default function FindTeamPage() {
                 >
                     {formOpen ? <FiChevronDown /> : <FiChevronRight />}
                     {formOpen
-                        ? " Sakrij formu"
-                        : " Objavi zahtjev"}
+                        ? ` ${t.pages.findTeamPage.toggleHide}`
+                        : ` ${t.pages.findTeamPage.postRequestLabel}`}
                 </Button>
             </HStack>
 
@@ -378,7 +382,9 @@ export default function FindTeamPage() {
                                 {editingUuid ? <FiEdit2 /> : <FiUserPlus />}
                             </Box>
                             <Card.Title fontSize="md">
-                                {editingUuid ? "Uredi zahtjev" : "Tražim ekipu"}
+                                {editingUuid
+                                    ? t.pages.findTeamPage.formTitleEdit
+                                    : t.pages.findTeamPage.formTitleCreate}
                             </Card.Title>
                         </HStack>
                     </Card.Header>
@@ -386,7 +392,7 @@ export default function FindTeamPage() {
                         <form onSubmit={onSubmit}>
                             <VStack align="stretch" gap="4">
                                 <Field.Root required>
-                                    <Field.Label>Turnir <Field.RequiredIndicator /></Field.Label>
+                                    <Field.Label>{t.pages.findTeamPage.tournamentLabel} <Field.RequiredIndicator /></Field.Label>
                                     <NativeSelect.Root size="sm" disabled={!!editingUuid}>
                                         <NativeSelect.Field
                                             value={selectedTournamentUuid}
@@ -395,29 +401,29 @@ export default function FindTeamPage() {
                                             }
                                         >
                                             {loadingTournaments ? (
-                                                <option value="">Učitavanje…</option>
+                                                <option value="">{t.common.loading}</option>
                                             ) : editingUuid ? (
                                                 // While editing we always render the request's
                                                 // tournament so the value stays valid even when
                                                 // it isn't in the upcoming list anymore.
                                                 <>
-                                                    {!tournaments.some((t) => t.uuid === selectedTournamentUuid) && (
+                                                    {!tournaments.some((tour) => tour.uuid === selectedTournamentUuid) && (
                                                         <option value={selectedTournamentUuid}>
                                                             {requests.find((r) => r.uuid === editingUuid)?.tournamentName ?? selectedTournamentUuid}
                                                         </option>
                                                     )}
-                                                    {tournaments.map((t) => (
-                                                        <option key={t.uuid} value={t.uuid}>
-                                                            {t.name}
+                                                    {tournaments.map((tour) => (
+                                                        <option key={tour.uuid} value={tour.uuid}>
+                                                            {tour.name}
                                                         </option>
                                                     ))}
                                                 </>
                                             ) : tournaments.length === 0 ? (
-                                                <option value="">Nema nadolazećih turnira</option>
+                                                <option value="">{t.pages.findTeamPage.tournamentEmpty}</option>
                                             ) : (
-                                                tournaments.map((t) => (
-                                                    <option key={t.uuid} value={t.uuid}>
-                                                        {t.name}
+                                                tournaments.map((tour) => (
+                                                    <option key={tour.uuid} value={tour.uuid}>
+                                                        {tour.name}
                                                     </option>
                                                 ))
                                             )}
@@ -425,7 +431,7 @@ export default function FindTeamPage() {
                                     </NativeSelect.Root>
                                     {editingUuid && (
                                         <Field.HelperText>
-                                            Turnir nije moguće promijeniti - obriši zahtjev i kreiraj novi za drugi turnir.
+                                            {t.pages.findTeamPage.tournamentLockedHint}
                                         </Field.HelperText>
                                     )}
                                     {selectedTournament && (
@@ -450,17 +456,17 @@ export default function FindTeamPage() {
 
                                 <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }} gap="4">
                                     <Field.Root required>
-                                        <Field.Label>Tvoje ime <Field.RequiredIndicator /></Field.Label>
+                                        <Field.Label>{t.pages.findTeamPage.nameLabel} <Field.RequiredIndicator /></Field.Label>
                                         <Input
-                                            placeholder="npr. Marko"
+                                            placeholder={t.pages.findTeamPage.namePlaceholder}
                                             value={playerName}
                                             onChange={(e) => setPlayerName(e.target.value)}
                                         />
                                     </Field.Root>
                                     <Field.Root>
                                         <Field.Label>
-                                            Broj telefona{" "}
-                                            <chakra.span color="fg.muted" fontSize="xs">(opcionalno)</chakra.span>
+                                            {t.pages.findTeamPage.phoneLabel}{" "}
+                                            <chakra.span color="fg.muted" fontSize="xs">{t.common.optionalTag}</chakra.span>
                                         </Field.Label>
                                         <HStack gap="2">
                                             <NativeSelect.Root size="sm" w="120px" flexShrink={0}>
@@ -492,9 +498,9 @@ export default function FindTeamPage() {
                                 </Box>
 
                                 <Field.Root>
-                                    <Field.Label>Napomena (opcionalno)</Field.Label>
+                                    <Field.Label>{t.pages.findTeamPage.noteLabel}</Field.Label>
                                     <Textarea
-                                        placeholder="Iskustvo, način igranja, prijevoz..."
+                                        placeholder={t.pages.findTeamPage.notePlaceholder}
                                         value={note}
                                         onChange={(e) => setNote(e.target.value)}
                                         rows={3}
@@ -521,7 +527,7 @@ export default function FindTeamPage() {
                                         onClick={() => { resetForm(); setFormOpen(false) }}
                                         disabled={submitting}
                                     >
-                                        Odustani
+                                        {t.common.cancel}
                                     </Button>
                                     <Button
                                         type="submit"
@@ -532,9 +538,9 @@ export default function FindTeamPage() {
                                         disabled={!selectedTournamentUuid || submitting}
                                     >
                                         {editingUuid ? (
-                                            <><FiCheck /> Spremi</>
+                                            <><FiCheck /> {t.common.save}</>
                                         ) : (
-                                            <><FiUserPlus /> Objavi zahtjev</>
+                                            <><FiUserPlus /> {t.pages.findTeamPage.postRequestLabel}</>
                                         )}
                                     </Button>
                                 </HStack>
@@ -554,18 +560,18 @@ export default function FindTeamPage() {
                     >
                         <Box>
                             <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                                Pretraga
+                                {t.pages.findTeamPage.searchLabel}
                             </Text>
                             <Input
                                 size="sm"
-                                placeholder="Pretraži po imenu, lokaciji…"
+                                placeholder={t.pages.findTeamPage.searchPlaceholder}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </Box>
                         <Box>
                             <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                                Status
+                                {t.pages.findTeamPage.statusLabel}
                             </Text>
                             <NativeSelect.Root size="sm">
                                 <NativeSelect.Field
@@ -574,15 +580,15 @@ export default function FindTeamPage() {
                                         setStatusFilter(e.target.value as "all" | "open" | "matched")
                                     }
                                 >
-                                    <option value="open">Aktivni</option>
-                                    <option value="matched">Spareni</option>
-                                    <option value="all">Svi</option>
+                                    <option value="open">{t.pages.findTeamPage.statusOpen}</option>
+                                    <option value="matched">{t.pages.findTeamPage.statusMatched}</option>
+                                    <option value="all">{t.pages.findTeamPage.statusAll}</option>
                                 </NativeSelect.Field>
                             </NativeSelect.Root>
                         </Box>
                         <Box>
                             <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                                Turnir
+                                {t.pages.findTeamPage.tournamentLabel}
                             </Text>
                             <NativeSelect.Root size="sm">
                                 <NativeSelect.Field
@@ -591,10 +597,10 @@ export default function FindTeamPage() {
                                         setTournamentFilter(e.target.value)
                                     }
                                 >
-                                    <option value="">Svi turniri</option>
-                                    {tournaments.map((t) => (
-                                        <option key={t.uuid} value={t.uuid}>
-                                            {t.name}
+                                    <option value="">{t.pages.findTeamPage.allTournaments}</option>
+                                    {tournaments.map((tour) => (
+                                        <option key={tour.uuid} value={tour.uuid}>
+                                            {tour.name}
                                         </option>
                                     ))}
                                 </NativeSelect.Field>
@@ -610,14 +616,12 @@ export default function FindTeamPage() {
                     <FiUsers />
                     <Text fontSize="sm" color="fg.muted">
                         <chakra.b>{filteredRequests.length}</chakra.b>
-                        {requests.length !== filteredRequests.length && (
-                            <> od {requests.length}</>
-                        )} zahtjeva
+                        {t.pages.findTeamPage.summarySuffix(filteredRequests.length, requests.length)}
                     </Text>
                 </HStack>
                 {statusFilter !== "open" && (
                     <Text fontSize="sm" color="fg.muted">
-                        <chakra.b>{openCount}</chakra.b> aktivnih ukupno
+                        <chakra.b>{openCount}</chakra.b>{t.pages.findTeamPage.activeCountSuffix}
                     </Text>
                 )}
             </HStack>
@@ -654,12 +658,14 @@ export default function FindTeamPage() {
                     <VStack gap="2">
                         <Box color="fg.muted"><FiFilter size={24} /></Box>
                         <Text fontWeight="medium">
-                            {requests.length === 0 ? "Još nema zahtjeva" : "Nema rezultata"}
+                            {requests.length === 0
+                                ? t.pages.findTeamPage.noRequestsYet
+                                : t.pages.findTeamPage.noResultsForFilter}
                         </Text>
                         <Text color="fg.muted" fontSize="sm" textAlign="center">
                             {requests.length === 0
-                                ? "Budi prvi koji traži ekipu - klikni \"Objavi zahtjev\" gore."
-                                : "Nijedan zahtjev ne odgovara odabranim filterima."}
+                                ? t.pages.findTeamPage.noRequestsYetHint
+                                : t.pages.findTeamPage.noResultsHint}
                         </Text>
                     </VStack>
                 </Box>
@@ -705,6 +711,7 @@ function RequestCard({
     onMatch: () => void
     onDelete: () => void
 }) {
+    const t = useTranslation()
     const matched = r.status === "MATCHED"
     return (
         <Box
@@ -733,7 +740,7 @@ function RequestCard({
                     </Text>
                 </Box>
                 <Badge variant="solid" colorPalette={matched ? "green" : "blue"} size="sm">
-                    {matched ? "Spareni" : "Tražim"}
+                    {matched ? t.pages.findTeamPage.statusMatched : t.pages.findTeamPage.openStatusTag}
                 </Badge>
             </HStack>
 
@@ -799,25 +806,25 @@ function RequestCard({
                     <HStack gap="1.5">
                         {!matched && (
                             <Button size="xs" variant="solid" colorPalette="green" onClick={onMatch}>
-                                <FiCheck /> Spareno
+                                <FiCheck /> {t.pages.findTeamPage.matchButton}
                             </Button>
                         )}
                         <IconButton
-                            aria-label="Uredi zahtjev"
+                            aria-label={t.pages.findTeamPage.editRequestLabel}
                             size="xs"
                             variant="ghost"
                             onClick={onEdit}
-                            title="Uredi zahtjev"
+                            title={t.pages.findTeamPage.editRequestLabel}
                         >
                             <FiEdit2 />
                         </IconButton>
                         <IconButton
-                            aria-label="Obriši zahtjev"
+                            aria-label={t.pages.findTeamPage.deleteRequestLabel}
                             size="xs"
                             variant="ghost"
                             colorPalette="red"
                             onClick={onDelete}
-                            title="Obriši zahtjev"
+                            title={t.pages.findTeamPage.deleteRequestLabel}
                         >
                             <FiTrash2 />
                         </IconButton>

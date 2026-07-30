@@ -336,6 +336,11 @@ function RecordingRequestRow({
                             {t.recordingRequest.adminRequests.contactLabel} <Text as="span" color="fg">{req.contactEmail}</Text>
                         </Text>
                     )}
+                    {req.contactPhone && (
+                        <Text fontSize="xs" color="fg.muted" truncate>
+                            {t.recordingRequest.adminRequests.contactPhoneLabel} <Text as="span" color="fg">{req.contactPhone}</Text>
+                        </Text>
+                    )}
                     <Text fontSize="xs" color="fg.muted">
                         {t.recordingRequest.adminRequests.requestedLabel} {formatDateTime(req.createdAt)}
                     </Text>

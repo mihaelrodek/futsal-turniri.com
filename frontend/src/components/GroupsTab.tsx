@@ -69,6 +69,7 @@ import {
     StartLivePopover,
     matchPhase
 } from "./liveMatch"
+import {useTranslation} from "../i18n"
 
 /**
  * "Grupe" tab on the tournament detail page (Phase E2 + E5).
@@ -103,20 +104,21 @@ function ConfigStepper({
     decDisabled?: boolean
     incDisabled?: boolean
 }) {
+    const t = useTranslation()
     return (
         <Box>
             <Text fontSize="2xs" fontWeight={800} letterSpacing="wider" textTransform="uppercase" color="fg.muted" mb="1.5">
                 {label}
             </Text>
             <Flex align="center" borderWidth="1px" borderColor="border" rounded="xl" overflow="hidden" w="fit-content">
-                <IconButton aria-label={`Smanji: ${label}`} variant="ghost" rounded="none" h="44px" minW="38px"
+                <IconButton aria-label={t.components.groupsTab.draw.decreaseAria(label)} variant="ghost" rounded="none" h="44px" minW="38px"
                             color="pitch.500" disabled={decDisabled} onClick={onDec}>
                     <FiMinus size={16}/>
                 </IconButton>
                 <Text minW="44px" textAlign="center" fontSize="md" fontWeight={800} fontVariantNumeric="tabular-nums">
                     {value}
                 </Text>
-                <IconButton aria-label={`Povećaj: ${label}`} variant="ghost" rounded="none" h="44px" minW="38px"
+                <IconButton aria-label={t.components.groupsTab.draw.increaseAria(label)} variant="ghost" rounded="none" h="44px" minW="38px"
                             color="pitch.500" disabled={incDisabled} onClick={onInc}>
                     <FiPlus size={16}/>
                 </IconButton>
@@ -142,6 +144,7 @@ function DrawChip({
     onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void
     onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void
 }) {
+    const t = useTranslation()
     return (
         <Flex
             align="center"
@@ -163,7 +166,7 @@ function DrawChip({
             transition="border-color 120ms"
         >
             <Text as="span" color="fg.subtle" fontSize="md" flexShrink={0} lineHeight="1" css={{letterSpacing: "-2px"}}>⠿</Text>
-            <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+            <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || t.components.groupsTab.shared.noTeamName}</Text>
         </Flex>
     )
 }
@@ -360,6 +363,7 @@ export default function GroupsTab({
     onSelectTeam?: (teamId: number) => void
 }) {
     const navigate = useNavigate()
+    const t = useTranslation()
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Grupe tab (or a
     // recently-opened tournament) renders instantly instead of refetching.
@@ -673,7 +677,7 @@ export default function GroupsTab({
         if (finishedLocked) {
             toaster.create({
                 type: "info",
-                title: "Turnir je završen. Obrati se administratoru za otključavanje.",
+                title: t.components.groupsTab.shared.lockedToast,
                 duration: 3000,
             })
             return false
@@ -1101,22 +1105,21 @@ export default function GroupsTab({
     const groupTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 6%, var(--chakra-colors-bg-panel))"
     const groupTintBgHover = "color-mix(in srgb, var(--chakra-colors-pitch-500) 12%, var(--chakra-colors-bg-panel))"
     const poolTintBg = "color-mix(in srgb, var(--chakra-colors-pitch-500) 3%, var(--chakra-colors-bg-panel))"
-    const ekipaWord = (n: number) => (n === 1 ? "ekipa" : "ekipe")
 
     const drawPanel = (
         <Panel p={{base: "4", md: "6"}}>
             <VStack align="stretch" gap="5">
                 <Box>
-                    <Text fontWeight={800} fontSize={{base: "lg", md: "xl"}}>Ždrijeb grupa</Text>
+                    <Text fontWeight={800} fontSize={{base: "lg", md: "xl"}}>{t.components.groupsTab.draw.heading}</Text>
                     <Text fontSize="sm" color="fg.muted" fontWeight={500}>
-                        Skica se sprema automatski — primjenjuje se tek klikom na „Potvrdi ždrijeb".
+                        {t.components.groupsTab.draw.autoSaveHint}
                     </Text>
                 </Box>
 
                 {/* Config steppers: group count / advance / best next-placed. */}
                 <Flex gap={{base: "5", md: "7"}} wrap="wrap">
                     <ConfigStepper
-                        label="Broj grupa"
+                        label={t.components.groupsTab.draw.groupCountLabel}
                         value={gcNum}
                         onDec={() => changeGroupCount(String(gcNum - 1))}
                         onInc={() => changeGroupCount(String(gcNum + 1))}
@@ -1124,7 +1127,7 @@ export default function GroupsTab({
                         incDisabled={gcNum >= maxGroups || drawing}
                     />
                     <ConfigStepper
-                        label="Prolazi po grupi"
+                        label={t.components.groupsTab.draw.advancePerGroupLabel}
                         value={advNum}
                         onDec={() => setCfgAdvance(String(Math.max(1, advNum - 1)))}
                         onInc={() => setCfgAdvance(String(advNum + 1))}
@@ -1132,7 +1135,7 @@ export default function GroupsTab({
                     />
                     {/* Best next-placed ("third") teams; label position tracks advNum. */}
                     <ConfigStepper
-                        label={`Najbolje ${advNum + 1}. plasirane`}
+                        label={t.components.groupsTab.draw.bestThirdLabel(advNum + 1)}
                         value={bestThirdNum}
                         onDec={() => setCfgBestThird(String(Math.max(0, bestThirdNum - 1)))}
                         onInc={() => setCfgBestThird(String(Math.min(gcNum, bestThirdNum + 1)))}
@@ -1143,16 +1146,16 @@ export default function GroupsTab({
 
                 {bestThirdNum > 0 && (
                     <Text fontSize="xs" color="fg.muted">
-                        U eliminaciju prolazi {gcNum} × {advNum} = {gcNum * advNum} po grupama
+                        {t.components.groupsTab.draw.qualifierSummary.groupsPart(gcNum, advNum, gcNum * advNum)}
                         {" + "}
-                        {bestThirdNum} najbolje {advNum + 1}. plasirane ={" "}
-                        <Text as="span" fontWeight={700} color="fg.ink">{gcNum * advNum + bestThirdNum} ekipa</Text>.
+                        {t.components.groupsTab.draw.qualifierSummary.bestThirdPart(bestThirdNum, advNum + 1)}{" "}
+                        <Text as="span" fontWeight={700} color="fg.ink">{t.components.groupsTab.draw.qualifierSummary.totalTeams(gcNum * advNum + bestThirdNum)}</Text>.
                     </Text>
                 )}
 
                 {!enoughTeams && (
                     <Text fontSize="xs" color="red.fg">
-                        Potrebno je barem {gcNum} ekipa za {gcNum} grupe (prijavljeno {registeredTeams.length}).
+                        {t.components.groupsTab.draw.notEnoughTeams(gcNum, registeredTeams.length)}
                     </Text>
                 )}
 
@@ -1167,9 +1170,9 @@ export default function GroupsTab({
                     borderColor="border"
                 >
                     <Text fontSize="sm" fontWeight={700} color="fg.muted" flex="1" minW="180px">
-                        Povuci kuglicu u željenu skupinu. {poolTeams.length > 0
-                        ? `Raspoređeno ${registeredTeams.length - poolTeams.length}/${registeredTeams.length}.`
-                        : "Sve ekipe su raspoređene."}
+                        {t.components.groupsTab.draw.dragHint} {poolTeams.length > 0
+                        ? t.components.groupsTab.draw.allocatedCount(registeredTeams.length - poolTeams.length, registeredTeams.length)
+                        : t.components.groupsTab.draw.allAllocated}
                     </Text>
                     <Button
                         size="sm"
@@ -1177,7 +1180,7 @@ export default function GroupsTab({
                         onClick={fillRemaining}
                         disabled={poolTeams.length === 0}
                     >
-                        <LuShuffle size={15}/> Nasumično rasporedi
+                        <LuShuffle size={15}/> {t.components.groupsTab.draw.shuffleButton}
                     </Button>
                     <Button
                         size="sm"
@@ -1186,7 +1189,7 @@ export default function GroupsTab({
                         onClick={() => setAssign({})}
                         disabled={registeredTeams.length === poolTeams.length}
                     >
-                        <LuRotateCcw size={14}/> Isprazni
+                        <LuRotateCcw size={14}/> {t.components.groupsTab.draw.clearButton}
                     </Button>
                     <Button
                         size="sm"
@@ -1195,7 +1198,7 @@ export default function GroupsTab({
                         onClick={discardDraft}
                         disabled={drawing}
                     >
-                        <FiTrash2 size={14}/> Odbaci skicu
+                        <FiTrash2 size={14}/> {t.components.groupsTab.draw.discardButton}
                     </Button>
                     <Button
                         size="sm"
@@ -1203,12 +1206,12 @@ export default function GroupsTab({
                         onClick={submitDraw}
                         loading={drawing}
                         disabled={!enoughTeams || !allAssigned}
-                        title={!allAssigned ? "Rasporedi sve kuglice u skupine prije potvrde" : undefined}
+                        title={!allAssigned ? t.components.groupsTab.draw.confirmDisabledTitle : undefined}
                     >
-                        Potvrdi ždrijeb
+                        {t.components.groupsTab.draw.confirmButton}
                     </Button>
                     <Button size="sm" variant="ghost" colorPalette="gray" onClick={closeDraw} disabled={drawing}>
-                        Odustani
+                        {t.common.cancel}
                     </Button>
                 </Flex>
 
@@ -1228,7 +1231,7 @@ export default function GroupsTab({
                             transition="border-color 120ms"
                         >
                             <Flex align="center" justify="space-between" mb="3">
-                                <Text fontWeight={800} fontSize="md">Kuglice / ekipe</Text>
+                                <Text fontWeight={800} fontSize="md">{t.components.groupsTab.draw.poolHeading}</Text>
                                 <Box
                                     as="span"
                                     bg="pitch.500"
@@ -1245,7 +1248,7 @@ export default function GroupsTab({
                             </Flex>
                             {poolTeams.length === 0 && (
                                 <Text fontSize="sm" color="fg.muted" fontWeight={500} py="8" textAlign="center">
-                                    Sve raspoređeno — povuci ekipu ovamo da je vratiš.
+                                    {t.components.groupsTab.draw.poolAllAllocatedHint}
                                 </Text>
                             )}
                             <VStack align="stretch" gap="2">
@@ -1296,7 +1299,7 @@ export default function GroupsTab({
                                     >
                                         <HStack justify="space-between" px="3.5" py="2.5" gap="1">
                                             <Text fontSize="xs" fontWeight={800} letterSpacing="0.06em" color="fg.ink">
-                                                SKUPINA {grpLabel(pos)}
+                                                {t.components.groupsTab.draw.groupLetterLabel(grpLabel(pos))}
                                             </Text>
                                             <HStack gap="0.5">
                                                 <Box
@@ -1314,24 +1317,24 @@ export default function GroupsTab({
                                                     fontVariantNumeric="tabular-nums"
                                                     whiteSpace="nowrap"
                                                 >
-                                                    {inGroup.length} {ekipaWord(inGroup.length)}
+                                                    {t.components.groupsTab.draw.teamsCount(inGroup.length)}
                                                 </Box>
                                                 <IconButton
-                                                    aria-label="Pomakni skupinu gore" size="xs" h="22px" minW="22px"
+                                                    aria-label={t.components.groupsTab.draw.moveGroupUpAria} size="xs" h="22px" minW="22px"
                                                     variant="ghost" disabled={pos === 0 || drawing}
                                                     onClick={() => moveGroupBox(pos, -1)}
                                                 >
                                                     <FiArrowUp size={12}/>
                                                 </IconButton>
                                                 <IconButton
-                                                    aria-label="Pomakni skupinu dolje" size="xs" h="22px" minW="22px"
+                                                    aria-label={t.components.groupsTab.draw.moveGroupDownAria} size="xs" h="22px" minW="22px"
                                                     variant="ghost" disabled={pos === gcNum - 1 || drawing}
                                                     onClick={() => moveGroupBox(pos, 1)}
                                                 >
                                                     <FiArrowDown size={12}/>
                                                 </IconButton>
                                                 <IconButton
-                                                    aria-label={isCollapsed ? "Proširi skupinu" : "Minimiziraj skupinu"}
+                                                    aria-label={isCollapsed ? t.components.groupsTab.draw.expandGroupAria : t.components.groupsTab.draw.collapseGroupAria}
                                                     size="xs" h="22px" minW="22px" variant="ghost"
                                                     onClick={() => toggleBoxCollapsed(i)}
                                                 >
@@ -1343,8 +1346,8 @@ export default function GroupsTab({
                                         {isCollapsed && (
                                             <Text px="3.5" pb="2.5" fontSize="xs" color="fg.muted" truncate>
                                                 {inGroup.length > 0
-                                                    ? inGroup.map((tm) => tm.name?.trim() || "Bez imena").join(" · ")
-                                                    : "Prazno"}
+                                                    ? inGroup.map((tm) => tm.name?.trim() || t.components.groupsTab.shared.noTeamName).join(" · ")
+                                                    : t.components.groupsTab.draw.collapsedEmptyLabel}
                                             </Text>
                                         )}
                                         {!isCollapsed && (
@@ -1353,7 +1356,7 @@ export default function GroupsTab({
                                                     <Flex align="center" justify="center" py="8" px="3"
                                                           borderWidth="1px" borderStyle="dashed" borderColor="border"
                                                           rounded="xl" color="fg.muted" fontSize="sm" fontWeight={500}>
-                                                        Povuci ekipu ovamo
+                                                        {t.components.groupsTab.draw.dropTeamHereHint}
                                                     </Flex>
                                                 )}
                                                 {inGroup.map((tm) => (
@@ -1406,7 +1409,7 @@ export default function GroupsTab({
                             willChange: "transform",
                         }}
                     >
-                        {dragTeam.name?.trim() || "Bez imena"}
+                        {dragTeam.name?.trim() || t.components.groupsTab.shared.noTeamName}
                     </Box>
                 )}
             </VStack>
@@ -1449,11 +1452,11 @@ export default function GroupsTab({
             <Panel>
                 <EmptyState
                     icon={LuShuffle}
-                    title="Grupe još nisu izvučene"
+                    title={t.components.groupsTab.emptyState.title}
                     description={
                         canEdit
-                            ? "Odaberi broj grupa i koliko ekipa prolazi dalje, pogledaj pregled (automatski ili ručno) pa potvrdi."
-                            : "Organizator još nije izvukao grupe."
+                            ? t.components.groupsTab.emptyState.descriptionEditable
+                            : t.components.groupsTab.emptyState.descriptionReadonly
                     }
                     action={
                         canEdit && !finishedLocked ? (
@@ -1462,7 +1465,7 @@ export default function GroupsTab({
                                 onClick={openDraw}
                                 disabled={registeredTeams.length < 2}
                             >
-                                Izvuci grupe
+                                {t.components.groupsTab.emptyState.drawButton}
                             </Button>
                         ) : undefined
                     }
@@ -1662,7 +1665,7 @@ export default function GroupsTab({
                                             colorPalette="gray"
                                             onClick={() => { if (guardUnlocked()) setLiveMatch(m) }}
                                         >
-                                            Uredi
+                                            {t.common.edit}
                                         </Button>
                                     )}
                                 </Box>
@@ -1686,14 +1689,14 @@ export default function GroupsTab({
                             loading={saving}
                             onClick={() => saveResult(m)}
                         >
-                            Spremi
+                            {t.common.save}
                         </Button>
                         <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => setEditingId(null)}
                         >
-                            Odustani
+                            {t.common.cancel}
                         </Button>
                     </Flex>
                 )}
@@ -1716,7 +1719,7 @@ export default function GroupsTab({
                     setExportOpen(true)
                 }}
             >
-                Preuzmi
+                {t.common.download}
             </GhostButton>
             {canEdit && !started && !finishedLocked && (
                 <>
@@ -1729,7 +1732,7 @@ export default function GroupsTab({
                         onClick={openDraw}
                         disabled={drawing}
                     >
-                        {drawing ? "Ždrijeb…" : "Ponovi ždrijeb"}
+                        {drawing ? t.components.groupsTab.actions.redrawing : t.components.groupsTab.actions.redraw}
                     </GhostButton>
                     <GhostButton
                         px="3.5"
@@ -1740,7 +1743,7 @@ export default function GroupsTab({
                         onClick={confirmResetGroups}
                         disabled={drawing || resetting}
                     >
-                        {resetting ? "Resetiranje…" : "Resetiraj"}
+                        {resetting ? t.components.groupsTab.actions.resetting : t.components.groupsTab.actions.reset}
                     </GhostButton>
                 </>
             )}
@@ -1791,9 +1794,9 @@ export default function GroupsTab({
                 open={confirmResetGroupsOpen}
                 busy={resetting}
                 danger
-                title="Resetirati grupnu fazu?"
-                description="Sve utakmice grupne faze i podjela u grupe bit će obrisane."
-                confirmLabel="Da, resetiraj"
+                title={t.components.groupsTab.actions.resetDialog.title}
+                description={t.components.groupsTab.actions.resetDialog.description}
+                confirmLabel={t.components.groupsTab.actions.resetDialog.confirm}
                 onClose={() => setConfirmResetGroupsOpen(false)}
                 onConfirm={async () => {
                     await runResetGroups();
@@ -1814,10 +1817,10 @@ export default function GroupsTab({
                 >
                     <Flex justify="space-between" align="center" gap="3" wrap="wrap">
                         <Text fontSize="sm" color="fg.ink" fontWeight="medium">
-                            Grupe su izvučene. Utakmice se generiraju kad{" "}
-                            {canEdit ? "u tabu " : ""}
-                            <Text as="span" fontWeight="bold">Raspored</Text>{" "}
-                            {canEdit ? "generiraš raspored." : "organizator generira raspored."}
+                            {t.components.groupsTab.postDrawHint.leadIn}{" "}
+                            {canEdit ? t.components.groupsTab.postDrawHint.tabPrefix : ""}
+                            <Text as="span" fontWeight="bold">{t.components.groupsTab.postDrawHint.scheduleTabName}</Text>{" "}
+                            {canEdit ? t.components.groupsTab.postDrawHint.editSuffix : t.components.groupsTab.postDrawHint.readonlySuffix}
                         </Text>
                         {onGoToSchedule && (
                             <GhostButton
@@ -1825,7 +1828,7 @@ export default function GroupsTab({
                                 onClick={onGoToSchedule}
                                 flexShrink={0}
                             >
-                                Idi na raspored
+                                {t.components.groupsTab.postDrawHint.goToScheduleButton}
                             </GhostButton>
                         )}
                     </Flex>
@@ -1880,7 +1883,7 @@ export default function GroupsTab({
                                     letterSpacing="0.12em"
                                     color="fg.ink"
                                 >
-                                    GRUPA {g.name}
+                                    {t.components.groupsTab.standings.groupNameLabel(g.name)}
                                 </Text>
                             </HStack>
                             <HStack gap="2" align="center">
@@ -1909,7 +1912,7 @@ export default function GroupsTab({
                                                 py="1"
                                                 rounded="full"
                                             >
-                                                {adv} PROLAZE
+                                                {t.components.groupsTab.standings.advancingPill(adv)}
                                             </Box>
                                         )
                                     }
@@ -1924,10 +1927,10 @@ export default function GroupsTab({
                                             pl="1"
                                             pr="1.5"
                                             py="0.5"
-                                            title={overridden ? "Prilagođeno za ovu skupinu (klik za promjenu)" : "Koliko ekipa prolazi iz ove skupine"}
+                                            title={overridden ? t.components.groupsTab.standings.advanceTooltipOverridden : t.components.groupsTab.standings.advanceTooltipDefault}
                                         >
                                             <IconButton
-                                                aria-label="Manje prolaznika"
+                                                aria-label={t.components.groupsTab.standings.decreaseAdvanceAria}
                                                 size="2xs"
                                                 h="18px"
                                                 minW="18px"
@@ -1940,10 +1943,10 @@ export default function GroupsTab({
                                             </IconButton>
                                             <Box fontFamily="mono" fontSize="9px" fontWeight={800}
                                                  letterSpacing="0.04em" color="pitch.600" px="0.5" whiteSpace="nowrap">
-                                                {adv} PROLAZE
+                                                {t.components.groupsTab.standings.advancingPill(adv)}
                                             </Box>
                                             <IconButton
-                                                aria-label="Više prolaznika"
+                                                aria-label={t.components.groupsTab.standings.increaseAdvanceAria}
                                                 size="2xs"
                                                 h="18px"
                                                 minW="18px"
@@ -1965,7 +1968,7 @@ export default function GroupsTab({
                                     g.matches.length > 0 &&
                                     g.matches.every((m) => m.status === "FINISHED") && (
                                         <IconButton
-                                            aria-label="Uredi poredak skupine"
+                                            aria-label={t.components.groupsTab.standings.editOrderAria}
                                             size="xs"
                                             variant="ghost"
                                             onClick={() => setReorderGroupTarget(g)}
@@ -1976,7 +1979,7 @@ export default function GroupsTab({
                                 {/* Per-group quick export (everyone) - opens the poster
                                     dialog with this group's scope preselected. */}
                                 <IconButton
-                                    aria-label={`Izvezi grupu ${g.name}`}
+                                    aria-label={t.components.groupsTab.standings.exportGroupAria(g.name)}
                                     size="sm"
                                     variant="ghost"
                                     colorPalette="brand"
@@ -2013,7 +2016,7 @@ export default function GroupsTab({
                                 borderBottomWidth="1px"
                                 borderColor="border"
                             >
-                                <StHead label="#"/>
+                                <StHead label={t.components.groupsTab.standings.columns.rank}/>
                                 <Text
                                     fontFamily="mono"
                                     fontSize="9px"
@@ -2021,15 +2024,15 @@ export default function GroupsTab({
                                     letterSpacing="0.08em"
                                     fontWeight={700}
                                 >
-                                    EKIPA
+                                    {t.components.groupsTab.standings.columns.team}
                                 </Text>
-                                <StHead label="P"/>
-                                <StHead label="N"/>
-                                <StHead label="I"/>
-                                <StHead label="GOL" mdOnly/>
-                                <StHead label="GR"/>
-                                <StHead label="ZADNJIH 3" mdOnly align="left"/>
-                                <StHead label="BOD"/>
+                                <StHead label={t.components.groupsTab.standings.columns.wins}/>
+                                <StHead label={t.components.groupsTab.standings.columns.draws}/>
+                                <StHead label={t.components.groupsTab.standings.columns.losses}/>
+                                <StHead label={t.components.groupsTab.standings.columns.goals} mdOnly/>
+                                <StHead label={t.components.groupsTab.standings.columns.goalDiff}/>
+                                <StHead label={t.components.groupsTab.standings.columns.lastMatches} mdOnly align="left"/>
+                                <StHead label={t.components.groupsTab.standings.columns.points}/>
                             </Box>
 
                             {/* Standings rows - live-overlaid: cells a LIVE match
@@ -2161,7 +2164,7 @@ export default function GroupsTab({
                                                         fontWeight={800}
                                                         color="white"
                                                         bg={isW ? "#16A34A" : isL ? "accent.red" : "#9aa6b2"}
-                                                        title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
+                                                        title={isW ? t.components.groupsTab.standings.formWin : isL ? t.components.groupsTab.standings.formLoss : t.components.groupsTab.standings.formDraw}
                                                     >
                                                         {isW ? "P" : isL ? "I" : "N"}
                                                     </Flex>
@@ -2180,7 +2183,7 @@ export default function GroupsTab({
                                                     color="accent.red"
                                                     borderWidth="2px"
                                                     borderColor="accent.red"
-                                                    title="Utakmica u tijeku"
+                                                    title={t.components.groupsTab.standings.formInProgress}
                                                 >
                                                     {row.liveForm === "W" ? "P" : row.liveForm === "L" ? "I" : "N"}
                                                 </Flex>
@@ -2230,7 +2233,7 @@ export default function GroupsTab({
                                                 colorPalette="brand"
                                                 onClick={() => toggleGroup(g.id)}
                                             >
-                                                <FiChevronUp/> Sakrij utakmice
+                                                <FiChevronUp/> {t.components.groupsTab.standings.hideMatches}
                                             </Button>
                                         </Flex>
                                         {matchesByKickoff(g.matches).map(renderFixture)}
@@ -2243,7 +2246,7 @@ export default function GroupsTab({
                                             colorPalette="brand"
                                             onClick={() => toggleGroup(g.id)}
                                         >
-                                            <FiChevronDown/> Prikaži utakmice ({g.matches.length})
+                                            <FiChevronDown/> {t.components.groupsTab.standings.showMatches(g.matches.length)}
                                         </Button>
                                     </Flex>
                                 )}
@@ -2285,12 +2288,12 @@ export default function GroupsTab({
                                 </Flex>
                                 <Text fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.1em"
                                       color="fg.ink">
-                                    NAJBOLJE {thirdTable.advancePerGroup + 1}. PLASIRANE
+                                    {t.components.groupsTab.standings.bestThirdHeading(thirdTable.advancePerGroup + 1)}
                                 </Text>
                             </HStack>
                             <Box fontFamily="mono" fontSize="9px" fontWeight={700} letterSpacing="0.06em"
                                  color="pitch.500" bg="rgba(42,212,200,0.12)" px="2.5" py="1" rounded="full">
-                                {thirdTable.bestThirdCount} PROLAZE
+                                {t.components.groupsTab.standings.advancingPill(thirdTable.bestThirdCount)}
                             </Box>
                         </Flex>
 
@@ -2312,18 +2315,18 @@ export default function GroupsTab({
                             borderBottomWidth="1px"
                             borderColor="border"
                         >
-                            <StHead label="#"/>
+                            <StHead label={t.components.groupsTab.standings.columns.rank}/>
                             <Text fontFamily="mono" fontSize="9px" color="fg.muted" letterSpacing="0.08em"
                                   fontWeight={700}>
-                                EKIPA
+                                {t.components.groupsTab.standings.columns.team}
                             </Text>
-                            <StHead label="P"/>
-                            <StHead label="N"/>
-                            <StHead label="I"/>
-                            <StHead label="GOL" mdOnly/>
-                            <StHead label="GR"/>
-                            <StHead label="ZADNJIH 3" mdOnly align="left"/>
-                            <StHead label="BOD"/>
+                            <StHead label={t.components.groupsTab.standings.columns.wins}/>
+                            <StHead label={t.components.groupsTab.standings.columns.draws}/>
+                            <StHead label={t.components.groupsTab.standings.columns.losses}/>
+                            <StHead label={t.components.groupsTab.standings.columns.goals} mdOnly/>
+                            <StHead label={t.components.groupsTab.standings.columns.goalDiff}/>
+                            <StHead label={t.components.groupsTab.standings.columns.lastMatches} mdOnly align="left"/>
+                            <StHead label={t.components.groupsTab.standings.columns.points}/>
                         </Box>
 
                         {thirdRows.map((tr, idx) => {
@@ -2437,7 +2440,7 @@ export default function GroupsTab({
                                                     fontWeight={800}
                                                     color="white"
                                                     bg={isW ? "#16A34A" : isL ? "accent.red" : "#9aa6b2"}
-                                                    title={isW ? "Pobjeda" : isL ? "Poraz" : "Neriješeno"}
+                                                    title={isW ? t.components.groupsTab.standings.formWin : isL ? t.components.groupsTab.standings.formLoss : t.components.groupsTab.standings.formDraw}
                                                 >
                                                     {isW ? "P" : isL ? "I" : "N"}
                                                 </Flex>
@@ -2456,7 +2459,7 @@ export default function GroupsTab({
                                                 color="accent.red"
                                                 borderWidth="2px"
                                                 borderColor="accent.red"
-                                                title="Utakmica u tijeku"
+                                                title={t.components.groupsTab.standings.formInProgress}
                                             >
                                                 {tr.standing.liveForm === "W" ? "P" : tr.standing.liveForm === "L" ? "I" : "N"}
                                             </Flex>
@@ -2530,6 +2533,7 @@ function GroupReorderDialog({
     onClose: () => void
     onSaved: (groups: Group[]) => void
 }) {
+    const t = useTranslation()
     // Seed from the current (computed) standings order.
     const [order, setOrder] = useState(() => group.standings.map((r) => r))
     const [saving, setSaving] = useState(false)
@@ -2577,14 +2581,12 @@ function GroupReorderDialog({
                     <Dialog.Content maxW={{base: "92%", md: "440px"}}>
                         <Dialog.Header>
                             <Dialog.Title flex="1" textAlign="center">
-                                Ručni poredak - Grupa {group.name}
+                                {t.components.groupsTab.manualOrder.title(group.name)}
                             </Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body pb="2">
                             <Text fontSize="xs" color="fg.muted" mb="3">
-                                Posloži ekipe od najbolje prema najlošijoj. Koristi
-                                strelice za promjenu poretka (npr. radi razrješenja
-                                izjednačenja).
+                                {t.components.groupsTab.manualOrder.instructions}
                             </Text>
                             <VStack align="stretch" gap="1.5">
                                 {order.map((row, idx) => (
@@ -2617,11 +2619,11 @@ function GroupReorderDialog({
                                             color="fg.muted"
                                             flexShrink={0}
                                         >
-                                            {row.points} b · {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                                            {row.points} {t.components.groupsTab.manualOrder.pointsAbbrev} · {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                                         </Text>
                                         <HStack gap="0.5" flexShrink={0}>
                                             <IconButton
-                                                aria-label="Pomakni gore"
+                                                aria-label={t.components.groupsTab.manualOrder.moveUpAria}
                                                 size="xs"
                                                 variant="ghost"
                                                 disabled={idx === 0}
@@ -2630,7 +2632,7 @@ function GroupReorderDialog({
                                                 <FiArrowUp/>
                                             </IconButton>
                                             <IconButton
-                                                aria-label="Pomakni dolje"
+                                                aria-label={t.components.groupsTab.manualOrder.moveDownAria}
                                                 size="xs"
                                                 variant="ghost"
                                                 disabled={idx === order.length - 1}
@@ -2646,14 +2648,14 @@ function GroupReorderDialog({
                         <Dialog.Footer>
                             <HStack gap="2">
                                 <Button variant="ghost" onClick={onClose}>
-                                    Odustani
+                                    {t.common.cancel}
                                 </Button>
                                 <Button
                                     colorPalette="brand"
                                     loading={saving}
                                     onClick={handleSave}
                                 >
-                                    Spremi poredak
+                                    {t.components.groupsTab.manualOrder.saveButton}
                                 </Button>
                             </HStack>
                         </Dialog.Footer>
@@ -2666,6 +2668,7 @@ function GroupReorderDialog({
 
 /* ── LivePill - small red "UŽIVO" badge for a live match row. ─────────────── */
 function LivePill() {
+    const t = useTranslation()
     return (
         <Badge
             colorPalette="red"
@@ -2677,7 +2680,7 @@ function LivePill() {
             px="2"
         >
             <Box as="span" display="inline-block" boxSize="1.5" rounded="full" bg="white" mr="1"/>
-            Uživo
+            {t.common.live}
         </Badge>
     )
 }
@@ -2698,6 +2701,7 @@ export function GroupLiveMatchDialog({
     onClose: () => void
     onChanged: () => Promise<void> | void
 }) {
+    const t = useTranslation()
     const matchId = match.matchId
     const isFinished = match.status === "FINISHED"
     const isTimer = match.liveMode === "TIMER"
@@ -3009,7 +3013,7 @@ export function GroupLiveMatchDialog({
                                     would just duplicate them - use a plain title. */}
                                     {resultOnly ? (
                                         <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
-                                            Uredi rezultat
+                                            {t.components.groupsTab.matchDialog.editResultTitle}
                                         </Text>
                                     ) : (
                                         /* Big scoreboard header: BIG timer with
@@ -3103,11 +3107,11 @@ export function GroupLiveMatchDialog({
                                             color="fg.muted"
                                             mb="1.5"
                                         >
-                                            Tijek utakmice
+                                            {t.components.groupsTab.matchDialog.timelineHeading}
                                         </Text>
                                         {!eventsLoaded && events.length === 0 ? (
                                             <Text fontSize="sm" color="fg.muted">
-                                                Učitavanje…
+                                                {t.common.loading}
                                             </Text>
                                         ) : events.length === 0 ? (
                                             // A finished match with no events means the
@@ -3115,11 +3119,11 @@ export function GroupLiveMatchDialog({
                                             // without attributing scorers.
                                             isFinished ? (
                                                 <Text fontSize="sm" color="fg.muted">
-                                                    Prikazan samo krajnji rezultat bez strijelca.
+                                                    {t.components.groupsTab.matchDialog.resultOnlyNote}
                                                 </Text>
                                             ) : (
                                                 <Text fontSize="sm" color="fg.muted">
-                                                    Još nema zabilježenih događaja.
+                                                    {t.components.groupsTab.matchDialog.noEventsNote}
                                                 </Text>
                                             )
                                         ) : (
@@ -3151,7 +3155,7 @@ export function GroupLiveMatchDialog({
                                 "Završi" without the app timer) · Poništi utakmicu. */}
                                 <HStack gap="2" justify="center" w="full" maxW="md" wrap="wrap">
                                     <Button variant="ghost" onClick={onClose} flexShrink={0}>
-                                        Zatvori
+                                        {t.common.close}
                                     </Button>
                                     {/* Result-only: save the direct score from the footer. */}
                                     {resultOnly && (
@@ -3161,7 +3165,7 @@ export function GroupLiveMatchDialog({
                                             loading={savingScore}
                                             onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
                                         >
-                                            <FiEdit2/> Spremi rezultat
+                                            <FiEdit2/> {t.components.liveMatch.directScore.saveButton}
                                         </Button>
                                     )}
                                     {!isFinished && (
@@ -3172,7 +3176,7 @@ export function GroupLiveMatchDialog({
                                                 loading={endingHalf}
                                                 onClick={handleEndFirstHalf}
                                             >
-                                                Završi 1. poluvrijeme
+                                                {t.components.groupsTab.matchDialog.endFirstHalfButton}
                                             </Button>
                                         ) : canStartSecondHalf ? (
                                             <Button
@@ -3181,7 +3185,7 @@ export function GroupLiveMatchDialog({
                                                 loading={startingHalf}
                                                 onClick={handleStartSecondHalf}
                                             >
-                                                Započni 2. poluvrijeme
+                                                {t.components.groupsTab.matchDialog.startSecondHalfButton}
                                             </Button>
                                         ) : (
                                             <Button
@@ -3190,7 +3194,7 @@ export function GroupLiveMatchDialog({
                                                 loading={finishing}
                                                 onClick={requestFinish}
                                             >
-                                                Završi
+                                                {t.components.groupsTab.matchDialog.finishButton}
                                             </Button>
                                         )
                                     )}
@@ -3201,7 +3205,7 @@ export function GroupLiveMatchDialog({
                                         loading={resetting}
                                         onClick={confirmReset}
                                     >
-                                        Poništi utakmicu
+                                        {t.components.groupsTab.matchDialog.voidButton}
                                     </Button>
                                 </HStack>
                             </Dialog.Footer>
@@ -3213,9 +3217,9 @@ export function GroupLiveMatchDialog({
                 open={confirmResetOpen}
                 busy={resetting}
                 danger
-                title="Poništiti utakmicu?"
-                description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
-                confirmLabel="Da, poništi"
+                title={t.components.groupsTab.matchDialog.voidDialog.title}
+                description={t.components.groupsTab.matchDialog.voidDialog.description}
+                confirmLabel={t.components.groupsTab.matchDialog.voidDialog.confirm}
                 onClose={() => setConfirmResetOpen(false)}
                 onConfirm={async () => {
                     await doReset();
@@ -3225,9 +3229,9 @@ export function GroupLiveMatchDialog({
             <ConfirmDialog
                 open={confirmFinishOpen}
                 busy={finishing}
-                title="Završiti utakmicu prije kraja?"
-                description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
-                confirmLabel="Da, završi"
+                title={t.components.groupsTab.matchDialog.finishEarlyDialog.title}
+                description={t.components.groupsTab.matchDialog.finishEarlyDialog.description}
+                confirmLabel={t.components.groupsTab.matchDialog.finishEarlyDialog.confirm}
                 onClose={() => setConfirmFinishOpen(false)}
                 onConfirm={async () => {
                     await handleFinish();

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { Button, Dialog, Portal, Text, Textarea, VStack } from "@chakra-ui/react"
+import { useTranslation } from "../i18n"
 
 /**
  * Generic "paste a list, one per line" import modal. The caller gets the
@@ -12,7 +13,7 @@ export function BulkImportDialog({
     title,
     description,
     placeholder,
-    submitLabel = "Uvezi",
+    submitLabel: submitLabelProp,
     onSubmit,
 }: {
     open: boolean
@@ -24,6 +25,8 @@ export function BulkImportDialog({
     /** Receives the trimmed, non-empty lines. Throwing keeps the modal open. */
     onSubmit: (lines: string[]) => Promise<void>
 }) {
+    const t = useTranslation()
+    const submitLabel = submitLabelProp ?? t.components.bulkImportDialog.defaultSubmitLabel
     const [text, setText] = useState("")
     const [submitting, setSubmitting] = useState(false)
     const lines = text
@@ -80,13 +83,13 @@ export function BulkImportDialog({
                                     autoFocus
                                 />
                                 <Text fontSize="xs" color="fg.muted">
-                                    Broj redova: {lines.length}
+                                    {t.components.bulkImportDialog.rowCountLabel(lines.length)}
                                 </Text>
                             </VStack>
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="ghost" onClick={close} disabled={submitting}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"

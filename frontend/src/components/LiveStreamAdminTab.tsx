@@ -31,6 +31,7 @@ import {
     type AdMedia,
     type AdPurpose,
 } from "../api/streamAds"
+import { useTranslation, type Dictionary } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    LiveStreamAdminTab - the admin-profile "Live stream" tab. Controls the
@@ -41,41 +42,45 @@ import {
    the banner; both media libraries live in MinIO.
    ────────────────────────────────────────────────────────────────────────── */
 
-const STATE_META: Record<
+function buildStateMeta(t: Dictionary): Record<
     StreamState,
     { label: string; badge: string; palette: string; solid: boolean; desc: string }
-> = {
-    STREAMING: {
-        label: "Prijenos uživo",
-        badge: "● UŽIVO",
-        palette: "red",
-        solid: true,
-        desc: "Video kamere zamjenjuje promo bannere na vrhu glavne stranice.",
-    },
-    PAUSED: {
-        label: "Pauzirano",
-        badge: "Pauzirano",
-        palette: "orange",
-        solid: false,
-        desc: "Gledatelji vide poruku da je stream trenutno pauziran. Prijenos se uskoro nastavlja.",
-    },
-    ADS: {
-        label: "Reklame",
-        badge: "Reklama",
-        palette: "purple",
-        solid: false,
-        desc: "Umjesto prijenosa prikazuje se odabrana aktivna reklama iz baze (slika ili video).",
-    },
-    OFF: {
-        label: "Ugašen",
-        badge: "Ugašen",
-        palette: "gray",
-        solid: false,
-        desc: "Prijenos je ugašen — prikazuju se zadani promo baneri. URL ostaje spremljen.",
-    },
+> {
+    return {
+        STREAMING: {
+            label: t.components.liveStreamAdminTab.stateLive.label,
+            badge: t.components.liveStreamAdminTab.stateLive.badge,
+            palette: "red",
+            solid: true,
+            desc: t.components.liveStreamAdminTab.stateLive.desc,
+        },
+        PAUSED: {
+            label: t.components.liveStreamAdminTab.statePaused.label,
+            badge: t.components.liveStreamAdminTab.statePaused.badge,
+            palette: "orange",
+            solid: false,
+            desc: t.components.liveStreamAdminTab.statePaused.desc,
+        },
+        ADS: {
+            label: t.components.liveStreamAdminTab.stateAds.label,
+            badge: t.components.liveStreamAdminTab.stateAds.badge,
+            palette: "purple",
+            solid: false,
+            desc: t.components.liveStreamAdminTab.stateAds.desc,
+        },
+        OFF: {
+            label: t.components.liveStreamAdminTab.stateOff.label,
+            badge: t.components.liveStreamAdminTab.stateOff.badge,
+            palette: "gray",
+            solid: false,
+            desc: t.components.liveStreamAdminTab.stateOff.desc,
+        },
+    }
 }
 
 export default function LiveStreamAdminTab() {
+    const t = useTranslation()
+    const STATE_META = buildStateMeta(t)
     const [url, setUrl] = useState("")
     const [state, setState] = useState<StreamState>("OFF")
     const [tournamentUuid, setTournamentUuid] = useState("")
@@ -119,11 +124,11 @@ export default function LiveStreamAdminTab() {
         const o = patch.overlayId !== undefined ? patch.overlayId : overlayId
         const trimmed = url.trim()
         if (s === "STREAMING" && !trimmed) {
-            setErr("Zalijepi URL prijenosa prije pokretanja.")
+            setErr(t.components.liveStreamAdminTab.missingUrlError)
             return
         }
         if (trimmed && !/^https?:\/\//i.test(trimmed)) {
-            setErr("URL mora počinjati s http:// ili https://")
+            setErr(t.components.liveStreamAdminTab.invalidUrlError)
             return
         }
         setErr(null)
@@ -157,7 +162,7 @@ export default function LiveStreamAdminTab() {
     }
 
     async function deleteMedia(purpose: AdPurpose, id: number) {
-        if (!window.confirm(purpose === "OVERLAY" ? "Obrisati ovaj overlay?" : "Obrisati ovu reklamu?")) return
+        if (!window.confirm(purpose === "OVERLAY" ? t.components.liveStreamAdminTab.deleteOverlayConfirm : t.components.liveStreamAdminTab.deleteAdConfirm)) return
         setBusy(`del:${id}`)
         try {
             await deleteStreamAd(id)
@@ -178,10 +183,10 @@ export default function LiveStreamAdminTab() {
 
     const meta = STATE_META[state]
     const stateButtons: { key: StreamState; label: string; icon: ReactNode; palette: string }[] = [
-        { key: "STREAMING", label: state === "STREAMING" ? "Spremi promjene" : "Pokreni prijenos", icon: <FiPlay />, palette: "green" },
-        { key: "PAUSED", label: "Pauziraj", icon: <FiPause />, palette: "orange" },
-        { key: "ADS", label: "Reklame", icon: <FiMonitor />, palette: "purple" },
-        { key: "OFF", label: "Ugasi", icon: <FiPower />, palette: "gray" },
+        { key: "STREAMING", label: state === "STREAMING" ? t.components.liveStreamAdminTab.saveChanges : t.components.liveStreamAdminTab.startBroadcast, icon: <FiPlay />, palette: "green" },
+        { key: "PAUSED", label: t.components.liveStreamAdminTab.pause, icon: <FiPause />, palette: "orange" },
+        { key: "ADS", label: t.components.liveStreamAdminTab.ads, icon: <FiMonitor />, palette: "purple" },
+        { key: "OFF", label: t.components.liveStreamAdminTab.stop, icon: <FiPower />, palette: "gray" },
     ]
 
     return (
@@ -193,11 +198,10 @@ export default function LiveStreamAdminTab() {
                             <Box>
                                 <HStack gap="2">
                                     <Box color="fg.muted" display="inline-flex"><FiVideo size={16} /></Box>
-                                    <Text fontSize="lg" fontWeight="semibold">Live stream - banner na glavnoj</Text>
+                                    <Text fontSize="lg" fontWeight="semibold">{t.components.liveStreamAdminTab.title}</Text>
                                 </HStack>
                                 <Text fontSize="sm" color="fg.muted" mt="1">
-                                    Upravljaj prijenosom uživo na vrhu glavne stranice. Podržano: YouTube
-                                    link, HLS .m3u8, MP4 ili embed stranica.
+                                    {t.components.liveStreamAdminTab.description}
                                 </Text>
                             </Box>
                             <Badge colorPalette={meta.palette} variant={meta.solid ? "solid" : "surface"} rounded="full" px="2.5">
@@ -206,9 +210,9 @@ export default function LiveStreamAdminTab() {
                         </HStack>
 
                         <Box>
-                            <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">URL prijenosa</Text>
+                            <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">{t.components.liveStreamAdminTab.urlLabel}</Text>
                             <Input
-                                placeholder="https://…"
+                                placeholder={t.components.liveStreamAdminTab.urlPlaceholder}
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
                                 disabled={busy != null || !loaded}
@@ -217,18 +221,18 @@ export default function LiveStreamAdminTab() {
 
                         <Box>
                             <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb="1">
-                                Poveži s turnirom (za tijek utakmice + tablicu skupine)
+                                {t.components.liveStreamAdminTab.linkTournamentLabel}
                             </Text>
                             <NativeSelect.Root size="sm" disabled={busy != null || !loaded}>
                                 <NativeSelect.Field
                                     value={tournamentUuid}
                                     onChange={(e) => setTournamentUuid(e.currentTarget.value)}
                                 >
-                                    <option value="">Bez povezanog turnira</option>
-                                    {tournaments.map((t) => (
-                                        <option key={t.id} value={t.uuid ?? ""}>
-                                            {t.name}
-                                            {t.location ? ` · ${t.location}` : ""}
+                                    <option value="">{t.components.liveStreamAdminTab.noLinkedTournament}</option>
+                                    {tournaments.map((tour) => (
+                                        <option key={tour.id} value={tour.uuid ?? ""}>
+                                            {tour.name}
+                                            {tour.location ? ` · ${tour.location}` : ""}
                                         </option>
                                     ))}
                                 </NativeSelect.Field>
@@ -239,7 +243,7 @@ export default function LiveStreamAdminTab() {
                         {err && <Text fontSize="xs" color="red.fg" fontWeight={600}>{err}</Text>}
 
                         <Box p="3" bg="bg.muted" rounded="md" borderWidth="1px" borderColor="border.subtle">
-                            <Text fontSize="xs" color="fg.muted">TRENUTNO STANJE</Text>
+                            <Text fontSize="xs" color="fg.muted">{t.components.liveStreamAdminTab.currentStateLabel}</Text>
                             <Text fontSize="sm" fontWeight="medium">{meta.label}</Text>
                             <Text fontSize="xs" color="fg.muted" mt="1" lineHeight="1.4">{meta.desc}</Text>
                         </Box>
@@ -270,16 +274,16 @@ export default function LiveStreamAdminTab() {
             {/* Ad library - shown in ADS mode. */}
             <MediaLibrary
                 icon={<FiMonitor size={16} />}
-                title="Baza reklama"
-                desc="Dodaj sliku ili kratki video. Označi jednu kao aktivnu - prikazuje se na glavnoj u stanju Reklame (slika stalno, video u petlji)."
+                title={t.components.liveStreamAdminTab.adLibrary.title}
+                desc={t.components.liveStreamAdminTab.adLibrary.desc}
                 purpose="AD"
                 items={ads}
                 activeId={adId}
                 palette="purple"
-                inactiveVerb="Postavi"
+                inactiveVerb={t.components.liveStreamAdminTab.adLibrary.inactiveVerb}
                 inactiveIcon={<FiCheckCircle />}
-                activeVerb="Ukloni aktivnu"
-                activeBadge="aktivna"
+                activeVerb={t.components.liveStreamAdminTab.adLibrary.activeVerb}
+                activeBadge={t.components.liveStreamAdminTab.adLibrary.activeBadge}
                 busy={busy}
                 onUpload={(f, l) => uploadMedia("AD", f, l)}
                 onToggle={(id) => save({ adId: id, busyKey: "ad" })}
@@ -290,16 +294,16 @@ export default function LiveStreamAdminTab() {
             {/* Overlay library - drawn centred OVER the live video. */}
             <MediaLibrary
                 icon={<FiEye size={16} />}
-                title="Baza overlaya"
-                desc="Slika ili video koji se prikazuje PREKO videa (utakmica ostaje u pozadini) - npr. na poluvremenu. Klikni Prikaži da se pojavi svima uživo, a Sakrij da nestane. Radi dok je prijenos aktivan."
+                title={t.components.liveStreamAdminTab.overlayLibrary.title}
+                desc={t.components.liveStreamAdminTab.overlayLibrary.desc}
                 purpose="OVERLAY"
                 items={overlays}
                 activeId={overlayId}
                 palette="blue"
-                inactiveVerb="Prikaži"
+                inactiveVerb={t.components.liveStreamAdminTab.overlayLibrary.inactiveVerb}
                 inactiveIcon={<FiEye />}
-                activeVerb="Sakrij"
-                activeBadge="prikazano"
+                activeVerb={t.components.liveStreamAdminTab.overlayLibrary.activeVerb}
+                activeBadge={t.components.liveStreamAdminTab.overlayLibrary.activeBadge}
                 busy={busy}
                 onUpload={(f, l) => uploadMedia("OVERLAY", f, l)}
                 onToggle={(id) => save({ overlayId: id, busyKey: "overlay" })}
@@ -347,6 +351,7 @@ function MediaLibrary({
     onToggle: (id: number | null) => void
     onDelete: (id: number) => void
 }) {
+    const t = useTranslation()
     const [label, setLabel] = useState("")
     const fileRef = useRef<HTMLInputElement>(null)
     const uploadKey = `up:${purpose}`
@@ -376,7 +381,7 @@ function MediaLibrary({
                             size="sm"
                             flex="1"
                             minW="180px"
-                            placeholder="Naziv (opcionalno)"
+                            placeholder={t.components.liveStreamAdminTab.uploadLabelPlaceholder}
                             value={label}
                             onChange={(e) => setLabel(e.target.value)}
                             disabled={busy != null}
@@ -395,12 +400,12 @@ function MediaLibrary({
                             disabled={busy != null}
                             onClick={() => fileRef.current?.click()}
                         >
-                            <FiUpload /> Dodaj
+                            <FiUpload /> {t.components.liveStreamAdminTab.addMedia}
                         </Button>
                     </HStack>
 
                     {items.length === 0 ? (
-                        <Text fontSize="sm" color="fg.muted">Još nema dodanih.</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.components.liveStreamAdminTab.noItems}</Text>
                     ) : (
                         <Stack gap="2">
                             {items.map((m) => {
@@ -425,14 +430,14 @@ function MediaLibrary({
                                         <Box minW="0" flex="1">
                                             <HStack gap="2">
                                                 <Text fontSize="sm" fontWeight="medium" truncate>
-                                                    {m.label || (m.mediaType === "VIDEO" ? "Video" : "Slika")}
+                                                    {m.label || (m.mediaType === "VIDEO" ? t.components.liveStreamAdminTab.video : t.components.liveStreamAdminTab.image)}
                                                 </Text>
                                                 {active && (
                                                     <Badge size="xs" colorPalette={palette} variant="solid">{activeBadge}</Badge>
                                                 )}
                                             </HStack>
                                             <Text fontSize="xs" color="fg.muted">
-                                                {m.mediaType === "VIDEO" ? "Video" : "Slika"}
+                                                {m.mediaType === "VIDEO" ? t.components.liveStreamAdminTab.video : t.components.liveStreamAdminTab.image}
                                             </Text>
                                         </Box>
                                         {active ? (

@@ -13,6 +13,7 @@ import {
 } from "../api/push"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Bell icon on a tournament page. Click → subscribe to push notifications
@@ -63,6 +64,7 @@ export default function TournamentNotificationBell({
      *  icon button. Same toggle logic - only the shell differs. */
     asMenuItem?: boolean
 }) {
+    const t = useTranslation()
     const { user, loading: authLoading } = useAuth()
     const [subscribed, setSubscribed] = useState<boolean | null>(null)
     const [busy, setBusy] = useState(false)
@@ -126,8 +128,8 @@ export default function TournamentNotificationBell({
             const result = await Notification.requestPermission()
             if (result !== "granted") {
                 showError(
-                    "Obavijesti su blokirane",
-                    "Dozvoli obavijesti u postavkama preglednika i pokušaj ponovno.",
+                    t.components.tournamentNotificationBell.blockedTitle,
+                    t.components.tournamentNotificationBell.blockedDescDefault,
                 )
                 return false
             }
@@ -135,8 +137,8 @@ export default function TournamentNotificationBell({
         }
         if (Notification.permission === "denied") {
             showError(
-                "Obavijesti su blokirane",
-                "Otvori postavke preglednika i dozvoli obavijesti za ovu stranicu.",
+                t.components.tournamentNotificationBell.blockedTitle,
+                t.components.tournamentNotificationBell.blockedDescDenied,
             )
             return false
         }
@@ -157,8 +159,8 @@ export default function TournamentNotificationBell({
     async function toggleAnon() {
         if (!pushSupported()) {
             showError(
-                "Obavijesti nisu podržane",
-                "Tvoj preglednik ne podržava web obavijesti.",
+                t.components.tournamentNotificationBell.unsupportedTitle,
+                t.components.tournamentNotificationBell.unsupportedDesc,
             )
             return
         }
@@ -173,8 +175,8 @@ export default function TournamentNotificationBell({
         const json = await ensureBrowserPushSubscription()
         if (!json) {
             showError(
-                "Ne mogu uključiti obavijesti",
-                "Pokušaj ponovno za koji trenutak.",
+                t.components.tournamentNotificationBell.failedTitle,
+                t.components.tournamentNotificationBell.failedDesc,
             )
             return
         }
@@ -202,8 +204,8 @@ export default function TournamentNotificationBell({
 
     const Icon = subscribed ? FiBell : FiBellOff
     const label = subscribed
-        ? "Primaš obavijesti o turniru - klikni za isključi"
-        : "Primaj obavijesti o turniru (golovi, kraj utakmice)"
+        ? t.components.tournamentNotificationBell.labelOn
+        : t.components.tournamentNotificationBell.labelOff
 
     if (asMenuItem) {
         return (
@@ -214,7 +216,7 @@ export default function TournamentNotificationBell({
                 color={subscribed ? "pitch.fg" : undefined}
             >
                 <Icon size={15} />
-                {subscribed ? "Isključi obavijesti" : "Primaj obavijesti"}
+                {subscribed ? t.components.tournamentNotificationBell.menuOn : t.components.tournamentNotificationBell.menuOff}
             </Menu.Item>
         )
     }

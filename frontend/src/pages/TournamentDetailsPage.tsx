@@ -54,6 +54,7 @@ import {
     finishTournament,
     selfRegisterTeam,
 } from "../api/tournaments"
+import { useTranslation } from "../i18n"
 import NotFoundView from "../components/NotFoundView"
 import { fetchSchedule } from "../api/schedule"
 import type { ScheduledMatch } from "../types/schedule"
@@ -180,6 +181,7 @@ function pickOnDeckMatch(matches: ScheduledMatch[]): ScheduledMatch | null {
 }
 
 export default function TournamentDetailsPage() {
+    const t18n = useTranslation()
     const { uuid } = useParams<{ uuid: string }>()
     const navigate = useNavigate()
     const location = useLocation()
@@ -421,11 +423,11 @@ export default function TournamentDetailsPage() {
     function handlePosterPick(file: File) {
         setPosterUploadErr(null)
         if (!POSTER_ACCEPT.includes(file.type as any)) {
-            setPosterUploadErr("Dozvoljeno: JPG, PNG ili WEBP.")
+            setPosterUploadErr(t18n.pages.tournamentDetailsPage.posterErrors.invalidType)
             return
         }
         if (file.size > POSTER_MAX_MB * 1024 * 1024) {
-            setPosterUploadErr(`Maksimalna veličina je ${POSTER_MAX_MB} MB.`)
+            setPosterUploadErr(t18n.pages.tournamentDetailsPage.posterErrors.tooLarge(POSTER_MAX_MB))
             return
         }
         if (posterPreviewUrl) URL.revokeObjectURL(posterPreviewUrl)
@@ -695,17 +697,17 @@ export default function TournamentDetailsPage() {
     const editMissingRequired = useMemo(() => {
         if (!editForm) return []
         const missing: string[] = []
-        if (!editForm.name.trim()) missing.push("Ime")
-        if (!editForm.location.trim()) missing.push("Lokacija")
-        if (!editForm.startDate) missing.push("Datum")
-        if (!editForm.startTime) missing.push("Vrijeme")
-        if (!editForm.gameSystem.trim()) missing.push("Sistem igre")
+        if (!editForm.name.trim()) missing.push(t18n.pages.tournamentDetailsPage.editValidation.name)
+        if (!editForm.location.trim()) missing.push(t18n.pages.tournamentDetailsPage.editValidation.location)
+        if (!editForm.startDate) missing.push(t18n.pages.tournamentDetailsPage.editValidation.date)
+        if (!editForm.startTime) missing.push(t18n.pages.tournamentDetailsPage.editValidation.time)
+        if (!editForm.gameSystem.trim()) missing.push(t18n.pages.tournamentDetailsPage.editValidation.gameSystem)
         if (
             !editForm.rewardFirst.trim() ||
             !editForm.rewardSecond.trim() ||
             !editForm.rewardThird.trim()
         ) {
-            missing.push("Nagrade (1.-3. mjesto)")
+            missing.push(t18n.pages.tournamentDetailsPage.editValidation.rewards)
         }
         return missing
     }, [
@@ -744,7 +746,7 @@ export default function TournamentDetailsPage() {
         if (!uuid || !editForm) return
         if (editMissingRequired.length > 0) {
             showError(
-                "Nedostaju obavezna polja",
+                t18n.pages.tournamentDetailsPage.editValidation.missingFieldsTitle,
                 editMissingRequired.join(", "),
             )
             return
@@ -765,8 +767,8 @@ export default function TournamentDetailsPage() {
             setPosterRemove(false)
         } catch (e: any) {
             showError(
-                "Greška pri spremanju",
-                String(e?.response?.data ?? e?.message ?? "Neuspješno spremanje izmjena."),
+                t18n.pages.tournamentDetailsPage.editValidation.saveErrorTitle,
+                String(e?.response?.data ?? e?.message ?? t18n.pages.tournamentDetailsPage.editValidation.saveErrorFallback),
             )
         } finally {
             setSavingDetails(false)
@@ -787,10 +789,13 @@ export default function TournamentDetailsPage() {
         if (!uuid) return null
         if (savingTeamsRef.current) return null
         if (teams.some((p) => !p.name || p.name.trim() === "")) {
-            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
+            showError(
+                t18n.pages.tournamentDetailsPage.teams.invalidNameTitle,
+                t18n.pages.tournamentDetailsPage.teams.invalidNameMessage,
+            )
             return null
         }
-        const defaultName = `Ekipa ${teams.length + 1}`
+        const defaultName = t18n.pages.tournamentDetailsPage.teams.defaultName(teams.length + 1)
         savingTeamsRef.current = true
         try {
             const prevIds = new Set(teams.filter((p) => p.id > 0).map((p) => p.id))
@@ -811,7 +816,10 @@ export default function TournamentDetailsPage() {
         if (!uuid || names.length === 0) return
         if (savingTeamsRef.current) return
         if (teams.some((p) => !p.name || p.name.trim() === "")) {
-            showError("Neispravan unos", "Ime ekipe ne smije biti prazno.")
+            showError(
+                t18n.pages.tournamentDetailsPage.teams.invalidNameTitle,
+                t18n.pages.tournamentDetailsPage.teams.invalidNameMessage,
+            )
             return
         }
         savingTeamsRef.current = true
@@ -821,7 +829,10 @@ export default function TournamentDetailsPage() {
                 ...names.map((name) => ({ name, isEliminated: false })),
             ])
             setTeams(saved)
-            showSuccess("Ekipe su uvezene.", `Dodano ${names.length} ekipa.`)
+            showSuccess(
+                t18n.pages.tournamentDetailsPage.teams.bulkImportSuccessTitle,
+                t18n.pages.tournamentDetailsPage.teams.bulkImportSuccessMessage(names.length),
+            )
         } catch {
             /* error toasted by the http interceptor */
         } finally {
@@ -900,8 +911,8 @@ export default function TournamentDetailsPage() {
             setTeams((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
         } catch (err: any) {
             showError(
-                "Greška",
-                String(err?.response?.data ?? err?.message ?? "Neuspjelo odobravanje ekipe."),
+                t18n.pages.tournamentDetailsPage.teams.approveErrorTitle,
+                String(err?.response?.data ?? err?.message ?? t18n.pages.tournamentDetailsPage.teams.approveErrorFallback),
             )
         }
     }
@@ -910,7 +921,7 @@ export default function TournamentDetailsPage() {
         if (!uuid) return
         const name = selfRegName.trim()
         if (!name) {
-            setSelfRegError("Unesi ime ekipe.")
+            setSelfRegError(t18n.pages.tournamentDetailsPage.selfRegister.emptyName)
             return
         }
         try {
@@ -924,11 +935,11 @@ export default function TournamentDetailsPage() {
             const data = e?.response?.data
             const code = typeof data === "string" ? data : ""
             if (code === "TOURNAMENT_ALREADY_STARTED") {
-                setSelfRegError("Turnir je već započeo.")
+                setSelfRegError(t18n.pages.tournamentDetailsPage.selfRegister.alreadyStarted)
             } else if (code === "ALREADY_REGISTERED") {
-                setSelfRegError("Već si prijavio ekipu s tim imenom.")
+                setSelfRegError(t18n.pages.tournamentDetailsPage.selfRegister.alreadyRegistered)
             } else {
-                setSelfRegError(data ?? e?.message ?? "Greška pri prijavi.")
+                setSelfRegError(data ?? e?.message ?? t18n.pages.tournamentDetailsPage.selfRegister.genericError)
             }
         } finally {
             setSelfRegSubmitting(false)
@@ -950,13 +961,13 @@ export default function TournamentDetailsPage() {
        ────────────────────────────────────────────────────────────────────── */
     // Top-level section nav.
     const sections: Array<{ key: SectionKey; label: string }> = [
-        { key: "details", label: "Detalji" },
+        { key: "details", label: t18n.pages.tournamentDetailsPage.sections.details },
         // "Zapisnik" - organizer/admin only: run whatever match is on now.
-        ...(canEdit ? [{ key: "live" as SectionKey, label: "Zapisnik" }] : []),
-        { key: "teams", label: "Ekipe" },
-        { key: "bracket", label: "Ždrijeb" },
-        { key: "raspored", label: "Raspored" },
-        { key: "stats", label: "Statistika" },
+        ...(canEdit ? [{ key: "live" as SectionKey, label: t18n.pages.tournamentDetailsPage.sections.live }] : []),
+        { key: "teams", label: t18n.pages.tournamentDetailsPage.sections.teams },
+        { key: "bracket", label: t18n.pages.tournamentDetailsPage.sections.bracket },
+        { key: "raspored", label: t18n.pages.tournamentDetailsPage.sections.schedule },
+        { key: "stats", label: t18n.pages.tournamentDetailsPage.sections.stats },
     ]
 
     const shareUrl = typeof window !== "undefined" ? window.location.href : ""
@@ -965,7 +976,7 @@ export default function TournamentDetailsPage() {
         return (
             <Flex direction="column" align="center" justify="center" gap="3" py="20">
                 <Spinner size="lg" color="pitch.500" />
-                <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
+                <Text fontSize="sm" color="fg.muted">{t18n.common.loading}</Text>
             </Flex>
         )
     }
@@ -976,8 +987,8 @@ export default function TournamentDetailsPage() {
         // sees when opening a link to a deleted tournament or a dead slug.
         return (
             <NotFoundView
-                title="Turnir nije pronađen"
-                description="Turnir je možda obrisan ili je adresa netočna. Pogledaj aktualne turnire na popisu."
+                title={t18n.pages.tournamentDetailsPage.notFound.title}
+                description={t18n.pages.tournamentDetailsPage.notFound.description}
             />
         )
     }
@@ -1001,9 +1012,9 @@ export default function TournamentDetailsPage() {
             ? "finished"
             : null
     const statusLabel = isRunning
-        ? "U tijeku"
+        ? t18n.tournamentSection.parts.statusStarted
         : t.status === "FINISHED"
-            ? "Završeno"
+            ? t18n.tournamentSection.parts.statusFinished
             : null
 
     /** Share the tournament page - the native share sheet where available,
@@ -1020,9 +1031,12 @@ export default function TournamentDetailsPage() {
         }
         try {
             await navigator.clipboard.writeText(shareUrl)
-            showSuccess("Kopirano", "Link je u clipboardu.")
+            showSuccess(
+                t18n.pages.tournamentDetailsPage.copyLinkTitle,
+                t18n.pages.tournamentDetailsPage.copyLinkMessage,
+            )
         } catch {
-            window.prompt("Kopiraj link:", shareUrl)
+            window.prompt(t18n.tournamentSection.parts.shareCopyPrompt, shareUrl)
         }
     }
 
@@ -1050,8 +1064,8 @@ export default function TournamentDetailsPage() {
         <Menu.Root positioning={{ placement: "bottom-end" }}>
             <Menu.Trigger asChild>
                 <IconButton
-                    aria-label="Više opcija"
-                    title="Više opcija"
+                    aria-label={t18n.pages.tournamentDetailsPage.moreOptionsAria}
+                    title={t18n.pages.tournamentDetailsPage.moreOptionsAria}
                     size="sm"
                     variant="outline"
                     rounded="full"
@@ -1077,14 +1091,14 @@ export default function TournamentDetailsPage() {
                     >
                         {showEditAction && (
                             <Menu.Item value="edit" onSelect={enterDetailsEdit}>
-                                <FiEdit2 size={15} /> Uredi
+                                <FiEdit2 size={15} /> {t18n.common.edit}
                             </Menu.Item>
                         )}
                         <Menu.Item value="share" onSelect={shareTournament}>
-                            <FiShare2 size={15} /> Podijeli
+                            <FiShare2 size={15} /> {t18n.common.share}
                         </Menu.Item>
                         <Menu.Item value="fullscreen" onSelect={openTournamentMode}>
-                            <FiMaximize2 size={15} /> Turnir mode
+                            <FiMaximize2 size={15} /> {t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
                         </Menu.Item>
                         <TournamentNotificationBell uuid={t.uuid} asMenuItem />
                     </Menu.Content>
@@ -1108,8 +1122,8 @@ export default function TournamentDetailsPage() {
             w="max-content"
         >
             {([
-                { key: "grupe" as DrawSubKey, label: "Grupe" },
-                { key: "eliminacija" as DrawSubKey, label: "Eliminacija" },
+                { key: "grupe" as DrawSubKey, label: t18n.pages.tournamentDetailsPage.drawGroupsLabel },
+                { key: "eliminacija" as DrawSubKey, label: t18n.pages.tournamentDetailsPage.drawKnockoutLabel },
             ]).map((s) => {
                 const active = drawSub === s.key
                 return (
@@ -1129,7 +1143,7 @@ export default function TournamentDetailsPage() {
     )
 
     const sectionLabels = sections.map((s) => s.label) as Array<typeof sections[number]["label"]>
-    const activeLabel = sections.find((s) => s.key === section)?.label ?? "Detalji"
+    const activeLabel = sections.find((s) => s.key === section)?.label ?? t18n.pages.tournamentDetailsPage.sections.details
 
     return (
         <VStack
@@ -1153,7 +1167,7 @@ export default function TournamentDetailsPage() {
                 >
                     <Text fontSize="16px" lineHeight="1">🔒</Text>
                     <Text fontSize="sm" color="fg.soft" fontWeight={600}>
-                        Turnir nije javno vidljiv - vide ga samo organizator i administratori.
+                        {t18n.pages.tournamentDetailsPage.hiddenNotice}
                     </Text>
                 </HStack>
             )}
@@ -1349,7 +1363,7 @@ export default function TournamentDetailsPage() {
                                     flexShrink={0}
                                     css={{ animation: "pitchPulse 1.6s infinite" }}
                                 />
-                                Live stream
+                                {t18n.pages.tournamentDetailsPage.liveStreamSidebarLabel}
                             </chakra.button>
                         )}
                         {sections.map((s) => (
@@ -1394,8 +1408,8 @@ export default function TournamentDetailsPage() {
                                     aria-hidden={!showEditAction}
                                 >
                                     <IconButton
-                                        aria-label="Uredi"
-                                        title="Uredi"
+                                        aria-label={t18n.common.edit}
+                                        title={t18n.common.edit}
                                         onClick={enterDetailsEdit}
                                         size="sm"
                                         variant="outline"
@@ -1408,8 +1422,8 @@ export default function TournamentDetailsPage() {
                             )}
                             <Box flex="1" display="flex" justifyContent="center">
                                 <IconButton
-                                    aria-label="Podijeli"
-                                    title="Podijeli"
+                                    aria-label={t18n.common.share}
+                                    title={t18n.common.share}
                                     onClick={shareTournament}
                                     size="sm"
                                     variant="outline"
@@ -1420,8 +1434,8 @@ export default function TournamentDetailsPage() {
                             </Box>
                             <Box flex="1" display="flex" justifyContent="center">
                                 <IconButton
-                                    aria-label="Turnir mode"
-                                    title="Turnir mode"
+                                    aria-label={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
+                                    title={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
                                     onClick={openTournamentMode}
                                     size="sm"
                                     variant="outline"
@@ -1744,8 +1758,8 @@ export default function TournamentDetailsPage() {
                         setPendingDeleteTeam(null)
                     } catch (err: any) {
                         showError(
-                            "Greška pri brisanju",
-                            String(err?.response?.data ?? err?.message ?? "Ekipa nije obrisana."),
+                            t18n.pages.tournamentDetailsPage.teams.deleteErrorTitle,
+                            String(err?.response?.data ?? err?.message ?? t18n.pages.tournamentDetailsPage.teams.deleteErrorFallback),
                         )
                     } finally {
                         setDeletingTeam(false)

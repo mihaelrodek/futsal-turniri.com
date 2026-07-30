@@ -78,6 +78,10 @@ public class MatchRecordingRequest {
     @Column(name = "contact_email", length = 255)
     private String contactEmail;
 
+    /** Mandatory (validated) for an anonymous /cjenik cart order; null for the original per-match request flow. */
+    @Column(name = "contact_phone", length = 40)
+    private String contactPhone;
+
     @Column(name = "note", length = 1000)
     private String note;
 
@@ -116,6 +120,15 @@ public class MatchRecordingRequest {
      */
     @Column(name = "payer_email", length = 255)
     private String payerEmail;
+
+    /**
+     * Shared by every row created from ONE /cjenik cart checkout (Hattrick = 3
+     * rows, Zlatna kopačka = one row per team match) so the Stripe webhook can
+     * mark them all paid from a single Checkout Session. Null for a request
+     * filed the old way (one row, its own {@code uuid} is the sole capability).
+     */
+    @Column(name = "cart_group_id")
+    private UUID cartGroupId;
 
     /** Library recording linked in by an admin as this request's delivery. */
     @ManyToOne(fetch = FetchType.LAZY)

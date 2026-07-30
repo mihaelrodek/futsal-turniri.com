@@ -26,6 +26,7 @@ public interface RecordingRequestMapper {
             @Mapping(target = "goalLabel", source = "goalLabel"),
             @Mapping(target = "note", source = "note"),
             @Mapping(target = "contactEmail", source = "contactEmail"),
+            @Mapping(target = "contactPhone", source = "contactPhone"),
             @Mapping(target = "adminNote", source = "adminNote"),
             @Mapping(target = "priceEurCents", source = "priceEurCents"),
             @Mapping(target = "paid", expression = "java(r.getPaidAt() != null)"),

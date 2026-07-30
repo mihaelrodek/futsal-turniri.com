@@ -31,6 +31,7 @@ import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
 import type { CreateTournamentPayload, Surface, TournamentFormat } from "../types/tournaments"
 import { SurfacePicker } from "../components/SurfacePicker"
+import { useTranslation } from "../i18n"
 
 // Register the Croatian locale once for the calendar UI (month/day names,
 // week-starts-Monday, etc.). The format itself is forced via the dateFormat
@@ -185,6 +186,7 @@ function Muted({ children }: { children: React.ReactNode }) {
 // ---------- page ----------
 export default function CreateTournamentPage() {
     const navigate = useNavigate()
+    const t = useTranslation()
 
     const [form, setForm] = useState<FormState>({
         name: "",
@@ -267,17 +269,18 @@ export default function CreateTournamentPage() {
     // tournament details page.
     const missingRequired = useMemo(() => {
         const missing: string[] = []
-        if (!form.name.trim()) missing.push("Ime")
-        if (!form.location.trim()) missing.push("Lokacija")
-        if (!form.startDate) missing.push("Datum")
-        if (!form.startTime) missing.push("Vrijeme")
-        if (!form.gameSystem.trim()) missing.push("Sistem igre")
+        const labels = t.pages.createTournamentPage.missingFields
+        if (!form.name.trim()) missing.push(labels.name)
+        if (!form.location.trim()) missing.push(labels.location)
+        if (!form.startDate) missing.push(labels.date)
+        if (!form.startTime) missing.push(labels.time)
+        if (!form.gameSystem.trim()) missing.push(labels.gameSystem)
         if (
             !form.rewards.first.amount.trim() ||
             !form.rewards.second.amount.trim() ||
             !form.rewards.third.amount.trim()
         ) {
-            missing.push("Nagrade (1.-3. mjesto)")
+            missing.push(labels.rewards)
         }
         return missing
     }, [
@@ -289,6 +292,7 @@ export default function CreateTournamentPage() {
         form.rewards.first.amount,
         form.rewards.second.amount,
         form.rewards.third.amount,
+        t,
     ])
 
     const onChange = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -317,11 +321,11 @@ export default function CreateTournamentPage() {
         setUploadErr(null)
 
         if (!ACCEPT.includes(file.type)) {
-            setUploadErr("Dozvoljeno: JPG, PNG ili WEBP.")
+            setUploadErr(t.pages.createTournamentPage.posterTypeError)
             return
         }
         if (file.size > MAX_MB * 1024 * 1024) {
-            setUploadErr(`Maksimalna veličina je ${MAX_MB} MB.`)
+            setUploadErr(t.pages.createTournamentPage.posterSizeError(MAX_MB))
             return
         }
 
@@ -347,7 +351,13 @@ export default function CreateTournamentPage() {
        is a read-only Pregled (summary) + submit. Submit is intentionally
        only available on step 4 - prevents accidental publish from
        earlier steps where validation hasn't been completed yet. */
-    const WIZARD_STEPS = ["Osnovno", "Format", "Nagrade", "Pregled"] as const
+    const wizardStepLabels = t.pages.createTournamentPage.wizardSteps
+    const WIZARD_STEPS = [
+        wizardStepLabels.basic,
+        wizardStepLabels.format,
+        wizardStepLabels.rewards,
+        wizardStepLabels.review,
+    ]
     type WizardStep = 1 | 2 | 3 | 4
     const [step, setStep] = useState<WizardStep>(1)
     const goNext = () => setStep((s) => (s < 4 ? ((s + 1) as WizardStep) : s))
@@ -426,8 +436,8 @@ export default function CreateTournamentPage() {
         } catch (err: any) {
             console.error(err)
             showError(
-                "Greška pri spremanju",
-                err?.message ?? "Turnir nije spremljen. Pokušaj ponovno.",
+                t.pages.createTournamentPage.saveErrorTitle,
+                err?.message ?? t.pages.createTournamentPage.saveErrorDefaultMessage,
             )
         } finally {
             setSubmitting(false)
@@ -613,10 +623,10 @@ export default function CreateTournamentPage() {
                         >
                             <Field.Root required>
                                 <Field.Label>
-                                    Ime turnira <Field.RequiredIndicator />
+                                    {t.tournamentSection.overviewSection.edit.nameLabel} <Field.RequiredIndicator />
                                 </Field.Label>
                                 <Input
-                                    placeholder="npr. Futsal open"
+                                    placeholder={t.tournamentSection.overviewSection.edit.namePlaceholder}
                                     value={form.name}
                                     onChange={(e) => onChange("name", e.target.value)}
                                 />
@@ -624,7 +634,7 @@ export default function CreateTournamentPage() {
 
                             <Field.Root required>
                                 <Field.Label>
-                                    Datum i vrijeme <Field.RequiredIndicator />
+                                    {t.tournamentSection.overviewSection.edit.dateTimeLabel} <Field.RequiredIndicator />
                                 </Field.Label>
                                 {/* react-datepicker with HR locale + forced
                                     dateFormat. This combo guarantees the visible
@@ -659,10 +669,10 @@ export default function CreateTournamentPage() {
                                         showTimeSelect
                                         timeIntervals={15}
                                         timeFormat="HH:mm"
-                                        timeCaption="Vrijeme"
+                                        timeCaption={t.tournamentSection.overviewSection.edit.dateTimeCaption}
                                         dateFormat="dd/MM/yyyy HH:mm"
                                         locale="hr"
-                                        placeholderText="DD/MM/GGGG HH:MM"
+                                        placeholderText={t.tournamentSection.overviewSection.edit.dateTimePlaceholder}
                                         // Stretch the underlying <input> to fill the
                                         // field width - the library renders a tiny
                                         // input by default.
@@ -676,31 +686,31 @@ export default function CreateTournamentPage() {
                                 klub…). When set, the detail page shows THIS as the
                                 organizer instead of the creator's account name. */}
                             <Field.Root>
-                                <Field.Label>Organizator</Field.Label>
+                                <Field.Label>{t.tournamentSection.overviewSection.edit.organizerLabel}</Field.Label>
                                 <Input
-                                    placeholder="npr. udruga, klub..."
+                                    placeholder={t.tournamentSection.overviewSection.edit.organizerPlaceholder}
                                     value={form.organizerName}
                                     onChange={(e) => onChange("organizerName", e.target.value)}
                                     maxLength={120}
                                 />
                             </Field.Root>
                             <Field.Root>
-                                <Field.Label>Maks. ekipa</Field.Label>
+                                <Field.Label>{t.tournamentSection.overviewSection.edit.maxTeamsLabel}</Field.Label>
                                 <Input
                                     type="number"
                                     inputMode="numeric"
                                     min={2}
-                                    placeholder="npr. 32"
+                                    placeholder={t.tournamentSection.overviewSection.edit.maxTeamsPlaceholder}
                                     value={form.maxTeams}
                                     onChange={(e) => handleMaxTeamsChange(e.target.value)}
                                 />
                             </Field.Root>
                             <Field.Root>
-                                <Field.Label>Kotizacija</Field.Label>
+                                <Field.Label>{t.tournamentSection.overviewSection.edit.entryPriceLabel}</Field.Label>
                                 <SuffixInput
                                     value={form.entryPrice}
                                     onChange={(v) => handleMoneyChange("entryPrice", v)}
-                                    placeholder="100"
+                                    placeholder={t.tournamentSection.overviewSection.edit.entryPricePlaceholder}
                                     suffix="€"
                                 />
                             </Field.Root>
@@ -727,7 +737,7 @@ export default function CreateTournamentPage() {
                             >
                                 <Field.Root required>
                                     <Field.Label>
-                                        Lokacija <Field.RequiredIndicator />
+                                        {t.tournamentSection.overviewSection.edit.locationLabel} <Field.RequiredIndicator />
                                     </Field.Label>
                                     <LocationAutocomplete
                                         value={form.location}
@@ -735,7 +745,7 @@ export default function CreateTournamentPage() {
                                         onPickSuggestion={(s) => {
                                             setPickedCoords({ lat: s.latitude, lng: s.longitude })
                                         }}
-                                        placeholder="Unesi lokaciju ili izaberi na karti"
+                                        placeholder={t.tournamentSection.overviewSection.edit.locationPlaceholder}
                                     />
                                 </Field.Root>
                                 <LocationMapPicker
@@ -760,11 +770,11 @@ export default function CreateTournamentPage() {
                                 order={{ base: 1, md: 0 }}
                             >
                                 <Field.Root>
-                                    <Field.Label>Detalji</Field.Label>
+                                    <Field.Label>{t.tournamentSection.overviewSection.edit.detailsLabel}</Field.Label>
                                     <Textarea
                                         rows={2}
                                         resize="none"
-                                        placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
+                                        placeholder={t.tournamentSection.overviewSection.edit.detailsPlaceholder}
                                         value={form.details}
                                         onChange={(e) => onChange("details", e.target.value)}
                                     />
@@ -772,11 +782,11 @@ export default function CreateTournamentPage() {
 
                                 {/* Web stranica organizatora - external link. */}
                                 <Field.Root>
-                                    <Field.Label>Web stranica organizatora</Field.Label>
+                                    <Field.Label>{t.tournamentSection.overviewSection.edit.websiteLabel}</Field.Label>
                                     <Input
                                         type="url"
                                         inputMode="url"
-                                        placeholder="npr. https://facebook.com/events/..."
+                                        placeholder={t.tournamentSection.overviewSection.edit.websitePlaceholder}
                                         value={form.websiteUrl}
                                         onChange={(e) => onChange("websiteUrl", e.target.value)}
                                         maxLength={500}
@@ -792,9 +802,9 @@ export default function CreateTournamentPage() {
                                     <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
                                         <FiPhone />
                                         <Text>
-                                            Kontakt{" "}
+                                            {t.tournamentSection.overviewSection.edit.contactLabel}{" "}
                                             <chakra.span color="fg.muted" fontWeight="normal">
-                                                (ime i telefon)
+                                                {t.tournamentSection.overviewSection.edit.contactHint}
                                             </chakra.span>
                                         </Text>
                                     </HStack>
@@ -804,7 +814,7 @@ export default function CreateTournamentPage() {
                                         gap="2"
                                     >
                                         <Input
-                                            placeholder="Ime organizatora"
+                                            placeholder={t.tournamentSection.overviewSection.edit.contactNamePlaceholder}
                                             value={form.contactName}
                                             onChange={(e) => onChange("contactName", e.target.value)}
                                         />
@@ -827,7 +837,7 @@ export default function CreateTournamentPage() {
                                                 flex="1"
                                                 inputMode="numeric"
                                                 pattern="[0-9 ]*"
-                                                placeholder="91 234 5678"
+                                                placeholder={t.tournamentSection.overviewSection.edit.contactPhonePlaceholder}
                                                 value={form.contactPhone}
                                                 onChange={(e) => onChange("contactPhone", sanitizePhone(e.target.value))}
                                             />
@@ -843,7 +853,8 @@ export default function CreateTournamentPage() {
                                     <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
                                         <FiImage />
                                         <Text>
-                                            Plakat <chakra.span color="fg.muted" fontWeight="normal">(opcionalno)</chakra.span>
+                                            {t.tournamentSection.overviewSection.edit.posterLabel}{" "}
+                                            <chakra.span color="fg.muted" fontWeight="normal">{t.common.optionalTag}</chakra.span>
                                         </Text>
                                     </HStack>
 
@@ -868,7 +879,7 @@ export default function CreateTournamentPage() {
                                         />
                                         <IconButton
                                             type="button"
-                                            aria-label="Ukloni plakat"
+                                            aria-label={t.tournamentSection.overviewSection.edit.posterRemoveAria}
                                             size="2xs"
                                             variant="solid"
                                             colorPalette="red"
@@ -910,7 +921,9 @@ export default function CreateTournamentPage() {
                                         size="sm"
                                         cursor="pointer"
                                     >
-                                        {posterFile ? "Promijeni sliku" : "Odaberi sliku"}
+                                        {posterFile
+                                            ? t.tournamentSection.overviewSection.edit.posterChange
+                                            : t.tournamentSection.overviewSection.edit.posterPick}
                                         <input
                                             type="file"
                                             accept={ACCEPT.join(",")}
@@ -925,7 +938,7 @@ export default function CreateTournamentPage() {
                                         <Text color="red.600" fontSize="xs">{uploadErr}</Text>
                                     ) : (
                                         <Text color="fg.muted" fontSize="xs">
-                                            PNG, JPG ili WEBP, do {MAX_MB} MB.
+                                            {t.tournamentSection.overviewSection.edit.posterHint(MAX_MB)}
                                         </Text>
                                     )}
                                 </VStack>
@@ -946,7 +959,7 @@ export default function CreateTournamentPage() {
                             "required" marker/validation needed - unlike
                             Sistem igre it can never be left empty. */}
                         <Field.Root>
-                            <Field.Label>Podloga</Field.Label>
+                            <Field.Label>{t.tournamentSection.overviewSection.edit.surfaceLabel}</Field.Label>
                             <SurfacePicker value={form.surface} onChange={(s) => onChange("surface", s)} />
                         </Field.Root>
 
@@ -957,7 +970,7 @@ export default function CreateTournamentPage() {
                             (form.gameSystem → payload.gameSystem) is
                             unchanged - only which step edits it moved. */}
                         <Field.Root required>
-                            <Field.Label>Sistem igre</Field.Label>
+                            <Field.Label>{t.tournamentSection.overviewSection.edit.gameSystemLabel}</Field.Label>
                             <HStack gap="1.5" wrap="wrap" align="center">
                                 {["3vs3", "4+1", "5+1"].map((sys) => (
                                     <Button
@@ -975,7 +988,7 @@ export default function CreateTournamentPage() {
                                 <Input
                                     flex="1"
                                     minW="120px"
-                                    placeholder="ili upiši ručno"
+                                    placeholder={t.tournamentSection.overviewSection.edit.gameSystemPlaceholder}
                                     value={form.gameSystem}
                                     onChange={(e) => onChange("gameSystem", e.target.value)}
                                     maxLength={40}
@@ -984,7 +997,7 @@ export default function CreateTournamentPage() {
                         </Field.Root>
 
                         <Field.Root>
-                            <Field.Label>Format natjecanja</Field.Label>
+                            <Field.Label>{t.tournamentSection.overviewSection.edit.formatTitle}</Field.Label>
                             <RadioGroup.Root
                                 value={form.format}
                                 onValueChange={(v) =>
@@ -995,12 +1008,12 @@ export default function CreateTournamentPage() {
                                     <RadioGroup.Item value="GROUPS_KNOCKOUT">
                                         <RadioGroup.ItemHiddenInput />
                                         <RadioGroup.ItemIndicator />
-                                        <RadioGroup.ItemText>Grupe + eliminacija</RadioGroup.ItemText>
+                                        <RadioGroup.ItemText>{t.tournamentSection.overviewSection.edit.formatGroupsKnockout}</RadioGroup.ItemText>
                                     </RadioGroup.Item>
                                     <RadioGroup.Item value="KNOCKOUT_ONLY">
                                         <RadioGroup.ItemHiddenInput />
                                         <RadioGroup.ItemIndicator />
-                                        <RadioGroup.ItemText>Samo eliminacija</RadioGroup.ItemText>
+                                        <RadioGroup.ItemText>{t.tournamentSection.overviewSection.edit.formatKnockoutOnly}</RadioGroup.ItemText>
                                     </RadioGroup.Item>
                                 </HStack>
                             </RadioGroup.Root>
@@ -1020,14 +1033,13 @@ export default function CreateTournamentPage() {
                                 px="3"
                                 py="2"
                             >
-                                Broj grupa i koliko ekipa prolazi dalje birat ćeš kasnije - kod
-                                izvlačenja grupa, prema broju prijavljenih ekipa.
+                                {t.pages.createTournamentPage.formatGroupsHint}
                             </Box>
                         )}
 
                         {form.format === "KNOCKOUT_ONLY" && (
                             <Box fontSize="sm" color="fg.muted">
-                                Sve prijavljene ekipe idu izravno u eliminacijsku ljestvicu, bez grupne faze.
+                                {t.tournamentSection.overviewSection.edit.formatKnockoutHint}
                             </Box>
                         )}
                     </VStack>
@@ -1056,9 +1068,9 @@ export default function CreateTournamentPage() {
                             letterSpacing="0.12em"
                             color="fg.muted"
                         >
-                            <Box>MJESTO</Box>
-                            <Box>IZNOS</Box>
-                            <Box>OSTALO</Box>
+                            <Box>{t.tournamentSection.overviewSection.rewardHeaders.place}</Box>
+                            <Box>{t.tournamentSection.overviewSection.rewardHeaders.amount}</Box>
+                            <Box>{t.tournamentSection.overviewSection.rewardHeaders.other}</Box>
                         </Box>
 
                         {([
@@ -1100,7 +1112,7 @@ export default function CreateTournamentPage() {
                                         are mandatory) trails the WORD, so it
                                         can't read as part of "1.". */}
                                     <Box display={{ base: "block", md: "none" }} fontSize="sm" color="fg.muted">
-                                        mjesto
+                                        {t.pages.createTournamentPage.placeWord}
                                         {required && (
                                             <chakra.span color="red.500" fontWeight={700}>
                                                 *
@@ -1132,7 +1144,7 @@ export default function CreateTournamentPage() {
                                     gridColumn={{ base: "1 / -1", md: "auto" }}
                                     value={form.rewards[place].note}
                                     onChange={(e) => setReward(place, "note", e.target.value)}
-                                    placeholder="npr. Pehar, Prijelazni pehar, Utješna nagrada…"
+                                    placeholder={t.pages.createTournamentPage.rewardNotePlaceholder}
                                     maxLength={200}
                                 />
                             </Box>
@@ -1151,7 +1163,7 @@ export default function CreateTournamentPage() {
                 {step === 4 && (() => {
                     const fmtPrice = (s: string) => {
                         const n = toNumber(s)
-                        return n != null && n > 0 ? `${formatMoney(n)} €` : "Besplatno"
+                        return n != null && n > 0 ? `${formatMoney(n)} €` : t.pages.createTournamentPage.summary.freeLabel
                     }
                     // Summarise the prize fund: "1. 2000 € (Pehar) · 2. 1000 € …"
                     // skipping places with neither an amount nor a note.
@@ -1179,33 +1191,40 @@ export default function CreateTournamentPage() {
                         : null
                     const formatStr =
                         form.format === "GROUPS_KNOCKOUT"
-                            ? "Grupe + eliminacija"
-                            : "Samo eliminacija"
+                            ? t.tournamentSection.overviewSection.edit.formatGroupsKnockout
+                            : t.tournamentSection.overviewSection.edit.formatKnockoutOnly
                     const posterSrc = posterPreviewUrl || form.posterUrl || null
                     const phoneStr = form.contactPhone.trim()
                         ? `${form.contactPhoneCountry} ${form.contactPhone.trim()}`
                         : null
 
+                    const summaryT = t.pages.createTournamentPage.summary
                     const attrs: Array<{ label: string; value: React.ReactNode }> = [
                         {
-                            label: "Organizator",
-                            value: form.organizerName.trim() || <Muted>- nije uneseno</Muted>,
+                            label: t.tournamentSection.overviewSection.edit.organizerLabel,
+                            value: form.organizerName.trim() || <Muted>{summaryT.notEnteredFallback}</Muted>,
                         },
-                        { label: "Lokacija", value: form.location || <Muted>- nije uneseno</Muted> },
-                        { label: "Maks. ekipa", value: form.maxTeams || <Muted>Bez ograničenja</Muted> },
-                        { label: "Format", value: formatStr },
-                        { label: "Kotizacija", value: fmtPrice(form.entryPrice) },
                         {
-                            label: "Nagrade",
+                            label: t.tournamentSection.overviewSection.edit.locationLabel,
+                            value: form.location || <Muted>{summaryT.notEnteredFallback}</Muted>,
+                        },
+                        {
+                            label: t.tournamentSection.overviewSection.edit.maxTeamsLabel,
+                            value: form.maxTeams || <Muted>{summaryT.unlimitedFallback}</Muted>,
+                        },
+                        { label: t.tournamentSection.overviewSection.edit.formatLabel, value: formatStr },
+                        { label: t.tournamentSection.overviewSection.edit.entryPriceLabel, value: fmtPrice(form.entryPrice) },
+                        {
+                            label: t.pages.createTournamentPage.wizardSteps.rewards,
                             value: rewardSummary.length > 0
                                 ? rewardSummary.join(" · ")
-                                : <Muted>Nema nagradnog fonda</Muted>,
+                                : <Muted>{summaryT.noRewardsFallback}</Muted>,
                         },
                         {
-                            label: "Kontakt",
+                            label: t.tournamentSection.overviewSection.edit.contactLabel,
                             value: form.contactName || phoneStr
                                 ? [form.contactName, phoneStr].filter(Boolean).join(" · ")
-                                : <Muted>- nije uneseno</Muted>,
+                                : <Muted>{summaryT.notEnteredFallback}</Muted>,
                         },
                     ]
 
@@ -1252,7 +1271,7 @@ export default function CreateTournamentPage() {
                                             />
                                         ) : (
                                             <Box color="fg.muted" fontSize="xs">
-                                                Bez plakata
+                                                {summaryT.noPosterFallback}
                                             </Box>
                                         )}
                                     </Box>
@@ -1274,7 +1293,7 @@ export default function CreateTournamentPage() {
                                                 color="fg.muted"
                                                 mb="1"
                                             >
-                                                {dateStr ?? "DATUM - NIJE UNESEN"}
+                                                {dateStr ?? summaryT.dateNotEnteredFallback}
                                             </Box>
                                             <Box
                                                 fontFamily="heading"
@@ -1284,7 +1303,7 @@ export default function CreateTournamentPage() {
                                                 letterSpacing="-0.01em"
                                                 color="fg.ink"
                                             >
-                                                {form.name || <Muted>Bez naziva</Muted>}
+                                                {form.name || <Muted>{summaryT.noNameFallback}</Muted>}
                                             </Box>
                                         </Box>
 
@@ -1357,7 +1376,7 @@ export default function CreateTournamentPage() {
                                     fontSize="13px"
                                     fontWeight={600}
                                 >
-                                    ✓ Sve je spremno za objavu.
+                                    {summaryT.readyNotice}
                                 </Box>
                             ) : (
                                 <Box
@@ -1370,7 +1389,7 @@ export default function CreateTournamentPage() {
                                     fontSize="13px"
                                     fontWeight={600}
                                 >
-                                    Nedostaje: {missingRequired.join(", ")}
+                                    {t.tournamentSection.overviewSection.edit.missingRequired(missingRequired.join(", "))}
                                 </Box>
                             )}
                         </VStack>
@@ -1444,7 +1463,7 @@ export default function CreateTournamentPage() {
                             onClick={goPrev}
                             disabled={submitting}
                         >
-                            ← Natrag
+                            ← {t.common.back}
                         </Button>
                     )}
                     {step < 4 && (
@@ -1456,7 +1475,7 @@ export default function CreateTournamentPage() {
                             px="6"
                             onClick={goNext}
                         >
-                            Dalje →
+                            {t.pages.createTournamentPage.nextButton} →
                         </Button>
                     )}
                     {step === 4 && (
@@ -1469,7 +1488,7 @@ export default function CreateTournamentPage() {
                             loading={submitting}
                             disabled={missingRequired.length > 0 || submitting}
                         >
-                            Objavi turnir
+                            {t.pages.createTournamentPage.publishButton}
                         </Button>
                     )}
                 </HStack>

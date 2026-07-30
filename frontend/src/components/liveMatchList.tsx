@@ -3,6 +3,7 @@ import { Box, chakra, Flex, Text } from "@chakra-ui/react"
 import { FiChevronDown, FiChevronRight, FiChevronUp } from "react-icons/fi"
 import type { LiveMatch } from "../api/live"
 import { GoalscorersPanel, LiveClock } from "./liveMatch"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    LiveMatchRow - SofaScore-style live-match row used by the /uzivo page.
@@ -36,10 +37,11 @@ export function LiveMatchRow({
     onSelect: (match: LiveMatch) => void
     variant?: "compact" | "full"
 }) {
+    const t = useTranslation()
     const [expanded, setExpanded] = useState(false)
     const full = variant === "full"
-    const team1 = match.team1Name?.trim() || "Ekipa 1"
-    const team2 = match.team2Name?.trim() || "Ekipa 2"
+    const team1 = match.team1Name?.trim() || t.components.liveMatchList.team1Fallback
+    const team2 = match.team2Name?.trim() || t.components.liveMatchList.team2Fallback
 
     return (
         <Box
@@ -149,7 +151,7 @@ export function LiveMatchRow({
                     border="none"
                 >
                     {expanded ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />}
-                    Detalji
+                    {t.components.liveMatchList.details}
                 </RowButton>
             </Flex>
 

@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { Box, Button, Heading, Text, VStack } from "@chakra-ui/react"
+import { t } from "../i18n"
 
 type Props = { children: ReactNode }
 type State = { hasError: boolean }
@@ -27,12 +28,12 @@ export default class ErrorBoundary extends Component<Props, State> {
             <Box minH="100dvh" display="flex" alignItems="center" justifyContent="center" p="6">
                 <VStack gap="4" textAlign="center" maxW="sm">
                     <Text fontSize="40px" lineHeight="1">⚽</Text>
-                    <Heading size="md" color="fg.ink">Nešto je pošlo po zlu</Heading>
+                    <Heading size="md" color="fg.ink">{t.components.errorBoundary.heading}</Heading>
                     <Text fontSize="sm" color="fg.muted">
-                        Dogodila se neočekivana greška. Osvježi stranicu pa pokušaj ponovno.
+                        {t.components.errorBoundary.description}
                     </Text>
                     <Button colorPalette="brand" onClick={() => window.location.reload()}>
-                        Osvježi stranicu
+                        {t.components.errorBoundary.refreshButton}
                     </Button>
                 </VStack>
             </Box>

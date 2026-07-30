@@ -1,6 +1,7 @@
 import { Box, Text, chakra } from "@chakra-ui/react"
 
 import type { TournamentFormat } from "../types/tournaments"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    FormatSketch - a lightweight SVG diagram of how the chosen competition
@@ -11,6 +12,7 @@ import type { TournamentFormat } from "../types/tournaments"
    · KNOCKOUT_ONLY:   a single elimination bracket, no groups.
    ────────────────────────────────────────────────────────────────────── */
 export function FormatSketch({ format }: { format: TournamentFormat }) {
+    const t = useTranslation()
     const stroke = "var(--chakra-colors-pitch-500)"
     const faint = "var(--chakra-colors-border-emphasized)"
     const ink = "var(--chakra-colors-fg-muted)"
@@ -32,8 +34,8 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                 mb="3"
             >
                 {format === "GROUPS_KNOCKOUT"
-                    ? "SKICA · GRUPE → ELIMINACIJA"
-                    : "SKICA · ELIMINACIJA"}
+                    ? t.components.formatSketch.headerGroupsKnockout
+                    : t.components.formatSketch.headerKnockoutOnly}
             </Text>
 
             {format === "GROUPS_KNOCKOUT" ? (
@@ -46,13 +48,13 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                 >
                     {/* Group A */}
                     <rect x="2" y="6" width="92" height="50" rx="8" fill="none" stroke={faint} strokeWidth="1.5" />
-                    <text x="10" y="20" fontSize="9" fontWeight="700" fill={ink}>GRUPA A</text>
+                    <text x="10" y="20" fontSize="9" fontWeight="700" fill={ink}>{t.components.formatSketch.groupA}</text>
                     <line x1="10" y1="30" x2="86" y2="30" stroke={faint} strokeWidth="1" />
                     <line x1="10" y1="40" x2="86" y2="40" stroke={faint} strokeWidth="1" />
                     <line x1="10" y1="50" x2="86" y2="50" stroke={faint} strokeWidth="1" />
                     {/* Group B */}
                     <rect x="2" y="72" width="92" height="50" rx="8" fill="none" stroke={faint} strokeWidth="1.5" />
-                    <text x="10" y="86" fontSize="9" fontWeight="700" fill={ink}>GRUPA B</text>
+                    <text x="10" y="86" fontSize="9" fontWeight="700" fill={ink}>{t.components.formatSketch.groupB}</text>
                     <line x1="10" y1="96" x2="86" y2="96" stroke={faint} strokeWidth="1" />
                     <line x1="10" y1="106" x2="86" y2="106" stroke={faint} strokeWidth="1" />
                     <line x1="10" y1="116" x2="86" y2="116" stroke={faint} strokeWidth="1" />
@@ -60,7 +62,7 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                     {/* Arrow → */}
                     <line x1="100" y1="64" x2="132" y2="64" stroke={stroke} strokeWidth="2" />
                     <path d="M132 64 l-7 -4 v8 z" fill={stroke} />
-                    <text x="100" y="56" fontSize="8" fontWeight="700" fill={stroke}>prolaze</text>
+                    <text x="100" y="56" fontSize="8" fontWeight="700" fill={stroke}>{t.components.formatSketch.advance}</text>
 
                     {/* Bracket - semis → final */}
                     {/* SF1 */}
@@ -72,7 +74,7 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                     <path d="M220 94 H240 V67 H260" fill="none" stroke={stroke} strokeWidth="1.5" />
                     {/* Final */}
                     <rect x="260" y="54" width="84" height="20" rx="5" fill="none" stroke={stroke} strokeWidth="2" />
-                    <text x="302" y="68" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">FINALE</text>
+                    <text x="302" y="68" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">{t.components.formatSketch.final}</text>
                 </chakra.svg>
             ) : (
                 <chakra.svg
@@ -99,14 +101,14 @@ export function FormatSketch({ format }: { format: TournamentFormat }) {
                     <path d="M184 110 H206 V73 H228" fill="none" stroke={stroke} strokeWidth="1.5" />
                     {/* Final */}
                     <rect x="228" y="55" width="92" height="22" rx="5" fill="none" stroke={stroke} strokeWidth="2" />
-                    <text x="274" y="70" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">FINALE</text>
+                    <text x="274" y="70" fontSize="9" fontWeight="800" fill={stroke} textAnchor="middle">{t.components.formatSketch.final}</text>
                 </chakra.svg>
             )}
 
             <Text fontSize="xs" color="fg.muted" mt="3">
                 {format === "GROUPS_KNOCKOUT"
-                    ? "Ekipe se prvo bore u grupama; najbolji iz svake grupe prolaze u eliminacijsku ljestvicu do finala."
-                    : "Sve ekipe idu izravno u eliminacijsku ljestvicu - poraz znači ispadanje, sve do finala."}
+                    ? t.components.formatSketch.descGroupsKnockout
+                    : t.components.formatSketch.descKnockoutOnly}
             </Text>
         </Box>
     )

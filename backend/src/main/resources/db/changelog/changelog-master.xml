@@ -73,4 +73,6 @@
     <include file="db/changelog/2026-07-29-02-team-default-kits.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-29-03-camera-package-inquiries.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-29-05-camera-package-inquiries-required.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-30-01-match-recording-requests-cart.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-30-02-user-profiles-language.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

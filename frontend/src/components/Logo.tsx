@@ -1,5 +1,6 @@
 import { Box, HStack, Text, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Logo - brand lockup for the "Futsal Turniri" identity.
@@ -129,6 +130,7 @@ export function Logo({
     to = "/",
     asStatic = false,
 }: LogoProps) {
+    const t = useTranslation()
     const { futsal, tile } = paletteFor(variant)
 
     const inner = (
@@ -179,7 +181,7 @@ export function Logo({
             align="center"
             _hover={{ textDecoration: "none" }}
         >
-            <RouterLink to={to} aria-label="Futsal Turniri - početna">
+            <RouterLink to={to} aria-label={t.components.logo.homeAriaLabel}>
                 {inner}
             </RouterLink>
         </HStack>

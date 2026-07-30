@@ -1,41 +1,52 @@
 import React, { useEffect, useState } from "react"
 import {
     Box,
+    CloseButton,
+    Drawer,
     Flex,
     HStack,
+    IconButton,
     Image,
     Button,
     Container,
     Menu,
+    Portal,
     Text,
+    VStack,
     chakra,
     useBreakpointValue,
 } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath, useNavigate } from "react-router-dom"
 import { queryClient, PERSIST_KEY } from "../queryClient"
-import { FiLogOut, FiUser } from "react-icons/fi"
+import { FiLogOut, FiMenu, FiShoppingCart, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
 import { getProfile } from "../api/userMe"
 import { InstallAppButton } from "./InstallAppButton"
-import ColorModeToggle from "./ColorModeToggle"
 import { LiveNavItem } from "./LiveNavItem"
 import { Logo } from "./Logo"
 import { MonoLabel } from "../ui/pitch"
 import { useTranslation } from "../i18n"
+import { useCart } from "../cart/CartContext"
+import LanguagePicker from "./LanguagePicker"
+import ThemeSwitch from "./ThemeSwitch"
 
 /* ──────────────────────────────────────────────────────────────────────────
    PitchNav - top navigation in the "Pitch" theme.
 
    Desktop layout (md+):  three-column grid
      [ brand mark + wordmark ]  [ centred pill nav capsule ]  [ user pill ]
+   Signed in: theme/language/install all live inside the user pill's own
+   menu (DesktopAuthArea) - one dropdown, nothing else needed next to it.
+   Signed out: there's no user pill to hang them off, so a small guest
+   hamburger (DesktopGuestMenu) carries the same three controls instead -
+   anonymous visitors must be able to reach them too.
 
-   Mobile layout (base):  brand on the left, hamburger on the right, full
-                          drawer underneath when open.
-
-   The drawer also honours the `futsal:open-nav-menu` /
-   `futsal:close-nav-menu` events fired by the guided Joyride tour - they
-   force the drawer open while the tour highlights nav-internals, then
-   close it again when the tour moves on.
+   Mobile layout (base):  brand on the left, cart + a single hamburger button
+   on the right - everything else (profile/sign-out, theme, language,
+   install) lives inside a right-side drawer opened from that hamburger, to
+   keep the top bar from getting crowded on a small screen. Primary
+   navigation itself stays in the fixed `MobileBottomNav` at the foot of the
+   viewport, unaffected by this drawer.
    ────────────────────────────────────────────────────────────────────── */
 
 /** Single nav pill inside the centred capsule. Filled pitch-green when the
@@ -126,10 +137,77 @@ function UserAvatar({
     )
 }
 
+/** /cjenik cart icon - a real cart with a live item-count badge, next to the
+ *  profile pill. Always visible (works signed-out too, since the cart flow
+ *  supports an anonymous checkout) but only draws the badge once non-empty.
+ *  Navigates to the full /kosarica page. */
+function CartButton({ size = 30 }: { size?: number }) {
+    const t = useTranslation()
+    const navigate = useNavigate()
+    const { itemCount } = useCart()
+    return (
+        <Box position="relative" display="inline-flex">
+            <chakra.button
+                type="button"
+                aria-label={t.nav.cartAria(itemCount)}
+                title={t.nav.cartAria(itemCount)}
+                onClick={() => navigate("/kosarica")}
+                display="inline-flex"
+                alignItems="center"
+                justifyContent="center"
+                w={`${size}px`}
+                h={`${size}px`}
+                rounded="full"
+                bg="bg.surfaceTint"
+                border="none"
+                cursor="pointer"
+                color="fg.ink"
+                _hover={{ bg: "pitch.100" }}
+            >
+                <FiShoppingCart size={Math.round(size * 0.5)} />
+            </chakra.button>
+            {itemCount > 0 && (
+                <Box
+                    position="absolute"
+                    top="-2px"
+                    right="-2px"
+                    minW="16px"
+                    h="16px"
+                    px="1"
+                    rounded="full"
+                    bg="pitch.500"
+                    color="white"
+                    fontSize="10px"
+                    fontWeight={700}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    lineHeight="1"
+                >
+                    {itemCount}
+                </Box>
+            )}
+        </Box>
+    )
+}
+
+/** Hard cap at 20 characters (ellipsis) - the pill's `truncate mt="0.5"` CSS
+ *  ellipsis alone still let a very long display name push the pill wide
+ *  enough to crowd the nav capsule; this bounds it up front instead. */
+function truncateName(name: string, max = 20): string {
+    return name.length > max ? `${name.slice(0, max).trimEnd()}…` : name
+}
+
 export default function NavBar() {
     const t = useTranslation()
     const { user, signOut, loading } = useAuth()
     const navigate = useNavigate()
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+    function goTo(path: string) {
+        setMobileMenuOpen(false)
+        navigate(path)
+    }
 
     // Tour-aware breakpoint flag - see comment block in the previous NavBar
     // for the full reasoning. Short version: the guided tour needs
@@ -168,8 +246,54 @@ export default function NavBar() {
             // or different) session never briefly sees the previous user's data.
             queryClient.clear()
             try { localStorage.removeItem(PERSIST_KEY) } catch { /* private mode */ }
+            setMobileMenuOpen(false)
             navigate("/turniri")
         }
+    }
+
+    /** Desktop hamburger for SIGNED-OUT visitors only: theme + language +
+     *  install. Signed-in users get the same three controls inside the user
+     *  pill's own menu instead (DesktopAuthArea) - rendering both at once
+     *  would be a redundant second hamburger next to the profile pill. */
+    function DesktopGuestMenu() {
+        return (
+            <Menu.Root>
+                <Menu.Trigger asChild>
+                    <IconButton
+                        aria-label={t.nav.menuAria}
+                        title={t.nav.menuAria}
+                        size="sm"
+                        variant="ghost"
+                        rounded="full"
+                        data-tour={isMobile ? undefined : "help-install"}
+                    >
+                        <FiMenu />
+                    </IconButton>
+                </Menu.Trigger>
+                <Menu.Positioner>
+                    <Menu.Content minW="200px">
+                        {/* Plain content (not Menu.Item) so clicking the
+                            switch/picker/button doesn't auto-close the menu -
+                            stopPropagation keeps it open. */}
+                        <Box px="3" py="2" onClick={(e) => e.stopPropagation()}>
+                            <HStack justify="space-between">
+                                <MonoLabel>{t.nav.themeLabel}</MonoLabel>
+                                <ThemeSwitch />
+                            </HStack>
+                        </Box>
+                        <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
+                            <MonoLabel>{t.nav.languageLabel}</MonoLabel>
+                            <Box mt="1.5">
+                                <LanguagePicker variant="inline" />
+                            </Box>
+                        </Box>
+                        <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
+                            <InstallAppButton size="sm" variant="labeled" />
+                        </Box>
+                    </Menu.Content>
+                </Menu.Positioner>
+            </Menu.Root>
+        )
     }
 
     function DesktopAuthArea() {
@@ -209,7 +333,7 @@ export default function NavBar() {
                             fontWeight={600}
                             color="fg.ink"
                         >
-                            {user.displayName || user.email}
+                            {truncateName(user.displayName || user.email || "")}
                         </Box>
                     </chakra.button>
                 </Menu.Trigger>
@@ -227,6 +351,31 @@ export default function NavBar() {
                         <Menu.Item value="logout" onSelect={onSignOut}>
                             <FiLogOut /> {t.nav.logout}
                         </Menu.Item>
+                        {/* Theme + language rows - plain content, NOT
+                            Menu.Item, so flipping the switch / picking a
+                            language doesn't trigger item-select auto-close; a
+                            nested Menu-based language picker would also fight
+                            this menu's own overlay, hence the inline variant.
+                            stopPropagation keeps the menu open on click. */}
+                        <Box
+                            px="3"
+                            py="2"
+                            mt="1"
+                            borderTopWidth="1px"
+                            borderColor="border"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <HStack justify="space-between">
+                                <MonoLabel>{t.nav.themeLabel}</MonoLabel>
+                                <ThemeSwitch />
+                            </HStack>
+                        </Box>
+                        <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
+                            <MonoLabel>{t.nav.languageLabel}</MonoLabel>
+                            <Box mt="1.5">
+                                <LanguagePicker variant="inline" />
+                            </Box>
+                        </Box>
                     </Menu.Content>
                 </Menu.Positioner>
             </Menu.Root>
@@ -244,7 +393,10 @@ export default function NavBar() {
             // Beats Leaflet's internal panes - see prior NavBar comment.
             zIndex={1000}
         >
-            <Container maxW="6xl" py="2">
+            {/* Same maxW/px as the page-content Container (App.tsx) so the
+                logo and right cluster line up with the content edges below
+                instead of sitting inset from them. */}
+            <Container maxW="1280px" px={{ base: 4, md: 6 }} py="2">
                 {/* ── Desktop layout ───────────────────────────────────────── */}
                 <Box
                     display={{ base: "none", md: "grid" }}
@@ -276,71 +428,133 @@ export default function NavBar() {
                         <PillNavLink to="/statistika">{t.nav.stats}</PillNavLink>
                     </HStack>
 
-                    {/* Right cluster: install affordance + user pill. The
-                        stand-in notification bell was removed - it wasn't
-                        wired to anything and added clutter next to install. */}
+                    {/* Right cluster: cart + the user pill (its menu carries
+                        theme/language/install when signed in). Signed out,
+                        the "Prijava" button takes the pill's place and the
+                        guest hamburger (same three controls) sits after it,
+                        flush right. The stand-in notification bell was
+                        removed - it wasn't wired to anything and added
+                        clutter. */}
                     <HStack justify="end" gap="3">
-                        <HStack data-tour={isMobile ? undefined : "help-install"} gap="1.5">
-                            <ColorModeToggle size="sm" />
-                            <InstallAppButton size="sm" />
-                        </HStack>
+                        <CartButton />
                         <DesktopAuthArea />
+                        {!loading && !user && <DesktopGuestMenu />}
                     </HStack>
                 </Box>
 
                 {/* ── Mobile layout ─────────────────────────────────────────────
-                     No hamburger menu - navigation lives in the fixed
-                     MobileBottomNav at the foot of the viewport. The only
-                     extra affordance is the install button, which now sits
-                     inline to the left of the profile avatar. */}
+                     Logo, cart, a "Prijava" button when signed out (visible
+                     right in the bar - it's the primary CTA for an anonymous
+                     visitor, not worth burying in the drawer), and a single
+                     hamburger. Everything else (profile/sign-out, theme,
+                     language, install) lives in the drawer below. Primary
+                     navigation stays in the fixed MobileBottomNav. */}
                 <Flex display={{ base: "flex", md: "none" }} align="center" gap="2">
                     <Logo size={32} showDomain={false} to="/turniri" />
                     <Box flex="1" />
-                    <Box data-tour={isMobile ? "help-install" : undefined}>
-                        <HStack gap="1.5">
-                            <ColorModeToggle size="sm" />
-                            <InstallAppButton size="sm" />
-                        </HStack>
-                    </Box>
-                    <Box data-tour={isMobile ? "nav-auth" : undefined}>
-                        {!loading && user && (
-                            <Menu.Root>
-                                <Menu.Trigger asChild>
-                                    <Button aria-label={t.nav.profileMenuAria} size="sm" variant="ghost" px={1}>
-                                        <UserAvatar
-                                            name={user.displayName}
-                                            email={user.email}
-                                            avatarUrl={avatarUrl}
-                                            size={28}
-                                        />
-                                    </Button>
-                                </Menu.Trigger>
-                                <Menu.Positioner>
-                                    <Menu.Content minW="220px">
-                                        <Box px="3" py="2" borderBottomWidth="1px" borderColor="border">
-                                            <MonoLabel>{t.nav.loggedInAs}</MonoLabel>
-                                            <Text fontSize="sm" fontWeight={600} truncate mt="0.5">
-                                                {user.email ?? user.displayName ?? t.nav.anonymous}
-                                            </Text>
-                                        </Box>
-                                        <Menu.Item value="profile" onSelect={() => navigate("/profil")}>
-                                            <FiUser /> {t.nav.profile}
-                                        </Menu.Item>
-                                        <Menu.Item value="logout" onSelect={onSignOut}>
-                                            <FiLogOut /> {t.nav.logout}
-                                        </Menu.Item>
-                                    </Menu.Content>
-                                </Menu.Positioner>
-                            </Menu.Root>
-                        )}
-                        {!loading && !user && (
-                            <Button asChild size="sm" variant="solid" colorPalette="pitch">
-                                <RouterLink to="/prijava">{t.nav.login}</RouterLink>
-                            </Button>
-                        )}
-                    </Box>
+                    <CartButton size={28} />
+                    {!loading && !user && (
+                        <Button asChild size="sm" variant="solid" colorPalette="pitch">
+                            <RouterLink to="/prijava">{t.nav.login}</RouterLink>
+                        </Button>
+                    )}
+                    <IconButton
+                        aria-label={t.nav.menuAria}
+                        title={t.nav.menuAria}
+                        size="sm"
+                        variant="ghost"
+                        rounded="full"
+                        onClick={() => setMobileMenuOpen(true)}
+                        data-tour={isMobile ? "nav-auth" : undefined}
+                    >
+                        <FiMenu />
+                    </IconButton>
                 </Flex>
             </Container>
+
+            {/* ── Mobile drawer - profile/sign-out + theme/language/install ── */}
+            <Drawer.Root
+                open={mobileMenuOpen}
+                onOpenChange={(e) => setMobileMenuOpen(e.open)}
+                placement="end"
+                size="xs"
+            >
+                <Portal>
+                    <Drawer.Backdrop />
+                    <Drawer.Positioner>
+                        <Drawer.Content>
+                            <Drawer.Header borderBottomWidth="1px" borderColor="border">
+                                <Drawer.Title>{t.nav.menuAria}</Drawer.Title>
+                            </Drawer.Header>
+                            {/* Default recipe position: absolute top-right,
+                                which lands it in the header row opposite the
+                                title. */}
+                            <Drawer.CloseTrigger asChild>
+                                <CloseButton size="sm" aria-label={t.common.close} title={t.common.close} />
+                            </Drawer.CloseTrigger>
+                            <Drawer.Body py="4">
+                                <VStack align="stretch" gap="5">
+                                    {!loading && user && (
+                                        <VStack align="stretch" gap="2">
+                                            <chakra.button
+                                                type="button"
+                                                onClick={() => goTo("/profil")}
+                                                display="flex"
+                                                alignItems="center"
+                                                gap="3"
+                                                p="2"
+                                                rounded="lg"
+                                                bg="transparent"
+                                                border="none"
+                                                cursor="pointer"
+                                                textAlign="left"
+                                                _hover={{ bg: "bg.subtle" }}
+                                            >
+                                                <UserAvatar name={user.displayName} email={user.email} avatarUrl={avatarUrl} size={40} />
+                                                <Box minW="0" flex="1">
+                                                    <Text fontSize="sm" fontWeight={700} truncate>
+                                                        {user.displayName || t.nav.anonymous}
+                                                    </Text>
+                                                    <Text fontSize="xs" color="fg.muted" truncate>
+                                                        {user.email ?? t.nav.anonymous}
+                                                    </Text>
+                                                </Box>
+                                            </chakra.button>
+                                            <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo("/profil")}>
+                                                <FiUser /> {t.nav.profile}
+                                            </Button>
+                                            <Button variant="ghost" justifyContent="flex-start" colorPalette="red" onClick={onSignOut}>
+                                                <FiLogOut /> {t.nav.logout}
+                                            </Button>
+                                        </VStack>
+                                    )}
+                                    {!loading && !user && (
+                                        <Button colorPalette="pitch" onClick={() => goTo("/prijava")}>
+                                            {t.nav.login}
+                                        </Button>
+                                    )}
+
+                                    <VStack align="stretch" gap="3" pt="2" borderTopWidth="1px" borderColor="border">
+                                        <HStack justify="space-between">
+                                            <Text fontSize="sm" fontWeight={600}>{t.nav.themeLabel}</Text>
+                                            <ThemeSwitch />
+                                        </HStack>
+                                        <HStack justify="space-between">
+                                            <Text fontSize="sm" fontWeight={600}>{t.nav.languageLabel}</Text>
+                                            {/* Inline variant - a Menu-based
+                                                picker portals under the open
+                                                drawer and never receives the
+                                                tap. */}
+                                            <LanguagePicker variant="inline" />
+                                        </HStack>
+                                        <InstallAppButton size="sm" variant="labeled" />
+                                    </VStack>
+                                </VStack>
+                            </Drawer.Body>
+                        </Drawer.Content>
+                    </Drawer.Positioner>
+                </Portal>
+            </Drawer.Root>
         </Box>
     )
 }

@@ -9,6 +9,7 @@ import {
 } from "../api/matchSubscriptions"
 import { useAuth } from "../auth/AuthContext"
 import { showError } from "../toaster"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Bell for a single match (e.g. an upcoming match on /uzivo). Click →
@@ -29,6 +30,7 @@ export default function MatchNotificationBell({
     tournamentUuid: string
     matchId: number
 }) {
+    const t = useTranslation()
     const { user, loading: authLoading } = useAuth()
     const navigate = useNavigate()
     const location = useLocation()
@@ -79,8 +81,8 @@ export default function MatchNotificationBell({
                 const result = await Notification.requestPermission()
                 if (result !== "granted") {
                     showError(
-                        "Obavijesti su blokirane",
-                        "Dozvoli obavijesti u postavkama preglednika i pokušaj ponovno.",
+                        t.components.matchNotificationBell.blockedTitle,
+                        t.components.matchNotificationBell.blockedDescDefault,
                     )
                     return
                 }
@@ -89,8 +91,8 @@ export default function MatchNotificationBell({
                 Notification.permission === "denied"
             ) {
                 showError(
-                    "Obavijesti su blokirane",
-                    "Otvori postavke preglednika i dozvoli obavijesti za ovu stranicu.",
+                    t.components.matchNotificationBell.blockedTitle,
+                    t.components.matchNotificationBell.blockedDescDenied,
                 )
                 return
             }
@@ -105,10 +107,10 @@ export default function MatchNotificationBell({
 
     const Icon = subscribed ? FiBell : FiBellOff
     const label = !user
-        ? "Prijavi se za primanje obavijesti o utakmici"
+        ? t.components.matchNotificationBell.labelLoginPrompt
         : subscribed
-            ? "Primaš obavijest za ovu utakmicu - klikni za isključi"
-            : "Primaj obavijest kad ova utakmica počne"
+            ? t.components.matchNotificationBell.labelOn
+            : t.components.matchNotificationBell.labelOff
 
     return (
         <IconButton

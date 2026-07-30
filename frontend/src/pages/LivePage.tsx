@@ -31,6 +31,8 @@ import { useLiveSocket } from "../hooks/useLiveSocket"
 import { GoalscorersPanel, LiveClock, matchPhase } from "../components/liveMatch"
 import MatchNotificationBell from "../components/MatchNotificationBell"
 import { FiChevronDown, FiChevronUp } from "react-icons/fi"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n/hr"
 
 /* ──────────────────────────────────────────────────────────────────────────
    LivePage - "Pitch" theme /uzivo.
@@ -44,21 +46,6 @@ import { FiChevronDown, FiChevronUp } from "react-icons/fi"
         the page works even when nothing is live.
    ────────────────────────────────────────────────────────────────────── */
 
-const HR_WEEKDAYS = [
-    "Nedjelja", "Ponedjeljak", "Utorak", "Srijeda",
-    "Četvrtak", "Petak", "Subota",
-]
-const HR_MONTHS_GEN = [
-    "siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja",
-    "srpnja", "kolovoza", "rujna", "listopada", "studenoga", "prosinca",
-]
-// Nominative month names used in the month-picker pills ("Siječanj 2026",
-// not "siječnja 2026" which is the genitive form for dates).
-const HR_MONTHS_NOM = [
-    "Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj",
-    "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac",
-]
-
 function pad2(n: number): string {
     return String(n).padStart(2, "0")
 }
@@ -68,13 +55,18 @@ function dateKey(d: Date): string {
 function startOfDay(d: Date): Date {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
-function dayHeading(d: Date, today: Date): string {
+function dayHeading(d: Date, today: Date, t: Dictionary): string {
     const diff = Math.round(
         (startOfDay(d).getTime() - startOfDay(today).getTime()) / 86400000,
     )
-    if (diff === 0) return "Danas"
-    if (diff === 1) return "Sutra"
-    return `${HR_WEEKDAYS[d.getDay()]}, ${d.getDate()}. ${HR_MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}.`
+    if (diff === 0) return t.pages.livePage.dayHeadingToday
+    if (diff === 1) return t.pages.livePage.dayHeadingTomorrow
+    return t.pages.livePage.dayHeadingOther(
+        t.pages.livePage.weekdaysFull[d.getDay()],
+        d.getDate(),
+        t.pages.livePage.monthsGenitive[d.getMonth()],
+        d.getFullYear(),
+    )
 }
 function formatTime(iso?: string | null): string {
     if (!iso) return ""
@@ -109,9 +101,10 @@ function FeaturedTournamentHero({
     tournament: TournamentCard
     onOpen: () => void
 }) {
+    const t = useTranslation()
     const startDate = tournament.startAt ? new Date(tournament.startAt) : null
     const dayNum = startDate ? String(startDate.getDate()).padStart(2, "0") : "-"
-    const monthNom = startDate ? HR_MONTHS_NOM[startDate.getMonth()].toUpperCase() : ""
+    const monthNom = startDate ? t.pages.livePage.monthsNominative[startDate.getMonth()].toUpperCase() : ""
     const yearStr = startDate ? String(startDate.getFullYear()) : ""
     return (
         <Box
@@ -169,7 +162,7 @@ function FeaturedTournamentHero({
                             py="1"
                             rounded="full"
                         >
-                            ★ ISTAKNUTI TURNIR
+                            {t.pages.livePage.featuredHero.badge}
                         </Box>
                         {startDate && (
                             <Box
@@ -212,7 +205,7 @@ function FeaturedTournamentHero({
                                 <HStack gap="1.5">
                                     <FiCalendar size={13} />
                                     <Text>
-                                        {tournament.registeredTeams} / {tournament.maxTeams} ekipa
+                                        {t.pages.livePage.teamsCount(tournament.registeredTeams, tournament.maxTeams)}
                                     </Text>
                                 </HStack>
                             )}
@@ -222,7 +215,7 @@ function FeaturedTournamentHero({
                              button doesn't need to stopPropagation - both
                              paths fire the same handler. */}
                         <PrimaryButton onClick={onOpen}>
-                            Otvori turnir →
+                            {t.pages.livePage.featuredHero.openButton}
                         </PrimaryButton>
                     </Box>
                 </Flex>
@@ -260,6 +253,7 @@ function LiveMatchCard({
     onWarm?: () => void
     refreshSignal?: number
 }) {
+    const t = useTranslation()
     // Long club names shrink a touch and wrap up to three lines so they stay
     // fully readable in the hero scoreboard instead of truncating.
     const heroMaxLen = Math.max((match.team1Name ?? "").length, (match.team2Name ?? "").length)
@@ -277,12 +271,12 @@ function LiveMatchCard({
             : null
     const half =
         match.livePausedAt && (livePhase === "FIRST_HALF" || livePhase === "SECOND_HALF")
-            ? "PAUZA"
-            : livePhase === "HALFTIME" ? "PAUZA"
-                : livePhase === "SECOND_HALF" ? "2. POL."
-                    : livePhase === "FULL_TIME" ? "KRAJ"
-                        : livePhase === "FIRST_HALF" ? "1. POL."
-                            : match.secondHalfStartedAt ? "2. POL." : "1. POL."
+            ? t.pages.livePage.phaseLabels.pause
+            : livePhase === "HALFTIME" ? t.pages.livePage.phaseLabels.pause
+                : livePhase === "SECOND_HALF" ? t.pages.livePage.phaseLabels.secondHalf
+                    : livePhase === "FULL_TIME" ? t.pages.livePage.phaseLabels.fullTime
+                        : livePhase === "FIRST_HALF" ? t.pages.livePage.phaseLabels.firstHalf
+                            : match.secondHalfStartedAt ? t.pages.livePage.phaseLabels.secondHalf : t.pages.livePage.phaseLabels.firstHalf
     const [expanded, setExpanded] = useState(false)
     return (
         <Box
@@ -330,7 +324,7 @@ function LiveMatchCard({
                         w="fit-content"
                     >
                         <PulseDot color="white" size={5} />
-                        UŽIVO
+                        {t.pages.livePage.liveLabel}
                     </HStack>
                     <HStack gap="2" justifySelf="center" minW="0">
                         {/* Live clock - pulls minute from the same fields the
@@ -438,7 +432,7 @@ function LiveMatchCard({
             >
                 {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
                 <Text fontSize="12px" fontWeight={600}>
-                    {expanded ? "Sakrij događaje" : "Prikaži događaje"}
+                    {expanded ? t.pages.livePage.hideEvents : t.pages.livePage.showEvents}
                 </Text>
             </Flex>
 
@@ -459,11 +453,11 @@ function LiveMatchCard({
                         mb="2"
                     >
                         <Box />
-                        <MonoLabel color="fg.muted">DOGAĐAJI UTAKMICE</MonoLabel>
+                        <MonoLabel color="fg.muted">{t.pages.livePage.eventsHeading}</MonoLabel>
                         <HStack gap="1" color="fg.muted" justifySelf="end">
                             <PulseDot color="accent.red" size={5} />
                             <Text fontSize="10px" fontFamily="mono" letterSpacing="0.1em">
-                                AŽURIRA SE
+                                {t.pages.livePage.updatingLabel}
                             </Text>
                         </HStack>
                     </Box>
@@ -511,7 +505,7 @@ function LiveMatchCard({
                         css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                         _hover={{ textDecoration: "underline" }}
                     >
-                        ← na turnir
+                        {t.pages.livePage.backToTournament}
                     </Box>
                     <Box
                         as="span"
@@ -526,7 +520,7 @@ function LiveMatchCard({
                         css={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                         _hover={{ textDecoration: "underline" }}
                     >
-                        na utakmicu →
+                        {t.pages.livePage.toMatch}
                     </Box>
                 </Flex>
             )}
@@ -542,13 +536,7 @@ type MatchDayGroup = { key: string; date: Date; matches: UpcomingMatch[] }
    user asks for it. */
 type UpcomingRange = "today" | "tomorrow" | "week" | "month" | "all"
 
-const UPCOMING_RANGES: { key: UpcomingRange; label: string }[] = [
-    { key: "today", label: "Danas" },
-    { key: "tomorrow", label: "Sutra" },
-    { key: "week", label: "Ovaj tjedan" },
-    { key: "month", label: "Ovaj mjesec" },
-    { key: "all", label: "Sve" },
-]
+const UPCOMING_RANGE_KEYS: UpcomingRange[] = ["today", "tomorrow", "week", "month", "all"]
 
 /** Last instant of the Croatian week (Mon-Sun) that `from` falls in. */
 function endOfWeek(from: Date): Date {
@@ -665,10 +653,10 @@ function TeamInitials({ name }: { name: string | null }) {
     )
 }
 
-/** Croatian phase label ("1. POL." / "PAUZA" / "2. POL." / "KRAJ") for a live
- *  match - identical logic to the LiveMatchCard header so the two views stay
- *  in sync. */
-function livePhaseLabel(m: LiveMatch): string {
+/** Abbreviated phase label ("1. POL." / "PAUZA" / "2. POL." / "KRAJ") for a
+ *  live match - identical logic to the LiveMatchCard header so the two views
+ *  stay in sync. */
+function livePhaseLabel(m: LiveMatch, t: Dictionary): string {
     const phase =
         m.liveMode === "TIMER"
             ? matchPhase({
@@ -681,12 +669,12 @@ function livePhaseLabel(m: LiveMatch): string {
               })
             : null
     return m.livePausedAt && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
-        ? "PAUZA"
-        : phase === "HALFTIME" ? "PAUZA"
-            : phase === "SECOND_HALF" ? "2. POL."
-                : phase === "FULL_TIME" ? "KRAJ"
-                    : phase === "FIRST_HALF" ? "1. POL."
-                        : m.secondHalfStartedAt ? "2. POL." : "1. POL."
+        ? t.pages.livePage.phaseLabels.pause
+        : phase === "HALFTIME" ? t.pages.livePage.phaseLabels.pause
+            : phase === "SECOND_HALF" ? t.pages.livePage.phaseLabels.secondHalf
+                : phase === "FULL_TIME" ? t.pages.livePage.phaseLabels.fullTime
+                    : phase === "FIRST_HALF" ? t.pages.livePage.phaseLabels.firstHalf
+                        : m.secondHalfStartedAt ? t.pages.livePage.phaseLabels.secondHalf : t.pages.livePage.phaseLabels.firstHalf
 }
 
 /** One live match rendered as a slim SofaScore-style row: live minute/status
@@ -712,6 +700,7 @@ function LiveListRow({
     /** Prefetch the tournament on hover/press so opening is instant. */
     onWarm: () => void
 }) {
+    const t = useTranslation()
     const s1 = m.score1 ?? 0
     const s2 = m.score2 ?? 0
     const lead1 = s1 > s2
@@ -763,7 +752,7 @@ function LiveListRow({
                             letterSpacing="0.1em"
                         >
                             <PulseDot color="accent.red" size={5} />
-                            UŽIVO
+                            {t.pages.livePage.liveLabel}
                         </HStack>
                     )}
                     <Text
@@ -774,7 +763,7 @@ function LiveListRow({
                         color="fg.muted"
                         whiteSpace="nowrap"
                     >
-                        {livePhaseLabel(m)}
+                        {livePhaseLabel(m, t)}
                     </Text>
                 </VStack>
 
@@ -823,7 +812,7 @@ function LiveListRow({
                             onWatch()
                         }}
                     >
-                        <FiPlay /> Gledaj
+                        <FiPlay /> {t.pages.livePage.watchButton}
                     </Button>
                 ) : null}
 
@@ -878,6 +867,7 @@ type LiveGroup = {
 }
 
 export default function LivePage() {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     // Seed the live list from the cache (populated here on each poll AND by the
     // home page's hero) so opening /uzivo paints instantly, then polling below
@@ -948,9 +938,8 @@ export default function LivePage() {
     })
 
     useDocumentHead({
-        title: "Uživo i raspored - futsal-turniri.com",
-        description:
-            "Prati futsal utakmice koje su trenutno u tijeku i pogledaj nadolazeće utakmice kroz sve turnire na jednom mjestu.",
+        title: t.pages.livePage.documentTitle,
+        description: t.pages.livePage.documentDescription,
         canonical: "https://futsal-turniri.com/uzivo",
     })
 
@@ -1082,8 +1071,8 @@ export default function LivePage() {
         for (const m of upcomingMatches) {
             if (!m.kickoffAt) continue
             const d = new Date(m.kickoffAt)
-            for (const r of UPCOMING_RANGES) {
-                if (withinRange(d, r.key, today)) out[r.key] += 1
+            for (const key of UPCOMING_RANGE_KEYS) {
+                if (withinRange(d, key, today)) out[key] += 1
             }
         }
         return out
@@ -1115,7 +1104,7 @@ export default function LivePage() {
                             fontWeight={700}
                         >
                             <PulseDot color="accent.red" size={8} glow />
-                            UŽIVO SADA · {matches.length}
+                            {t.pages.livePage.liveNowCount(matches.length)}
                         </HStack>
                     </Box>
                     {/* List / cards view switcher - icon-only segmented control,
@@ -1134,13 +1123,13 @@ export default function LivePage() {
                             active={liveView === "list"}
                             onClick={() => setLiveView("list")}
                             icon={<FiList size={15} />}
-                            label="Lista"
+                            label={t.pages.livePage.viewToggle.list}
                         />
                         <ViewToggleButton
                             active={liveView === "cards"}
                             onClick={() => setLiveView("cards")}
                             icon={<FiGrid size={15} />}
-                            label="Kartice"
+                            label={t.pages.livePage.viewToggle.cards}
                         />
                     </HStack>
                 </Flex>
@@ -1150,7 +1139,7 @@ export default function LivePage() {
             <Box>
                 {matchesLoading ? (
                     <SectionCard padding="6">
-                        <Text color="fg.muted">Učitavanje utakmica…</Text>
+                        <Text color="fg.muted">{t.pages.livePage.loadingMatches}</Text>
                     </SectionCard>
                 ) : matches.length === 0 ? (
                     // Calm, slim banner - no big empty card, no red pulse.
@@ -1179,10 +1168,10 @@ export default function LivePage() {
                         </Flex>
                         <Box minW="0">
                             <Text fontWeight={600} color="fg.ink">
-                                Trenutno nema utakmica uživo
+                                {t.pages.livePage.noLiveMatches}
                             </Text>
                             <Text fontSize="sm" color="fg.muted">
-                                Pogledaj nadolazeće utakmice ispod.
+                                {t.pages.livePage.noLiveMatchesHint}
                             </Text>
                         </Box>
                     </Flex>
@@ -1224,7 +1213,7 @@ export default function LivePage() {
                                                 rounded="full"
                                                 flexShrink={0}
                                             >
-                                                ★ ISTAKNUTO
+                                                {t.pages.livePage.featuredBadge}
                                             </Box>
                                         )}
                                         <Box flex="1" />
@@ -1282,7 +1271,7 @@ export default function LivePage() {
                                         letterSpacing="0.2em"
                                         color={isAdminFeatured ? "pitch.500" : "fg.muted"}
                                     >
-                                        {isAdminFeatured ? "★ GLAVNA UTAKMICA" : "GLAVNA UTAKMICA"}
+                                        {isAdminFeatured ? t.pages.livePage.mainMatchLabelFeatured : t.pages.livePage.mainMatchLabel}
                                     </Box>
                                 </HStack>
                                 <Box
@@ -1315,7 +1304,7 @@ export default function LivePage() {
                                         color="fg.muted"
                                         mb="2"
                                     >
-                                        OSTALE UTAKMICE · {rest.length}
+                                        {t.pages.livePage.otherMatches(rest.length)}
                                     </Box>
                                     <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap="4">
                                         {rest.map((m) => (
@@ -1361,7 +1350,7 @@ export default function LivePage() {
                             <FiClock size={15} />
                         </Box>
                         <Text fontSize="15px" fontWeight={800} color="fg.ink" whiteSpace="nowrap">
-                            Nadolazeće utakmice
+                            {t.pages.livePage.upcomingHeading}
                         </Text>
                     </HStack>
                     <HStack
@@ -1371,30 +1360,30 @@ export default function LivePage() {
                         wrap="wrap"
                         justify="flex-end"
                     >
-                        {UPCOMING_RANGES.map((r) => (
+                        {UPCOMING_RANGE_KEYS.map((key) => (
                             <FilterChip
-                                key={r.key}
-                                label={r.label}
-                                count={upcomingCounts[r.key]}
-                                active={upcomingRange === r.key}
-                                onClick={() => setUpcomingRange(r.key)}
+                                key={key}
+                                label={t.pages.livePage.upcomingRanges[key]}
+                                count={upcomingCounts[key]}
+                                active={upcomingRange === key}
+                                onClick={() => setUpcomingRange(key)}
                             />
                         ))}
                     </HStack>
                 </Flex>
                 {upcomingLoading ? (
-                    <Text color="fg.muted">Učitavanje utakmica…</Text>
+                    <Text color="fg.muted">{t.pages.livePage.loadingMatches}</Text>
                 ) : matchDayGroups.length === 0 ? (
                     <Flex direction="column" align="center" py="6" px="4" gap="1.5" textAlign="center">
                         <Heading size="sm">
                             {upcomingRange === "all"
-                                ? "Nema nadolazećih utakmica"
-                                : "Nema utakmica u ovom razdoblju"}
+                                ? t.pages.livePage.noUpcomingAll
+                                : t.pages.livePage.noUpcomingFiltered}
                         </Heading>
                         <Text fontSize="sm" color="fg.muted" maxW="md">
                             {upcomingRange === "all"
-                                ? "Kad organizatori zakažu termine utakmica, pojavit će se ovdje."
-                                : "Odaberi šire razdoblje da vidiš više utakmica."}
+                                ? t.pages.livePage.noUpcomingAllHint
+                                : t.pages.livePage.noUpcomingFilteredHint}
                         </Text>
                     </Flex>
                 ) : (
@@ -1409,7 +1398,7 @@ export default function LivePage() {
                                     borderColor="border"
                                 >
                                     <MonoLabel color="pitch.500">
-                                        {dayHeading(g.date, today)}
+                                        {dayHeading(g.date, today, t)}
                                     </MonoLabel>
                                     <Box flex="1" />
                                     <Text fontSize="xs" fontWeight={600} color="fg.muted">
@@ -1475,7 +1464,9 @@ export default function LivePage() {
                                                 <Box flex="1" minW="0">
                                                     <Text fontSize="sm" fontWeight={700} truncate color="fg.ink">
                                                         {m.team1Name ?? "-"}{" "}
-                                                        <Box as="span" color="fg.muted" fontWeight={500}>vs</Box>{" "}
+                                                        <Box as="span" color="fg.muted" fontWeight={500}>
+                                                            {t.pages.embedTournamentPage.vsLabel}
+                                                        </Box>{" "}
                                                         {m.team2Name ?? "-"}
                                                     </Text>
                                                     <HStack gap="1" mt="0.5" color="fg.muted">

@@ -568,10 +568,15 @@ function RequestRow({
                             <FiCreditCard /> {t.recordingRequest.mine.payButton}
                         </Button>
                     )}
-                    {r.status === "DELIVERED" && (
+                    {r.status === "DELIVERED" && paymentDue && (
+                        <Text fontSize="xs" color="fg.muted">
+                            {t.recordingRequest.mine.downloadLockedText}
+                        </Text>
+                    )}
+                    {r.status === "DELIVERED" && !paymentDue && (
                         <Button
                             size="2xs"
-                            variant={paymentDue ? "outline" : "solid"}
+                            variant="solid"
                             colorPalette="pitch"
                             loading={busy}
                             onClick={onDownload}

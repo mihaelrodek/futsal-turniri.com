@@ -60,14 +60,22 @@ export default function TeamNameAutocomplete({
     const [highlight, setHighlight] = useState(-1)
     const boxRef = useRef<HTMLDivElement>(null)
     const justPickedRef = useRef(false)
+    // The field mounts pre-filled with the team's CURRENT name (renaming an
+    // existing team), which is itself a valid team name - searching on mount
+    // would immediately suggest close matches (e.g. "X" mounting and matching
+    // "X JUNIORI") before the organiser has touched anything, and a later
+    // focus would then reopen that stale dropdown. Suppressed until the
+    // organiser actually types a keystroke.
+    const touchedRef = useRef(false)
 
     // Debounced search whenever the value changes (unless the change came
-    // from picking a suggestion).
+    // from picking a suggestion, or the organiser hasn't typed yet).
     useEffect(() => {
         if (justPickedRef.current) {
             justPickedRef.current = false
             return
         }
+        if (!touchedRef.current) return
         const q = value.trim()
         if (q.length < 2) {
             setSuggestions([])
@@ -140,10 +148,13 @@ export default function TeamNameAutocomplete({
                 autoFocus={autoFocus}
                 placeholder={effectivePlaceholder}
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => {
+                    touchedRef.current = true
+                    onChange(e.target.value)
+                }}
                 onBlur={onBlur}
                 onFocus={() => {
-                    if (suggestions.length > 0) setOpen(true)
+                    if (touchedRef.current && suggestions.length > 0) setOpen(true)
                 }}
                 onKeyDown={(e) => {
                     if (open && suggestions.length > 0) {

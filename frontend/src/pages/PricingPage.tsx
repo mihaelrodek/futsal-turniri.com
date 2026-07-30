@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { ElementType, FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
 import {
     Badge,
     Box,
@@ -23,15 +24,17 @@ import {
     LuShoppingCart,
     LuSparkles,
     LuTarget,
-    LuTrash2,
     LuTrophy,
     LuVideo,
-    LuX,
 } from "react-icons/lu"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { MonoLabel, PitchBackdrop, GhostButton } from "../ui/pitch"
 import { submitCameraInquiry } from "../api/cameraInquiry"
 import { showError } from "../toaster"
+import { useCart } from "../cart/CartContext"
+import { formatPrice } from "../cart/CartShared"
+import type { CartTier } from "../api/recordingCart"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Cjenik - packages for buying match video: a single goal clip, a whole
@@ -42,6 +45,7 @@ import { showError } from "../toaster"
    ────────────────────────────────────────────────────────────────────── */
 
 type Tier = {
+    id: CartTier
     icon: ElementType
     name: string
     price: string
@@ -53,57 +57,31 @@ type Tier = {
     highlight?: boolean
 }
 
-const TIERS: Tier[] = [
-    {
-        icon: LuTarget,
-        name: "Gol",
-        price: "5 €",
-        priceValue: 5,
-        tagline: "Jedan gol, spreman za dijeljenje.",
-        features: [
-            "Isječak jednog gola u HD kvaliteti",
-            "Spreman za preuzimanje i dijeljenje",
-            "Dostava u pravilu unutar 48 h",
-        ],
-    },
-    {
-        icon: LuVideo,
-        name: "Tekma",
-        price: "20 €",
-        priceValue: 20,
-        tagline: "Cijela utakmica, oba poluvremena.",
-        features: [
-            "Snimka cijele utakmice",
-            "Puna rezolucija za preuzimanje",
-            "Dostava u pravilu unutar 48 h",
-        ],
-    },
-    {
-        icon: LuFlame,
-        name: "Hattrick",
-        price: "50 €",
-        priceValue: 50,
-        tagline: "3 utakmice s turnira po tvom izboru.",
-        features: [
-            "Snimke bilo koje 3 utakmice s turnira",
-            "Sam biraš koje utakmice",
-            "Jeftinije nego pojedinačna kupnja",
-        ],
-    },
-    {
-        icon: LuTrophy,
-        name: "Zlatna kopačka",
-        price: "100 €",
-        priceValue: 100,
-        tagline: "Cijeli turnir, sve utakmice tvoje ekipe.",
-        features: [
-            "Snimke svih odigranih utakmica s turnira",
-            "Kompletna video arhiva za cijelu ekipu",
-            "Najisplativiji paket po utakmici",
-        ],
-        highlight: true,
-    },
+/** Static per-tier facts that never need translation - icon, id, and price
+ *  (display string + numeric twin for cart totals). Paired with the
+ *  translated name/tagline/features (from `t.pages.pricingPage.tiers.*`)
+ *  inside `useTiers()` below. */
+const TIER_META: { id: CartTier; icon: ElementType; price: string; priceValue: number; highlight?: boolean }[] = [
+    { id: "GOAL", icon: LuTarget, price: "5 €", priceValue: 5 },
+    { id: "MATCH", icon: LuVideo, price: "20 €", priceValue: 20 },
+    { id: "HATTRICK", icon: LuFlame, price: "50 €", priceValue: 50 },
+    { id: "TEAM", icon: LuTrophy, price: "100 €", priceValue: 100, highlight: true },
 ]
+
+const TIER_DICT_KEY: Record<CartTier, "goal" | "match" | "hattrick" | "team"> = {
+    GOAL: "goal",
+    MATCH: "match",
+    HATTRICK: "hattrick",
+    TEAM: "team",
+}
+
+function useTiers(): Tier[] {
+    const t = useTranslation()
+    return TIER_META.map((meta) => {
+        const copy = t.pages.pricingPage.tiers[TIER_DICT_KEY[meta.id]]
+        return { ...meta, name: copy.name, tagline: copy.tagline, features: copy.features }
+    })
+}
 
 function PricingCard({
     tier,
@@ -114,6 +92,7 @@ function PricingCard({
     selected: boolean
     onToggle: () => void
 }) {
+    const t = useTranslation()
     return (
         <chakra.button
             type="button"
@@ -148,7 +127,7 @@ function PricingCard({
                     letterSpacing="0.06em"
                     textTransform="uppercase"
                 >
-                    Najbolja vrijednost
+                    {t.pages.pricingPage.bestValueBadge}
                 </Badge>
             )}
             {/* Selection check - top-right so it never collides with the
@@ -206,93 +185,38 @@ function PricingCard({
     )
 }
 
-/** "5 €" + "20 €" → "25 €" - both display strings are always plain whole
- *  euros (see TIERS), so summing the numeric twin and re-appending " €"
- *  is simpler than parsing the string back out. */
-function formatTotal(cents: number): string {
-    return `${cents} €`
-}
-
-function CartSummary({
-    tiers,
-    onRemove,
-    onClear,
-}: {
-    tiers: Tier[]
-    onRemove: (name: string) => void
-    onClear: () => void
-}) {
-    const total = tiers.reduce((sum, t) => sum + t.priceValue, 0)
+/** Slim sticky bottom bar shown while the cart has items - count + total +
+ *  a button that navigates to the full /kosarica page. Sticky (not fixed) so
+ *  it never overlaps the footer area, and offset on mobile to clear the
+ *  fixed bottom nav. */
+function CartStickyBar({ count, totalEurCents }: { count: number; totalEurCents: number }) {
+    const t = useTranslation()
+    const navigate = useNavigate()
     return (
         <Box
-            borderWidth="1px"
-            borderColor="pitch.500"
-            rounded="xl"
-            p={{ base: "4", md: "5" }}
-            bg="pitch.subtle"
+            position="sticky"
+            bottom={{ base: "calc(96px + env(safe-area-inset-bottom, 0px))", md: "4" }}
+            zIndex="5"
         >
-            <HStack justify="space-between" align="center" mb="3">
+            <HStack
+                justify="space-between"
+                gap="3"
+                bg="bg.panel"
+                borderWidth="1px"
+                borderColor="pitch.500"
+                rounded="xl"
+                shadow="lg"
+                px="4"
+                py="2.5"
+            >
                 <HStack gap="2">
-                    <Icon as={LuShoppingCart} boxSize="5" color="pitch.700" />
-                    <Heading size="sm">Košarica</Heading>
-                    <Badge colorPalette="pitch" variant="solid">{tiers.length}</Badge>
+                    <Icon as={LuShoppingCart} boxSize="4" color="pitch.600" />
+                    <Badge colorPalette="pitch" variant="solid">{count}</Badge>
+                    <Text fontWeight={800}>{formatPrice(totalEurCents)}</Text>
                 </HStack>
-                <chakra.button
-                    type="button"
-                    onClick={onClear}
-                    display="inline-flex"
-                    alignItems="center"
-                    gap="1"
-                    fontSize="12.5px"
-                    fontWeight={600}
-                    color="fg.muted"
-                    bg="transparent"
-                    border="none"
-                    cursor="pointer"
-                    _hover={{ color: "fg.ink" }}
-                >
-                    <LuTrash2 size={13} /> Isprazni košaricu
-                </chakra.button>
-            </HStack>
-            <VStack align="stretch" gap="2">
-                {tiers.map((t) => (
-                    <HStack
-                        key={t.name}
-                        justify="space-between"
-                        bg="bg.panel"
-                        borderWidth="1px"
-                        borderColor="border"
-                        rounded="lg"
-                        px="3"
-                        py="2"
-                    >
-                        <HStack gap="2">
-                            <Icon as={t.icon} boxSize="4" color="pitch.500" />
-                            <Text fontSize="14px" fontWeight={600}>{t.name}</Text>
-                        </HStack>
-                        <HStack gap="3">
-                            <Text fontSize="14px" fontWeight={700}>{t.price}</Text>
-                            <chakra.button
-                                type="button"
-                                aria-label={`Ukloni ${t.name} iz košarice`}
-                                title="Ukloni"
-                                onClick={() => onRemove(t.name)}
-                                display="inline-flex"
-                                color="fg.muted"
-                                bg="transparent"
-                                border="none"
-                                cursor="pointer"
-                                _hover={{ color: "accent.red" }}
-                            >
-                                <LuX size={16} />
-                            </chakra.button>
-                        </HStack>
-                    </HStack>
-                ))}
-            </VStack>
-            <HStack justify="space-between" mt="3" pt="3" borderTopWidth="1px" borderColor="pitch.emphasized">
-                <Text fontWeight={700}>Ukupno</Text>
-                <Text fontWeight={800} fontSize="18px">{formatTotal(total)}</Text>
+                <Button size="sm" colorPalette="pitch" onClick={() => navigate("/kosarica")}>
+                    <LuShoppingCart /> {t.pages.pricingPage.goToCartButton}
+                </Button>
             </HStack>
         </Box>
     )
@@ -308,6 +232,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/
 const PHONE_RE = /^\+?[0-9]{6,15}$/
 
 function CameraInquiryForm({ onSent }: { onSent: () => void }) {
+    const t = useTranslation()
     const [name, setName] = useState("")
     const [contactEmail, setContactEmail] = useState("")
     const [contactPhone, setContactPhone] = useState("")
@@ -327,7 +252,7 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
     async function onSubmit(e: FormEvent) {
         e.preventDefault()
         if (!canSubmit) {
-            showError("Nedostaju podaci", "Ime, email, broj telefona, naziv turnira i opis su obavezni.")
+            showError(t.pages.pricingPage.cameraForm.missingDataTitle, t.pages.pricingPage.cameraForm.missingDataDesc)
             return
         }
         try {
@@ -349,9 +274,9 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
     if (state === "sent") {
         return (
             <VStack align="stretch" gap="1" py="2">
-                <Text fontWeight={700}>Upit je poslan.</Text>
+                <Text fontWeight={700}>{t.pages.pricingPage.cameraForm.sentTitle}</Text>
                 <Text fontSize="sm" color="fg.muted">
-                    Javit ćemo se s ponudom na kontakt koji si ostavio/la - potvrda je poslana i na tvoj email.
+                    {t.pages.pricingPage.cameraForm.sentDesc}
                 </Text>
             </VStack>
         )
@@ -362,62 +287,62 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
             <VStack align="stretch" gap="3">
                 <HStack gap="3" align="start" wrap="wrap">
                     <Field.Root required flex="1" minW="200px">
-                        <Field.Label>Ime <Field.RequiredIndicator /></Field.Label>
+                        <Field.Label>{t.pages.pricingPage.cameraForm.nameLabel} <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="Ime i prezime"
+                            placeholder={t.pages.pricingPage.cameraForm.namePlaceholder}
                         />
                     </Field.Root>
                     <Field.Root required flex="1" minW="200px">
-                        <Field.Label>Naziv turnira <Field.RequiredIndicator /></Field.Label>
+                        <Field.Label>{t.pages.pricingPage.cameraForm.tournamentNameLabel} <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             value={tournamentName}
                             onChange={(e) => setTournamentName(e.target.value)}
-                            placeholder="npr. Ljetni turnir 2026"
+                            placeholder={t.pages.pricingPage.cameraForm.tournamentNamePlaceholder}
                         />
                     </Field.Root>
                 </HStack>
 
                 <HStack gap="3" align="start" wrap="wrap">
                     <Field.Root required flex="1" minW="200px" invalid={contactEmail.trim().length > 0 && !emailOk}>
-                        <Field.Label>Email <Field.RequiredIndicator /></Field.Label>
+                        <Field.Label>{t.pages.pricingPage.cameraForm.emailLabel} <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             type="email"
                             value={contactEmail}
                             onChange={(e) => setContactEmail(e.target.value)}
-                            placeholder="ime@email.com"
+                            placeholder={t.pages.pricingPage.cameraForm.emailPlaceholder}
                         />
                         {contactEmail.trim().length > 0 && !emailOk && (
-                            <Field.ErrorText>Email adresa nije ispravna.</Field.ErrorText>
+                            <Field.ErrorText>{t.pages.pricingPage.cameraForm.emailInvalid}</Field.ErrorText>
                         )}
                     </Field.Root>
                     <Field.Root required flex="1" minW="200px" invalid={contactPhone.trim().length > 0 && !phoneOk}>
-                        <Field.Label>Broj telefona <Field.RequiredIndicator /></Field.Label>
+                        <Field.Label>{t.pages.pricingPage.cameraForm.phoneLabel} <Field.RequiredIndicator /></Field.Label>
                         <Input
                             size="sm"
                             type="tel"
                             value={contactPhone}
                             onChange={(e) => setContactPhone(e.target.value)}
-                            placeholder="+385 91 234 5678"
+                            placeholder={t.pages.pricingPage.cameraForm.phonePlaceholder}
                         />
                         {contactPhone.trim().length > 0 && !phoneOk && (
-                            <Field.ErrorText>Broj telefona nije ispravan.</Field.ErrorText>
+                            <Field.ErrorText>{t.pages.pricingPage.cameraForm.phoneInvalid}</Field.ErrorText>
                         )}
                     </Field.Root>
                 </HStack>
 
                 <Field.Root required>
-                    <Field.Label>Opis <Field.RequiredIndicator /></Field.Label>
+                    <Field.Label>{t.pages.pricingPage.cameraForm.descriptionLabel} <Field.RequiredIndicator /></Field.Label>
                     <Textarea
                         size="sm"
                         rows={3}
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
-                        placeholder="Broj utakmica, datumi, streaming uživo - što god je bitno za ponudu."
+                        placeholder={t.pages.pricingPage.cameraForm.descriptionPlaceholder}
                     />
                 </Field.Root>
 
@@ -429,7 +354,7 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
                         loading={state === "sending"}
                         disabled={!canSubmit || state === "sending"}
                     >
-                        Pošalji upit
+                        {t.pages.pricingPage.cameraForm.submitButton}
                     </Button>
                 </HStack>
             </VStack>
@@ -438,6 +363,7 @@ function CameraInquiryForm({ onSent }: { onSent: () => void }) {
 }
 
 function CameraPackageBand() {
+    const t = useTranslation()
     const [open, setOpen] = useState(false)
     const [sent, setSent] = useState(false)
 
@@ -466,17 +392,16 @@ function CameraPackageBand() {
                     </Flex>
                     <Box>
                         <HStack gap="2" wrap="wrap">
-                            <Heading size="md">Kamera paket</Heading>
-                            <Badge variant="subtle" colorPalette="gray">Cijena na upit</Badge>
+                            <Heading size="md">{t.pages.pricingPage.cameraPackage.heading}</Heading>
+                            <Badge variant="subtle" colorPalette="gray">{t.pages.pricingPage.cameraPackage.priceOnRequestBadge}</Badge>
                         </HStack>
                         <Text fontSize="13.5px" color="fg.muted" mt="1.5" maxW="560px">
-                            Dogovorno snimanje kamerom uživo na tvom turniru, prilagođeno broju
-                            utakmica i trajanju - javi se i pošaljemo ponudu.
+                            {t.pages.pricingPage.cameraPackage.description}
                         </Text>
                     </Box>
                 </HStack>
                 {!open && !sent && (
-                    <GhostButton onClick={() => setOpen(true)}>Zatraži ponudu</GhostButton>
+                    <GhostButton onClick={() => setOpen(true)}>{t.pages.pricingPage.cameraPackage.requestQuoteButton}</GhostButton>
                 )}
             </HStack>
 
@@ -490,21 +415,28 @@ function CameraPackageBand() {
 }
 
 export default function PricingPage() {
+    const t = useTranslation()
+    const tiers = useTiers()
+
     useDocumentHead({
-        title: "Cjenik - Futsal Turniri",
-        description: "Snimke gola, utakmice ili cijelog turnira - odaberi paket koji ti odgovara.",
+        title: t.pages.pricingPage.documentTitle,
+        description: t.pages.pricingPage.documentDescription,
     })
 
-    const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
-    const selectedTiers = TIERS.filter((t) => selectedNames.has(t.name))
+    const cart = useCart()
 
-    function toggle(name: string) {
-        setSelectedNames((prev) => {
-            const next = new Set(prev)
-            if (next.has(name)) next.delete(name)
-            else next.add(name)
-            return next
-        })
+    // A card's "selected" state just mirrors whether the cart already has AN
+    // item of that tier - clicking it again removes that one item. Buying a
+    // second Gol/Hattrick/etc is still possible, just from the cart page
+    // itself (its own "dodaj još jednu stavku" row), not by re-clicking here.
+    function itemOfTier(tierId: CartTier) {
+        return cart.items.find((it) => it.tier === tierId)
+    }
+
+    function toggle(tierId: CartTier) {
+        const existing = itemOfTier(tierId)
+        if (existing) cart.removeItem(existing.id)
+        else cart.addTier(tierId)
     }
 
     return (
@@ -535,7 +467,7 @@ export default function PricingPage() {
                         py="1"
                     >
                         <Icon as={LuSparkles} boxSize="3.5" />
-                        <MonoLabel color="white" letterSpacing="0.06em">Cjenik</MonoLabel>
+                        <MonoLabel color="white" letterSpacing="0.06em">{t.pages.pricingPage.kicker}</MonoLabel>
                     </HStack>
                     <Heading
                         fontFamily="heading"
@@ -544,11 +476,10 @@ export default function PricingPage() {
                         letterSpacing="-0.02em"
                         lineHeight="1.1"
                     >
-                        Snimka tvog trenutka na terenu
+                        {t.pages.pricingPage.heroHeading}
                     </Heading>
                     <Text fontSize={{ base: "14px", md: "16px" }} color="rgba(255,255,255,0.85)" maxW="640px">
-                        Od jednog gola do cijelog turnira - odaberi paket koji ti odgovara.
-                        Sve snimke stižu u punoj HD kvaliteti, spremne za preuzimanje.
+                        {t.pages.pricingPage.heroSubtitle}
                     </Text>
                 </VStack>
             </Box>
@@ -559,26 +490,22 @@ export default function PricingPage() {
                 templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }}
                 gap="4"
             >
-                {TIERS.map((tier) => (
+                {tiers.map((tier) => (
                     <PricingCard
-                        key={tier.name}
+                        key={tier.id}
                         tier={tier}
-                        selected={selectedNames.has(tier.name)}
-                        onToggle={() => toggle(tier.name)}
+                        selected={!!itemOfTier(tier.id)}
+                        onToggle={() => toggle(tier.id)}
                     />
                 ))}
             </Grid>
 
-            {selectedTiers.length > 0 && (
-                <CartSummary
-                    tiers={selectedTiers}
-                    onRemove={(name) => toggle(name)}
-                    onClear={() => setSelectedNames(new Set())}
-                />
-            )}
-
             {/* ── Camera package - price on request ────────────────────── */}
             <CameraPackageBand />
+
+            {cart.items.length > 0 && (
+                <CartStickyBar count={cart.itemCount} totalEurCents={cart.totalEurCents} />
+            )}
         </VStack>
     )
 }

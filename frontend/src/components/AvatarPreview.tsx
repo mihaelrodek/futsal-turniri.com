@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Box, IconButton, Image, Portal } from "@chakra-ui/react"
 import { FiX } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 /**
  * Wraps any avatar trigger element to add a hover / tap preview of the
@@ -57,6 +58,7 @@ export default function AvatarPreview({
     /** The trigger node - usually the avatar circle the user sees. */
     children: React.ReactNode
 }) {
+    const t = useTranslation()
     const [open, setOpen] = useState(false)
     const openTimerRef = useRef<number | null>(null)
 
@@ -175,7 +177,7 @@ export default function AvatarPreview({
                                 display="block"
                             />
                             <IconButton
-                                aria-label="Zatvori"
+                                aria-label={t.common.close}
                                 size="xs"
                                 variant="solid"
                                 colorPalette="gray"

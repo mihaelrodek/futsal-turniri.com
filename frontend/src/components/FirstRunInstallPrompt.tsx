@@ -10,6 +10,7 @@ import {
 } from "@chakra-ui/react"
 import { FiDownload, FiX } from "react-icons/fi"
 import { useInstallPrompt } from "../hooks/useInstallPrompt"
+import { useTranslation } from "../i18n"
 import IosInstallSteps from "./IosInstallSteps"
 import { LogoMark } from "./Logo"
 
@@ -55,6 +56,7 @@ function persistDismissed() {
 
 
 export default function FirstRunInstallPrompt() {
+    const t = useTranslation()
     const { canInstall, isIos, installed, install } = useInstallPrompt()
     const [open, setOpen] = useState(false)
     const [dismissed, setDismissed] = useState<boolean>(() => readDismissed())
@@ -106,19 +108,19 @@ export default function FirstRunInstallPrompt() {
                     {/* aria-label: this dialog has no Dialog.Title (the heading
                         is body copy), so name it explicitly for screen readers
                         - also fixes Lighthouse's aria-dialog-name audit. */}
-                    <Dialog.Content maxW={{ base: "92%", md: "md" }} aria-label="Instaliraj Futsal Turniri">
+                    <Dialog.Content maxW={{ base: "92%", md: "md" }} aria-label={t.components.firstRunInstallPrompt.dialogAriaLabel}>
                         <Dialog.Body py="5" px={{ base: "4", md: "6" }}>
                             <VStack align="stretch" gap="4">
                                 <HStack gap="3" align="center">
                                     <LogoMark size={56} title="Futsal Turniri" />
                                     <Box flex="1">
                                         <Text fontWeight="semibold" fontSize="md">
-                                            Instaliraj Futsal Turniri
+                                            {t.components.firstRunInstallPrompt.title}
                                         </Text>
                                         <Text fontSize="sm" color="fg.muted">
                                             {isIos
-                                                ? "Dodaj aplikaciju na svoj iPhone u 3 koraka:"
-                                                : "Spremi Futsal Turniri kao aplikaciju i otvori je jednim klikom s početnog zaslona."}
+                                                ? t.components.firstRunInstallPrompt.subtitleIos
+                                                : t.components.firstRunInstallPrompt.subtitleDefault}
                                         </Text>
                                     </Box>
                                 </HStack>
@@ -131,8 +133,10 @@ export default function FirstRunInstallPrompt() {
 
                                 <HStack gap="2" justify="flex-end" wrap="wrap">
                                     <Button variant="ghost" size="sm" onClick={dismiss}>
-                                        <FiX />
-                                        {isIos ? " Razumijem" : " Možda kasnije"}
+                                        <FiX />{" "}
+                                        {isIos
+                                            ? t.components.firstRunInstallPrompt.dismissIos
+                                            : t.components.firstRunInstallPrompt.dismissDefault}
                                     </Button>
                                     {canInstall && (
                                         <Button
@@ -141,7 +145,7 @@ export default function FirstRunInstallPrompt() {
                                             size="sm"
                                             onClick={onInstallClick}
                                         >
-                                            <FiDownload /> Instaliraj
+                                            <FiDownload /> {t.components.firstRunInstallPrompt.install}
                                         </Button>
                                     )}
                                 </HStack>

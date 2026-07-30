@@ -6,6 +6,7 @@ import com.stripe.model.checkout.Session;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.services.RecordingAutoLinkService;
+import hr.mrodek.apps.futsal_turniri.services.RecordingRequestNotifier;
 import hr.mrodek.apps.futsal_turniri.services.StripeService;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -18,6 +19,7 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -48,6 +50,7 @@ public class StripeWebhookController {
     @Inject StripeService stripeService;
     @Inject MatchRecordingRequestRepository repo;
     @Inject RecordingAutoLinkService autoLink;
+    @Inject RecordingRequestNotifier notifier;
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
@@ -81,9 +84,16 @@ public class StripeWebhookController {
             return;
         }
 
-        String uuidStr = session.getMetadata() == null ? null : session.getMetadata().get("recording_request_uuid");
+        var metadata = session.getMetadata();
+        String cartGroupIdStr = metadata == null ? null : metadata.get("cart_group_id");
+        if (cartGroupIdStr != null && !cartGroupIdStr.isBlank()) {
+            handleCartCheckoutCompleted(cartGroupIdStr, session);
+            return;
+        }
+
+        String uuidStr = metadata == null ? null : metadata.get("recording_request_uuid");
         if (uuidStr == null || uuidStr.isBlank()) {
-            LOG.warn("Stripe webhook: checkout.session.completed missing recording_request_uuid metadata");
+            LOG.warn("Stripe webhook: checkout.session.completed with neither cart_group_id nor recording_request_uuid metadata");
             return;
         }
 
@@ -115,5 +125,46 @@ public class StripeWebhookController {
         // Auto-link a library recording if one already exists for this match,
         // and send the download-ready email either way it ends up linked.
         autoLink.autoLinkAndNotify(r);
+    }
+
+    /**
+     * A /cjenik cart order (Hattrick, Zlatna kopačka, or a mixed cart) pays
+     * for N {@code MatchRecordingRequest} rows in one Checkout Session, all
+     * sharing {@code cartGroupId}. Marks each unpaid row in the group paid
+     * (idempotent per row, same as the single-request path), auto-links a
+     * library recording where one already exists, and sends ONE admin
+     * heads-up email (on the first row - its {@code note} carries the whole
+     * order's summary, stamped at creation time) instead of one per match.
+     */
+    private void handleCartCheckoutCompleted(String cartGroupIdStr, Session session) {
+        UUID cartGroupId;
+        try {
+            cartGroupId = UUID.fromString(cartGroupIdStr);
+        } catch (IllegalArgumentException e) {
+            LOG.warnf("Stripe webhook: malformed cart_group_id metadata '%s'", cartGroupIdStr);
+            return;
+        }
+
+        List<MatchRecordingRequest> rows = repo.findByCartGroupId(cartGroupId);
+        if (rows.isEmpty()) {
+            LOG.warnf("Stripe webhook: no rows for cart_group_id %s", cartGroupIdStr);
+            return;
+        }
+
+        String payerEmail = session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null;
+        boolean anyNewlyPaid = false;
+        for (MatchRecordingRequest r : rows) {
+            if (r.getPaidAt() != null) continue; // already processed - idempotent no-op on replay
+            anyNewlyPaid = true;
+            r.setPaidAt(OffsetDateTime.now());
+            r.setStripeSessionId(session.getId());
+            r.setPayerEmail(payerEmail);
+            r.setUpdatedAt(OffsetDateTime.now());
+            autoLink.autoLinkAndNotify(r);
+        }
+
+        if (anyNewlyPaid) {
+            notifier.notifyAdmin(rows.get(0), rows.get(0).getMatch());
+        }
     }
 }

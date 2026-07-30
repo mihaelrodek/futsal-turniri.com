@@ -13,6 +13,8 @@ import { fetchMatchEvents } from "../api/matchEvents"
 import type { ScorerDto } from "../api/stats"
 import type { TeamKit } from "../api/tournaments"
 import { showError, showSuccess } from "../toaster"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n"
 
 /* ────────────────────────────────────────────────────────────────────────────
    Branded export - "plakat" (poster) generator for the group draw and the
@@ -112,17 +114,10 @@ const PAGE_PX: Record<Orientation, { w: number; h: number }> = {
     a3portrait: { w: A3_W, h: A3_H },
 }
 
-/* -- Stage labels (mirrors ScheduleTab.STAGE_LABEL) ---------------------- */
-const STAGE_LABEL: Record<string, string> = {
-    GROUP: "Grupa",
-    ROUND_OF_32: "1/16 finala",
-    ROUND_OF_16: "Osmina finala",
-    QUARTERFINAL: "Četvrtfinale",
-    SEMIFINAL: "Polufinale",
-    FINAL: "Finale",
-    THIRD_PLACE: "Za 3. mjesto",
-}
-const HR_WEEKDAYS = ["NEDJELJA", "PONEDJELJAK", "UTORAK", "SRIJEDA", "ČETVRTAK", "PETAK", "SUBOTA"]
+/* -- Stage labels come from the dictionary (t.components.scheduleTab.stageLabels
+   - same wording/keys as ScheduleTab.STAGE_LABEL, see stageTag/matchStageBadge
+   below, which take `t` as an explicit param since they are plain functions,
+   not components (mirrors ScheduleTab.stageBadgeText's pattern). */
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -152,10 +147,10 @@ function dateKey(iso?: string | null): string {
 }
 
 /** "SUBOTA, 18.7.2026." day heading for the schedule sections. */
-function dayHeaderLabel(key: string): string {
+function dayHeaderLabel(key: string, t: Dictionary): string {
     const [y, m, d] = key.split("-").map(Number)
     const dt = new Date(y, m - 1, d)
-    return `${HR_WEEKDAYS[dt.getDay()]}, ${d}.${m}.${y}.`
+    return `${t.components.tournamentExport.weekdaysFull[dt.getDay()]}, ${d}.${m}.${y}.`
 }
 
 /** HH:mm (local) kickoff time. */
@@ -175,15 +170,21 @@ function formatDateLong(iso?: string | null): string | null {
     return d.toLocaleDateString("hr-HR", { day: "numeric", month: "long", year: "numeric" })
 }
 
-/* Short Croatian weekday (Sun-indexed), for the multi-day kickoff prefix. */
+/* Short Croatian weekday (Sun-indexed) - the DEFAULT fallback for the two
+   exported helpers below, used by callers (GroupsTab.tsx, BracketTab.tsx)
+   that haven't been converted to pass a translated array yet. Internal
+   callers in this file always pass `t.components.tournamentExport.weekdaysShort`
+   explicitly instead. */
 const HR_WEEKDAYS_SHORT = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"]
 
-/** "pon 29.06. · 13:15" - short weekday + short date + time (multi-day kickoff). */
-export function dayDateTimeShort(iso: string): string {
+/** "pon 29.06. · 13:15" - short weekday + short date + time (multi-day kickoff).
+ *  `weekdaysShort` defaults to Croatian for external callers (see
+ *  HR_WEEKDAYS_SHORT above). */
+export function dayDateTimeShort(iso: string, weekdaysShort: readonly string[] = HR_WEEKDAYS_SHORT): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return "--:--"
     const p = (n: number) => String(n).padStart(2, "0")
-    return `${HR_WEEKDAYS_SHORT[d.getDay()]} ${p(d.getDate())}.${p(d.getMonth() + 1)}. · ${p(d.getHours())}:${p(d.getMinutes())}`
+    return `${weekdaysShort[d.getDay()]} ${p(d.getDate())}.${p(d.getMonth() + 1)}. · ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** True when the given kickoffs span more than one distinct local calendar day
@@ -198,9 +199,10 @@ export function isMultiDay(isos: (string | null | undefined)[]): boolean {
 }
 
 /** Kickoff label for on-page / poster rows: "pon 29.06. · 13:15" when the
- *  tournament is multi-day, else the bare "13:15". */
-export function kickoffLabel(iso: string, withDay: boolean): string {
-    return withDay ? dayDateTimeShort(iso) : hhmm(iso)
+ *  tournament is multi-day, else the bare "13:15". See dayDateTimeShort for the
+ *  `weekdaysShort` fallback. */
+export function kickoffLabel(iso: string, withDay: boolean, weekdaysShort: readonly string[] = HR_WEEKDAYS_SHORT): string {
+    return withDay ? dayDateTimeShort(iso, weekdaysShort) : hhmm(iso)
 }
 
 /** Branded-QR endpoint for a tournament, derived from the ExportMeta URL
@@ -216,24 +218,28 @@ function qrEndpoint(tournamentUrl: string | null | undefined): string | null {
 }
 
 /** Stage/group tag for a schedule row. */
-function stageTag(m: ScheduledMatch): string {
-    if (m.stage === "GROUP") return m.groupName ? `Grupa ${m.groupName}` : "Grupa"
-    const label = STAGE_LABEL[m.stage] ?? m.stage
+function stageTag(m: ScheduledMatch, t: Dictionary): string {
+    const labels: Record<string, string> = t.components.scheduleTab.stageLabels
+    if (m.stage === "GROUP") return m.groupName ? t.components.scheduleTab.groupBadge(m.groupName) : labels.GROUP
+    const label = labels[m.stage] ?? m.stage
     return m.knockoutCode ? `${label} - ${m.knockoutCode}` : label
 }
 
-/** Knockout pairing fallback chain (mirrors ScheduleTab). */
+/** Knockout pairing fallback chain (mirrors ScheduleTab). "TBD" is a
+ *  language-neutral placeholder, kept verbatim across locales (same choice as
+ *  `multiDaySchedulePlanner.tbdGeneric`). */
 function pairingName(name: string | null, pred: string | null, label: string | null): string {
     return name ?? pred ?? label ?? "TBD"
 }
 
 /** Stage/group badge for the match poster ("Grupa X" / "Četvrtfinale" …), or
- *  null when the stage is unknown. Uses the same STAGE_LABEL map as the rest of
- *  the export so the badge text matches the schedule / bracket posters. */
-function matchStageBadge(stage?: string | null, groupName?: string | null): string | null {
+ *  null when the stage is unknown. Uses the same stage-labels dictionary as the
+ *  rest of the export so the badge text matches the schedule / bracket posters. */
+function matchStageBadge(stage: string | null | undefined, groupName: string | null | undefined, t: Dictionary): string | null {
     if (!stage) return null
-    if (stage === "GROUP") return groupName ? `Grupa ${groupName}` : "Grupa"
-    return STAGE_LABEL[stage] ?? null
+    const labels: Record<string, string> = t.components.scheduleTab.stageLabels
+    if (stage === "GROUP") return groupName ? t.components.scheduleTab.groupBadge(groupName) : labels.GROUP
+    return labels[stage] ?? null
 }
 
 /** Full kickoff line for the match header - "subota, 18. srpnja 2026. · 20:30". */
@@ -347,12 +353,13 @@ function PosterPage({
     headerExtra?: ReactNode
     children: ReactNode
 }) {
+    const t = useTranslation()
     const dateStr = formatDateLong(meta.startAt)
     const metaLine = [dateStr, meta.location].filter(Boolean).join("  •  ")
     const headerMetaRows = [
-        ["Organizator", meta.organizerName ?? "—"],
-        ["Datum", dateStr ?? "—"],
-        ["Lokacija", meta.location ?? "—"],
+        [t.components.tournamentExport.poster.organizerLabel, meta.organizerName ?? "—"],
+        [t.components.tournamentExport.poster.dateLabel, dateStr ?? "—"],
+        [t.components.tournamentExport.poster.locationLabel, meta.location ?? "—"],
     ] as const
     const page = PAGE_PX[orientation]
     const first = pageIndex === 0
@@ -452,7 +459,7 @@ function PosterPage({
                                             marginTop: "16px",
                                         }}
                                     >
-                                        ORGANIZATOR: {meta.organizerName}
+                                        {t.components.tournamentExport.poster.organizerPrefix(meta.organizerName)}
                                     </div>
                                 ) : null}
                                 {headerMetaMode === "inline" && metaLine ? (
@@ -495,7 +502,7 @@ function PosterPage({
                                                 maxWidth: "128px",
                                             }}
                                         >
-                                            Skeniraj QR kod i otvori turnir
+                                            {t.components.tournamentExport.poster.qrCaption}
                                         </div>
                                     </>
                                 ) : (
@@ -537,7 +544,7 @@ function PosterPage({
                                     flexShrink: 0,
                                 }}
                             >
-                                Stranica {pageIndex + 1}/{pageCount}
+                                {t.components.tournamentExport.poster.pageIndicator(pageIndex + 1, pageCount)}
                             </div>
                         </div>
                         <div style={{ height: "3px", background: C.green, borderRadius: "2px", margin: "16px 0 24px" }} />
@@ -701,11 +708,11 @@ function PosterTeamName({
 }
 
 /** Short "pon 29.06." day label (weekday + date, no time). */
-function dayDateShort(iso: string): string {
+function dayDateShort(iso: string, weekdaysShort: readonly string[]): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ""
     const p = (n: number) => String(n).padStart(2, "0")
-    return `${HR_WEEKDAYS_SHORT[d.getDay()]} ${p(d.getDate())}.${p(d.getMonth() + 1)}.`
+    return `${weekdaysShort[d.getDay()]} ${p(d.getDate())}.${p(d.getMonth() + 1)}.`
 }
 
 /** One match row: [time-or-result] | [optional stage tag] | [t1 vs t2].
@@ -713,6 +720,7 @@ function dayDateShort(iso: string): string {
  *  the live accent, otherwise the kickoff time (or "-" when not yet timed). When
  *  `showDay` is set a timed row prefixes the day+date above the HH:mm. */
 function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boolean }) {
+    const t = useTranslation()
     const live = row.status === "LIVE"
     const finished = row.status === "FINISHED"
     const hasScore = row.score1 != null && row.score2 != null
@@ -774,7 +782,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
                     stackDay ? (
                         <>
                             <span style={{ fontSize: "10px", fontWeight: 700, color: C.muted }}>
-                                {dayDateShort(row.kickoffAt)}
+                                {dayDateShort(row.kickoffAt, t.components.tournamentExport.weekdaysShort)}
                             </span>
                             <span>{hhmm(row.kickoffAt)}</span>
                         </>
@@ -812,7 +820,7 @@ function MatchRowPoster({ row, compact }: { row: PosterMatchRow; compact?: boole
             <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: "12px" }}>
                 <PosterTeamName name={row.t1} jersey={row.jersey1} shorts={row.shorts1} align="right" winner={w1} />
                 <span style={{ fontFamily: F_MONO, fontSize: "12px", fontWeight: 700, color: C.muted, flexShrink: 0 }}>
-                    vs
+                    {t.components.liveMatch.timeline.vsLabel}
                 </span>
                 <PosterTeamName name={row.t2} jersey={row.jersey2} shorts={row.shorts2} align="left" winner={w2} />
             </span>
@@ -859,6 +867,7 @@ function groupMatchesToRows(matches: GroupMatch[]): PosterMatchRow[] {
  *  card floating in a grid. When `standings` is set the body switches from the
  *  plain team list to a compact standings table (see GroupCardBody). */
 function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?: boolean; standings?: boolean; dense?: boolean }) {
+    const t = useTranslation()
     const teams = g.standings ?? []
     // Fixed row rhythm for the plain team list (mirrors StandingsTable): every
     // row is tall enough for a two-line name so neighbouring cards align.
@@ -919,7 +928,7 @@ function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?
                             color: C.ink,
                         }}
                     >
-                        Grupa {g.name}
+                        {t.components.scheduleTab.groupBadge(g.name)}
                     </span>
                 </div>
                 {advance > 0 ? (
@@ -937,7 +946,7 @@ function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?
                             whiteSpace: "nowrap",
                         }}
                     >
-                        {advance} prolaze
+                        {t.components.groupsTab.standings.advancingPill(advance)}
                     </span>
                 ) : null}
             </div>
@@ -946,7 +955,7 @@ function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?
             <div style={{ padding: big ? "12px 16px 18px" : dense ? "6px 10px 8px" : "8px 10px 12px" }}>
                 {teams.length === 0 ? (
                     <div style={{ padding: big ? "14px 12px" : "10px 8px", fontSize: big ? "16px" : "13px", color: C.muted }}>
-                        Nema ekipa
+                        {t.components.tournamentExport.groups.noTeams}
                     </div>
                 ) : showStandings ? (
                     <StandingsTable teams={teams} big={big} advance={advance} dense={dense} />
@@ -1016,6 +1025,8 @@ function GroupCard({ g, big, standings: showStandings, dense }: { g: Group; big?
    widths are fixed per `big` so the header labels and the data rows line up in
    both the multi-column grid and the single big card. */
 function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandingRow[]; big?: boolean; advance?: number; dense?: boolean }) {
+    const t = useTranslation()
+    const cols = t.components.tournamentExport.groups.standingsColumns
     const rankW = big ? 30 : 18
     const numW = big ? 32 : 20
     const grW = big ? 42 : 28
@@ -1035,10 +1046,10 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
 
     // Plain numeric columns (GR + BOD are rendered specially below).
     const numCols: { label: string; get: (r: GroupStandingRow) => number; w: number }[] = [
-        { label: "UT", get: (r) => r.played, w: numW },
-        { label: "P", get: (r) => r.won, w: numW },
-        { label: "N", get: (r) => r.drawn, w: numW },
-        { label: "I", get: (r) => r.lost, w: numW },
+        { label: cols.played, get: (r) => r.played, w: numW },
+        { label: cols.won, get: (r) => r.won, w: numW },
+        { label: cols.drawn, get: (r) => r.drawn, w: numW },
+        { label: cols.lost, get: (r) => r.lost, w: numW },
     ]
 
     const headCell = {
@@ -1064,14 +1075,14 @@ function StandingsTable({ teams, big, advance = 0, dense }: { teams: GroupStandi
             {/* Header row - shares the exact column widths with the data rows. */}
             <div style={{ display: "flex", alignItems: "center", padding: `0 ${rowPadH}px`, marginBottom: big ? "6px" : "4px" }}>
                 <span style={{ width: `${rankW}px`, flexShrink: 0 }} />
-                <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>EKIPA</span>
+                <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>{cols.team}</span>
                 {numCols.map((c) => (
                     <span key={c.label} style={{ ...headCell, width: `${c.w}px`, flexShrink: 0, textAlign: "right" }}>
                         {c.label}
                     </span>
                 ))}
-                <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>GR</span>
-                <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>BOD</span>
+                <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>{cols.goalDiff}</span>
+                <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>{cols.points}</span>
             </div>
             {/* Data rows. Qualifiers (top `advance`, only once the group is
                 finished) get the green wash + left accent. While highlighting is
@@ -1180,6 +1191,7 @@ function GroupMatchesSection({
     rows: PosterMatchRow[]
     compact?: boolean
 }) {
+    const t = useTranslation()
     return (
         <div>
             {/* Heading with a hairline rule (mirrors the schedule poster's day
@@ -1203,7 +1215,7 @@ function GroupMatchesSection({
                         whiteSpace: "nowrap",
                     }}
                 >
-                    Utakmice · Grupa {groupName}
+                    {t.components.tournamentExport.groups.matchesHeading(groupName)}
                 </span>
                 <span style={{ flex: 1, height: "1px", background: C.line }} />
             </div>
@@ -1273,7 +1285,7 @@ function GroupsGrid({ groups, showStandings, dense }: { groups: Group[]; showSta
  *  repeating on every continuation page).
  *  All-groups scope → chunks of ≤4 groups, one page each (≤4 total stays a
  *  single page). Empty draw → one placeholder page. */
-function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
+function buildGroupsPages(groups: Group[], single: boolean, t: Dictionary): ReactNode[] {
     // Once ANY group match anywhere in the exported set has started (LIVE) or
     // finished, EVERY card switches to the standings table (consistency), even
     // if some groups still show all-zero rows.
@@ -1303,7 +1315,7 @@ function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
     if (groups.length === 0) {
         return [
             <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
-                Nema grupa za prikaz.
+                {t.components.tournamentExport.groups.noGroups}
             </div>,
         ]
     }
@@ -1318,6 +1330,8 @@ function buildGroupsPages(groups: Group[], single: boolean): ReactNode[] {
    the same width so the numeric columns stay aligned. Same fixed row rhythm,
    signed GR colouring and bold BOD as StandingsTable. Brand hex only. */
 function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: boolean }) {
+    const t = useTranslation()
+    const cols = t.components.tournamentExport.groups.standingsColumns
     const rankW = compact ? 22 : 30
     const numW = compact ? 26 : 32
     const grW = compact ? 34 : 42
@@ -1331,10 +1345,10 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
     const rowMinH = Math.ceil(nameFont * nameLineH * 2) + rowPadV * 2
 
     const numCols: { label: string; get: (r: GroupStandingRow) => number; w: number }[] = [
-        { label: "UT", get: (r) => r.played, w: numW },
-        { label: "P", get: (r) => r.won, w: numW },
-        { label: "N", get: (r) => r.drawn, w: numW },
-        { label: "I", get: (r) => r.lost, w: numW },
+        { label: cols.played, get: (r) => r.played, w: numW },
+        { label: cols.won, get: (r) => r.won, w: numW },
+        { label: cols.drawn, get: (r) => r.drawn, w: numW },
+        { label: cols.lost, get: (r) => r.lost, w: numW },
     ]
 
     const headCell = {
@@ -1362,14 +1376,14 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
                 needs no extra offset. */}
             <div style={{ display: "flex", alignItems: "center", padding: `0 ${rowPadH}px`, marginBottom: "6px" }}>
                 <span style={{ width: `${rankW}px`, flexShrink: 0 }} />
-                <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>EKIPA</span>
+                <span style={{ ...headCell, flex: 1, minWidth: 0, textAlign: "left" }}>{cols.team}</span>
                 {numCols.map((c) => (
                     <span key={c.label} style={{ ...headCell, width: `${c.w}px`, flexShrink: 0, textAlign: "right" }}>
                         {c.label}
                     </span>
                 ))}
-                <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>GR</span>
-                <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>BOD</span>
+                <span style={{ ...headCell, width: `${grW}px`, flexShrink: 0, textAlign: "right" }}>{cols.goalDiff}</span>
+                <span style={{ ...headCell, width: `${bodW}px`, flexShrink: 0, textAlign: "right" }}>{cols.points}</span>
             </div>
             {/* Data rows - qualifying ones washed green with a left accent. */}
             {rows.map((row) => {
@@ -1445,6 +1459,7 @@ function BestPlacedTable({ rows, compact }: { rows: ThirdPlacedRow[]; compact?: 
  *  Shared by the standalone page and the inline "rides under the groups grid"
  *  layout; `compact` shrinks the chrome + table so it fits below the grid. */
 function BestPlacedCard({ table, compact }: { table: ThirdPlacedTable; compact?: boolean }) {
+    const t = useTranslation()
     const place = table.advancePerGroup + 1
     return (
         <div style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: compact ? "14px" : "18px", overflow: "hidden" }}>
@@ -1459,7 +1474,7 @@ function BestPlacedCard({ table, compact }: { table: ThirdPlacedTable; compact?:
                         color: C.ink,
                     }}
                 >
-                    NAJBOLJE {place}. PLASIRANE
+                    {t.components.groupsTab.standings.bestThirdHeading(place)}
                 </div>
             </div>
             <div style={{ padding: compact ? "8px 10px 12px" : "12px 16px 18px" }}>
@@ -1548,7 +1563,7 @@ type ScheduleSection = { key: string; label: string; matches: ScheduledMatch[] }
 
 /** Bucket the matches into day sections (kickoff order) + a trailing
  *  "Termin nije određen" section for the unscheduled ones. */
-function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
+function buildScheduleSections(matches: ScheduledMatch[], t: Dictionary): ScheduleSection[] {
     const scheduled = matches.filter((m) => m.kickoffAt)
     const unscheduled = matches.filter((m) => !m.kickoffAt)
     scheduled.sort((a, b) => new Date(a.kickoffAt!).getTime() - new Date(b.kickoffAt!).getTime())
@@ -1566,11 +1581,11 @@ function buildScheduleSections(matches: ScheduledMatch[]): ScheduleSection[] {
 
     const sections: ScheduleSection[] = dayOrder.map((k) => ({
         key: k,
-        label: dayHeaderLabel(k),
+        label: dayHeaderLabel(k, t),
         matches: byDay.get(k)!,
     }))
     if (unscheduled.length > 0) {
-        sections.push({ key: "none", label: "Termin nije određen", matches: unscheduled })
+        sections.push({ key: "none", label: t.components.scheduleTab.noKickoffTime, matches: unscheduled })
     }
     return sections
 }
@@ -1733,6 +1748,7 @@ function paginateScheduleSections(
 
 /** Render one page's worth of schedule sections (day heading + match rows). */
 function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
+    const t = useTranslation()
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {sections.map((sec, si) => (
@@ -1760,7 +1776,7 @@ function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
                                 key={m.matchId}
                                 row={{
                                     kickoffAt: m.kickoffAt,
-                                    stage: stageTag(m),
+                                    stage: stageTag(m, t),
                                     t1: pairingName(m.team1Name, m.slot1PredictedName, m.slot1Label),
                                     t2: pairingName(m.team2Name, m.slot2PredictedName, m.slot2Label),
                                     score1: m.score1,
@@ -1790,12 +1806,12 @@ function ScheduleSections({ sections }: { sections: ScheduleSection[] }) {
  *  budget. Page 1's budget shrinks with THIS tournament's real header height
  *  (long wrapped titles) so the day's last row can never clip off the page.
  *  Empty schedule → one placeholder page. */
-function buildSchedulePages(matches: ScheduledMatch[], meta: ExportMeta): ReactNode[] {
-    const sections = buildScheduleSections(matches)
+function buildSchedulePages(matches: ScheduledMatch[], meta: ExportMeta, t: Dictionary): ReactNode[] {
+    const sections = buildScheduleSections(matches, t)
     if (sections.length === 0) {
         return [
             <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
-                Nema utakmica za prikaz.
+                {t.components.tournamentExport.schedule.noMatches}
             </div>,
         ]
     }
@@ -1983,6 +1999,7 @@ function BracketPosterCard({
     /** Right-side column of the two-sided layout - mirrors each team line. */
     mirror?: boolean
 }) {
+    const tr = useTranslation()
     const finished = m.status === "FINISHED"
     const hasScore = m.score1 != null && m.score2 != null
     const hasPens = m.penalties1 != null && m.penalties2 != null
@@ -2058,7 +2075,7 @@ function BracketPosterCard({
                         textAlign: "center",
                     }}
                 >
-                    Za 3. mjesto
+                    {tr.components.scheduleTab.stageLabels.THIRD_PLACE}
                 </div>
             ) : null}
         </div>
@@ -2168,10 +2185,11 @@ function TwoSidedBracketBody({
     teamColors?: Record<string, TeamKit>
     bodyH?: number
 }) {
+    const tr = useTranslation()
     if (cols.length === 0) {
         return (
             <div style={{ padding: "40px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
-                Ljestvica još nije generirana.
+                {tr.components.tournamentExport.bracket.notGenerated}
             </div>
         )
     }
@@ -2229,7 +2247,7 @@ function TwoSidedBracketBody({
             {/* Centre column: FINALE, with the 3rd-place box under it. Vertically
                 centred so it lines up with the two innermost (polufinale) columns. */}
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                <BracketColumnTitle title={titles[finalIdx] ?? "Finale"} t={t} accent />
+                <BracketColumnTitle title={titles[finalIdx] ?? tr.components.scheduleTab.stageLabels.FINAL} t={t} accent />
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: `${t.cardGap + 10}px` }}>
                     {finalMatch ? (
                         <BracketPosterCard m={finalMatch} t={t} cardH={cardH} nameLines={nameLines} teamColors={teamColors} final />
@@ -2274,10 +2292,11 @@ function ColumnsBracketBody({
     teamColors?: Record<string, TeamKit>
     bodyH?: number
 }) {
+    const tr = useTranslation()
     if (cols.length === 0) {
         return (
             <div style={{ padding: "40px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
-                Ljestvica još nije generirana.
+                {tr.components.tournamentExport.bracket.notGenerated}
             </div>
         )
     }
@@ -2447,7 +2466,7 @@ function bracketPodium(bracket: Bracket | undefined) {
  *  bracket half, each a full-width one-sided funnel ending in the final - so
  *  boxes stay readable. The final is shown on both halves; the 3rd-place box
  *  rides on the second page. */
-function buildBracketPages(bracket: Bracket | undefined, teamColors?: Record<string, TeamKit>): ReactNode[] {
+function buildBracketPages(bracket: Bracket | undefined, teamColors: Record<string, TeamKit> | undefined, t: Dictionary): ReactNode[] {
     const sourceRounds = bracket?.rounds ?? []
     // Keep exports compatible during a rolling deploy, but prefer the
     // persisted backend code whenever it is present.
@@ -2475,7 +2494,7 @@ function buildBracketPages(bracket: Bracket | undefined, teamColors?: Record<str
 
     const finalIdx = cols.length - 1
     const finalCol = cols[finalIdx]
-    const finalTitle = titles[finalIdx] ?? "Finale"
+    const finalTitle = titles[finalIdx] ?? t.components.scheduleTab.stageLabels.FINAL
     const leftCols: BracketMatch[][] = []
     const leftTitles: string[] = []
     const rightCols: BracketMatch[][] = []
@@ -2589,22 +2608,22 @@ function TimelineIcon({ type }: { type: MatchEventType }) {
 
 /** Timeline display name + whether it is an unknown/placeholder (italic, muted)
  *  - a faithful copy of GoalscorersPanel.TimelineEventLine's name logic. */
-function timelineName(e: MatchEventDto): { text: string; unknown: boolean } {
+function timelineName(e: MatchEventDto, t: Dictionary): { text: string; unknown: boolean } {
     const isPenGoal = e.type === "PENALTY_GOAL"
     const isPenMiss = e.type === "PENALTY_MISSED"
     if (e.type === "OWN_GOAL") {
         return e.playerName != null
             ? { text: `${e.playerName} (ag)`, unknown: false }
-            : { text: "Autogol", unknown: true }
+            : { text: t.components.liveMatchPanel.scorerFallback.ownGoal, unknown: true }
     }
     if (e.playerName != null) return { text: e.playerName, unknown: false }
     const text =
         e.type === "GOAL" || isPenGoal
-            ? "Nepoznati strijelac"
+            ? t.components.liveMatchPanel.scorerFallback.unknownScorer
             : e.type === "YELLOW_CARD" || e.type === "RED_CARD"
-                ? "Nepoznati igrač"
+                ? t.components.liveMatch.eventRow.unknownPlayerFallback
                 : isPenMiss
-                    ? "(promašaj)"
+                    ? t.components.liveMatch.eventRow.missedPenaltyFallback
                     : ""
     return { text, unknown: true }
 }
@@ -2620,6 +2639,7 @@ function deriveMatchTimeline(
     team1Id: number | null,
     team2Id: number | null,
     halfLengthMin: number | null | undefined,
+    t: Dictionary,
 ): { sections: TimelineSection[]; scoreLabels: Map<number, string>; t1Id: number | null; t2Id: number | null } {
     let t1Id = team1Id
     let t2Id = team2Id
@@ -2640,14 +2660,14 @@ function deriveMatchTimeline(
         if (hl != null) {
             const first = regulation.filter((e) => e.minute < hl)
             const second = regulation.filter((e) => e.minute >= hl)
-            if (first.length) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
-            if (second.length) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
+            if (first.length) sections.push({ key: "h1", title: t.components.liveMatch.timeline.firstHalfTitle, events: first })
+            if (second.length) sections.push({ key: "h2", title: t.components.liveMatch.timeline.secondHalfTitle, events: second })
         } else {
             sections.push({ key: "reg", title: "", events: regulation })
         }
     }
     if (penalties.length > 0) {
-        sections.push({ key: "pen", title: "Penali", events: penalties })
+        sections.push({ key: "pen", title: t.matchLive.penaltiesShort, events: penalties })
     }
 
     // Running score for the goal chips - cumulative over the minute-sorted
@@ -2669,8 +2689,9 @@ function deriveMatchTimeline(
  *  (team2) right, with the icon nearest the line and a running-score chip in
  *  the centre for goals (else a small ink dot). Mirrors TimelineEventLine. */
 function TimelineLinePoster({ e, isLeft, scoreLabel }: { e: MatchEventDto; isLeft: boolean; scoreLabel: string | null }) {
+    const t = useTranslation()
     const isPenalty = e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED"
-    const { text, unknown } = timelineName(e)
+    const { text, unknown } = timelineName(e, t)
     const nameBlock = (
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, alignItems: isLeft ? "flex-end" : "flex-start" }}>
             <span
@@ -2692,7 +2713,7 @@ function TimelineLinePoster({ e, isLeft, scoreLabel }: { e: MatchEventDto; isLef
             </span>
             {e.type === "GOAL" && e.assistPlayerName ? (
                 <span style={{ fontSize: "10px", color: C.muted, lineHeight: 1.2, textAlign: isLeft ? "right" : "left" }}>
-                    asist. {e.assistPlayerName}
+                    {t.components.liveMatch.assistPrefix(e.assistPlayerName)}
                 </span>
             ) : null}
         </div>
@@ -2821,6 +2842,8 @@ function TimelineSpineSections({
 /** "TIJEK UTAKMICE" section label (exact match of the app's panel label);
  *  continuation pages append "· nastavak". */
 function TijekHeading({ continued }: { continued?: boolean }) {
+    const t = useTranslation()
+    const heading = t.components.liveMatch.timeline.heading
     return (
         <div style={{ textAlign: "center", marginBottom: "10px" }}>
             <span
@@ -2833,7 +2856,7 @@ function TijekHeading({ continued }: { continued?: boolean }) {
                     textTransform: "uppercase",
                 }}
             >
-                {continued ? "TIJEK UTAKMICE · nastavak" : "TIJEK UTAKMICE"}
+                {continued ? `${heading} · ${t.components.tournamentExport.matchPoster.continuedSuffix}` : heading}
             </span>
         </div>
     )
@@ -2846,7 +2869,8 @@ function TijekHeading({ continued }: { continued?: boolean }) {
  *  date•location line - moved out of the score block so the header carries the
  *  match's status/stage and the block below stays focused on the result. */
 function MatchHeaderExtra({ match }: { match: MatchExportData }) {
-    const badge = matchStageBadge(match.stage, match.groupName)
+    const t = useTranslation()
+    const badge = matchStageBadge(match.stage, match.groupName, t)
     if (!badge && !match.isLive) return null
     return (
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
@@ -2864,7 +2888,7 @@ function MatchHeaderExtra({ match }: { match: MatchExportData }) {
                         borderRadius: "999px",
                     }}
                 >
-                    UŽIVO
+                    {t.components.liveControlTab.statusLive}
                 </span>
             ) : null}
             {badge ? (
@@ -2889,6 +2913,7 @@ function MatchHeaderExtra({ match }: { match: MatchExportData }) {
 }
 
 function MatchHeaderBlock({ match }: { match: MatchExportData }) {
+    const t = useTranslation()
     const finished = match.status === "FINISHED"
     const hasScore = match.score1 != null && match.score2 != null && (match.isLive || finished)
     const hasPens = match.penalties1 != null && match.penalties2 != null
@@ -2909,13 +2934,13 @@ function MatchHeaderBlock({ match }: { match: MatchExportData }) {
                         lineHeight: 1,
                     }}
                 >
-                    {hasScore ? `${match.score1} : ${match.score2}` : "vs"}
+                    {hasScore ? `${match.score1} : ${match.score2}` : t.components.liveMatch.timeline.vsLabel}
                 </span>
                 <span style={{ ...nameStyle, textAlign: "left" }}>{match.team2Name}</span>
             </div>
             {hasPens ? (
                 <span style={{ fontFamily: F_MONO, fontSize: "12px", fontWeight: 700, color: C.inkSoft, whiteSpace: "nowrap" }}>
-                    ({match.penalties1} : {match.penalties2} penali)
+                    {t.matchLive.penaltiesResult(match.penalties1!, match.penalties2!)}
                 </span>
             ) : null}
             {kickoff ? <span style={{ fontSize: "12px", fontWeight: 600, color: C.inkSoft }}>{kickoff}</span> : null}
@@ -2974,24 +2999,24 @@ function paginateTimeline(sections: TimelineSection[]): TimelineSection[][] {
 /** Build the match poster page bodies: page 1 = match header + timeline start,
  *  continuation pages = the rest of the timeline. No events → the match header
  *  plus the app's own empty-state note. */
-function buildMatchPages(match: MatchExportData | undefined, events: MatchEventDto[]): ReactNode[] {
+function buildMatchPages(match: MatchExportData | undefined, events: MatchEventDto[], t: Dictionary): ReactNode[] {
     if (!match) {
         return [
             <div style={{ padding: "60px 0", textAlign: "center", color: C.muted, fontSize: "16px" }}>
-                Nema podataka o utakmici.
+                {t.components.tournamentExport.matchPoster.notFound}
             </div>,
         ]
     }
-    const { sections, scoreLabels, t1Id } = deriveMatchTimeline(events, match.team1Id, match.team2Id, match.halfLengthMin)
+    const { sections, scoreLabels, t1Id } = deriveMatchTimeline(events, match.team1Id, match.team2Id, match.halfLengthMin, t)
 
     if (sections.length === 0) {
         // Same empty-state wording the page's GoalscorersPanel shows.
         const note =
             match.status === "FINISHED"
-                ? "Prikazan samo krajnji rezultat bez strijelca."
+                ? t.matchLive.emptyTimelineFinished
                 : match.status === "SCHEDULED"
-                    ? "Utakmica još nije počela."
-                    : "Još nema događaja."
+                    ? t.matchLive.emptyTimelineScheduled
+                    : t.matchLive.emptyTimelineLive
         return [
             <div>
                 <MatchHeaderBlock match={match} />
@@ -3087,6 +3112,7 @@ function rankScorers(scorers: ScorerDto[]): RankedScorer[] {
  *  `rank <= 3` upgrades the row to the podium treatment (medal colour + a
  *  larger, bolder layout). */
 function ScorerPosterRow({ scorer, rank, hasGroups }: RankedScorer & { hasGroups: boolean }) {
+    const t = useTranslation()
     const podium = rank <= 3
     const medal = podium ? SCORER_MEDAL[rank - 1] : null
     // Full-tournament tally shown only when it differs from the counted one -
@@ -3187,7 +3213,9 @@ function ScorerPosterRow({ scorer, rank, hasGroups }: RankedScorer & { hasGroups
                         {/* A KNOCKOUT_ONLY tournament never has group goals - the
                             gap is a narrower knockout-round scope ("Od
                             polufinala" etc.), not groups, so don't claim it is. */}
-                        {hasGroups ? `s grupama ${scorer.goalsAll}` : `ukupno ${scorer.goalsAll}`}
+                        {hasGroups
+                            ? t.tournamentSection.statsSection.withGroupsSuffix(scorer.goalsAll)
+                            : t.tournamentSection.statsSection.totalSuffix(scorer.goalsAll)}
                     </span>
                 ) : null}
             </div>
@@ -3209,6 +3237,7 @@ function ScorersPosterBody({
     hasGroups: boolean
     showHeading: boolean
 }) {
+    const t = useTranslation()
     return (
         <div>
             {showHeading && (
@@ -3225,7 +3254,7 @@ function ScorersPosterBody({
                             whiteSpace: "nowrap",
                         }}
                     >
-                        Najbolji strijelci
+                        {t.tournamentSection.statsSection.title}
                     </span>
                     <span style={{ flex: 1, height: "1px", background: C.line }} />
                 </div>
@@ -3238,7 +3267,7 @@ function ScorersPosterBody({
                 </div>
             ) : (
                 <div style={{ fontFamily: F_BODY, fontSize: "15px", color: C.muted, paddingTop: "8px" }}>
-                    Još nema postignutih golova.
+                    {t.components.tournamentExport.scorers.noScorers}
                 </div>
             )}
         </div>
@@ -3303,13 +3332,10 @@ function buildScorersPages(scorers: ScorerDto[], hasGroups: boolean, meta: Expor
 
 type ExportKind = "groups" | "schedule" | "bracket" | "match" | "scorers"
 
-/** Schedule status-filter pills (second pill row). "upcoming" keeps everything
- *  that isn't FINISHED (SCHEDULED / LIVE / no status), "finished" only FINISHED. */
-const STATUS_FILTERS: { id: "all" | "upcoming" | "finished"; label: string }[] = [
-    { id: "all", label: "Sve" },
-    { id: "upcoming", label: "Nadolazeće" },
-    { id: "finished", label: "Završene" },
-]
+/** Schedule status-filter pill ids (second pill row). "upcoming" keeps
+ *  everything that isn't FINISHED (SCHEDULED / LIVE / no status), "finished"
+ *  only FINISHED. Labels come from `t.components.tournamentExport.dialog.statusFilters`. */
+const STATUS_FILTER_IDS = ["all", "upcoming", "finished"] as const
 
 /** Groups poster "best-placed table" option (second pill row, all-groups scope
  *  only): plain groups, groups + the table page, or just the table page. */
@@ -3366,6 +3392,7 @@ export function ExportDialog({
      *  it every time the dialog reopens. Defaults to "all". */
     initialScope?: string
 }) {
+    const t = useTranslation()
     // Each rendered A4 page mounts its node here (index-aligned to pageBodies);
     // the download loop snapshots each one in turn.
     const pageRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -3489,20 +3516,20 @@ export function ExportDialog({
     // that has any knockout match. The bracket poster has no scopes (one shape).
     const scopeOptions = useMemo<{ id: string; label: string }[]>(() => {
         if (kind === "bracket") {
-            return [{ id: "all", label: "Završnica" }]
+            return [{ id: "all", label: t.matchLive.tabs.knockout }]
         }
         if (kind === "match") {
             // Single shape → the scope pill row stays hidden (no scope/status).
-            return [{ id: "all", label: "Utakmica" }]
+            return [{ id: "all", label: t.components.tournamentExport.dialog.scopeMatch }]
         }
         if (kind === "scorers") {
             // Single shape → the scope pill row stays hidden.
-            return [{ id: "all", label: "Strijelci" }]
+            return [{ id: "all", label: t.tournamentSection.statsSection.chipScorers }]
         }
         if (kind === "groups") {
             return [
-                { id: "all", label: "Sve grupe" },
-                ...(groups ?? []).map((g) => ({ id: `g:${g.id}`, label: `Grupa ${g.name}` })),
+                { id: "all", label: t.components.tournamentExport.dialog.scopeAllGroups },
+                ...(groups ?? []).map((g) => ({ id: `g:${g.id}`, label: t.components.scheduleTab.groupBadge(g.name) })),
             ]
         }
         const names = [
@@ -3512,11 +3539,11 @@ export function ExportDialog({
         ].sort((a, b) => a.localeCompare(b, "hr"))
         const hasKnockout = (matches ?? []).some((m) => m.stage !== "GROUP")
         return [
-            { id: "all", label: "Cijeli raspored" },
-            ...names.map((n) => ({ id: `grp:${n}`, label: `Grupa ${n}` })),
-            ...(hasKnockout ? [{ id: "ko", label: "Završnica" }] : []),
+            { id: "all", label: t.components.tournamentExport.dialog.scopeWholeSchedule },
+            ...names.map((n) => ({ id: `grp:${n}`, label: t.components.scheduleTab.groupBadge(n) })),
+            ...(hasKnockout ? [{ id: "ko", label: t.matchLive.tabs.knockout }] : []),
         ]
-    }, [kind, groups, matches])
+    }, [kind, groups, matches, t])
 
     // Guard against a stale scope (data changed under it) - fall back to "all".
     const activeScope = scopeOptions.some((s) => s.id === scope) ? scope : "all"
@@ -3539,9 +3566,9 @@ export function ExportDialog({
     // baseName (`<slug>-najbolji-{place}`) instead of appending a suffix.
     let groupsStandaloneBase: string | null = null
     if (kind === "bracket") {
-        pageBodies = buildBracketPages(bracket, teamColors)
+        pageBodies = buildBracketPages(bracket, teamColors, t)
     } else if (kind === "match") {
-        pageBodies = buildMatchPages(match, matchEvents)
+        pageBodies = buildMatchPages(match, matchEvents, t)
     } else if (kind === "scorers") {
         pageBodies = buildScorersPages(scorers ?? [], hasGroups ?? true, meta)
     } else if (kind === "groups") {
@@ -3565,10 +3592,10 @@ export function ExportDialog({
                     <GroupsWithBestPlacedPage groups={shown} showStandings={showStandings} table={thirdTable} />,
                 ]
             } else {
-                pageBodies = [...buildGroupsPages(shown, single), <BestPlacedTablePage table={thirdTable} />]
+                pageBodies = [...buildGroupsPages(shown, single, t), <BestPlacedTablePage table={thirdTable} />]
             }
         } else {
-            pageBodies = buildGroupsPages(shown, single)
+            pageBodies = buildGroupsPages(shown, single, t)
         }
     } else {
         const all = matches ?? []
@@ -3590,7 +3617,7 @@ export function ExportDialog({
             shown = shown.filter((m) => m.status !== "FINISHED")
             statusSuffix = "-nadolazece"
         }
-        pageBodies = buildSchedulePages(shown, meta)
+        pageBodies = buildSchedulePages(shown, meta, t)
     }
     const pageCount = pageBodies.length
 
@@ -3599,16 +3626,7 @@ export function ExportDialog({
         kind === "match"
             ? `${slugify(meta.tournamentName)}-utakmica-${slugify(match?.team1Name ?? "")}-${slugify(match?.team2Name ?? "")}`
             : groupsStandaloneBase ?? `${slugify(meta.tournamentName)}-${suffix}${scopeSuffix}${statusSuffix}`
-    const title =
-        kind === "groups"
-            ? "Preuzmi grupe"
-            : kind === "bracket"
-                ? "Preuzmi završnicu"
-                : kind === "match"
-                    ? "Preuzmi utakmicu"
-                    : kind === "scorers"
-                        ? "Preuzmi strijelce"
-                        : "Preuzmi raspored"
+    const title = t.components.tournamentExport.dialog.titles[kind]
 
     async function handleDownload(fmt: "pdf" | "jpg") {
         // The mounted page nodes, in order. Block capture while the QR is still
@@ -3654,10 +3672,13 @@ export function ExportDialog({
                 }
                 pdf.save(`${baseName}.pdf`)
             }
-            showSuccess("Plakat spremljen", "Preuzimanje je pokrenuto.")
+            showSuccess(
+                t.components.tournamentExport.dialog.successTitle,
+                t.components.tournamentExport.dialog.successDesc,
+            )
         } catch (e) {
             console.error("[TournamentExport] capture failed", e)
-            showError("Izrada plakata nije uspjela", "Pokušaj ponovno.")
+            showError(t.components.tournamentExport.dialog.errorTitle, t.components.tournamentExport.dialog.errorDesc)
         } finally {
             setBusy(null)
         }
@@ -3681,7 +3702,7 @@ export function ExportDialog({
                             <Flex justify="space-between" align="center" w="full" gap="3">
                                 <Dialog.Title>{title}</Dialog.Title>
                                 <Dialog.CloseTrigger asChild>
-                                    <IconButton aria-label="Zatvori" size="sm" variant="ghost" disabled={!!busy}>
+                                    <IconButton aria-label={t.common.close} size="sm" variant="ghost" disabled={!!busy}>
                                         <FiX />
                                     </IconButton>
                                 </Dialog.CloseTrigger>
@@ -3689,7 +3710,7 @@ export function ExportDialog({
                         </Dialog.Header>
                         <Dialog.Body>
                             <Text fontSize="sm" color="fg.muted" mb="4">
-                                Pregled plakata. Preuzmi kao PDF (A4) ili sliku (JPG) za dijeljenje.
+                                {t.components.tournamentExport.dialog.description}
                             </Text>
                             {/* Scope selector - pill row that filters the poster to
                                 all / a single group / završnica. Hidden when there is
@@ -3737,12 +3758,18 @@ export function ExportDialog({
                                         color="fg.muted"
                                         mr="1"
                                     >
-                                        Tablica:
+                                        {t.components.tournamentExport.dialog.tableLabel}
                                     </Text>
                                     {([
-                                        { id: "grupe", label: "Grupe" },
-                                        { id: "grupe-najbolji", label: `Grupe + najbolji ${bestPlace}.` },
-                                        { id: "samo-najbolji", label: `Samo najbolji ${bestPlace}.` },
+                                        { id: "grupe", label: t.components.tournamentExport.dialog.tableOptions.groups },
+                                        {
+                                            id: "grupe-najbolji",
+                                            label: t.components.tournamentExport.dialog.tableOptions.groupsPlusBest(bestPlace),
+                                        },
+                                        {
+                                            id: "samo-najbolji",
+                                            label: t.components.tournamentExport.dialog.tableOptions.bestOnly(bestPlace),
+                                        },
                                     ] as { id: GroupsTableOption; label: string }[]).map((o) => (
                                         <Button
                                             key={o.id}
@@ -3787,22 +3814,22 @@ export function ExportDialog({
                                         color="fg.muted"
                                         mr="1"
                                     >
-                                        Prikaži:
+                                        {t.components.tournamentExport.dialog.showLabel}
                                     </Text>
-                                    {STATUS_FILTERS.map((s) => (
+                                    {STATUS_FILTER_IDS.map((id) => (
                                         <Button
-                                            key={s.id}
+                                            key={id}
                                             size="xs"
                                             h="6"
                                             px="2.5"
                                             fontSize="11px"
                                             rounded="full"
-                                            variant={s.id === statusFilter ? "subtle" : "ghost"}
+                                            variant={id === statusFilter ? "subtle" : "ghost"}
                                             colorPalette="brand"
                                             disabled={!!busy}
-                                            onClick={() => setStatusFilter(s.id)}
+                                            onClick={() => setStatusFilter(id)}
                                         >
-                                            {s.label}
+                                            {t.components.tournamentExport.dialog.statusFilters[id]}
                                         </Button>
                                     ))}
                                 </Flex>
@@ -3865,21 +3892,21 @@ export function ExportDialog({
                                 colorPalette="brand"
                                 variant="solid"
                                 loading={busy === "pdf"}
-                                loadingText="Izrada…"
+                                loadingText={t.components.tournamentExport.dialog.preparing}
                                 disabled={!!busy || qrLoading || (kind === "match" && matchEventsLoading)}
                                 onClick={() => handleDownload("pdf")}
                             >
-                                <FiDownload /> Preuzmi PDF
+                                <FiDownload /> {t.components.tournamentExport.dialog.downloadPdf}
                             </Button>
                             <Button
                                 colorPalette="brand"
                                 variant="outline"
                                 loading={busy === "jpg"}
-                                loadingText="Izrada…"
+                                loadingText={t.components.tournamentExport.dialog.preparing}
                                 disabled={!!busy || qrLoading || (kind === "match" && matchEventsLoading)}
                                 onClick={() => handleDownload("jpg")}
                             >
-                                <FiDownload /> Preuzmi JPG
+                                <FiDownload /> {t.components.tournamentExport.dialog.downloadJpg}
                             </Button>
                         </Dialog.Footer>
                     </Dialog.Content>

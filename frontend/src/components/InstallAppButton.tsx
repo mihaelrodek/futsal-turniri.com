@@ -10,6 +10,7 @@ import {
 } from "@chakra-ui/react"
 import { FiDownload } from "react-icons/fi"
 import { useInstallPrompt } from "../hooks/useInstallPrompt"
+import { useTranslation } from "../i18n"
 import IosInstallSteps from "./IosInstallSteps"
 import { LogoMark } from "./Logo"
 
@@ -45,6 +46,7 @@ export function InstallAppButton({
      */
     variant?: "icon" | "labeled"
 }) {
+    const t = useTranslation()
     const { canInstall, isIos, install } = useInstallPrompt()
     const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -53,7 +55,7 @@ export function InstallAppButton({
     // One label for both platforms keeps the button width consistent and
     // doesn't wrap on narrow phones. The iOS-vs-Android distinction is
     // spelled out inside the dialog that opens after the tap.
-    const label = "Instaliraj aplikaciju"
+    const label = t.components.installAppButton.label
 
     // Always open the explanatory dialog (not the bare native prompt) so the
     // user sees what they're installing - the app icon + how-to steps.
@@ -122,15 +124,15 @@ export function InstallAppButton({
                             <Dialog.Header>
                                 <HStack gap="3" align="center">
                                     <LogoMark size={40} title="Futsal Turniri" />
-                                    <Dialog.Title>Instaliraj Futsal Turniri</Dialog.Title>
+                                    <Dialog.Title>{t.components.installAppButton.dialogTitle}</Dialog.Title>
                                 </HStack>
                             </Dialog.Header>
                             <Dialog.Body>
                                 <VStack align="stretch" gap="3">
                                     <Text fontSize="sm" color="fg.muted">
                                         {isIos
-                                            ? "Dodaj aplikaciju na svoj iPhone u 3 koraka:"
-                                            : "Spremi Futsal Turniri kao aplikaciju i otvori je jednim klikom s početnog zaslona."}
+                                            ? t.components.installAppButton.subtitleIos
+                                            : t.components.installAppButton.subtitleDefault}
                                     </Text>
                                     {/* iOS has no JS install API - show the manual
                                         Share → Add to Home Screen walkthrough. */}
@@ -139,7 +141,7 @@ export function InstallAppButton({
                             </Dialog.Body>
                             <Dialog.Footer>
                                 <Button variant="ghost" onClick={() => setDialogOpen(false)}>
-                                    Zatvori
+                                    {t.common.close}
                                 </Button>
                                 {canInstall && (
                                     <Button
@@ -147,7 +149,7 @@ export function InstallAppButton({
                                         colorPalette="pitch"
                                         onClick={handleNativeInstall}
                                     >
-                                        <FiDownload /> Instaliraj
+                                        <FiDownload /> {t.components.installAppButton.install}
                                     </Button>
                                 )}
                             </Dialog.Footer>

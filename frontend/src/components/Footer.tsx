@@ -1,6 +1,7 @@
 import { Box, Container, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
 import { Logo } from "./Logo"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Footer - slim sticky brand bar pinned to the bottom of the viewport.
@@ -17,6 +18,7 @@ import { Logo } from "./Logo"
    ────────────────────────────────────────────────────────────────────── */
 
 export default function Footer() {
+    const t = useTranslation()
     return (
         <Box
             as="footer"
@@ -52,7 +54,7 @@ export default function Footer() {
                         color="rgba(255,255,255,0.7)"
                         css={{ "&:hover": { color: "#fff" } }}
                     >
-                        <RouterLink to="/privatnost">Privatnost</RouterLink>
+                        <RouterLink to="/privatnost">{t.components.footer.privacyLink}</RouterLink>
                     </Box>
                     <Text
                         fontFamily="mono"

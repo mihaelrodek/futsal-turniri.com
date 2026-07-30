@@ -70,6 +70,15 @@ public class UserProfile {
     @Column(name = "color_mode", length = 10)
     private String colorMode;
 
+    /**
+     * Per-user UI language preference - "hr", "en" or "sl". Null means the
+     * user hasn't explicitly picked one on this account; the frontend then
+     * falls back to its own browser-detected/localStorage default. Synced on
+     * login the same way {@link #colorMode} is.
+     */
+    @Column(name = "language", length = 2)
+    private String language;
+
     @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;

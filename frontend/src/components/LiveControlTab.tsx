@@ -13,8 +13,11 @@ import { usePolling } from "../hooks/usePolling"
 import { useStreamPresence } from "../hooks/useStreamPresence"
 import { EmptyState, Loader, Panel } from "../ui/primitives"
 import { PulseDot } from "../ui/pitch"
+import { useTranslation, type Dictionary } from "../i18n"
 import LiveMatchPanel, { type PanelMatch } from "./LiveMatchPanel"
 import StreamPlayer from "./StreamPlayer"
+
+type LiveControlLabels = Dictionary["components"]["liveControlTab"]
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Zapisnik" - organizer-only match-recording control centre, fully inline.
@@ -42,18 +45,18 @@ function fmtKickoff(k?: string | null): string {
     })
 }
 
-/** Croatian round name for a knockout stage enum (mirrors the bracket UI) so a
+/** Round name for a knockout stage enum (mirrors the bracket UI) so a
  *  not-yet-drawn fixture reads "Polufinale" / "Finale", not a bare
  *  "Eliminacija". */
-function stageLabel(stage?: string | null): string {
+function stageLabel(stage: string | null | undefined, labels: LiveControlLabels["stageLabels"]): string {
     switch (stage) {
-        case "ROUND_OF_32": return "Šesnaestina finala"
-        case "ROUND_OF_16": return "Osmina finala"
-        case "QUARTERFINAL": return "Četvrtfinale"
-        case "SEMIFINAL": return "Polufinale"
-        case "FINAL": return "Finale"
-        case "THIRD_PLACE": return "Za 3. mjesto"
-        default: return "Eliminacija"
+        case "ROUND_OF_32": return labels.ROUND_OF_32
+        case "ROUND_OF_16": return labels.ROUND_OF_16
+        case "QUARTERFINAL": return labels.QUARTERFINAL
+        case "SEMIFINAL": return labels.SEMIFINAL
+        case "FINAL": return labels.FINAL
+        case "THIRD_PLACE": return labels.THIRD_PLACE
+        default: return labels.default
     }
 }
 
@@ -68,11 +71,11 @@ type MatchMeta = {
     meta: string
 }
 
-function matchMeta(e: Entry, onDeck: boolean): MatchMeta {
+function matchMeta(e: Entry, onDeck: boolean, labels: LiveControlLabels): MatchMeta {
     const m = e.match
     const teams = `${m.team1Name ?? "TBD"} – ${m.team2Name ?? "TBD"}`
     const stage =
-        e.kind === "group" ? "Grupa" : stageLabel((m as { stage?: string | null }).stage)
+        e.kind === "group" ? labels.groupLabel : stageLabel((m as { stage?: string | null }).stage, labels.stageLabels)
     const when = m.kickoffAt ? fmtKickoff(m.kickoffAt) : ""
     const meta = [stage, when].filter(Boolean).join(" · ")
     const status =
@@ -85,15 +88,17 @@ function matchMeta(e: Entry, onDeck: boolean): MatchMeta {
 /** Left-hand status chip: a red pulsing "UŽIVO" pill for a live match, else a
  *  muted "NA REDU" (the on-deck match) / "ZAKAZANO" tag. */
 function StatusChip({ status }: { status: MatchMeta["status"] }) {
+    const t = useTranslation()
+    const tc = t.components.liveControlTab
     if (status === "LIVE") {
         return (
             <HStack gap="1.5" bg="red.solid" color="white" rounded="full" px="2.5" py="1" flexShrink={0}>
                 <PulseDot color="white" size={6} glow />
-                <Text fontSize="2xs" fontWeight={800} letterSpacing="wide">UŽIVO</Text>
+                <Text fontSize="2xs" fontWeight={800} letterSpacing="wide">{tc.statusLive}</Text>
             </HStack>
         )
     }
-    const label = status === "ONDECK" ? "NA REDU" : status === "FINISHED" ? "ZAVRŠENO" : "ZAKAZANO"
+    const label = status === "ONDECK" ? tc.statusOnDeck : status === "FINISHED" ? tc.statusFinished : tc.statusScheduled
     return (
         <Box bg="bg.muted" color="fg.muted" rounded="full" px="2.5" py="1" flexShrink={0}>
             <Text fontSize="2xs" fontWeight={800} letterSpacing="wide">{label}</Text>
@@ -150,6 +155,8 @@ export default function LiveControlTab({
     ) => void
 }) {
     const navigate = useNavigate()
+    const t = useTranslation()
+    const tc = t.components.liveControlTab
     const [groups, setGroups] = useState<Group[] | null>(null)
     const [knockout, setKnockout] = useState<BracketMatch[] | null>(null)
     const [loading, setLoading] = useState(true)
@@ -256,7 +263,7 @@ export default function LiveControlTab({
                 <Flex align="center" gap="2" color="fg.muted">
                     <FiInfo size={14} />
                     <Text fontFamily="mono" fontSize="xs" fontWeight={600}>
-                        Turnir je završen. Obrati se administratoru za otključavanje.
+                        {tc.lockedNotice}
                     </Text>
                 </Flex>
             </Panel>
@@ -270,8 +277,8 @@ export default function LiveControlTab({
             <Panel>
                 <EmptyState
                     icon={LuRadioTower}
-                    title="Nema utakmice za vođenje"
-                    description="Kad generiraš raspored, ovdje će se pojaviti aktivna i nadolazeće utakmice za vođenje uživo."
+                    title={tc.emptyNoMatchTitle}
+                    description={tc.emptyNoMatchDesc}
                 />
             </Panel>
         )
@@ -285,12 +292,12 @@ export default function LiveControlTab({
             <Panel>
                 <EmptyState
                     icon={FiCheckCircle}
-                    title="Turnir je završen"
-                    description={`Sve utakmice (${finished.length}) su odigrane i zabilježene.`}
+                    title={tc.tournamentFinishedTitle}
+                    description={tc.tournamentFinishedDesc(finished.length)}
                     action={
                         !showFinished ? (
                             <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => setShowFinished(true)}>
-                                Pokaži završene ({finished.length})
+                                {tc.showFinished(finished.length)}
                             </Button>
                         ) : undefined
                     }
@@ -309,11 +316,11 @@ export default function LiveControlTab({
                     <Flex align="center" gap="2">
                         <Box color="fg.muted" display="inline-flex"><LuRadioTower size={16} /></Box>
                         <Text fontSize="sm" fontWeight={800} color="fg.ink">
-                            Nadolazeće utakmice
+                            {tc.upcomingHeading}
                         </Text>
                     </Flex>
                     <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
-                        Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.
+                        {tc.upcomingHint}
                     </Text>
                     <VStack align="stretch" gap="2">
                         {pending.map((e) => (
@@ -328,13 +335,13 @@ export default function LiveControlTab({
                                 py="2.5"
                                 minW="0"
                             >
-                                <MatchCardContent meta={matchMeta(e, false)} />
+                                <MatchCardContent meta={matchMeta(e, false, tc)} />
                             </Flex>
                         ))}
                     </VStack>
                     {finished.length > 0 && !showFinished && (
                         <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => setShowFinished(true)} alignSelf="flex-start">
-                            Pokaži završene ({finished.length})
+                            {tc.showFinished(finished.length)}
                         </Button>
                     )}
                 </VStack>
@@ -346,7 +353,7 @@ export default function LiveControlTab({
     // two-line teams/meta + chevron); a Menu lists the other matches as rows of
     // the same shape. Single-match case renders the same card without the Menu.
     const selectedMeta = selected
-        ? matchMeta(selected, selected.match.matchId === fallback?.match.matchId)
+        ? matchMeta(selected, selected.match.matchId === fallback?.match.matchId, tc)
         : null
     const cardBox = {
         align: "center" as const,
@@ -387,7 +394,7 @@ export default function LiveControlTab({
                                 >
                                     <Flex align="center" gap="3" w="full" minW="0">
                                         <MatchCardContent
-                                            meta={matchMeta(e, e.match.matchId === fallback?.match.matchId)}
+                                            meta={matchMeta(e, e.match.matchId === fallback?.match.matchId, tc)}
                                             active={e.match.matchId === selected?.match.matchId}
                                         />
                                     </Flex>
@@ -411,7 +418,7 @@ export default function LiveControlTab({
                                                 window.setTimeout(() => setPickerOpen(true), 0)
                                             }}
                                         >
-                                            Pokaži završene ({finished.length})
+                                            {tc.showFinished(finished.length)}
                                         </Button>
                                     </Box>
                                 </>
@@ -426,7 +433,7 @@ export default function LiveControlTab({
                                             disabled
                                         >
                                             <Flex align="center" gap="3" w="full" minW="0">
-                                                <MatchCardContent meta={matchMeta(e, false)} />
+                                                <MatchCardContent meta={matchMeta(e, false, tc)} />
                                             </Flex>
                                         </Menu.Item>
                                     ))}
@@ -462,7 +469,7 @@ export default function LiveControlTab({
                             colorPalette="pitch"
                             onClick={() => navigate(standaloneHref)}
                         >
-                            <FiMaximize2 /> Puni zaslon
+                            <FiMaximize2 /> {tc.fullscreenButton}
                         </Button>
                     ) : undefined
                 }
@@ -484,6 +491,8 @@ export default function LiveControlTab({
    per tournament. Renders nothing when no stream is linked here.
    ────────────────────────────────────────────────────────────────────────── */
 function StreamSection({ uuid }: { uuid: string }) {
+    const t = useTranslation()
+    const tc = t.components.liveControlTab
     const [banner, setBanner] = useState<StreamBanner | null>(null)
     const [shown, setShown] = useState<boolean>(() => {
         try {
@@ -541,10 +550,10 @@ function StreamSection({ uuid }: { uuid: string }) {
             <Flex align="center" justify="space-between" gap="2" mb={shown ? "3" : "0"}>
                 <HStack gap="2" minW="0">
                     <Box color="accent.red" display="inline-flex"><LuRadioTower size={16} /></Box>
-                    <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>Prijenos utakmice</Text>
+                    <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>{tc.streamSectionHeading}</Text>
                 </HStack>
                 <Button size="sm" variant="outline" colorPalette="pitch" onClick={toggle} flexShrink={0}>
-                    {shown ? <><FiEyeOff /> Sakrij prijenos</> : <><FiPlay /> Prikaži prijenos</>}
+                    {shown ? <><FiEyeOff /> {tc.streamHide}</> : <><FiPlay /> {tc.streamShow}</>}
                 </Button>
             </Flex>
             {shown && (

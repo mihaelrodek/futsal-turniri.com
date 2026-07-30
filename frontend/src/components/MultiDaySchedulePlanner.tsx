@@ -6,7 +6,6 @@ import {
     Dialog,
     Flex,
     HStack,
-    IconButton,
     Input,
     Popover,
     Portal,
@@ -14,11 +13,12 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCalendar, FiCheck, FiChevronLeft, FiChevronRight, FiClock, FiPlus, FiX } from "react-icons/fi"
+import { FiCalendar, FiCheck, FiChevronLeft, FiClock, FiPlus, FiX } from "react-icons/fi"
 import { LuCalendarClock, LuGripVertical } from "react-icons/lu"
 import { fetchPlanInfo, generateMultiDaySchedule, previewSchedule } from "../api/schedule"
 import type { Schedule, ScheduleConfig, ScheduledMatch, SchedulePlanInfo, SchedulePlanRequest, SchedulePreview } from "../types/schedule"
 import { MonoLabel } from "../ui/pitch"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MultiDaySchedulePlanner - the "Generiraj raspored" flow for tournaments
@@ -137,19 +137,11 @@ function fmtPause(min: number): string {
     return `${m}min`
 }
 
-const STAGE_LABEL: Record<string, string> = {
-    GROUP: "Grupa",
-    ROUND_OF_32: "Šesnaestina",
-    ROUND_OF_16: "Osmina",
-    QUARTERFINAL: "Četvrtfinale",
-    SEMIFINAL: "Polufinale",
-    THIRD_PLACE: "Za 3. mjesto",
-    FINAL: "Finale",
-}
-
-/** Play-order rank of a stage. A drag may NOT cross a stage boundary - a
- *  quarterfinal can't play after a semifinal or before the group matches -
- *  so match rows are only movable within their own stage's block. */
+/** Play-order rank of a stage - used to cap how far a single match can be
+ *  dragged: it may be pulled into the immediately adjacent round (one rank
+ *  away, e.g. one "osmina" match slotted before some "šesnaestina" matches)
+ *  but not jump multiple rounds away (a final still can't play before a
+ *  quarterfinal). */
 const STAGE_RANK: Record<string, number> = {
     GROUP: 0,
     ROUND_OF_32: 1,
@@ -162,20 +154,23 @@ const STAGE_RANK: Record<string, number> = {
 const stageRank = (s: string) => STAGE_RANK[s] ?? 0
 
 /** The allowed drop range for the MATCH row at `idx`: the contiguous run of
- *  rows around it that are pauses OR same-stage matches (a match may not cross
- *  a stage boundary; pauses are transparent to the block). */
-function matchStageBlock(rows: SketchRow[], idx: number): [number, number] {
+ *  rows around it that are pauses OR belong to its own round or an
+ *  immediately adjacent round (rank difference <= 1). This lets an organizer
+ *  pull ONE match into the neighbouring round's slot without moving every
+ *  match of either round - the granular alternative to the old whole-round
+ *  reorder. */
+function matchDragRange(rows: SketchRow[], idx: number): [number, number] {
     const row0 = rows[idx]
     if (row0.kind !== "match") return [0, rows.length - 1]
     const r = stageRank(row0.stage)
-    const sameOrPause = (i: number) => {
+    const withinRange = (i: number) => {
         const row = rows[i]
-        return row.kind === "pause" || stageRank(row.stage) === r
+        return row.kind === "pause" || Math.abs(stageRank(row.stage) - r) <= 1
     }
     let lo = idx
     let hi = idx
-    while (lo > 0 && sameOrPause(lo - 1)) lo--
-    while (hi < rows.length - 1 && sameOrPause(hi + 1)) hi++
+    while (lo > 0 && withinRange(lo - 1)) lo--
+    while (hi < rows.length - 1 && withinRange(hi + 1)) hi++
     return [lo, hi]
 }
 
@@ -249,6 +244,7 @@ function Time24Picker({
      *  the row height; the config-form default stays "sm". */
     size?: "xs" | "sm"
 }) {
+    const t = useTranslation()
     const [open, setOpen] = useState(false)
     const p = (n: number) => String(n).padStart(2, "0")
     const match = /^(\d{1,2}):(\d{2})$/.exec(value || "")
@@ -286,7 +282,7 @@ function Time24Picker({
                             <HStack align="start" gap="3">
                                 <VStack gap="1" minW="0">
                                     <Text fontFamily="mono" fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="0.1em">
-                                        SAT
+                                        {t.components.multiDaySchedulePlanner.pickerHourLabel}
                                     </Text>
                                     <VStack gap="0.5" maxH="168px" overflowY="auto" pr="1">
                                         {hours.map((h) => (
@@ -298,7 +294,7 @@ function Time24Picker({
                                 </VStack>
                                 <VStack gap="1" minW="0">
                                     <Text fontFamily="mono" fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="0.1em">
-                                        MIN
+                                        {t.components.multiDaySchedulePlanner.pickerMinuteLabel}
                                     </Text>
                                     <VStack gap="0.5" maxH="168px" overflowY="auto" pr="1">
                                         {minutes.map((mi) => (
@@ -354,6 +350,8 @@ export default function MultiDaySchedulePlanner({
     onClose: () => void
     onGenerated: (s: Schedule) => void
 }) {
+    const t = useTranslation()
+    const stageLabel = (s: string) => (t.components.multiDaySchedulePlanner.stageLabels as Record<string, string>)[s] ?? s
     const seed = startAt ? new Date(startAt) : new Date()
     const p = (n: number) => String(n).padStart(2, "0")
     const defaultDate = `${seed.getFullYear()}-${p(seed.getMonth() + 1)}-${p(seed.getDate())}`
@@ -570,54 +568,6 @@ export default function MultiDaySchedulePlanner({
         [hasPause, stageCounts],
     )
 
-    /** Contiguous stage blocks in the CURRENT sketch order - one entry per round,
-     *  listed in the order it is played. Pauses are transparent (they belong to
-     *  the block they sit in), mirroring matchStageBlock. */
-    const stageBlocks = useMemo(() => {
-        const rows = sketchRows
-        const out: { stage: string; lo: number; hi: number }[] = []
-        if (!rows) return out
-        for (let i = 0; i < rows.length; i++) {
-            const r = rows[i]
-            if (r.kind !== "match") continue
-            const [lo, hi] = matchStageBlock(rows, i)
-            out.push({ stage: r.stage, lo, hi })
-            i = hi
-        }
-        return out
-    }, [sketchRows])
-
-    /** Move a whole round earlier (-1) / later (+1) by swapping it with the
-     *  adjacent round. Rounds are contiguous runs that tile the list, so this is
-     *  a straight range swap - the fixed time slots stay put and the two rounds
-     *  simply trade places in the play order. The backend accepts the crossed
-     *  stage order, and the bracket generator now re-applies reserved slots per
-     *  stage, so the new order survives a later regeneration. */
-    function moveStageBlock(bi: number, dir: -1 | 1) {
-        setSketchRows((prev) => {
-            if (!prev) return prev
-            const blocks: { lo: number; hi: number }[] = []
-            for (let i = 0; i < prev.length; i++) {
-                const r = prev[i]
-                if (r.kind !== "match") continue
-                const [lo, hi] = matchStageBlock(prev, i)
-                blocks.push({ lo, hi })
-                i = hi
-            }
-            const a = blocks[bi]
-            const b = blocks[bi + dir]
-            if (!a || !b) return prev
-            const first = dir === 1 ? a : b
-            const second = dir === 1 ? b : a
-            return [
-                ...prev.slice(0, first.lo),
-                ...prev.slice(second.lo, second.hi + 1),
-                ...prev.slice(first.lo, first.hi + 1),
-                ...prev.slice(second.hi + 1),
-            ]
-        })
-    }
-
     /** The first (earliest) knockout stage in the sketch - its teams come
      *  straight from the group phase; later rounds depend on earlier knockout
      *  results, so their unknown teams read "TBD" instead. */
@@ -807,6 +757,60 @@ export default function MultiDaySchedulePlanner({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dragIdx])
 
+    /** Identity key for matching a preview row to an existing match: stage +
+     *  group + both team names (falling back to the slot label for a
+     *  not-yet-decided knockout placeholder, e.g. "W Š2"). Unique within one
+     *  tournament's remaining fixtures. */
+    function fixtureKey(
+        stage: string,
+        groupName: string | null | undefined,
+        name1: string | null | undefined,
+        name2: string | null | undefined,
+    ): string {
+        return `${stage}|${groupName ?? ""}|${name1 ?? ""}|${name2 ?? ""}`
+    }
+
+    /** autoSketch mode ("Uredi raspored") seeds the day/count skeleton from the
+     *  existing schedule (see the effect above), but the fresh preview that
+     *  skeleton triggers still lays matches out in the backend's DEFAULT
+     *  per-day order (grouped by stage) - the preview endpoint has no notion
+     *  of a previously-saved custom order (only `generate` accepts one, via
+     *  `order`). Left alone, re-opening "Uredi raspored" would silently
+     *  revert any match a prior session dragged across a stage boundary.
+     *  Re-sort the freshly-sketched MATCH rows back into the schedule's
+     *  actual current play order (by kickoffAt) so editing preserves it.
+     *  Falls back to the default position for any row that can't be matched
+     *  (fixture set changed underneath the edit) instead of dropping it. */
+    function restoreExistingOrder(rows: MatchRow[]): MatchRow[] {
+        const desiredKeys = (existingMatches ?? [])
+            .filter(
+                (m) => m.status !== "FINISHED" && m.status !== "LIVE" && !!m.kickoffAt && (koOnly ? m.stage !== "GROUP" : true),
+            )
+            .sort((a, b) => new Date(a.kickoffAt as string).getTime() - new Date(b.kickoffAt as string).getTime())
+            .map((m) => fixtureKey(m.stage, m.groupName, m.team1Name ?? m.slot1Label, m.team2Name ?? m.slot2Label))
+        if (desiredKeys.length === 0) return rows
+
+        const byKey = new Map<string, number[]>()
+        rows.forEach((r, i) => {
+            const k = fixtureKey(r.stage, r.groupName, r.team1Name ?? r.slot1Label, r.team2Name ?? r.slot2Label)
+            const queue = byKey.get(k)
+            if (queue) queue.push(i)
+            else byKey.set(k, [i])
+        })
+        const usedIdx = new Set<number>()
+        const ordered: MatchRow[] = []
+        for (const k of desiredKeys) {
+            const idx = byKey.get(k)?.shift()
+            if (idx == null) continue
+            usedIdx.add(idx)
+            ordered.push(rows[idx])
+        }
+        rows.forEach((r, i) => {
+            if (!usedIdx.has(i)) ordered.push(r)
+        })
+        return ordered
+    }
+
     /** Store a fresh sketch + its rows in plan order (the flattened day list
      *  IS the backend's single-court plan order - unscheduled rows are the
      *  tail and never appear in the days). Resets any pauses / reorder. */
@@ -818,7 +822,7 @@ export default function MultiDaySchedulePlanner({
         // change and skips a redundant re-price.
         setTimeOverrides({})
         lastOverridesKeyRef.current = "{}"
-        const flat: SketchRow[] = []
+        const flat: MatchRow[] = []
         for (const day of pv.days) {
             for (const m of day.matches) {
                 flat.push({
@@ -838,7 +842,7 @@ export default function MultiDaySchedulePlanner({
                 })
             }
         }
-        setSketchRows(flat)
+        setSketchRows(autoSketch ? restoreExistingOrder(flat) : flat)
     }
 
     async function doSketch() {
@@ -972,7 +976,11 @@ export default function MultiDaySchedulePlanner({
                                 <HStack gap="2">
                                     <LuCalendarClock size={18} />
                                     <Text fontWeight={800}>
-                                        {koOnly ? "Raspored završnice" : autoSketch ? "Uredi raspored" : "Generiranje rasporeda"}
+                                        {koOnly
+                                            ? t.components.multiDaySchedulePlanner.titleKoOnly
+                                            : autoSketch
+                                                ? t.components.multiDaySchedulePlanner.titleEdit
+                                                : t.components.multiDaySchedulePlanner.titleGenerate}
                                     </Text>
                                 </HStack>
                             </Dialog.Title>
@@ -982,75 +990,22 @@ export default function MultiDaySchedulePlanner({
                                 /* ── Preview / sketch result ─────────────── */
                                 <VStack align="stretch" gap="3">
                                     <Text fontSize="sm" color="fg.muted">
-                                        Ovako bi izgledao raspored. Provjeri pa potvrdi da se generira.
+                                        {t.components.multiDaySchedulePlanner.previewDescription}
                                         {preview.knockoutMatches > 0 &&
-                                            " Eliminacijske utakmice su rezervirane (ekipe se određuju nakon grupne faze)."}
+                                            t.components.multiDaySchedulePlanner.reservedCaveat}
                                     </Text>
                                     {anyRowDraggable && (
                                         <Text fontSize="xs" color="fg.muted">
-                                            Povuci utakmicu ili pauzu klikom na{" "}
+                                            {t.components.multiDaySchedulePlanner.dragHintBefore}{" "}
                                             <Box as="span" display="inline-flex" verticalAlign="middle" mx="0.5">
                                                 <LuGripVertical size={13} />
-                                            </Box>{" "}
-                                            za promjenu redoslijeda - satnica ostaje ista, mijenja se
-                                            koja se utakmica kada igra. Cijelu fazu pomakni strelicama
-                                            ispod (npr. osmina prije šesnaestine).
+                                            </Box>
+                                            {t.components.multiDaySchedulePlanner.dragHintAfter}
                                         </Text>
-                                    )}
-                                    {stageBlocks.length > 1 && (
-                                        <Box>
-                                            <MonoLabel mb="1.5" display="block">REDOSLIJED FAZA</MonoLabel>
-                                            <HStack gap="1.5" wrap="wrap">
-                                                {stageBlocks.map((b, bi) => (
-                                                    <HStack
-                                                        key={`${b.stage}-${b.lo}`}
-                                                        gap="0.5"
-                                                        bg="bg.surfaceTint"
-                                                        rounded="full"
-                                                        pl="2.5"
-                                                        pr="1"
-                                                        py="0.5"
-                                                    >
-                                                        <Text
-                                                            fontFamily="mono"
-                                                            fontSize="10px"
-                                                            fontWeight={700}
-                                                            letterSpacing="0.06em"
-                                                            textTransform="uppercase"
-                                                            color="fg.muted"
-                                                            whiteSpace="nowrap"
-                                                        >
-                                                            {STAGE_LABEL[b.stage] ?? b.stage}
-                                                        </Text>
-                                                        <IconButton
-                                                            aria-label="Pomakni fazu ranije"
-                                                            size="2xs"
-                                                            variant="ghost"
-                                                            rounded="full"
-                                                            disabled={bi === 0}
-                                                            onClick={() => moveStageBlock(bi, -1)}
-                                                        >
-                                                            <FiChevronLeft />
-                                                        </IconButton>
-                                                        <IconButton
-                                                            aria-label="Pomakni fazu kasnije"
-                                                            size="2xs"
-                                                            variant="ghost"
-                                                            rounded="full"
-                                                            disabled={bi === stageBlocks.length - 1}
-                                                            onClick={() => moveStageBlock(bi, 1)}
-                                                        >
-                                                            <FiChevronRight />
-                                                        </IconButton>
-                                                    </HStack>
-                                                ))}
-                                            </HStack>
-                                        </Box>
                                     )}
                                     {preview.unscheduled > 0 && (
                                         <Box bg="accent.red" color="white" rounded="md" px="3" py="2" fontSize="sm">
-                                            {preview.unscheduled} utakmica ne stane u zadane dane - dodaj još
-                                            termina ili produži raspon.
+                                            {t.components.multiDaySchedulePlanner.unallocatedWarning(preview.unscheduled)}
                                         </Box>
                                     )}
                                     {preview.days.map((day, di) => (
@@ -1060,7 +1015,7 @@ export default function MultiDaySchedulePlanner({
                                                     <FiCalendar size={13} />
                                                     <Text fontSize="sm" fontWeight={700}>{fmtDay(day.date)}</Text>
                                                 </HStack>
-                                                <MonoLabel>{day.matches.length} UTAKMICA</MonoLabel>
+                                                <MonoLabel>{t.components.multiDaySchedulePlanner.dayMatchCount(day.matches.length)}</MonoLabel>
                                             </HStack>
                                             <VStack align="stretch" gap="0">
                                                 {(dayBuckets[di] ?? []).map(({ row: r, sketchIdx, kickoff }, i) => {
@@ -1084,7 +1039,7 @@ export default function MultiDaySchedulePlanner({
                                                                 const [lo, hi] =
                                                                     r.kind === "pause"
                                                                         ? [0, sketchRows.length - 1]
-                                                                        : matchStageBlock(sketchRows, sketchIdx)
+                                                                        : matchDragRange(sketchRows, sketchIdx)
                                                                 blockLoRef.current = lo
                                                                 blockHiRef.current = hi
                                                                 overIdxRef.current = sketchIdx
@@ -1101,8 +1056,8 @@ export default function MultiDaySchedulePlanner({
                                                             py="1.5"
                                                             flexShrink={0}
                                                             style={{ touchAction: "none", userSelect: "none" }}
-                                                            title="Povuci za promjenu redoslijeda"
-                                                            aria-label="Povuci za promjenu redoslijeda"
+                                                            title={t.components.multiDaySchedulePlanner.dragRowAria}
+                                                            aria-label={t.components.multiDaySchedulePlanner.dragRowAria}
                                                         >
                                                             {/* pointer-events none so the touch lands on the
                                                                 handle Box (touch-action:none), not the SVG. */}
@@ -1149,7 +1104,7 @@ export default function MultiDaySchedulePlanner({
                                                                 >
                                                                     <FiClock size={12} />
                                                                     <Text fontFamily="mono" fontSize="12px" fontWeight={700} truncate>
-                                                                        Pauza · {fmtPause(r.minutes)}
+                                                                        {t.components.multiDaySchedulePlanner.pauseLabel(fmtPause(r.minutes))}
                                                                     </Text>
                                                                     <Box flex="1" />
                                                                     <chakra.button
@@ -1161,8 +1116,8 @@ export default function MultiDaySchedulePlanner({
                                                                         color="fg.subtle"
                                                                         _hover={{ color: "accent.red" }}
                                                                         flexShrink={0}
-                                                                        aria-label="Ukloni pauzu"
-                                                                        title="Ukloni pauzu"
+                                                                        aria-label={t.components.multiDaySchedulePlanner.removePauseAria}
+                                                                        title={t.components.multiDaySchedulePlanner.removePauseAria}
                                                                     >
                                                                         <FiX size={14} />
                                                                     </chakra.button>
@@ -1218,7 +1173,7 @@ export default function MultiDaySchedulePlanner({
                                                                 </Text>
                                                             )}
                                                             <Text fontFamily="mono" fontSize="10px" color="fg.muted" flexShrink={0} minW="86px" textTransform="uppercase">
-                                                                {STAGE_LABEL[r.stage] ?? r.stage}{r.groupName ? ` ${r.groupName}` : ""}
+                                                                {stageLabel(r.stage)}{r.groupName ? ` ${r.groupName}` : ""}
                                                             </Text>
                                                             <Text
                                                                 fontSize="13.5px"
@@ -1229,8 +1184,8 @@ export default function MultiDaySchedulePlanner({
                                                                 {pairingResolved
                                                                     ? `${t1} - ${t2}`
                                                                     : preview.groupMatches > 0 && stageRank(r.stage) === firstKoRank
-                                                                        ? "Odlučuje se nakon grupne faze"
-                                                                        : "TBD"}
+                                                                        ? t.components.multiDaySchedulePlanner.tbdPending
+                                                                        : t.components.multiDaySchedulePlanner.tbdGeneric}
                                                             </Text>
                                                         </HStack>
                                                     )
@@ -1244,24 +1199,24 @@ export default function MultiDaySchedulePlanner({
                                    configure, so show a loading state instead of the form. */
                                 <Flex direction="column" align="center" justify="center" gap="3" minH="200px" color="fg.muted">
                                     <Spinner size="lg" />
-                                    <Text fontSize="sm">Učitavam raspored...</Text>
+                                    <Text fontSize="sm">{t.components.multiDaySchedulePlanner.loadingSchedule}</Text>
                                 </Flex>
                             ) : (
                                 /* ── Plan setup ──────────────────────────── */
                                 <VStack align="stretch" gap="4">
                                     <Box>
-                                        <MonoLabel mb="2" display="block">RASPON DATUMA</MonoLabel>
+                                        <MonoLabel mb="2" display="block">{t.components.multiDaySchedulePlanner.dateRangeLabel}</MonoLabel>
                                         <HStack gap="3" wrap="wrap" align="flex-end">
                                             <Box>
-                                                <Text fontSize="2xs" color="fg.muted" mb="1">Od</Text>
+                                                <Text fontSize="2xs" color="fg.muted" mb="1">{t.components.multiDaySchedulePlanner.fromLabel}</Text>
                                                 <Input type="date" size="sm" value={from} onChange={(e) => setFrom(e.target.value)} />
                                             </Box>
                                             <Box>
-                                                <Text fontSize="2xs" color="fg.muted" mb="1">Do</Text>
+                                                <Text fontSize="2xs" color="fg.muted" mb="1">{t.components.multiDaySchedulePlanner.toLabel}</Text>
                                                 <Input type="date" size="sm" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
                                             </Box>
                                             <Button size="sm" variant="outline" onClick={distributeEvenly} disabled={total <= 0}>
-                                                Ravnomjerno rasporedi
+                                                {t.components.multiDaySchedulePlanner.distributeEvenlyButton}
                                             </Button>
                                         </HStack>
                                     </Box>
@@ -1278,13 +1233,13 @@ export default function MultiDaySchedulePlanner({
                                             alignItems="end"
                                         >
                                             <Text fontSize="2xs" fontWeight={700} letterSpacing="0.06em" textTransform="uppercase" color="fg.muted">
-                                                Dan
+                                                {t.components.multiDaySchedulePlanner.columnDay}
                                             </Text>
                                             <Text fontSize="2xs" fontWeight={700} letterSpacing="0.06em" textTransform="uppercase" color="fg.muted" textAlign="center" lineHeight="1.15">
-                                                Broj utakmica u danu
+                                                {t.components.multiDaySchedulePlanner.columnMatchesPerDay}
                                             </Text>
                                             <Text fontSize="2xs" fontWeight={700} letterSpacing="0.06em" textTransform="uppercase" color="fg.muted" textAlign="center" lineHeight="1.15">
-                                                Prva utakmica
+                                                {t.components.multiDaySchedulePlanner.columnFirstMatch}
                                             </Text>
                                         </Box>
 
@@ -1335,17 +1290,17 @@ export default function MultiDaySchedulePlanner({
                                         gap="3"
                                         wrap="wrap"
                                     >
-                                        <MonoLabel>PREOSTALO ZA RASPOREDITI</MonoLabel>
+                                        <MonoLabel>{t.components.multiDaySchedulePlanner.remainingLabel}</MonoLabel>
                                         <HStack gap="2" fontFamily="mono">
                                             <Text fontSize="15px" fontWeight={800} color={remaining < 0 ? "accent.red" : remaining === 0 ? "pitch.500" : "fg.ink"}>
                                                 {remaining}
                                             </Text>
-                                            <Text fontSize="12px" color="fg.muted">/ {total} ukupno</Text>
+                                            <Text fontSize="12px" color="fg.muted">{t.components.multiDaySchedulePlanner.totalSuffix(total)}</Text>
                                         </HStack>
                                     </Flex>
                                     {remaining < 0 && (
                                         <Text fontSize="xs" color="accent.red">
-                                            Rasporedio si više utakmica ({allocated}) nego što turnir ima ({total}).
+                                            {t.components.multiDaySchedulePlanner.overAllocatedWarning(allocated, total)}
                                         </Text>
                                     )}
                                 </VStack>
@@ -1369,7 +1324,7 @@ export default function MultiDaySchedulePlanner({
                                             bg="bg.surfaceTint"
                                         >
                                             <Box>
-                                                <Text fontSize="2xs" color="fg.muted" mb="1">Sati</Text>
+                                                <Text fontSize="2xs" color="fg.muted" mb="1">{t.components.multiDaySchedulePlanner.hoursLabel}</Text>
                                                 <Input
                                                     size="sm"
                                                     w="64px"
@@ -1383,7 +1338,7 @@ export default function MultiDaySchedulePlanner({
                                                 />
                                             </Box>
                                             <Box>
-                                                <Text fontSize="2xs" color="fg.muted" mb="1">Minute</Text>
+                                                <Text fontSize="2xs" color="fg.muted" mb="1">{t.components.multiDaySchedulePlanner.minutesLabel}</Text>
                                                 <Input
                                                     size="sm"
                                                     w="64px"
@@ -1397,34 +1352,34 @@ export default function MultiDaySchedulePlanner({
                                                 />
                                             </Box>
                                             <Button size="sm" colorPalette="pitch" onClick={addPause}>
-                                                <FiPlus /> Dodaj
+                                                <FiPlus /> {t.common.add}
                                             </Button>
                                             <Button size="sm" variant="ghost" onClick={() => setPauseFormOpen(false)}>
-                                                Odustani
+                                                {t.common.cancel}
                                             </Button>
                                         </Flex>
                                     )}
                                     <HStack gap="2" justify="space-between" w="full" wrap="wrap">
                                         <HStack gap="2">
                                             <Button variant="ghost" onClick={() => { setPreview(null); setSketchRows(null); setPauseFormOpen(false) }}>
-                                                <FiChevronLeft /> Natrag
+                                                <FiChevronLeft /> {t.common.back}
                                             </Button>
                                             <Button variant="ghost" onClick={() => setPauseFormOpen((v) => !v)}>
-                                                <FiPlus /> <FiClock /> Dodaj pauzu
+                                                <FiPlus /> <FiClock /> {t.components.multiDaySchedulePlanner.addPauseButton}
                                             </Button>
                                         </HStack>
                                         <Button colorPalette="pitch" loading={generating} onClick={doGenerate} disabled={preview.scheduled === 0}>
-                                            <FiCheck /> Potvrdi i generiraj
+                                            <FiCheck /> {t.components.multiDaySchedulePlanner.confirmGenerateButton}
                                         </Button>
                                     </HStack>
                                 </VStack>
                             ) : showAutoSketchLoading ? (
                                 <HStack gap="2" justify="flex-end" w="full">
-                                    <Button variant="ghost" onClick={onClose}>Odustani</Button>
+                                    <Button variant="ghost" onClick={onClose}>{t.common.cancel}</Button>
                                 </HStack>
                             ) : (
                                 <HStack gap="2" justify="flex-end" w="full">
-                                    <Button variant="ghost" onClick={onClose}>Odustani</Button>
+                                    <Button variant="ghost" onClick={onClose}>{t.common.cancel}</Button>
                                     <Button
                                         colorPalette="pitch"
                                         loading={sketching}
@@ -1432,11 +1387,11 @@ export default function MultiDaySchedulePlanner({
                                         disabled={sketchDisabled}
                                         title={
                                             total > 0 && allocated > total
-                                                ? "Smanji broj utakmica - rasporedio si više nego što turnir ima"
+                                                ? t.components.multiDaySchedulePlanner.reduceMatchesTooltip
                                                 : undefined
                                         }
                                     >
-                                        {sketching ? <Spinner size="sm" /> : <LuCalendarClock />} Skiciraj
+                                        {sketching ? <Spinner size="sm" /> : <LuCalendarClock />} {t.components.multiDaySchedulePlanner.sketchButton}
                                     </Button>
                                 </HStack>
                             )}

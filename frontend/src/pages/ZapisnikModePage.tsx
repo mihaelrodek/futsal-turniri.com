@@ -15,6 +15,7 @@ import { Loader } from "../ui/primitives"
 import { LiveClock } from "../components/liveMatch"
 import { PulseDot } from "../ui/pitch"
 import LiveControlTab from "../components/LiveControlTab"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    ZapisnikModePage - the organizer's standalone scorekeeper view at
@@ -48,6 +49,7 @@ export default function ZapisnikModePage() {
     const navigate = useNavigate()
     const { user, isAdmin, loading: authLoading } = useAuth()
     const queryClient = useQueryClient()
+    const t = useTranslation()
 
     // Seed from the react-query cache (warmed by the detail page / card
     // prefetch) so a warm open paints instantly instead of a cold spinner.
@@ -169,7 +171,7 @@ export default function ZapisnikModePage() {
                 >
                     <Flex align="center" gap="2" minW="0" justifySelf="start" maxW="full">
                         <IconButton
-                            aria-label="Natrag na turnir"
+                            aria-label={t.pages.zapisnikModePage.backToTournamentAria}
                             variant="ghost"
                             size="md"
                             onClick={() => navigate(`/turniri/${uuid}?tab=live`)}
@@ -195,7 +197,7 @@ export default function ZapisnikModePage() {
                                 letterSpacing="0.16em"
                                 color="fg.muted"
                             >
-                                ZAPISNIK
+                                {t.pages.zapisnikModePage.zapisnikLabel}
                             </Text>
                         </VStack>
                     </Flex>
@@ -227,7 +229,7 @@ export default function ZapisnikModePage() {
                                 letterSpacing="0.1em"
                             >
                                 <PulseDot color="accent.red" size={6} />
-                                UŽIVO
+                                {t.pages.zapisnikModePage.liveLabel}
                             </HStack>
                         ) : null}
                     </Box>

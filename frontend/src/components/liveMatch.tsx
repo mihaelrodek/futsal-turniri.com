@@ -11,6 +11,14 @@ import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveM
 import type { OptimisticDisplay } from "../hooks/useOfflineMatchEvents"
 import { fetchPlayers } from "../api/players"
 import type { PlayerDto } from "../types/players"
+import { useTranslation, type Dictionary } from "../i18n"
+
+/** Upper-cases the first letter - used to adapt a shared, mid-sentence i18n
+ *  label (e.g. `t.matchLive.unknownScorer`) for standalone display. Mirrors
+ *  the same helper in FullscreenTournamentPage.tsx. */
+function capitalize(s: string): string {
+    return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    Live-match shared helpers.
@@ -244,6 +252,30 @@ export function clockState({
  *    half length → 2x the half length, then holds there ("Kraj").
  * While {@code livePausedAt} is set the display freezes at the pause instant.
  */
+/** Translated mirror of `clockState`'s internal (hardcoded) label logic - kept
+ *  as a separate function rather than threading `labels` through `clockState`
+ *  itself, since `clockState` is exported and consumed by other pages/components
+ *  (LiveMatchPanel, TournamentsPage) that never render its `.label` field. */
+function translatedClockLabel(
+    args: Omit<LiveClockProps, "showLabel" | "hidePauseLabel" | "size">,
+    labels: Dictionary["components"]["liveMatch"]["clockLabels"],
+): string {
+    const paused = !!args.livePausedAt
+    if (args.halfLengthMin == null || args.halfLengthMin <= 0) {
+        return paused ? labels.pause : ""
+    }
+    const phase = matchPhase(args)
+    const inRunningPhase = phase === "FIRST_HALF" || phase === "SECOND_HALF"
+    if (paused && inRunningPhase) return labels.pause
+    switch (phase) {
+        case "FIRST_HALF": return labels.firstHalf
+        case "HALFTIME": return labels.halftime
+        case "SECOND_HALF": return labels.secondHalf
+        case "FULL_TIME":
+        default: return labels.fullTime
+    }
+}
+
 export function LiveClock({
     liveStartedAt,
     firstHalfEndedAt,
@@ -255,13 +287,18 @@ export function LiveClock({
     hidePauseLabel,
     size = "xs",
 }: LiveClockProps) {
+    const t = useTranslation()
     const [, setTick] = useState(0)
     useEffect(() => {
-        const id = setInterval(() => setTick((t) => t + 1), 1000)
+        const id = setInterval(() => setTick((n) => n + 1), 1000)
         return () => clearInterval(id)
     }, [])
 
     const st = clockState({ liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount })
+    const label = translatedClockLabel(
+        { liveStartedAt, firstHalfEndedAt, secondHalfStartedAt, livePausedAt, halfLengthMin, halfCount },
+        t.components.liveMatch.clockLabels,
+    )
     const clockColor = st.paused ? "fg.muted" : st.endingSoon ? "accent.amber" : "red.fg"
     const iconSize = size === "md" ? 14 : 11
 
@@ -277,9 +314,9 @@ export function LiveClock({
             gap="1"
             whiteSpace="nowrap"
         >
-            {(showLabel || (st.paused && !hidePauseLabel)) && st.label && (
+            {(showLabel || (st.paused && !hidePauseLabel)) && label && (
                 <Text as="span" color="fg.muted" fontWeight="medium">
-                    {st.label}
+                    {label}
                 </Text>
             )}
             {st.paused ? <FiPause size={iconSize} /> : <FiClock size={iconSize} />}
@@ -340,11 +377,12 @@ export function LiveConsoleHeader({
      *  so the per-team counters sit right beneath each team). */
     belowTeams?: React.ReactNode
 }) {
+    const t = useTranslation()
     // Tick every second so the big clock + phase label stay live.
     const [, setTick] = useState(0)
     useEffect(() => {
         if (!isLive || !isTimer) return
-        const id = setInterval(() => setTick((t) => t + 1), 1000)
+        const id = setInterval(() => setTick((n) => n + 1), 1000)
         return () => clearInterval(id)
     }, [isLive, isTimer])
 
@@ -359,15 +397,16 @@ export function LiveConsoleHeader({
         !!onPause && !!onResume && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
     const paused = !!livePausedAt
 
+    const phaseLabels = t.components.liveMatch.phaseLabels
     const phaseLabel =
         phase == null
             ? null
             : paused && (phase === "FIRST_HALF" || phase === "SECOND_HALF")
-                ? "PAUZA"
-                : phase === "FIRST_HALF" ? "1. POLUVRIJEME"
-                    : phase === "HALFTIME" ? "POLUVRIJEME"
-                        : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                            : "KRAJ"
+                ? phaseLabels.pause
+                : phase === "FIRST_HALF" ? phaseLabels.firstHalf
+                    : phase === "HALFTIME" ? phaseLabels.halftime
+                        : phase === "SECOND_HALF" ? phaseLabels.secondHalf
+                            : phaseLabels.fullTime
 
     return (
         <VStack gap="1" align="stretch" w="full">
@@ -388,7 +427,7 @@ export function LiveConsoleHeader({
                                 letterSpacing="wider"
                                 textTransform="uppercase"
                             >
-                                Uživo
+                                {t.common.live}
                             </Box>
                         )}
                     </Box>
@@ -415,8 +454,8 @@ export function LiveConsoleHeader({
                         {canPauseResume && (
                             <Box position="absolute" left="100%" ml="3" top="50%" transform="translateY(-50%)">
                                 <IconButton
-                                    aria-label={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
-                                    title={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                    aria-label={paused ? t.components.liveMatch.resumeAction : t.components.liveMatch.pauseAction}
+                                    title={paused ? t.components.liveMatch.resumeAction : t.components.liveMatch.pauseAction}
                                     size="lg"
                                     variant={paused ? "solid" : "outline"}
                                     colorPalette={paused ? "brand" : "gray"}
@@ -491,11 +530,13 @@ export function StartLivePopover({
     onEnterResult?: () => void
     loading?: boolean
 }) {
+    const t = useTranslation()
+    const s = t.components.liveMatch.start
     return (
         <Menu.Root>
             <Menu.Trigger asChild>
                 <Button size="sm" variant="solid" colorPalette="red" loading={loading}>
-                    <FiPlay /> Start
+                    <FiPlay /> {s.buttonLabel}
                 </Button>
             </Menu.Trigger>
             <Portal>
@@ -503,16 +544,16 @@ export function StartLivePopover({
                     <Menu.Content minW="60">
                         <Menu.Item value="timer" onClick={() => onStart("TIMER")}>
                             <FiClock />
-                            <Text ml="2">Uživo - s mjeračem vremena</Text>
+                            <Text ml="2">{s.timerOption}</Text>
                         </Menu.Item>
                         <Menu.Item value="simple" onClick={() => onStart("SIMPLE")}>
                             <FiPlay />
-                            <Text ml="2">Uživo - bez mjerača (vlastiti sat)</Text>
+                            <Text ml="2">{s.simpleOption}</Text>
                         </Menu.Item>
                         {onEnterResult && (
                             <Menu.Item value="result" onClick={onEnterResult}>
                                 <FiEdit2 />
-                                <Text ml="2">Unesi samo rezultat</Text>
+                                <Text ml="2">{s.resultOnlyOption}</Text>
                             </Menu.Item>
                         )}
                     </Menu.Content>
@@ -552,6 +593,8 @@ export function DirectScoreEditor({
     /** Hide the built-in "Spremi rezultat" button (the caller renders one). */
     hideSaveButton?: boolean
 }) {
+    const t = useTranslation()
+    const ds = t.components.liveMatch.directScore
     const [s1, setS1] = useState<number>(Math.max(0, initialS1 ?? 0))
     const [s2, setS2] = useState<number>(Math.max(0, initialS2 ?? 0))
     const update1 = (n: number) => { setS1(n); onChange?.(n, s2) }
@@ -572,7 +615,7 @@ export function DirectScoreEditor({
             </Text>
             <HStack gap="1.5">
                 <IconButton
-                    aria-label={`Smanji ${name ?? ""}`}
+                    aria-label={ds.decreaseAria(name ?? "")}
                     size="xs"
                     variant="outline"
                     disabled={value <= 0 || saving}
@@ -591,7 +634,7 @@ export function DirectScoreEditor({
                     {value}
                 </Text>
                 <IconButton
-                    aria-label={`Povećaj ${name ?? ""}`}
+                    aria-label={ds.increaseAria(name ?? "")}
                     size="xs"
                     variant="outline"
                     disabled={saving}
@@ -614,7 +657,7 @@ export function DirectScoreEditor({
                 textAlign="center"
                 mb="2"
             >
-                Unesi rezultat (bez strijelaca)
+                {ds.heading}
             </Text>
             <HStack align="center" gap="2">
                 <Stepper name={team1Name} value={s1} set={update1} />
@@ -626,7 +669,7 @@ export function DirectScoreEditor({
             {!hideSaveButton && (
                 <Flex justify="center" mt="3">
                     <Button size="sm" colorPalette="pitch" loading={saving} onClick={() => onSave(s1, s2)}>
-                        <FiEdit2 /> Spremi rezultat
+                        <FiEdit2 /> {ds.saveButton}
                     </Button>
                 </Flex>
             )}
@@ -655,6 +698,8 @@ export function LiveEventRow({
     deleting: boolean
     onDelete: () => void
 }) {
+    const t = useTranslation()
+    const er = t.components.liveMatch.eventRow
     const isPenalty = ev.type === "PENALTY_GOAL" || ev.type === "PENALTY_MISSED"
     const isOwnGoal = ev.type === "OWN_GOAL"
     // OWN_GOAL's teamId is the BENEFICIARY, so the event naturally renders on
@@ -672,23 +717,23 @@ export function LiveEventRow({
         ev.type === "PENALTY_GOAL" ? "pitch.500"
             : ev.type === "PENALTY_MISSED" ? "accent.red"
                 : undefined
-    const label = isPenalty ? "pen" : `${ev.minute}'`
-    // No-name events: a goal without a named scorer shows "Nepoznati strijelac",
-    // a card "Nepoznati igrač", an unattributed penalty kick "(gol)"/"(promašaj)".
+    const label = isPenalty ? er.penAbbrev : `${ev.minute}'`
+    // No-name events: a goal without a named scorer shows the "unknown scorer"
+    // fallback, a card "unknown player", an unattributed penalty kick "(gol)"/"(promašaj)".
     const noName = ev.playerName == null
     const displayName =
         ev.type === "OWN_GOAL"
             ? ev.playerName != null
                 ? `${ev.playerName} (ag)`
-                : "Autogol"
+                : capitalize(t.matchLive.ownGoal)
             : ev.playerName ??
               (ev.type === "GOAL"
-                  ? "Nepoznati strijelac"
+                  ? capitalize(t.matchLive.unknownScorer)
                   : ev.type === "YELLOW_CARD" || ev.type === "RED_CARD"
-                      ? "Nepoznati igrač"
+                      ? er.unknownPlayerFallback
                       : ev.type === "PENALTY_MISSED"
-                          ? "(promašaj)"
-                          : "(gol)")
+                          ? er.missedPenaltyFallback
+                          : er.scoredPenaltyFallback)
 
     const minuteEl = (
         <Text
@@ -742,14 +787,14 @@ export function LiveEventRow({
                     w="full"
                     textAlign={isLeft ? "right" : "left"}
                 >
-                    asist. {ev.assistPlayerName}
+                    {t.components.liveMatch.assistPrefix(ev.assistPlayerName)}
                 </Text>
             )}
         </VStack>
     )
     const delEl = canDelete ? (
         <IconButton
-            aria-label="Ukloni događaj"
+            aria-label={er.removeAria}
             size="2xs"
             variant="ghost"
             colorPalette="red"
@@ -837,6 +882,7 @@ export type TimelineFouls = {
  *  whatever chip masks the dashed centre line. Mono numerals in `pitch.fg` to
  *  match the live console's cyan foul styling. */
 export function FoulChip({ a, b }: { a: number; b: number }) {
+    const t = useTranslation()
     return (
         <HStack as="span" gap="1.5" align="center" flexShrink={0}>
             <Text
@@ -848,7 +894,7 @@ export function FoulChip({ a, b }: { a: number; b: number }) {
                 color="fg.muted"
                 whiteSpace="nowrap"
             >
-                PREKRŠAJI
+                {t.components.liveMatch.timeline.foulsChipLabel}
             </Text>
             <Text
                 as="span"
@@ -918,6 +964,7 @@ export function GoalscorersPanel({
      *  action-free. */
     onRequestGoal?: (evt: MatchEventDto) => void
 }) {
+    const t = useTranslation()
     const [state, setState] = useState<EventTimelineState>({ status: "idle" })
     // Broadcast-delay hold (see the filter at render time below). The 1s tick
     // only runs while a delay is actually in force, so non-streamed matches
@@ -995,7 +1042,7 @@ export function GoalscorersPanel({
                         <GiSoccerBall size={22} />
                     </Box>
                     <Text fontSize="sm" color="fg.muted" fontWeight={600}>
-                    Učitavanje...
+                    {t.common.loading}
                     </Text>
                 </VStack>
             </Flex>
@@ -1005,7 +1052,7 @@ export function GoalscorersPanel({
     if (state.status === "error") {
         return (
             <Text fontSize="xs" color="fg.muted">
-                Nije moguće učitati događaje.
+                {t.components.liveMatch.timeline.loadError}
             </Text>
         )
     }
@@ -1043,7 +1090,7 @@ export function GoalscorersPanel({
             key === "h1" ? foulsH1 : key === "h2" ? foulsH2 : null
 
         if (events.length === 0) {
-            const note = emptyNote ?? (hideEmpty ? null : "Još nema događaja.")
+            const note = emptyNote ?? (hideEmpty ? null : t.matchLive.emptyTimelineLive)
             // A match can accumulate fouls without a single event (e.g. a 0:0),
             // so the tally still shows rather than rendering nothing at all.
             if (!note && !foulsAll) return null
@@ -1069,15 +1116,15 @@ export function GoalscorersPanel({
             const second = regulation.filter((e) => e.minute >= hl)
             // A half with fouls but no goals/cards still gets its header, so
             // the tally has somewhere to sit instead of being dropped.
-            if (first.length || foulsH1) sections.push({ key: "h1", title: "1. poluvrijeme", events: first })
-            if (second.length || foulsH2) sections.push({ key: "h2", title: "2. poluvrijeme", events: second })
+            if (first.length || foulsH1) sections.push({ key: "h1", title: t.components.liveMatch.timeline.firstHalfTitle, events: first })
+            if (second.length || foulsH2) sections.push({ key: "h2", title: t.components.liveMatch.timeline.secondHalfTitle, events: second })
         } else if (regulation.length > 0) {
             // No half boundary known - one headerless timeline section (the
             // parent already labels the whole thing "Tijek utakmice").
             sections.push({ key: "reg", title: "", events: regulation })
         }
         if (penalties.length > 0) {
-            sections.push({ key: "pen", title: "Penali", events: penalties })
+            sections.push({ key: "pen", title: t.matchLive.penaltiesShort, events: penalties })
         }
 
         // Running score for the goal pills (SofaScore-style, shown centred on
@@ -1188,6 +1235,7 @@ export function TimelineEventLine({
      *  opens the paid "snimka gola" request for this event. */
     onRequestGoal?: (evt: MatchEventDto) => void
 }) {
+    const t = useTranslation()
     const isPenGoal = evt.type === "PENALTY_GOAL"
     const isPenMiss = evt.type === "PENALTY_MISSED"
     const isPenalty = isPenGoal || isPenMiss
@@ -1215,14 +1263,14 @@ export function TimelineEventLine({
     const name = isOwnGoal
         ? evt.playerName != null
             ? `${evt.playerName} (ag)`
-            : "Autogol"
+            : capitalize(t.matchLive.ownGoal)
         : evt.playerName ??
           (evt.type === "GOAL" || isPenGoal
-              ? "Nepoznati strijelac"
+              ? capitalize(t.matchLive.unknownScorer)
               : evt.type === "YELLOW_CARD" || evt.type === "RED_CARD"
-                  ? "Nepoznati igrač"
+                  ? t.components.liveMatch.eventRow.unknownPlayerFallback
                   : isPenMiss
-                      ? "(promašaj)"
+                      ? t.components.liveMatch.eventRow.missedPenaltyFallback
                       : "")
 
     const minuteEl = showMinute ? (
@@ -1282,7 +1330,7 @@ export function TimelineEventLine({
                     css={{ overflowWrap: "anywhere" }}
                     textAlign={isLeft ? "right" : "left"}
                 >
-                    asist. {evt.assistPlayerName}
+                    {t.components.liveMatch.assistPrefix(evt.assistPlayerName)}
                 </Text>
             )}
         </VStack>
@@ -1296,8 +1344,8 @@ export function TimelineEventLine({
         (evt.type === "GOAL" || isOwnGoal || isPenGoal)
     const requestEl = canRequestClip ? (
         <IconButton
-            aria-label="Zatraži snimku ovog gola"
-            title="Zatraži snimku ovog gola (5 €)"
+            aria-label={t.components.liveMatch.timeline.requestClipAria}
+            title={t.components.liveMatch.timeline.requestClipTitle("5 €")}
             size="2xs"
             variant="ghost"
             colorPalette="pitch"
@@ -1453,6 +1501,8 @@ export function LiveGoalEntry({
      *  don't pass it). */
     penaltyInProgress?: boolean
 }) {
+    const t = useTranslation()
+    const ge = t.components.liveMatch.goalEntry
     const isTimer = liveMode === "TIMER"
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kind, setKind] = useState<MatchEventType>("GOAL")
@@ -1595,7 +1645,7 @@ export function LiveGoalEntry({
     }
 
     const TYPES: { value: MatchEventType; label: React.ReactNode; title: string }[] = [
-        { value: "GOAL", label: "⚽ Gol", title: "Gol" },
+        { value: "GOAL", label: `⚽ ${t.matchLive.goalAria}`, title: t.matchLive.goalAria },
         {
             value: "OWN_GOAL",
             // Own goal gets a red ball (matches the timeline / fullscreen).
@@ -1604,21 +1654,21 @@ export function LiveGoalEntry({
                     <Box as="span" display="inline-flex" alignItems="center" color="accent.red" mr="1">
                         <GiSoccerBall size={15} />
                     </Box>
-                    AG
+                    {ge.ownGoalAbbrev}
                 </>
             ),
-            title: "Autogol - gol u vlastitu mrežu (bod ide protivniku)",
+            title: ge.ownGoalTitle,
         },
-        { value: "YELLOW_CARD", label: "🟨", title: "Žuti karton" },
-        { value: "RED_CARD", label: "🟥", title: "Crveni karton" },
+        { value: "YELLOW_CARD", label: "🟨", title: t.matchLive.yellowCardAria },
+        { value: "RED_CARD", label: "🟥", title: t.matchLive.redCardAria },
     ]
 
     // The label of the per-team "unknown player" button follows the kind.
     const anonLabel =
-        kind === "GOAL" ? "⚽ Nepoznati strijelac"
-            : kind === "OWN_GOAL" ? "⚽ Autogol (nepoznati)"
-                : kind === "YELLOW_CARD" ? "🟨 Nepoznati igrač"
-                    : "🟥 Nepoznati igrač"
+        kind === "GOAL" ? ge.anonGoal
+            : kind === "OWN_GOAL" ? ge.anonOwnGoal
+                : kind === "YELLOW_CARD" ? ge.anonYellow
+                    : ge.anonRed
 
     return (
         <Box>
@@ -1627,30 +1677,30 @@ export function LiveGoalEntry({
                 mobile and the four card types always stay on a single line. */}
             <VStack gap="2" align="stretch" mb="2">
                 <HStack gap="1" w="full">
-                    {TYPES.map((t) => {
+                    {TYPES.map((ty) => {
                         // Gol / Auto-gol are locked while penalties are being recorded.
-                        const blocked = penaltyInProgress && (t.value === "GOAL" || t.value === "OWN_GOAL")
+                        const blocked = penaltyInProgress && (ty.value === "GOAL" || ty.value === "OWN_GOAL")
                         return (
                             <Button
-                                key={t.value}
+                                key={ty.value}
                                 flex="1"
                                 minW="0"
                                 px="1"
                                 size={{ base: "xs", md: "sm" }}
-                                variant={kind === t.value ? "solid" : "outline"}
-                                colorPalette={kind === t.value ? "brand" : "gray"}
+                                variant={kind === ty.value ? "solid" : "outline"}
+                                colorPalette={kind === ty.value ? "brand" : "gray"}
                                 disabled={blocked}
-                                onClick={() => setKind(t.value)}
-                                title={blocked ? "Penali su u tijeku - golovi se unose u penal zapisu" : t.title}
+                                onClick={() => setKind(ty.value)}
+                                title={blocked ? ge.penaltiesBlockedTitle : ty.title}
                             >
-                                {t.label}
+                                {ty.label}
                             </Button>
                         )
                     })}
                 </HStack>
                 <HStack gap="2">
                     <Text fontSize="xs" color="fg.muted" fontWeight="medium">
-                        Min
+                        {ge.minuteLabel}
                     </Text>
                     <Input
                         size="sm"
@@ -1669,22 +1719,22 @@ export function LiveGoalEntry({
                             variant={autoMinute ? "solid" : "outline"}
                             colorPalette="brand"
                             onClick={() => setAutoMinute(true)}
-                            title={autoMinute ? "Minuta automatski prati mjerač" : "Vrati na automatsko praćenje mjerača"}
+                            title={autoMinute ? ge.nowButtonAutoTitle : ge.nowButtonManualTitle}
                         >
-                            Sada
+                            {ge.nowButton}
                         </Button>
                     )}
                 </HStack>
             </VStack>
-            
+
             {!minuteValid && (
                 <Text fontSize="xs" color="red.fg" mb="2">
-                    Unesi minutu.
+                    {ge.minuteRequiredNote}
                 </Text>
             )}
             {goalKindBlocked && (
                 <Text fontSize="xs" color="accent.amber" fontWeight={600} mb="2">
-                    Penali su u tijeku - golovi se unose u penal zapisu.
+                    {ge.penaltiesInProgressNote}
                 </Text>
             )}
 
@@ -1734,7 +1784,7 @@ function PlayerPickColumn({
     yellowCardedPlayerIds,
     onPick,
     showAnon = false,
-    anonLabel = "Nepoznati igrač",
+    anonLabel,
     addingAnon = null,
     onAnon,
     align = "left",
@@ -1756,6 +1806,9 @@ function PlayerPickColumn({
     onAnon?: (teamId: number) => void
     align?: "left" | "right"
 }) {
+    const t = useTranslation()
+    const pp = t.components.liveMatch.playerPick
+    const resolvedAnonLabel = anonLabel ?? t.components.liveMatch.eventRow.unknownPlayerFallback
     return (
         <VStack align="stretch" gap="1" minW="0">
             <Text
@@ -1780,15 +1833,15 @@ function PlayerPickColumn({
                     loading={addingAnon === teamId}
                     disabled={disabled || addingId != null || (addingAnon != null && addingAnon !== teamId)}
                     onClick={() => onAnon?.(teamId)}
-                    title="Događaj za ekipu bez imena igrača"
-                    aria-label={anonLabel}
+                    title={pp.unknownEventTitle}
+                    aria-label={resolvedAnonLabel}
                 >
-                    <Text truncate fontStyle="italic" color="fg.muted">{anonLabel}</Text>
+                    <Text truncate fontStyle="italic" color="fg.muted">{resolvedAnonLabel}</Text>
                 </Button>
             )}
             {players.length === 0 ? (
                 <Text fontSize="xs" color="fg.subtle" textAlign={align}>
-                    Nema igrača
+                    {pp.noPlayers}
                 </Text>
             ) : (
                 players.map((p) => {
@@ -1809,7 +1862,7 @@ function PlayerPickColumn({
                             disabled={sentOff || disabled || (addingId != null && addingId !== p.id)}
                             opacity={sentOff ? 0.5 : undefined}
                             color={sentOff ? "fg.subtle" : undefined}
-                            title={sentOff ? "Isključen (crveni karton)" : hasYellow ? "Ima žuti karton" : undefined}
+                            title={sentOff ? pp.sentOffTitle : hasYellow ? pp.yellowCardTitle : undefined}
                             onClick={() => onPick(p)}
                         >
                             <Text truncate>
@@ -1895,6 +1948,8 @@ export function PenaltyShootout({
     onConfirm: (pen1: number, pen2: number) => void
     onCancel?: () => void
 }) {
+    const t = useTranslation()
+    const ps = t.components.liveMatch.penaltyShootout
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kicks, setKicks] = useState<PenaltyKick[]>([])
     const [firstTeam, setFirstTeam] = useState<1 | 2 | null>(null)
@@ -1907,8 +1962,8 @@ export function PenaltyShootout({
     const [persisting, setPersisting] = useState(false)
 
     const st = shootoutState(kicks, firstTeam)
-    const t1 = team1Name ?? "Ekipa 1"
-    const t2 = team2Name ?? "Ekipa 2"
+    const t1 = team1Name ?? ps.defaultTeam1Name
+    const t2 = team2Name ?? ps.defaultTeam2Name
     const busy = saving || persisting
 
     // Load both rosters so the shooter can be picked per kick.
@@ -2046,7 +2101,7 @@ export function PenaltyShootout({
                         mb="2"
                         textAlign="center"
                     >
-                        Prva puca
+                        {ps.firstToShootLabel}
                     </Text>
                     <HStack gap="2" justify="center" wrap="wrap">
                         <Button
@@ -2094,25 +2149,25 @@ export function PenaltyShootout({
             {st.decided ? (
                 <VStack gap="2">
                     <Text fontSize="sm" fontWeight={600} color="pitch.500" textAlign="center">
-                        Pobjednik: {st.winner === 1 ? t1 : t2} (penali {st.s1}-{st.s2})
+                        {ps.winnerAnnouncement(st.winner === 1 ? t1 : t2, st.s1, st.s2)}
                     </Text>
                     <HStack gap="2" justify="center">
                         {onCancel && (
                             <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                         )}
                         <Button size="sm" colorPalette="brand" loading={busy} onClick={handleConfirm}>
-                            Potvrdi i završi
+                            {ps.confirmButton}
                         </Button>
                     </HStack>
                 </VStack>
             ) : (
                 <VStack gap="2">
                     <Text fontSize="xs" color="fg.muted" textAlign="center">
-                        {firstTeam == null ? "Odaberi ekipu koja prva puca penale." : (
+                        {firstTeam == null ? ps.pickFirstTeamNote : (
                             <>
-                                {st.inSudden ? "Sudden death" : `Serija ${Math.min(st.round, 3)} / 3`} - puca:{" "}
+                                {st.inSudden ? ps.suddenDeath : ps.seriesLabel(Math.min(st.round, 3))} {ps.aboutToShootSuffix}{" "}
                             </>
                         )}
                         <Box as="span" fontWeight={700} color="fg.ink">
@@ -2127,7 +2182,7 @@ export function PenaltyShootout({
                                 value={shooterId}
                                 onChange={(e) => setShooterId(e.target.value)}
                             >
-                                <option value="">- tko je pucao (neobavezno) -</option>
+                                <option value="">{ps.shooterPlaceholder}</option>
                                 {currentRoster.map((p) => (
                                     <option key={p.id} value={p.id}>
                                         {p.number != null ? `${p.number}. ` : ""}
@@ -2141,15 +2196,15 @@ export function PenaltyShootout({
 
                     <HStack gap="2" justify="center" wrap="wrap">
                         <Button size="sm" colorPalette="brand" onClick={() => shoot(true)} disabled={busy || st.nextTeam == null}>
-                            ⚽ Gol
+                            {ps.goalButton}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => shoot(false)} disabled={busy || st.nextTeam == null}>
-                            ✗ Promašaj
+                            {ps.missButton}
                         </Button>
                     </HStack>
                     {onCancel && (
                         <Button size="xs" variant="ghost" color="fg.muted" onClick={onCancel} disabled={busy}>
-                            Odustani od raspucavanja
+                            {ps.cancelShootoutButton}
                         </Button>
                     )}
                 </VStack>
@@ -2216,6 +2271,8 @@ function KickChip({
     onEdit: (patch: Partial<PenaltyKick>) => void
     disabled: boolean
 }) {
+    const t = useTranslation()
+    const ps = t.components.liveMatch.penaltyShootout
     const chip = (
         <HStack
             role="button"
@@ -2266,7 +2323,7 @@ function KickChip({
                                         variant={kick.scored ? "solid" : "outline"}
                                         onClick={() => onEdit({ scored: true })}
                                     >
-                                        ⚽ Gol
+                                        {ps.goalButton}
                                     </Button>
                                     <Button
                                         size="xs"
@@ -2275,7 +2332,7 @@ function KickChip({
                                         variant={!kick.scored ? "solid" : "outline"}
                                         onClick={() => onEdit({ scored: false })}
                                     >
-                                        ✗ Promašaj
+                                        {ps.missButton}
                                     </Button>
                                 </HStack>
                                 <Box>
@@ -2287,7 +2344,7 @@ function KickChip({
                                         color="fg.muted"
                                         mb="1"
                                     >
-                                        Strijelac
+                                        {ps.shooterLabel}
                                     </Text>
                                     <NativeSelect.Root size="sm">
                                         <NativeSelect.Field
@@ -2297,7 +2354,7 @@ function KickChip({
                                                 onEdit({ playerId: p?.id, playerName: p?.name })
                                             }}
                                         >
-                                            <option value="">- bez igrača -</option>
+                                            <option value="">{ps.noPlayerOption}</option>
                                             {roster.map((p) => (
                                                 <option key={p.id} value={p.id}>
                                                     {p.number != null ? `${p.number}. ` : ""}
@@ -2352,6 +2409,7 @@ export function MatchTimelineModal({
     halfLengthMin?: number | null
     onClose: () => void
 }) {
+    const t = useTranslation()
     const isLive = match.status === "LIVE"
     const hasScore = match.score1 != null && match.score2 != null
     const colors = useTeamColors(uuid)
@@ -2383,7 +2441,7 @@ export function MatchTimelineModal({
                                             letterSpacing="wider"
                                             textTransform="uppercase"
                                         >
-                                            Uživo
+                                            {t.common.live}
                                         </Box>
                                     )}
                                     <HStack gap="1.5" justify="center">
@@ -2415,7 +2473,7 @@ export function MatchTimelineModal({
                                         </>
                                     ) : (
                                         <Text fontSize="sm" color="fg.muted">
-                                            vs
+                                            {t.components.liveMatch.timeline.vsLabel}
                                         </Text>
                                     )}
                                     <HStack gap="1.5" justify="center">
@@ -2437,7 +2495,7 @@ export function MatchTimelineModal({
                                 mb="2"
                                 textAlign="center"
                             >
-                                TIJEK UTAKMICE
+                                {t.components.liveMatch.timeline.heading}
                             </Text>
                             <GoalscorersPanel
                                 tournamentUuid={uuid}
@@ -2455,14 +2513,14 @@ export function MatchTimelineModal({
                                 }}
                                 emptyNote={
                                     match.status === "FINISHED"
-                                        ? "Prikazan samo krajnji rezultat bez strijelca."
+                                        ? t.matchLive.emptyTimelineFinished
                                         : undefined
                                 }
                             />
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="ghost" onClick={onClose}>
-                                Zatvori
+                                {t.common.close}
                             </Button>
                         </Dialog.Footer>
                     </Dialog.Content>
@@ -2502,6 +2560,8 @@ export function FoulControls({
     fouls2First?: number | null
     fouls2Second?: number | null
 }) {
+    const t = useTranslation()
+    const fc = t.components.liveMatch.foulControls
     // Offline-first: taps update the counter instantly and, with no signal,
     // queue in localStorage; the final value flushes (idempotently) on
     // reconnect. Same store is shared by all three live consoles.
@@ -2540,10 +2600,10 @@ export function FoulControls({
                     lineHeight="1"
                     whiteSpace="nowrap"
                 >
-                    Prekršaji
+                    {fc.label}
                 </Text>
                 <IconButton
-                    aria-label="Resetiraj prekršaje"
+                    aria-label={fc.resetAria}
                     size="2xs"
                     variant="ghost"
                     color="fg.muted"
@@ -2559,9 +2619,9 @@ export function FoulControls({
         <ConfirmDialog
             open={confirmResetOpen}
             danger
-            title="Resetirati prekršaje?"
-            description="Akumulirani prekršaji oba tima vraćaju se na 0."
-            confirmLabel="Da, resetiraj"
+            title={fc.resetDialogTitle}
+            description={fc.resetDialogDesc}
+            confirmLabel={fc.resetConfirmLabel}
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={() => { reset(half); setConfirmResetOpen(false) }}
         />

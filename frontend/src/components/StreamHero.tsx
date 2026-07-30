@@ -4,6 +4,7 @@ import { Link as RouterLink } from "react-router-dom"
 import { GiSoccerBall } from "react-icons/gi"
 import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
 
+import { useTranslation, type Dictionary } from "../i18n"
 import StreamPlayer from "./StreamPlayer"
 import LiveScoreBug from "./LiveScoreBug"
 import { BracketBoard, ZoomableBracket, ZoomControls, type ZoomableBracketHandle } from "./BracketBoard"
@@ -60,7 +61,8 @@ const ROW_H = "450px"
 export function buildScoreBug(
     match: LiveMatch | null,
     colors: Record<string, TeamKit>,
-    nextMatch?: ScheduledMatch | null,
+    nextMatch: ScheduledMatch | null | undefined,
+    t: Dictionary,
 ) {
     if (match) {
         return (
@@ -92,12 +94,12 @@ export function buildScoreBug(
                 >
                     <Box color="accent.amber" display="inline-flex"><FiClock size={11} /></Box>
                     <Text fontFamily="mono" fontSize="9px" fontWeight={800} letterSpacing="0.1em" color="white">
-                        SLJEDEĆA UTAKMICA
+                        {t.components.streamHero.nextMatchLabel}
                     </Text>
                 </HStack>
                 <LiveScoreBug
-                    team1Name={nextMatch.team1Name ?? "TBD"}
-                    team2Name={nextMatch.team2Name ?? "TBD"}
+                    team1Name={nextMatch.team1Name ?? t.components.streamHero.tbdTeam}
+                    team2Name={nextMatch.team2Name ?? t.components.streamHero.tbdTeam}
                     score1={0}
                     score2={0}
                     color1={teamColor(colors, nextMatch.team1Id)}
@@ -105,7 +107,7 @@ export function buildScoreBug(
                     shorts1={teamShorts(colors, nextMatch.team1Id)}
                     shorts2={teamShorts(colors, nextMatch.team2Id)}
                     live={false}
-                    centerText={nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
+                    centerText={nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : t.components.streamHero.vsLabel}
                 />
             </VStack>
         )
@@ -147,21 +149,21 @@ export function buildStreamOverlay(
  *  that never touch the match score, so they are left out entirely.
  *
  *  Undefined when nothing is live - the player then draws no columns. */
-export function buildSideScorers(match: LiveMatch | null, events: MatchEventDto[]) {
+export function buildSideScorers(match: LiveMatch | null, events: MatchEventDto[], t: Dictionary) {
     if (!match) return undefined
     const goals = events
         .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL")
         .sort((a, b) => a.minute - b.minute)
     return {
-        left: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team1Id)} align="left" />,
-        right: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team2Id)} align="right" />,
+        left: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team1Id)} align="left" t={t} />,
+        right: <ScorerColumn goals={goals.filter((e) => e.teamId === match.team2Id)} align="right" t={t} />,
     }
 }
 
 /** One side's scorer list as a dark translucent card - the same overlay idiom
  *  as the scorebug, so it stays legible over any footage (bright pitch, night
  *  game, snow). Renders NOTHING at all when that side hasn't scored. */
-function ScorerColumn({ goals, align }: { goals: MatchEventDto[]; align: "left" | "right" }) {
+function ScorerColumn({ goals, align, t }: { goals: MatchEventDto[]; align: "left" | "right"; t: Dictionary }) {
     if (goals.length === 0) return <></>
     return (
         // Deliberately SMALL type: this card sits inside the scorebug's 1.6x
@@ -188,7 +190,7 @@ function ScorerColumn({ goals, align }: { goals: MatchEventDto[]; align: "left" 
                     textAlign={align}
                     css={{ overflowWrap: "anywhere" }}
                 >
-                    {scorerLabel(e)}{" "}
+                    {scorerLabel(e, t)}{" "}
                     <chakra.span fontFamily="mono" fontVariantNumeric="tabular-nums">
                         {e.minute}'
                     </chakra.span>
@@ -201,9 +203,10 @@ function ScorerColumn({ goals, align }: { goals: MatchEventDto[]; align: "left" 
 /** Scorer name for one goal, worded exactly like the rest of the app: an own
  *  goal carries the "(ag)" marker (just "Autogol" when nobody is named), and
  *  an unattributed goal reads "Nepoznati strijelac". */
-function scorerLabel(e: MatchEventDto): string {
-    if (e.type === "OWN_GOAL") return e.playerName != null ? `${e.playerName} (ag)` : "Autogol"
-    return e.playerName ?? "Nepoznati strijelac"
+function scorerLabel(e: MatchEventDto, t: Dictionary): string {
+    const f = t.components.streamHero.scorerFallback
+    if (e.type === "OWN_GOAL") return e.playerName != null ? f.ownGoalNamed(e.playerName) : f.ownGoalUnknown
+    return e.playerName ?? f.unknownScorer
 }
 
 export default function StreamHero({
@@ -235,11 +238,12 @@ export default function StreamHero({
      *  {@link buildStreamOverlay}). */
     centerOverlay?: React.ReactNode
 }) {
+    const t = useTranslation()
     const uuid = match?.tournamentUuid ?? tournamentUuid ?? null
     const colors = useTeamColors(uuid)
     // Nothing live → feature the tournament's next fixture instead.
     const nextMatch = useNextMatch(uuid, null, !match)
-    const scoreBug = buildScoreBug(match, colors, nextMatch)
+    const scoreBug = buildScoreBug(match, colors, nextMatch, t)
     const [mobileLineupsOpen, setMobileLineupsOpen] = useState(false)
     const mobileLineupFixture = useMemo(
         () => lineupFixture(match, nextMatch, uuid),
@@ -248,7 +252,7 @@ export default function StreamHero({
     // ONE events poll for the whole hero: the side panel's ticker reads it
     // (passed down below) and so do the fullscreen scorer columns.
     const events = useMatchEvents(match?.tournamentUuid ?? null, match?.matchId ?? null)
-    const sideScorers = useMemo(() => buildSideScorers(match, events), [match, events])
+    const sideScorers = useMemo(() => buildSideScorers(match, events, t), [match, events, t])
     const mobileLineups = useMatchLineups(mobileLineupFixture)
 
     return (
@@ -314,7 +318,7 @@ export default function StreamHero({
                             flex="1"
                             maxW="240px"
                         >
-                            <FiPlay /> Uživo
+                            <FiPlay /> {t.common.live}
                         </Button>
                     )}
                     {mobileLineupFixture && (
@@ -327,7 +331,7 @@ export default function StreamHero({
                             flex="1"
                             maxW="180px"
                         >
-                            Sastavi
+                            {t.components.streamHero.tabs.lineups}
                         </Button>
                     )}
                 </Flex>
@@ -414,6 +418,7 @@ function useMatchTicker(
     nextMatch?: ScheduledMatch | null,
     eventsProp?: MatchEventDto[],
 ) {
+    const t = useTranslation()
     const uuid = match?.tournamentUuid ?? null
     const matchId = match?.matchId ?? null
     const colors = useTeamColors(match?.tournamentUuid ?? uuidProp ?? null)
@@ -444,15 +449,15 @@ function useMatchTicker(
             if (hl != null) {
                 const first = regulation.filter((e) => e.minute < hl)
                 const second = regulation.filter((e) => e.minute >= hl)
-                if (first.length) out.push({ key: "h1", title: "1. poluvrijeme", events: first })
-                if (second.length) out.push({ key: "h2", title: "2. poluvrijeme", events: second })
+                if (first.length) out.push({ key: "h1", title: t.components.streamHero.firstHalfSection, events: first })
+                if (second.length) out.push({ key: "h2", title: t.components.streamHero.secondHalfSection, events: second })
             } else {
                 out.push({ key: "reg", title: "", events: regulation })
             }
         }
-        if (pens.length) out.push({ key: "pen", title: "Penali", events: pens })
+        if (pens.length) out.push({ key: "pen", title: t.components.streamHero.penaltiesSection, events: pens })
         return out
-    }, [events, match?.halfLengthMin])
+    }, [events, match?.halfLengthMin, t])
 
     return { colors, showUpcoming, bodyRef, sections }
 }
@@ -461,6 +466,7 @@ type MatchTicker = ReturnType<typeof useMatchTicker>
 
 /** Header kicker + "Otvori →" link for the standalone ticker panel. */
 function MatchTickerHeader({ match, showUpcoming }: { match: LiveMatch | null; showUpcoming: boolean }) {
+    const t = useTranslation()
     return (
         <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
             <HStack gap="1.5" minW="0">
@@ -468,7 +474,7 @@ function MatchTickerHeader({ match, showUpcoming }: { match: LiveMatch | null; s
                     ? <Box color="accent.amber" display="inline-flex" flexShrink={0}><FiClock size={12} /></Box>
                     : <PulseDot color="var(--chakra-colors-accent-red)" size={6} />}
                 <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted">
-                    {showUpcoming ? "SLJEDEĆA UTAKMICA" : "TIJEK UTAKMICE"}
+                    {showUpcoming ? t.components.streamHero.nextMatchLabel : t.components.streamHero.matchInProgressLabel}
                 </Text>
             </HStack>
             {match && (
@@ -481,7 +487,7 @@ function MatchTickerHeader({ match, showUpcoming }: { match: LiveMatch | null; s
                     _hover={{ textDecoration: "underline" }}
                 >
                     <RouterLink to={`/turniri/${match.tournamentSlug ?? match.tournamentUuid}/utakmica/${match.matchId}`}>
-                        Otvori →
+                        {t.components.streamHero.openMatchLink}
                     </RouterLink>
                 </chakra.a>
             )}
@@ -500,6 +506,7 @@ function MatchTickerBody({
     nextMatch?: ScheduledMatch | null
     t: MatchTicker
 }) {
+    const tr = useTranslation()
     const { colors, bodyRef, sections } = t
     return match ? (
         <>
@@ -543,7 +550,7 @@ function MatchTickerBody({
                 {sections.length === 0 ? (
                     <Flex h="full" align="center" justify="center">
                         <Text fontSize="xs" color="fg.muted" textAlign="center">
-                            Još nema događaja - golovi i kartoni pojavit će se ovdje.
+                            {tr.components.streamHero.emptyTimeline}
                         </Text>
                     </Flex>
                 ) : (
@@ -583,15 +590,15 @@ function MatchTickerBody({
                 <HStack gap="1.5" justify="flex-end" minW="0">
                     <TeamKitChip colors={colors} teamId={nextMatch.team1Id} size={9} />
                     <Text fontSize="xs" fontWeight={700} color={nextMatch.team1Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team1Name ? undefined : "italic"} textAlign="right" lineClamp={2} minW="0">
-                        {nextMatch.team1Name ?? "TBD"}
+                        {nextMatch.team1Name ?? tr.components.streamHero.tbdTeam}
                     </Text>
                 </HStack>
                 <Text fontFamily="mono" fontSize="sm" fontWeight={800} color="accent.amber" fontVariantNumeric="tabular-nums" lineHeight="1" whiteSpace="nowrap">
-                    {nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : "vs"}
+                    {nextMatch.kickoffAt ? formatKickoff(nextMatch.kickoffAt) : tr.components.streamHero.vsLabel}
                 </Text>
                 <HStack gap="1.5" justify="flex-start" minW="0">
                     <Text fontSize="xs" fontWeight={700} color={nextMatch.team2Name ? "fg.ink" : "fg.muted"} fontStyle={nextMatch.team2Name ? undefined : "italic"} textAlign="left" lineClamp={2} minW="0">
-                        {nextMatch.team2Name ?? "TBD"}
+                        {nextMatch.team2Name ?? tr.components.streamHero.tbdTeam}
                     </Text>
                     <TeamKitChip colors={colors} teamId={nextMatch.team2Id} size={9} />
                 </HStack>
@@ -599,14 +606,14 @@ function MatchTickerBody({
             <Flex flex="1" minH="0" align="center" justify="center" px="4" py="3">
                 <Box textAlign="center">
                     <Text fontSize="2xs" fontWeight={800} color="fg.muted" letterSpacing="wider" textTransform="uppercase">
-                        {roundLabel(nextMatch)}
+                        {roundLabel(nextMatch, tr)}
                     </Text>
                     <Text fontSize="sm" fontWeight={700} color="fg.ink" mt="1">
-                        Utakmica još nije počela
+                        {tr.components.streamHero.matchNotStarted}
                     </Text>
                     {nextMatch.kickoffAt && (
                         <Text fontSize="xs" color="fg.muted" mt="0.5">
-                            Početak u {formatKickoff(nextMatch.kickoffAt)}
+                            {tr.components.streamHero.kickoffAt(formatKickoff(nextMatch.kickoffAt))}
                         </Text>
                     )}
                 </Box>
@@ -616,10 +623,10 @@ function MatchTickerBody({
         <Flex flex="1" align="center" justify="center" px="4">
             <Box textAlign="center">
                 <Text fontSize="sm" fontWeight={700} color="fg.ink">
-                    Trenutno se ne igra nijedna utakmica
+                    {tr.components.streamHero.noLiveMatch}
                 </Text>
                 <Text fontSize="xs" color="fg.muted" mt="1">
-                    Tijek utakmice prikazat će se čim krene sljedeća.
+                    {tr.components.streamHero.noLiveMatchHint}
                 </Text>
             </Box>
         </Flex>
@@ -649,13 +656,15 @@ export function MatchTickerPanel({
 
 /** One event row - minute pill + icon + name, aligned to the event's side. */
 function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
+    const t = useTranslation()
+    const f = t.components.streamHero.scorerFallback
     const own = e.type === "OWN_GOAL"
     const noName = e.playerName == null
     const name = own
-        ? (e.playerName != null ? `${e.playerName} (ag)` : "Autogol")
+        ? (e.playerName != null ? f.ownGoalNamed(e.playerName) : f.ownGoalUnknown)
         : e.type === "PENALTY_MISSED" || e.type === "PENALTY_GOAL"
-            ? (e.playerName ?? "Nepoznati izvođač")
-            : (e.playerName ?? (e.type === "GOAL" ? "Nepoznati strijelac" : "Nepoznati igrač"))
+            ? (e.playerName ?? f.unknownPenaltyTaker)
+            : (e.playerName ?? (e.type === "GOAL" ? f.unknownScorer : f.unknownPlayer))
 
     const icon =
         e.type === "GOAL" || e.type === "PENALTY_GOAL" ? (
@@ -800,6 +809,7 @@ function MobileLineupsDialog({
     fixture: LineupFixture | null
     lineups: MatchLineups
 }) {
+    const t = useTranslation()
     return (
         <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open) onClose() }} placement="center" scrollBehavior="inside">
             <Portal>
@@ -807,9 +817,9 @@ function MobileLineupsDialog({
                 <Dialog.Positioner>
                     <Dialog.Content maxW="92vw" w="420px" maxH="82vh" rounded="xl">
                         <Dialog.Header alignItems="center" justifyContent="space-between" pb="1">
-                            <Dialog.Title>Sastavi</Dialog.Title>
+                            <Dialog.Title>{t.components.streamHero.tabs.lineups}</Dialog.Title>
                             <Dialog.CloseTrigger asChild>
-                                <IconButton aria-label="Zatvori sastave" size="sm" variant="ghost" rounded="full">
+                                <IconButton aria-label={t.components.streamHero.closeLineupsAria} size="sm" variant="ghost" rounded="full">
                                     <FiX />
                                 </IconButton>
                             </Dialog.CloseTrigger>
@@ -827,14 +837,15 @@ function MobileLineupsDialog({
 }
 
 function StreamLineupsBody({ fixture, d }: { fixture: LineupFixture | null; d: MatchLineups }) {
+    const t = useTranslation()
     const colors = useTeamColors(fixture?.tournamentUuid)
     if (!fixture) {
         return (
             <Flex flex="1" align="center" justify="center" px="4">
                 <Box textAlign="center">
-                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Nema aktivne utakmice</Text>
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink">{t.components.streamHero.noActiveMatch}</Text>
                     <Text fontSize="xs" color="fg.muted" mt="1">
-                        Sastavi će se prikazati kad utakmica krene.
+                        {t.components.streamHero.lineupsWillShow}
                     </Text>
                 </Box>
             </Flex>
@@ -885,6 +896,7 @@ function StreamTeamLineup({
     align: "left" | "right"
     withDivider?: boolean
 }) {
+    const t = useTranslation()
     const sorted = [...(players ?? [])].sort((a, b) => {
         const an = a.number ?? 10_000
         const bn = b.number ?? 10_000
@@ -901,12 +913,12 @@ function StreamTeamLineup({
         >
             {players == null ? (
                 <Flex minH="80px" align="center" justify="center">
-                    <Text fontSize="xs" color="fg.muted">Učitavanje…</Text>
+                    <Text fontSize="xs" color="fg.muted">{t.common.loading}</Text>
                 </Flex>
             ) : sorted.length === 0 ? (
                 <Flex minH="80px" align="center" justify="center" px="2">
                     <Text fontSize="11px" color="fg.muted" textAlign="center">
-                        Nema unesenih sastava za ekipu.
+                        {t.components.streamHero.noLineupEntered}
                     </Text>
                 </Flex>
             ) : (
@@ -939,7 +951,7 @@ function StreamTeamLineup({
                                 </Text>
                                 {p.captain && (
                                     <Box as="span" px="1" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="8px" fontWeight={900}>
-                                        K
+                                        {t.components.streamHero.captainBadge}
                                     </Box>
                                 )}
                             </HStack>
@@ -958,6 +970,7 @@ type PanelMode = "groups" | "bracket"
 /** Skupine ↔ Završnica segmented toggle - shared by the standalone header and
  *  the tabbed side panel's Tablica tab. */
 function ModeToggle({ mode, onPick }: { mode: PanelMode; onPick: (m: PanelMode) => void }) {
+    const t = useTranslation()
     return (
         <HStack gap="1" bg="bg.panel" rounded="full" p="1" borderWidth="1px" borderColor="border">
             {(["groups", "bracket"] as PanelMode[]).map((m) => (
@@ -977,7 +990,7 @@ function ModeToggle({ mode, onPick }: { mode: PanelMode; onPick: (m: PanelMode) 
                     _hover={mode === m ? undefined : { color: "fg.ink" }}
                     transition="background 150ms, color 150ms"
                 >
-                    {m === "groups" ? "Skupine" : "Završnica"}
+                    {m === "groups" ? t.components.streamHero.groupsToggle : t.components.streamHero.finalsToggle}
                 </chakra.button>
             ))}
         </HStack>
@@ -1073,14 +1086,15 @@ type GroupTable = ReturnType<typeof useGroupTable>
 
 /** Group chips + live standings / mini bracket (no shell / no kicker header). */
 function GroupTableBody({ d }: { d: GroupTable }) {
+    const t = useTranslation()
     const { uuid, groups, bracket, mode, selected, live, liveTeamIds, setPickedId, liveMatchId } = d
     if (!uuid) {
         return (
             <Flex flex="1" align="center" justify="center" px="4">
                 <Box textAlign="center">
-                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Nema aktivnog turnira</Text>
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink">{t.components.streamHero.noActiveTournament}</Text>
                     <Text fontSize="xs" color="fg.muted" mt="1">
-                        Prikaz se pojavi za vrijeme utakmice.
+                        {t.components.streamHero.noActiveTournamentHint}
                     </Text>
                 </Box>
             </Flex>
@@ -1128,15 +1142,15 @@ function GroupTableBody({ d }: { d: GroupTable }) {
             {!selected || !live ? (
                 <Flex flex="1" align="center" justify="center" px="4">
                     <Box textAlign="center">
-                        <Text fontSize="sm" fontWeight={700} color="fg.ink">Turnir nema grupnu fazu</Text>
-                        <Text fontSize="xs" color="fg.muted" mt="1">Rezultati su na stranici turnira.</Text>
+                        <Text fontSize="sm" fontWeight={700} color="fg.ink">{t.components.streamHero.noGroupStage}</Text>
+                        <Text fontSize="xs" color="fg.muted" mt="1">{t.components.streamHero.noGroupStageHint}</Text>
                     </Box>
                 </Flex>
             ) : (
                 <Box flex="1" minH="0" overflowY="auto" px="2.5" py="1.5">
                     {/* Column header. */}
                     <Grid templateColumns="16px minmax(0,1fr) 26px 32px 30px" gap="1" px="1" pb="1">
-                        {["#", "EKIPA", "UT", "+/-", "BOD"].map((h, i) => (
+                        {t.components.streamHero.tableHeaders.map((h, i) => (
                             <Text
                                 key={h}
                                 fontFamily="mono"
@@ -1196,13 +1210,14 @@ export function GroupTablePanel({
      *  isn't playing a live match right now (match would be null). */
     uuid?: string | null
 }) {
+    const t = useTranslation()
     const d = useGroupTable(match, uuidProp)
     return (
         <PanelShell>
             {/* Fixed header: kicker + tab toggle + tournament link. */}
             <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
                 <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted" flexShrink={0}>
-                    {d.mode === "bracket" ? "ZAVRŠNICA" : "TABLICA SKUPINE"}
+                    {d.mode === "bracket" ? t.components.streamHero.finalsHeader : t.components.streamHero.groupTableHeader}
                 </Text>
                 <HStack gap="2" flexShrink={0}>
                     {d.showToggle && <ModeToggle mode={d.mode} onPick={d.setManualMode} />}
@@ -1215,7 +1230,7 @@ export function GroupTablePanel({
                             _hover={{ textDecoration: "underline" }}
                         >
                             <RouterLink to={`/turniri/${match.tournamentSlug ?? match.tournamentUuid}`}>
-                                Turnir →
+                                {t.components.streamHero.tournamentLink}
                             </RouterLink>
                         </chakra.a>
                     )}
@@ -1255,6 +1270,7 @@ export function StreamSidePanel({
      *  the panel fetches its own. */
     events?: MatchEventDto[]
 }) {
+    const t = useTranslation()
     const [tab, setTab] = useState<"match" | "lineups" | "table">("match")
     const ticker = useMatchTicker(match, uuid, nextMatch, events)
     const sideLineupFixture = useMemo(
@@ -1287,7 +1303,11 @@ export function StreamSidePanel({
                 )}
                 <HStack justify="center" gap="2" minW="0" wrap="wrap">
                     <HStack gap="1" bg="bg.panel" rounded="full" p="1" borderWidth="1px" borderColor="border" flexShrink={0}>
-                        {([["match", "Tijek"], ["lineups", "Sastavi"], ["table", "Tablica"]] as const).map(([k, label]) => (
+                        {([
+                            ["match", t.components.streamHero.tabs.match],
+                            ["lineups", t.components.streamHero.tabs.lineups],
+                            ["table", t.components.streamHero.tabs.table],
+                        ] as const).map(([k, label]) => (
                             <chakra.button
                                 key={k}
                                 type="button"
@@ -1341,13 +1361,13 @@ export function StreamSidePanel({
                             maxW="240px"
                             fontWeight={800}
                         >
-                            <FiPlay /> Uživo
+                            <FiPlay /> {t.common.live}
                         </Button>
                     )}
                     {tournamentHref && (
                         <Button asChild size="sm" variant="outline" colorPalette="pitch" flexShrink={0}>
                             <RouterLink to={`/turniri/${tournamentHref}`}>
-                                <FiHome /> Turnir
+                                <FiHome /> {t.components.streamHero.tournamentButton}
                             </RouterLink>
                         </Button>
                     )}
@@ -1397,6 +1417,7 @@ export function UpcomingMatchPanel({
     match: LiveMatch | null
     uuid?: string | null
 }) {
+    const t = useTranslation()
     const uuid = match?.tournamentUuid ?? uuidProp ?? null
     const colors = useTeamColors(uuid)
     const next = useNextMatch(uuid, match?.matchId ?? null)
@@ -1405,12 +1426,12 @@ export function UpcomingMatchPanel({
         <PanelShell>
             <Flex px="3" py="2" borderBottomWidth="1px" borderColor="border" align="center" justify="space-between" gap="2">
                 <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted" flexShrink={0}>
-                    NADOLAZEĆA UTAKMICA
+                    {t.components.streamHero.upcomingMatchLabel}
                 </Text>
                 {next && (
                     <HStack gap="2" minW="0">
                         <Text fontSize="10px" fontWeight={800} color="fg.muted" truncate minW="0">
-                            {roundLabel(next)}
+                            {roundLabel(next, t)}
                         </Text>
                         {next.kickoffAt && (
                             <Text
@@ -1435,7 +1456,7 @@ export function UpcomingMatchPanel({
             ) : (
                 <Flex px="3" py="3" align="center" justify="center">
                     <Text fontSize="xs" color="fg.muted" textAlign="center">
-                        Nema više utakmica na rasporedu.
+                        {t.components.streamHero.noMoreMatches}
                     </Text>
                 </Flex>
             )}
@@ -1444,6 +1465,7 @@ export function UpcomingMatchPanel({
 }
 
 function UpcomingRow({ name, jersey, shorts }: { name: string | null; jersey: string | null; shorts: string | null }) {
+    const t = useTranslation()
     return (
         <HStack gap="2" minW="0">
             {/* Fixed slot so both team names line up whether or not a kit colour
@@ -1459,7 +1481,7 @@ function UpcomingRow({ name, jersey, shorts }: { name: string | null; jersey: st
                 truncate
                 minW="0"
             >
-                {name ?? "TBD"}
+                {name ?? t.components.streamHero.tbdTeam}
             </Text>
         </HStack>
     )
@@ -1482,9 +1504,10 @@ function kickoffMs(iso: string | null): number {
 }
 
 /** Round/group label for the card (e.g. "Skupina A", "ČF", "Finale"). */
-function roundLabel(m: ScheduledMatch): string {
-    if (m.stage === "GROUP") return m.groupName ? `Skupina ${m.groupName}` : "Skupina"
-    return ROUND_ABBR[m.stage] ?? m.stage
+function roundLabel(m: ScheduledMatch, t: Dictionary): string {
+    if (m.stage === "GROUP") return t.components.streamHero.groupFallback(m.groupName)
+    const roundAbbr: Record<string, string> = t.components.streamHero.roundAbbr
+    return roundAbbr[m.stage] ?? m.stage
 }
 
 /** Kickoff as HH:mm (adds a dd.MM. prefix when it isn't today). */
@@ -1498,16 +1521,6 @@ function formatKickoff(iso: string): string {
 
 /* ═══════════════════ Mini bracket (završnica) ═══════════════════ */
 
-/** Compact round labels for the mini bracket columns. */
-const ROUND_ABBR: Record<string, string> = {
-    ROUND_OF_32: "1/16",
-    ROUND_OF_16: "1/8",
-    QUARTERFINAL: "ČF",
-    SEMIFINAL: "PF",
-    FINAL: "Finale",
-    THIRD_PLACE: "3. mj.",
-}
-
 /** Compact BracketBoard sizing for the side-panel embed - roughly the old
  *  MiniMatch column width, a fraction of the full Eliminacija tab's. */
 const MINI_CARD_W = 104
@@ -1518,6 +1531,8 @@ const MINI_HEADER_H = 16
 const MINI_HEADER_GAP = 6
 
 function MiniBracket({ bracket, liveMatchId }: { bracket: Bracket | null; liveMatchId: number | null }) {
+    const t = useTranslation()
+    const roundAbbr: Record<string, string> = t.components.streamHero.roundAbbr
     const zoomRef = useRef<ZoomableBracketHandle>(null)
     const liveRefs = useRef<Map<number, HTMLDivElement>>(new Map())
     const autoFocusedRef = useRef<number | null>(null)
@@ -1537,9 +1552,9 @@ function MiniBracket({ bracket, liveMatchId }: { bracket: Bracket | null; liveMa
         return (
             <Flex flex="1" align="center" justify="center" px="4">
                 <Box textAlign="center">
-                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Završnica još nije određena</Text>
+                    <Text fontSize="sm" fontWeight={700} color="fg.ink">{t.components.streamHero.bracketNotDecided}</Text>
                     <Text fontSize="xs" color="fg.muted" mt="1">
-                        Prikazat će se čim se generira ždrijeb eliminacije.
+                        {t.components.streamHero.bracketNotDecidedHint}
                     </Text>
                 </Box>
             </Flex>
@@ -1574,7 +1589,7 @@ function MiniBracket({ bracket, liveMatchId }: { bracket: Bracket | null; liveMa
                     minCardHeight={MINI_MIN_CARD_H}
                     headerHeight={MINI_HEADER_H}
                     headerGap={MINI_HEADER_GAP}
-                    roundLabel={(round) => (ROUND_ABBR[round.stage] ?? round.title ?? "").toUpperCase()}
+                    roundLabel={(round) => (roundAbbr[round.stage] ?? round.title ?? "").toUpperCase()}
                     renderMatch={(m) => withRef(m, <MiniMatch m={m} live={m.matchId === liveMatchId} />)}
                     thirdPlace={bracket.thirdPlace}
                     renderThirdPlace={(m) => withRef(m, <MiniMatch m={m} live={m.matchId === liveMatchId} />)}
@@ -1625,6 +1640,7 @@ function MiniMatchRow({
     score: number | null
     winner: boolean
 }) {
+    const t = useTranslation()
     // "brand.subtle" (the pitch-teal tint) matches the winner highlight on the
     // full Eliminacija bracket's TeamRow - not the generic Chakra green, so
     // the two bracket views read as the same colour scheme.
@@ -1638,7 +1654,7 @@ function MiniMatchRow({
                 truncate
                 minW="0"
             >
-                {name ?? "TBD"}
+                {name ?? t.components.streamHero.tbdTeam}
             </Text>
             <Text
                 fontSize="10px"

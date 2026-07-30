@@ -12,6 +12,7 @@ import {
 } from "../api/spectoStream"
 import { GhostButton, MonoLabel, SectionCard, StatusChip } from "../ui/pitch"
 import { showError, showSuccess } from "../toaster"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    SpectoStreamCard - organizer-only panel on the "Detalji" tab that lets the
@@ -30,6 +31,8 @@ import { showError, showSuccess } from "../toaster"
 const MASKED_KEY = "•".repeat(10)
 
 export default function SpectoStreamCard({ uuid }: { uuid: string }) {
+    const t = useTranslation()
+    const tc = t.components.spectoStreamCard
     const [status, setStatus] = useState<SpectoStatus | null>(null)
     const [loading, setLoading] = useState(true)
     const [loadFailed, setLoadFailed] = useState(false)
@@ -80,7 +83,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
     }
 
     async function handleUnlink() {
-        if (!window.confirm("Odspojiti stream? Eventi se više neće slati.")) return
+        if (!window.confirm(tc.disconnectConfirm)) return
         setUnlinking(true)
         try {
             await unlinkSpecto(uuid)
@@ -111,9 +114,9 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
     async function copyText(value: string) {
         try {
             await navigator.clipboard.writeText(value)
-            showSuccess("Kopirano.")
+            showSuccess(tc.copySuccess)
         } catch {
-            showError("Kopiranje nije uspjelo.")
+            showError(tc.copyFail)
         }
     }
 
@@ -121,7 +124,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
     const titleNode = (
         <Box>
             <MonoLabel color="pitch.500" letterSpacing="0.14em">SPECTOSTREAM</MonoLabel>
-            <Box mt="0.5">Live stream overlay</Box>
+            <Box mt="0.5">{tc.subtitle}</Box>
         </Box>
     )
 
@@ -130,7 +133,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
             <SectionCard title={titleNode} icon={FiRadio}>
                 <HStack color="fg.muted" gap="2">
                     <Spinner size="sm" />
-                    <Text fontSize="sm">Učitavanje…</Text>
+                    <Text fontSize="sm">{t.common.loading}</Text>
                 </HStack>
             </SectionCard>
         )
@@ -140,7 +143,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
         return (
             <SectionCard title={titleNode} icon={FiRadio}>
                 <Text fontSize="sm" color="fg.muted">
-                    Trenutno nije moguće dohvatiti SpectoStream status.
+                    {tc.statusFetchFailed}
                 </Text>
             </SectionCard>
         )
@@ -150,7 +153,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
         return (
             <SectionCard title={titleNode} icon={FiRadio}>
                 <Text fontSize="sm" color="fg.muted">
-                    Integracija nije konfigurirana na serveru.
+                    {tc.notConfigured}
                 </Text>
             </SectionCard>
         )
@@ -161,8 +164,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
             <SectionCard title={titleNode} icon={FiRadio}>
                 <VStack align="stretch" gap="3">
                     <Text fontSize="13px" color="fg.soft" lineHeight="1.5">
-                        Poveži turnir sa SpectoStream platformom - dobit ćeš OBS podatke za
-                        kameru, a zapisnik automatski šalje rezultat i sat na stream.
+                        {tc.connectPromptDesc}
                     </Text>
                     <Button
                         colorPalette="pitch"
@@ -171,7 +173,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
                         loading={provisioning}
                         onClick={handleProvision}
                     >
-                        <FiLink /> Poveži stream
+                        <FiLink /> {tc.connectButton}
                     </Button>
                 </VStack>
             </SectionCard>
@@ -183,7 +185,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
         <SectionCard
             title={titleNode}
             icon={FiRadio}
-            action={<StatusChip status="active" label="Povezan" size="sm" />}
+            action={<StatusChip status="active" label={tc.connectedLabel} size="sm" />}
         >
             <VStack align="stretch" gap="4">
                 {status.streamId && (
@@ -202,28 +204,28 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
                         loading={provisioning}
                         onClick={handleProvision}
                     >
-                        <FiEye /> Prikaži OBS podatke
+                        <FiEye /> {tc.showObsDataButton}
                     </Button>
                 ) : (
                     <VStack align="stretch" gap="2">
                         {provisionInfo.obsServer && (
                             <CopyRow
-                                label="OBS SERVER"
+                                label={tc.obsServerLabel}
                                 display={provisionInfo.obsServer}
-                                copyAria="Kopiraj OBS server"
+                                copyAria={tc.copyObsServerAria}
                                 onCopy={() => copyText(provisionInfo.obsServer!)}
                             />
                         )}
                         {provisionInfo.obsStreamKey && (
                             <CopyRow
-                                label="STREAM KEY"
+                                label={tc.streamKeyLabel}
                                 display={keyVisible ? provisionInfo.obsStreamKey : MASKED_KEY}
-                                copyAria="Kopiraj stream key"
+                                copyAria={tc.copyStreamKeyAria}
                                 onCopy={() => copyText(provisionInfo.obsStreamKey!)}
                                 extraAction={
                                     <IconButton
-                                        aria-label={keyVisible ? "Sakrij stream key" : "Prikaži stream key"}
-                                        title={keyVisible ? "Sakrij stream key" : "Prikaži stream key"}
+                                        aria-label={keyVisible ? tc.hideStreamKeyAria : tc.showStreamKeyAria}
+                                        title={keyVisible ? tc.hideStreamKeyAria : tc.showStreamKeyAria}
                                         size="xs"
                                         variant="ghost"
                                         colorPalette="pitch"
@@ -238,17 +240,17 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
                             banner / hero player takes exactly this m3u8. */}
                         {provisionInfo.playbackUrl && (
                             <CopyRow
-                                label="LINK ZA PRIKAZ (M3U8)"
+                                label={tc.playbackLinkLabel}
                                 display={provisionInfo.playbackUrl}
-                                copyAria="Kopiraj link za prikaz"
+                                copyAria={tc.copyPlaybackLinkAria}
                                 onCopy={() => copyText(provisionInfo.playbackUrl!)}
                             />
                         )}
                         {provisionInfo.embedSnippet && (
                             <CopyRow
-                                label="EMBED KOD (za vanjske stranice)"
+                                label={tc.embedCodeLabel}
                                 display={provisionInfo.embedSnippet}
-                                copyButtonLabel="Kopiraj embed kod"
+                                copyButtonLabel={tc.copyEmbedButton}
                                 onCopy={() => copyText(provisionInfo.embedSnippet!)}
                             />
                         )}
@@ -257,11 +259,11 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
 
                 {/* Poruka na stream - short overlay message. */}
                 <Box>
-                    <MonoLabel fontSize="9px">PORUKA NA STREAM</MonoLabel>
+                    <MonoLabel fontSize="9px">{tc.messageLabel}</MonoLabel>
                     <HStack mt="1.5" gap="2">
                         <Input
                             size="sm"
-                            placeholder="Kratka poruka za gledatelje…"
+                            placeholder={tc.messagePlaceholder}
                             maxLength={200}
                             value={messageText}
                             onChange={(e) => setMessageText(e.target.value)}
@@ -278,7 +280,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
                             disabled={!messageText.trim()}
                             onClick={handleSendMessage}
                         >
-                            <FiSend /> Pošalji
+                            <FiSend /> {t.common.send}
                         </Button>
                     </HStack>
                 </Box>
@@ -293,7 +295,7 @@ export default function SpectoStreamCard({ uuid }: { uuid: string }) {
                     py="2"
                     fontSize="13px"
                 >
-                    {unlinking ? "Odspajanje…" : "Odspoji"}
+                    {unlinking ? tc.disconnectingButton : tc.disconnectButton}
                 </GhostButton>
             </VStack>
         </SectionCard>
@@ -320,6 +322,7 @@ function CopyRow({
     copyButtonLabel?: string
     copyAria?: string
 }) {
+    const t = useTranslation()
     return (
         <Flex align="center" justify="space-between" gap="2" bg="bg.subtle" rounded="md" px="3" py="2">
             <Box minW="0" flex="1">
@@ -342,8 +345,8 @@ function CopyRow({
                     </Button>
                 ) : (
                     <IconButton
-                        aria-label={copyAria ?? `Kopiraj - ${label}`}
-                        title={copyAria ?? `Kopiraj - ${label}`}
+                        aria-label={copyAria ?? t.components.spectoStreamCard.copyAriaFallback(label)}
+                        title={copyAria ?? t.components.spectoStreamCard.copyAriaFallback(label)}
                         size="xs"
                         variant="ghost"
                         colorPalette="pitch"

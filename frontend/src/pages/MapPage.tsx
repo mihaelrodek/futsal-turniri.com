@@ -30,6 +30,7 @@ import { haversineKm } from "../utils/distance"
 import { GhostButton, MonoLabel, PulseDot } from "../ui/pitch"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { useColorMode } from "../color-mode"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    MapPage - "Pitch" theme /karta.
@@ -241,11 +242,14 @@ const MAP_DESKTOP_H = "calc(100dvh - 265px)"
 
 /** Pin colour legend - rendered in the filter bar on desktop and as a small
  *  overlay pill on the map itself on phones (where the bar is a single row). */
-const PIN_LEGEND = [
-    { label: "Danas", color: "pitch.400" },
-    { label: "Tjedan", color: "accent.amber" },
-    { label: "Kasnije", color: "accent.red" },
-] as const
+function usePinLegend() {
+    const tr = useTranslation()
+    return [
+        { label: tr.pages.mapPage.legendToday, color: "pitch.400" },
+        { label: tr.pages.mapPage.legendWeek, color: "accent.amber" },
+        { label: tr.pages.mapPage.legendLater, color: "accent.red" },
+    ] as const
+}
 
 /** Desktop sidebar list item - coloured pin glyph + name + city/date + chev. */
 function SidebarItem({
@@ -259,6 +263,7 @@ function SidebarItem({
 }) {
     const cls = classify(t.startAt, t.liveMatch)
     const color = PIN_COLORS[cls]
+    const tr = useTranslation()
     return (
         <Flex
             align="center"
@@ -310,7 +315,7 @@ function SidebarItem({
                             flexShrink={0}
                         >
                             <PulseDot color="accent.red" size={4} />
-                            UŽIVO
+                            {tr.pages.mapPage.liveBadge}
                         </HStack>
                     )}
                 </HStack>
@@ -365,9 +370,12 @@ function MobileChip({
 }
 
 export default function MapPage() {
+    const tr = useTranslation()
+    const pinLegend = usePinLegend()
+
     useDocumentHead({
-        title: "Karta turnira - futsal-turniri.com",
-        description: "Pregled svih nadolazećih futsal turnira u Hrvatskoj na karti.",
+        title: tr.pages.mapPage.documentTitle,
+        description: tr.pages.mapPage.documentDescription,
         canonical: "https://futsal-turniri.com/karta",
     })
 
@@ -485,10 +493,10 @@ export default function MapPage() {
                         {/* Shortened on phones - the full label alone ate a
                             third of the row's width. */}
                         <Box display={{ base: "none", sm: "block" }} flexShrink={0}>
-                            <MonoLabel>U KRUGU OD</MonoLabel>
+                            <MonoLabel>{tr.pages.mapPage.radiusLabelFull}</MonoLabel>
                         </Box>
                         <Box display={{ base: "block", sm: "none" }} flexShrink={0}>
-                            <MonoLabel>KRUG</MonoLabel>
+                            <MonoLabel>{tr.pages.mapPage.radiusLabelShort}</MonoLabel>
                         </Box>
                         <Box flex="1" minW="0">
                             <Slider.Root
@@ -513,10 +521,10 @@ export default function MapPage() {
                             switching to a word at the far end. */}
                         <Box fontFamily="mono" fontSize="13px" fontWeight={700} color="fg.ink" minW={{ base: "48px", md: "56px" }} textAlign="right">
                             {radiusDisabled
-                                ? "-"
+                                ? tr.pages.mapPage.radiusDisabled
                                 : radiusKm >= MAP_RADIUS_MAX_KM
-                                    ? "∞ km"
-                                    : `${radiusKm} km`}
+                                    ? tr.pages.mapPage.radiusUnlimited
+                                    : tr.pages.mapPage.radiusValue(radiusKm)}
                         </Box>
                     </HStack>
                     <HStack
@@ -529,7 +537,7 @@ export default function MapPage() {
                         {/* Legend - desktop only; on phones it lives as an
                             overlay pill in the map's bottom-left corner. */}
                         <HStack gap="3" wrap="wrap" display={{ base: "none", md: "flex" }}>
-                            {PIN_LEGEND.map((l) => (
+                            {pinLegend.map((l) => (
                                 <HStack key={l.label} gap="1.5">
                                     <Box w="10px" h="10px" rounded="full" bg={l.color} />
                                     <Text fontSize="12px" color="fg.ink" fontWeight={600}>
@@ -543,8 +551,8 @@ export default function MapPage() {
                             labelled ghost button. */}
                         <Box display={{ base: "block", md: "none" }}>
                             <IconButton
-                                aria-label={geoStatus === "granted" ? "Sakrij lokaciju" : "Moja lokacija"}
-                                title={geoStatus === "granted" ? "Sakrij lokaciju" : "Moja lokacija"}
+                                aria-label={geoStatus === "granted" ? tr.pages.mapPage.locationHide : tr.pages.mapPage.locationShow}
+                                title={geoStatus === "granted" ? tr.pages.mapPage.locationHide : tr.pages.mapPage.locationShow}
                                 size="sm"
                                 variant="outline"
                                 rounded="full"
@@ -560,7 +568,7 @@ export default function MapPage() {
                         <Box display={{ base: "none", md: "block" }}>
                             {geoStatus === "granted" ? (
                                 <GhostButton px="3" py="1.5" fontSize="13px" icon={<FiEyeOff size={14} />} onClick={hideLocation}>
-                                    Sakrij lokaciju
+                                    {tr.pages.mapPage.locationHide}
                                 </GhostButton>
                             ) : (
                                 <GhostButton
@@ -571,7 +579,7 @@ export default function MapPage() {
                                     onClick={requestLocation}
                                     disabled={geoStatus === "asking"}
                                 >
-                                    Moja lokacija
+                                    {tr.pages.mapPage.locationShow}
                                 </GhostButton>
                             )}
                         </Box>
@@ -587,7 +595,7 @@ export default function MapPage() {
             {geoStatus === "denied" && (
                 <Box bg="bg.surfaceTint2" borderWidth="1px" borderColor="border" rounded="lg" px="4" py="3">
                     <Text fontSize="sm" color="fg.soft">
-                        Pristup lokaciji je odbijen. Možeš ga uključiti kasnije u postavkama preglednika.
+                        {tr.pages.mapPage.locationDenied}
                     </Text>
                 </Box>
             )}
@@ -637,7 +645,7 @@ export default function MapPage() {
                                 cursor="pointer"
                                 onClick={() => setSelectedUuid(null)}
                             >
-                                Poništi odabir
+                                {tr.pages.mapPage.clearSelection}
                             </Box>
                         )}
                     </Flex>
@@ -656,7 +664,7 @@ export default function MapPage() {
                                 textAlign="center"
                             >
                                 <Text fontSize="sm" color="fg.muted">
-                                    Nema turnira u odabranom krugu.
+                                    {tr.pages.mapPage.emptyRadius}
                                 </Text>
                             </Box>
                         ) : (
@@ -761,12 +769,12 @@ export default function MapPage() {
                                                 }}
                                             >
                                                 {cls === "live"
-                                                    ? "UŽIVO"
+                                                    ? tr.pages.mapPage.liveBadge
                                                     : cls === "today"
-                                                        ? "Danas"
+                                                        ? tr.pages.mapPage.statusToday
                                                         : cls === "soon"
-                                                            ? "Uskoro"
-                                                            : "Kasnije"}
+                                                            ? tr.pages.mapPage.statusSoon
+                                                            : tr.pages.mapPage.statusLater}
                                             </span>
                                             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                                                 <FiCalendar size={12} />
@@ -792,7 +800,7 @@ export default function MapPage() {
                                                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                                                         <FiDollarSign size={12} />
                                                         <span>
-                                                            Kotizacija: <strong>{entry}</strong>
+                                                            {tr.pages.mapPage.entryFeeLabel} <strong>{entry}</strong>
                                                         </span>
                                                     </div>
                                                 )
@@ -812,7 +820,7 @@ export default function MapPage() {
                                                     fontWeight: 700,
                                                 }}
                                             >
-                                                Više detalja →
+                                                {tr.pages.mapPage.moreDetails}
                                             </RouterLink>
                                         </div>
                                     </Popup>
@@ -823,7 +831,7 @@ export default function MapPage() {
                         {userPos && (
                             <Marker position={userPos} icon={makePinIcon("", true)}>
                                 <Popup>
-                                    <strong>Tvoja lokacija</strong>
+                                    <strong>{tr.pages.mapPage.yourLocation}</strong>
                                 </Popup>
                             </Marker>
                         )}
@@ -872,7 +880,7 @@ export default function MapPage() {
                         shadow="sm"
                         opacity={0.95}
                     >
-                        {PIN_LEGEND.map((l) => (
+                        {pinLegend.map((l) => (
                             <HStack key={l.label} gap="1">
                                 <Box w="7px" h="7px" rounded="full" bg={l.color} flexShrink={0} />
                                 <Text fontSize="10px" color="fg.soft" fontWeight={700}>

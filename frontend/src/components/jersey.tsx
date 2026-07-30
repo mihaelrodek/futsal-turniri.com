@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { qk } from "../queryClient"
 import { fetchTeamJerseyColors, type TeamKit } from "../api/tournaments"
+import { useTranslation } from "../i18n"
 
 export function useTeamColors(uuid: string | null | undefined): Record<string, TeamKit> {
     const { data } = useQuery({
@@ -45,6 +46,7 @@ export function teamShorts(
 /** Small single-colour dot (kept for surfaces that show one colour). Renders
  *  nothing when there's no colour. Bordered so white/light kits stay visible. */
 export function JerseyDot({ color, size = 10 }: { color?: string | null; size?: number }) {
+    const t = useTranslation()
     if (!color) return null
     return (
         <Box
@@ -57,7 +59,7 @@ export function JerseyDot({ color, size = 10 }: { color?: string | null; size?: 
             borderWidth="1px"
             borderColor="blackAlpha.400"
             flexShrink={0}
-            title="Boja dresa"
+            title={t.components.jersey.jerseyColorTitle}
             aria-hidden
         />
     )
@@ -106,6 +108,7 @@ export function KitSwatch({
     borderColor?: string
     rounded?: string
 }) {
+    const t = useTranslation()
     if (!jersey && !shorts) return null
     const h = Math.round(size * 1.3)
     // Mirror the old single-colour fallback: when only one colour is set the
@@ -122,7 +125,7 @@ export function KitSwatch({
             h={`${h}px`}
             borderRadius={rounded}
             flexShrink={0}
-            title="Boja dresa / hlača"
+            title={t.components.jersey.kitColorTitle}
             aria-hidden
         >
             <chakra.svg

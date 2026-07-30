@@ -54,6 +54,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { ExportDialog, isMultiDay, kickoffLabel, type ExportMeta } from "./TournamentExport"
 import { buildKoMatchCodes } from "../utils/knockoutCodes"
+import { useTranslation, type Dictionary } from "../i18n"
 
 /**
  * "Eliminacija" tab - the knockout bracket.
@@ -99,6 +100,7 @@ function BracketChip({
     onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void
     onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void
 }) {
+    const t = useTranslation()
     return (
         <Flex
             align="center"
@@ -123,7 +125,7 @@ function BracketChip({
         >
             <Text as="span" color="fg.subtle" fontSize="md" flexShrink={0} lineHeight="1" css={{ letterSpacing: "-2px" }}>⠿</Text>
             <Box minW="0" flex="1">
-                <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || "Bez imena"}</Text>
+                <Text fontSize="sm" fontWeight={700} truncate>{name?.trim() || t.components.bracketTab.noNameFallback}</Text>
                 {sub ? (
                     <Text fontSize="2xs" color="fg.muted" fontWeight={500} truncate>{sub}</Text>
                 ) : null}
@@ -132,15 +134,18 @@ function BracketChip({
     )
 }
 
-/** Knockout round name for a round with the given number of matches. */
-function koStageName(matchesInRound: number): string {
+/** Knockout round name for a round with the given number of matches. Reuses
+ *  `components.liveControlTab.stageLabels` (same full-word Croatian names)
+ *  rather than duplicating a third stage-label set. */
+function koStageName(t: Dictionary, matchesInRound: number): string {
+    const labels = t.components.liveControlTab.stageLabels
     switch (matchesInRound) {
-        case 1: return "Finale"
-        case 2: return "Polufinale"
-        case 4: return "Četvrtfinale"
-        case 8: return "Osmina finala"
-        case 16: return "Šesnaestina finala"
-        default: return `Kolo (${matchesInRound})`
+        case 1: return labels.FINAL
+        case 2: return labels.SEMIFINAL
+        case 4: return labels.QUARTERFINAL
+        case 8: return labels.ROUND_OF_16
+        case 16: return labels.ROUND_OF_32
+        default: return t.components.bracketTab.stage.roundCountFallback(matchesInRound)
     }
 }
 /** Short round tag (for "Pobjednik ..." placeholders in the sketch). */
@@ -217,6 +222,7 @@ function buildBracketSketch(
     matchCount: number,
     bracketN: number,
     teamName: (id: number) => string,
+    t: Dictionary,
 ): SketchRound[] {
     const nm = (id: number | null | undefined): string | null => (id != null ? teamName(id) : null)
     // Winner of each match, computed bottom-up so byes carry forward.
@@ -225,7 +231,7 @@ function buildBracketSketch(
     for (let i = 0; i < matchCount; i++) {
         const a = nm(slots[2 * i])
         const b = nm(slots[2 * i + 1])
-        if (a && b) w0.push({ kind: "ph", label: `Pobj. ${koStageAbbrev(matchCount)}${i + 1}` })
+        if (a && b) w0.push({ kind: "ph", label: t.components.bracketTab.stage.winnerPlaceholder(koStageAbbrev(matchCount), i + 1) })
         else if (a) w0.push({ kind: "team", name: a })
         else if (b) w0.push({ kind: "team", name: b })
         else w0.push({ kind: "empty" })
@@ -242,7 +248,7 @@ function buildBracketSketch(
             if (fa.kind === "empty" && fb.kind === "empty") cur.push({ kind: "empty" })
             else if (fa.kind === "empty") cur.push(fb)
             else if (fb.kind === "empty") cur.push(fa)
-            else cur.push({ kind: "ph", label: `Pobj. ${koStageAbbrev(roundMatches)}${i + 1}` })
+            else cur.push({ kind: "ph", label: t.components.bracketTab.stage.winnerPlaceholder(koStageAbbrev(roundMatches), i + 1) })
         }
         winners.push(cur)
     }
@@ -258,21 +264,22 @@ function buildBracketSketch(
             b: b ? { kind: "team", name: b } : { kind: "empty" },
         })
     }
-    rounds.push({ stage: koStageName(matchCount), matches: m0 })
+    rounds.push({ stage: koStageName(t, matchCount), matches: m0 })
     for (let r = 1; r < totalRounds; r++) {
         const prevWin = winners[r - 1]
         const roundMatches = matchCount / Math.pow(2, r)
         const ms: SketchMatch[] = []
         for (let i = 0; i < roundMatches; i++) ms.push({ a: prevWin[2 * i], b: prevWin[2 * i + 1] })
-        rounds.push({ stage: koStageName(roundMatches), matches: ms })
+        rounds.push({ stage: koStageName(t, roundMatches), matches: ms })
     }
     return rounds
 }
 
 /** One line (slot) of a bracket-sketch match card. */
 function SketchLine({ disp }: { disp: SketchDisp }) {
+    const t = useTranslation()
     const muted = disp.kind !== "team"
-    const text = disp.kind === "team" ? disp.name : disp.kind === "ph" ? disp.label : "slobodan prolaz"
+    const text = disp.kind === "team" ? disp.name : disp.kind === "ph" ? disp.label : t.components.bracketTab.stage.byeSlot
     return (
         <Text px="3" py="2" fontSize="sm" fontWeight={muted ? 500 : 700} fontStyle={muted ? "italic" : undefined} color={muted ? "fg.muted" : "fg.ink"} truncate>
             {text}
@@ -316,6 +323,7 @@ export default function BracketTab({
      *  pills), which keeps that row exactly as before. */
     subTabs?: ReactNode
 }) {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Eliminacija tab (or a
     // recently-viewed tournament) paints instantly instead of refetching.
@@ -697,7 +705,7 @@ export default function BracketTab({
     async function shareBracket() {
         if (sharing) return
         const url = exportMeta?.tournamentUrl ?? `${window.location.origin}/turniri/${uuid}`
-        const title = tournamentName ?? "Eliminacijska ljestvica"
+        const title = tournamentName ?? t.components.bracketTab.board.shareTitleFallback
         setSharing(true)
         try {
             const nav = navigator as any
@@ -711,12 +719,12 @@ export default function BracketTab({
                 await navigator.clipboard.writeText(url)
                 toaster.create({
                     type: "success",
-                    title: "Link kopiran.",
+                    title: t.common.linkCopied,
                     duration: 4000,
                 })
             }
         } catch {
-            showError("Nije moguće podijeliti poveznicu.")
+            showError(t.components.bracketTab.board.shareFailed)
         } finally {
             setSharing(false)
         }
@@ -816,11 +824,17 @@ export default function BracketTab({
     async function submitManualBracket() {
         const chosen = slots.filter((s): s is number => s != null)
         if (new Set(chosen).size !== chosen.length) {
-            showError("Greška", positionMode ? "Ista pozicija je odabrana u više utakmica." : "Ista ekipa je odabrana u više utakmica.")
+            showError(
+                t.components.bracketTab.draw.errorTitle,
+                positionMode ? t.components.bracketTab.draw.duplicateSelectionPosition : t.components.bracketTab.draw.duplicateSelectionTeam,
+            )
             return
         }
         if (chosen.length < 2) {
-            showError("Greška", positionMode ? "Potrebne su barem 2 pozicije za ljestvicu." : "Potrebne su barem 2 ekipe za ljestvicu.")
+            showError(
+                t.components.bracketTab.draw.errorTitle,
+                positionMode ? t.components.bracketTab.draw.minSelectionPosition : t.components.bracketTab.draw.minSelectionTeam,
+            )
             return
         }
         try {
@@ -979,7 +993,7 @@ export default function BracketTab({
                         />
                     ) : (
                         <Text fontSize="xs" color="fg.subtle" fontWeight={500} px="2">
-                            {positionMode ? "Povuci poziciju · prazno = prolaz" : "Povuci ekipu · prazno = prolaz"}
+                            {positionMode ? t.components.bracketTab.draw.dragHintPosition : t.components.bracketTab.draw.dragHintTeam}
                         </Text>
                     )}
                 </Flex>
@@ -996,11 +1010,11 @@ export default function BracketTab({
         <Panel p={{ base: "4", md: "6" }}>
             <VStack align="stretch" gap="5">
                 <Box>
-                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>Ručni ždrijeb</Text>
+                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>{t.components.bracketTab.draw.manualHeading}</Text>
                     <Text fontSize="sm" color="fg.muted" fontWeight={500}>
                         {positionMode
-                            ? "Povuci pozicije (npr. A1, B2) u parove 1. kola. Kad grupe završe, pozicije postaju ekipe. Prazan slot = slobodan prolaz (bye)."
-                            : "Povuci ekipe u parove 1. kola. Prazan slot = slobodan prolaz (bye) u sljedeće kolo."}
+                            ? t.components.bracketTab.draw.manualDescPosition
+                            : t.components.bracketTab.draw.manualDescTeam}
                     </Text>
                 </Box>
 
@@ -1008,20 +1022,20 @@ export default function BracketTab({
                 <Flex align="center" gap="3" wrap="wrap" py="3.5" borderTopWidth="1px" borderBottomWidth="1px" borderColor="border">
                     <Text fontSize="sm" fontWeight={700} color="fg.muted" flex="1" minW="180px">
                         {manualPool.length > 0
-                            ? `Raspoređeno ${manualAssigned}/${boardItems.length}.`
-                            : positionMode ? "Sve pozicije su raspoređene." : "Sve ekipe su raspoređene."}
+                            ? t.components.bracketTab.draw.allocatedCount(manualAssigned, boardItems.length)
+                            : positionMode ? t.components.bracketTab.draw.allocatedAllPosition : t.components.bracketTab.draw.allocatedAllTeam}
                     </Text>
                     <Button size="sm" colorPalette="brand" onClick={fillBracketRandom} disabled={boardItems.length < 2}>
-                        <LuShuffle size={15} /> Nasumično rasporedi
+                        <LuShuffle size={15} /> {t.components.bracketTab.draw.shuffleButton}
                     </Button>
                     <Button size="sm" variant="outline" colorPalette="brand" onClick={clearSlots} disabled={manualAssigned === 0}>
-                        <LuRotateCcw size={14} /> Isprazni
+                        <LuRotateCcw size={14} /> {t.components.bracketTab.draw.clearButton}
                     </Button>
                     <Button size="sm" colorPalette="brand" onClick={() => setSketchOpen(true)} disabled={manualAssigned < 2}>
-                        <FiCrosshair size={14} /> Skiciraj završnicu
+                        <FiCrosshair size={14} /> {t.components.bracketTab.draw.sketchButton}
                     </Button>
                     <Button size="sm" variant="ghost" colorPalette="gray" onClick={() => setManualOpen(false)} disabled={generatingManual}>
-                        Odustani
+                        {t.common.cancel}
                     </Button>
                 </Flex>
 
@@ -1039,7 +1053,7 @@ export default function BracketTab({
                             css={{ background: bPoolTintBg }}
                         >
                             <Flex align="center" justify="space-between" mb="3">
-                                <Text fontWeight={800} fontSize="md">{positionMode ? "Pozicije" : "Ekipe"}</Text>
+                                <Text fontWeight={800} fontSize="md">{positionMode ? t.components.bracketTab.draw.poolHeadingPosition : t.components.bracketTab.draw.poolHeadingTeam}</Text>
                                 <Box as="span" bg="pitch.500" color="white" fontSize="xs" fontWeight={800} px="2.5" py="1" rounded="full" fontVariantNumeric="tabular-nums">
                                     {manualPool.length}
                                 </Box>
@@ -1047,8 +1061,8 @@ export default function BracketTab({
                             {manualPool.length === 0 && (
                                 <Text fontSize="sm" color="fg.muted" fontWeight={500} py="8" textAlign="center">
                                     {positionMode
-                                        ? "Sve raspoređeno — povuci poziciju ovamo da je vratiš."
-                                        : "Sve raspoređeno — povuci ekipu ovamo da je vratiš."}
+                                        ? t.components.bracketTab.draw.poolEmptyPosition
+                                        : t.components.bracketTab.draw.poolEmptyTeam}
                                 </Text>
                             )}
                             <VStack align="stretch" gap="2">
@@ -1075,7 +1089,7 @@ export default function BracketTab({
 
                     <VStack align="stretch" gap="3">
                         <Text fontSize="xs" fontWeight={800} letterSpacing="0.08em" textTransform="uppercase" color="fg.muted">
-                            {koStageName(boardMatchCount)} · parovi 1. kola
+                            {t.components.bracketTab.draw.roundHeadingSuffix(koStageName(t, boardMatchCount))}
                         </Text>
                         {Array.from({ length: boardMatchCount }, (_, i) => (
                             <Flex
@@ -1091,7 +1105,7 @@ export default function BracketTab({
                                 css={{ background: bGroupTintBg }}
                             >
                                 <Box flex="1" minW="0">{renderSlot(2 * i)}</Box>
-                                <Text px="1" fontSize="2xs" fontWeight={800} color="fg.muted" flexShrink={0} textAlign="center">vs</Text>
+                                <Text px="1" fontSize="2xs" fontWeight={800} color="fg.muted" flexShrink={0} textAlign="center">{t.components.liveMatch.timeline.vsLabel}</Text>
                                 <Box flex="1" minW="0">{renderSlot(2 * i + 1)}</Box>
                             </Flex>
                         ))}
@@ -1120,7 +1134,7 @@ export default function BracketTab({
                             willChange: "transform",
                         }}
                     >
-                        {dragTeam.name?.trim() || "Bez imena"}
+                        {dragTeam.name?.trim() || t.components.bracketTab.noNameFallback}
                     </Box>
                 )}
             </VStack>
@@ -1135,16 +1149,17 @@ export default function BracketTab({
         (id) => {
             const it = boardItems.find((q) => q.id === id)
             // Position mode: prefer the secured team name, else the label ("A1").
-            return (it?.teamName?.trim() || it?.name?.trim()) || "Bez imena"
+            return (it?.teamName?.trim() || it?.name?.trim()) || t.components.bracketTab.noNameFallback
         },
+        t,
     )
     const sketchPanel = (
         <Panel p={{ base: "4", md: "6" }}>
             <VStack align="stretch" gap="5">
                 <Box>
-                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>Skica završnice</Text>
+                    <Text fontWeight={800} fontSize={{ base: "lg", md: "xl" }}>{t.components.bracketTab.sketch.heading}</Text>
                     <Text fontSize="sm" color="fg.muted" fontWeight={500}>
-                        Ovako će izgledati eliminacija — provjeri parove pa potvrdi. Kasnija kola pune se pobjednicima.
+                        {t.components.bracketTab.sketch.description}
                     </Text>
                 </Box>
                 <Box overflowX="auto" pb="2">
@@ -1169,10 +1184,10 @@ export default function BracketTab({
                 </Box>
                 <Flex gap="3" justify="space-between" wrap="wrap">
                     <Button variant="ghost" colorPalette="gray" onClick={() => setSketchOpen(false)} disabled={generatingManual}>
-                        <FiChevronLeft /> Natrag na uređivanje
+                        <FiChevronLeft /> {t.components.bracketTab.sketch.backButton}
                     </Button>
                     <Button colorPalette="brand" onClick={submitManualBracket} loading={generatingManual}>
-                        <FiCheck /> Potvrdi završnicu
+                        <FiCheck /> {t.components.bracketTab.sketch.confirmButton}
                     </Button>
                 </Flex>
             </VStack>
@@ -1200,15 +1215,13 @@ export default function BracketTab({
         <Panel p={{ base: "4", md: "5" }}>
             <VStack align="stretch" gap="3">
                 <HStack justify="space-between" align="center">
-                    <Text fontWeight="bold" fontSize="sm">Tko prolazi direktno dalje?</Text>
+                    <Text fontWeight="bold" fontSize="sm">{t.components.bracketTab.byePicker.heading}</Text>
                     <Button size="xs" variant="ghost" onClick={() => setByeOpen(false)} disabled={generating}>
-                        Odustani
+                        {t.common.cancel}
                     </Button>
                 </HStack>
                 <Text fontSize="xs" color="fg.muted">
-                    {pool.length} ekipa ne popunjava ljestvicu od {bracketN}. Odaberi {byesNeeded}{" "}
-                    {byesNeeded === 1 ? "ekipu koja preskače" : "ekipe koje preskaču"} prvo kolo
-                    (slobodan prolaz u sljedeće).
+                    {t.components.bracketTab.byePicker.note(pool.length, bracketN, byesNeeded)}
                 </Text>
                 <VStack align="stretch" gap="1.5">
                     {pool.map((tm, idx) => {
@@ -1253,7 +1266,7 @@ export default function BracketTab({
                                     {idx + 1}.
                                 </Text>
                                 <Text fontSize="sm" fontWeight={600} flex="1" minW="0" truncate>
-                                    {tm.name?.trim() || "Bez imena"}
+                                    {tm.name?.trim() || t.components.bracketTab.noNameFallback}
                                 </Text>
                             </HStack>
                         )
@@ -1261,7 +1274,7 @@ export default function BracketTab({
                 </VStack>
                 {byeIds.size !== byesNeeded && (
                     <Text fontSize="xs" color="red.fg">
-                        Odabrano {byeIds.size} / {byesNeeded}.
+                        {t.components.bracketTab.byePicker.selectedCount(byeIds.size, byesNeeded)}
                     </Text>
                 )}
                 <Button
@@ -1270,14 +1283,14 @@ export default function BracketTab({
                     loading={generating}
                     disabled={byeIds.size !== byesNeeded}
                 >
-                    Generiraj ljestvicu
+                    {t.components.bracketTab.byePicker.generateButton}
                 </Button>
             </VStack>
         </Panel>
     )
 
     if (loading) {
-        return <Loader label="Učitavanje ljestvice…" />
+        return <Loader label={t.components.bracketTab.loadingBracket} />
     }
 
     // A bracket is worth rendering once teams are placed OR the predicted
@@ -1337,15 +1350,15 @@ export default function BracketTab({
         const emptyPanel = (
             <Panel p="0">
                 <EmptyState
-                    title="Eliminacijska ljestvica još nije generirana"
+                    title={t.components.bracketTab.empty.title}
                     description={
                         !canEdit
-                            ? "Organizator još nije generirao eliminacijsku ljestvicu."
+                            ? t.components.bracketTab.empty.descReadonly
                             : positionMode
-                                ? "Složi parove završnice po pozicijama iz grupa (npr. A1, B2). Kad grupna faza završi, pozicije postaju ekipe."
+                                ? t.components.bracketTab.empty.descPosition
                                 : !groupStageComplete
-                                    ? "Završi sve utakmice grupne faze (upiši rezultate) da bi mogao generirati eliminaciju."
-                                    : "Ručno složi parove povlačenjem ekipa, ili generiraj automatski (nasumično)."
+                                    ? t.components.bracketTab.empty.descGroupStagePending
+                                    : t.components.bracketTab.empty.descTeamReady
                     }
                     action={
                         canEdit && !finishedLocked ? (
@@ -1360,7 +1373,7 @@ export default function BracketTab({
                                     onClick={openManualBracket}
                                     disabled={positionMode ? boardItems.length < 2 : (!groupStageComplete || pool.length < 2)}
                                 >
-                                    Ručni ždrijeb
+                                    {t.components.bracketTab.draw.manualHeading}
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -1369,7 +1382,7 @@ export default function BracketTab({
                                     loading={generating}
                                     disabled={!groupStageComplete || pool.length < 2}
                                 >
-                                    Automatski
+                                    {t.components.bracketTab.draw.autoButton}
                                 </Button>
                             </HStack>
                         ) : undefined
@@ -1425,7 +1438,7 @@ export default function BracketTab({
         if (needsConfirm) {
             toaster.create({
                 type: "info",
-                title: "Prvo potvrdi ždrijeb završnice.",
+                title: t.components.bracketTab.draw.confirmFirstToast,
                 duration: 3000,
             })
             return false
@@ -1438,7 +1451,7 @@ export default function BracketTab({
         if (finishedLocked) {
             toaster.create({
                 type: "info",
-                title: "Turnir je završen. Obrati se administratoru za otključavanje.",
+                title: t.components.liveControlTab.lockedNotice,
                 duration: 3000,
             })
             return false
@@ -1532,7 +1545,7 @@ export default function BracketTab({
                 onClick={openManualBracket}
                 disabled={generating || generatingManual}
             >
-                Ručni ždrijeb
+                {t.components.bracketTab.draw.manualHeading}
             </GhostButton>
             <GhostButton
                 px="3.5"
@@ -1543,7 +1556,7 @@ export default function BracketTab({
                 onClick={confirmResetBracket}
                 disabled={generating || generatingManual || resetting}
             >
-                {resetting ? "Resetiranje…" : "Resetiraj"}
+                {resetting ? t.components.bracketTab.draw.resetInProgress : t.components.bracketTab.draw.resetButton}
             </GhostButton>
         </>
     )
@@ -1598,11 +1611,11 @@ export default function BracketTab({
                                 <FiCheck size={16} />
                             </Box>
                             <Text fontSize="sm" color="fg.ink" fontWeight={500}>
-                                Grupna faza je gotova - potvrdi ždrijeb završnice da krenu utakmice.
+                                {t.components.bracketTab.draw.groupStageDoneNote}
                             </Text>
                         </HStack>
                         <Button colorPalette="brand" onClick={() => setConfirmBracketOpen(true)}>
-                            <FiCheck /> Potvrdi ždrijeb
+                            <FiCheck /> {t.components.bracketTab.draw.confirmDrawButton}
                         </Button>
                     </Flex>
                 ) : null
@@ -1613,9 +1626,9 @@ export default function BracketTab({
                 open={confirmAction !== null}
                 busy={resetting}
                 danger
-                title="Resetirati eliminaciju?"
-                description="Sve utakmice eliminacijske faze bit će obrisane."
-                confirmLabel="Da, resetiraj"
+                title={t.components.bracketTab.draw.resetConfirmTitle}
+                description={t.components.bracketTab.draw.resetConfirmDesc}
+                confirmLabel={t.components.bracketTab.draw.resetConfirmLabel}
                 onClose={() => setConfirmAction(null)}
                 onConfirm={async () => {
                     await runResetBracket()
@@ -1673,14 +1686,14 @@ export default function BracketTab({
                         disabled={focusTargetId == null}
                         title={
                             liveMatchId != null
-                                ? "Idi na utakmicu koja se igra uživo"
+                                ? t.components.bracketTab.board.jumpToLiveTitle
                                 : onDeckId != null
-                                    ? "Idi na sljedeću utakmicu na rasporedu"
-                                    : "Idi na finale"
+                                    ? t.components.bracketTab.board.jumpToNextTitle
+                                    : t.components.bracketTab.board.jumpToFinalTitle
                         }
                     >
                         <FiCrosshair size={15} />
-                        {liveMatchId != null ? "Uživo" : onDeckId != null ? "Na redu" : "Finale"}
+                        {liveMatchId != null ? t.common.live : onDeckId != null ? t.components.bracketTab.board.onDeckLabel : t.components.liveControlTab.stageLabels.FINAL}
                     </Button>
                     <Box w="1px" alignSelf="stretch" my="1" bg="border" />
                     {/* Zoom. Driven through the ZoomableBracket handle so the bar
@@ -1691,8 +1704,8 @@ export default function BracketTab({
                         variant="ghost"
                         px="2"
                         onClick={() => zoomRef.current?.zoomOut()}
-                        title="Odzumiraj"
-                        aria-label="Odzumiraj"
+                        title={t.components.bracketBoard.zoomOutAria}
+                        aria-label={t.components.bracketBoard.zoomOutAria}
                     >
                         <FiMinus size={15} />
                     </Button>
@@ -1701,8 +1714,8 @@ export default function BracketTab({
                         variant="ghost"
                         px="2"
                         onClick={() => zoomRef.current?.zoomIn()}
-                        title="Zumiraj"
-                        aria-label="Zumiraj"
+                        title={t.components.bracketBoard.zoomInAria}
+                        aria-label={t.components.bracketBoard.zoomInAria}
                     >
                         <FiPlus size={15} />
                     </Button>
@@ -1711,8 +1724,8 @@ export default function BracketTab({
                         variant="ghost"
                         px="2"
                         onClick={() => zoomRef.current?.reset()}
-                        title="Vrati na početni prikaz"
-                        aria-label="Vrati na početni prikaz"
+                        title={t.components.bracketBoard.resetViewAria}
+                        aria-label={t.components.bracketBoard.resetViewAria}
                     >
                         <FiMaximize size={15} />
                     </Button>
@@ -1722,20 +1735,20 @@ export default function BracketTab({
                         variant="ghost"
                         onClick={shareBracket}
                         disabled={sharing}
-                        title="Podijeli poveznicu na turnir"
+                        title={t.components.bracketTab.board.shareLinkTitle}
                     >
                         <FiShare2 size={15} />
-                        {sharing ? "Pripremam…" : "Podijeli"}
+                        {sharing ? t.components.bracketTab.board.sharingLabel : t.common.share}
                     </Button>
                     <Box w="1px" alignSelf="stretch" my="1" bg="border" />
                     <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => setExportOpen(true)}
-                        title="Preuzmi završnicu kao plakat (PDF / JPG)"
+                        title={t.components.bracketTab.board.downloadPosterTitle}
                     >
                         <FiDownload size={15} />
-                        Preuzmi
+                        {t.common.download}
                     </Button>
                 </Flex>
             </Panel>
@@ -1747,7 +1760,7 @@ export default function BracketTab({
                 kind="bracket"
                 meta={
                     exportMeta ?? {
-                        tournamentName: tournamentName ?? "Turnir",
+                        tournamentName: tournamentName ?? t.components.bracketTab.genericTournamentFallback,
                         tournamentUrl: `${window.location.origin}/turniri/${uuid}`,
                     }
                 }
@@ -1808,9 +1821,9 @@ export default function BracketTab({
                 the Raspored planner to confirm/adjust the times. */}
             <ConfirmDialog
                 open={positionsSavedOpen}
-                title="Parovi su spremljeni"
-                description="Parovi su spremljeni - potvrdi termine u rasporedu."
-                confirmLabel="Otvori raspored"
+                title={t.components.bracketTab.positionsSaved.title}
+                description={t.components.bracketTab.positionsSaved.description}
+                confirmLabel={t.components.bracketTab.positionsSaved.openScheduleButton}
                 onClose={() => setPositionsSavedOpen(false)}
                 onConfirm={() => {
                     setPositionsSavedOpen(false)
@@ -1822,14 +1835,13 @@ export default function BracketTab({
     )
 }
 
-/** Knockout stage → readable Croatian label for the confirm-draw time editor. */
-const KO_STAGE_LABEL: Record<string, string> = {
-    ROUND_OF_32: "1/16 finala",
-    ROUND_OF_16: "Osmina finala",
-    QUARTERFINAL: "Četvrtfinale",
-    SEMIFINAL: "Polufinale",
-    FINAL: "Finale",
-    THIRD_PLACE: "Za 3. mjesto",
+/** Knockout stage → readable label for the confirm-draw time editor. Reuses
+ *  `tournamentSection.dialogs.teamInfo.stageLabels` (identical wording) rather
+ *  than duplicating a fourth stage-label set. */
+function koStageLabelMap(t: Dictionary): Record<string, string> {
+    const { ROUND_OF_32, ROUND_OF_16, QUARTERFINAL, SEMIFINAL, FINAL, THIRD_PLACE } =
+        t.tournamentSection.dialogs.teamInfo.stageLabels
+    return { ROUND_OF_32, ROUND_OF_16, QUARTERFINAL, SEMIFINAL, FINAL, THIRD_PLACE }
 }
 
 /** Pairing text for a knockout match in the confirm-draw list: real names when
@@ -1858,6 +1870,8 @@ function ConfirmBracketDialog({
     onClose: () => void
     onConfirmed: (b: Bracket) => void
 }) {
+    const t = useTranslation()
+    const koStageLabel = koStageLabelMap(t)
     const [step, setStep] = useState<"ask" | "times">("ask")
     const [matches, setMatches] = useState<ScheduledMatch[] | null>(null)
     const [loadingTimes, setLoadingTimes] = useState(false)
@@ -1919,9 +1933,9 @@ function ConfirmBracketDialog({
                     <Dialog.Content maxW={{ base: "94%", md: "560px" }}>
                         <Dialog.Header pb="2">
                             <Flex align="center" justify="space-between" w="full" gap="2">
-                                <Dialog.Title>Potvrda ždrijeba</Dialog.Title>
+                                <Dialog.Title>{t.components.bracketTab.kickoffDialog.title}</Dialog.Title>
                                 <Button
-                                    aria-label="Zatvori"
+                                    aria-label={t.common.close}
                                     variant="ghost"
                                     size="xs"
                                     onClick={onClose}
@@ -1934,10 +1948,10 @@ function ConfirmBracketDialog({
                         <Dialog.Body>
                             {step === "ask" ? (
                                 <Text color="fg.muted">
-                                    Želiš li prije potvrde urediti termine utakmica završnice?
+                                    {t.components.bracketTab.kickoffDialog.askPrompt}
                                 </Text>
                             ) : loadingTimes ? (
-                                <Loader label="Učitavanje termina…" />
+                                <Loader label={t.components.bracketTab.kickoffDialog.loadingTimes} />
                             ) : matches && matches.length > 0 ? (
                                 <VStack align="stretch" gap="2.5">
                                     {matches.map((m) => (
@@ -1962,7 +1976,7 @@ function ConfirmBracketDialog({
                                                     textTransform="uppercase"
                                                     color="fg.muted"
                                                 >
-                                                    {KO_STAGE_LABEL[m.stage] ?? m.stage}
+                                                    {koStageLabel[m.stage] ?? m.stage}
                                                 </Text>
                                                 <Text fontSize="sm" fontWeight={600} color="fg.ink" lineClamp="1">
                                                     {koPairingText(m)}
@@ -1980,7 +1994,7 @@ function ConfirmBracketDialog({
                                 </VStack>
                             ) : (
                                 <Text color="fg.muted" fontSize="sm">
-                                    Nema utakmica završnice za uređivanje termina.
+                                    {t.components.bracketTab.kickoffDialog.noMatches}
                                 </Text>
                             )}
                         </Dialog.Body>
@@ -1988,19 +2002,19 @@ function ConfirmBracketDialog({
                             {step === "ask" ? (
                                 <>
                                     <Button variant="outline" onClick={openTimes} disabled={confirming}>
-                                        Uredi termine
+                                        {t.components.bracketTab.kickoffDialog.editTimesButton}
                                     </Button>
                                     <Button colorPalette="brand" loading={confirming} onClick={confirm}>
-                                        Potvrdi ždrijeb
+                                        {t.components.bracketTab.draw.confirmDrawButton}
                                     </Button>
                                 </>
                             ) : (
                                 <>
                                     <Button variant="ghost" onClick={() => setStep("ask")} disabled={confirming}>
-                                        Natrag
+                                        {t.common.back}
                                     </Button>
                                     <Button colorPalette="brand" loading={confirming} onClick={confirm}>
-                                        Potvrdi ždrijeb
+                                        {t.components.bracketTab.draw.confirmDrawButton}
                                     </Button>
                                 </>
                             )}
@@ -2071,6 +2085,7 @@ function MatchCard({
     onCancel,
     onFormChange,
 }: MatchCardProps) {
+    const t = useTranslation()
     const navigate = useNavigate()
     const w1 = m.winnerTeamId != null && m.winnerTeamId === m.team1Id
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
@@ -2097,10 +2112,11 @@ function MatchCard({
     const kick = m.kickoffAt ? (multiDay ? kickoffLabel(m.kickoffAt, true) : fmtKick(m.kickoffAt)) : null
     // The match's own code ("O2") leads the header so the "W O2" a later round
     // shows can be traced back to this card.
+    const stageShort = t.components.bracketTab.stageShort
     const headerLabel =
-        [code, isFinal ? "FINALE" : isThirdPlace ? "ZA 3. MJESTO" : null, kick]
+        [code, isFinal ? stageShort.FINAL : isThirdPlace ? stageShort.THIRD_PLACE : null, kick]
             .filter(Boolean)
-            .join(" · ") || (STAGE_SHORT[m.stage] ?? "UTAKMICA")
+            .join(" · ") || ((stageShort as Record<string, string>)[m.stage] ?? stageShort.genericMatchFallback)
 
     return (
         <Box
@@ -2125,9 +2141,9 @@ function MatchCard({
             // they keep their own behaviour.
             onClick={(e) => {
                 if (editing || !bothDecided) return
-                const t = e.target as HTMLElement
+                const target = e.target as HTMLElement
                 if (
-                    t.closest(
+                    target.closest(
                         'button, a, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [data-scope="menu"]',
                     )
                 ) {
@@ -2235,7 +2251,7 @@ function MatchCard({
                     {showPenaltyRow && (
                         <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5" bg="bg.surfaceTint">
                             <Text fontSize="2xs" color="fg.muted" textAlign="center" fontWeight={600}>
-                                Neriješeno - raspucavanje penala otvoreno u zasebnom prozoru.
+                                {t.components.bracketTab.card.penaltiesPendingNote}
                             </Text>
                         </Box>
                     )}
@@ -2252,7 +2268,7 @@ function MatchCard({
                                 onClick={() => onSave(m)}
                                 rounded="lg"
                             >
-                                Spremi
+                                {t.common.save}
                             </Button>
                         )}
                         <Button
@@ -2261,7 +2277,7 @@ function MatchCard({
                             onClick={onCancel}
                             rounded="lg"
                         >
-                            Odustani
+                            {t.common.cancel}
                         </Button>
                     </HStack>
                 </VStack>
@@ -2282,16 +2298,6 @@ function fmtKick(iso: string): string {
     const d = new Date(iso)
     const p = (n: number) => String(n).padStart(2, "0")
     return `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-/** Round name fallback for a card with no kickoff yet (mono uppercase). */
-const STAGE_SHORT: Record<string, string> = {
-    ROUND_OF_32: "1/16 FINALA",
-    ROUND_OF_16: "OSMINA FINALA",
-    QUARTERFINAL: "ČETVRTFINALE",
-    SEMIFINAL: "POLUFINALE",
-    FINAL: "FINALE",
-    THIRD_PLACE: "ZA 3. MJESTO",
 }
 
 /** Jersey/shorts silhouette used in bracket rows. A neutral kit keeps TBD /
@@ -2471,6 +2477,7 @@ function TeamRow({
 
 /* ── LivePill - small red "UŽIVO" badge for a live match. ─────────────────── */
 function LivePill() {
+    const t = useTranslation()
     return (
         <Badge
             colorPalette="red"
@@ -2482,7 +2489,7 @@ function LivePill() {
             px="2"
         >
             <Box as="span" display="inline-block" boxSize="1.5" rounded="full" bg="white" mr="1" />
-            Uživo
+            {t.common.live}
         </Badge>
     )
 }
@@ -2516,6 +2523,7 @@ function BracketPenaltyDialog({
     onConfirm: (pen1: number, pen2: number) => void
     onClose: () => void
 }) {
+    const t = useTranslation()
     return (
         <Dialog.Root
             open
@@ -2531,7 +2539,7 @@ function BracketPenaltyDialog({
                         <Dialog.Header pb="2">
                             <Dialog.Title flex="1">
                                 <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
-                                    Raspucavanje penala
+                                    {t.components.bracketTab.penaltyDialog.title}
                                 </Text>
                             </Dialog.Title>
                         </Dialog.Header>
@@ -2566,6 +2574,7 @@ export function BracketLiveMatchDialog({
     onClose: () => void
     onChanged: () => Promise<void> | void
 }) {
+    const t = useTranslation()
     const matchId = match.matchId
     const isFinished = match.status === "FINISHED"
     const isTimer = match.liveMode === "TIMER"
@@ -2886,13 +2895,13 @@ export function BracketLiveMatchDialog({
             const p1 = directPens.p1.trim()
             const p2 = directPens.p2.trim()
             if (p1 === "" || p2 === "") {
-                showError("Penali", "Neriješena eliminacijska utakmica - upiši rezultat penala za obje ekipe.")
+                showError(t.components.bracketTab.liveDialog.penaltiesRequiredTitle, t.components.bracketTab.liveDialog.penaltiesRequiredDesc)
                 return
             }
             penalties1 = Number(p1)
             penalties2 = Number(p2)
             if (penalties1 === penalties2) {
-                showError("Penali", "Rezultat penala ne može biti neriješen.")
+                showError(t.components.bracketTab.liveDialog.penaltiesRequiredTitle, t.components.bracketTab.liveDialog.penaltiesTieError)
                 return
             }
         }
@@ -2940,7 +2949,7 @@ export function BracketLiveMatchDialog({
                                     would just duplicate them - use a plain title. */}
                                 {resultOnly ? (
                                     <Text textAlign="center" fontWeight={800} fontSize="md" color="fg.ink">
-                                        Uredi rezultat
+                                        {t.components.bracketTab.liveDialog.resultOnlyTitle}
                                     </Text>
                                 ) : (
                                     /* Big scoreboard header: BIG timer with
@@ -3012,7 +3021,7 @@ export function BracketLiveMatchDialog({
                                             textAlign="center"
                                             mb="2"
                                         >
-                                            Odlučeno penalima:{" "}
+                                            {t.components.bracketTab.liveDialog.decidedOnPenaltiesLabel}{" "}
                                             <Box as="span" fontFamily="mono" color="fg.ink">
                                                 {match.penalties1} : {match.penalties2}
                                             </Box>
@@ -3024,7 +3033,7 @@ export function BracketLiveMatchDialog({
                                                 colorPalette="red"
                                                 onClick={() => setShootout(true)}
                                             >
-                                                Uredi penale
+                                                {t.components.bracketTab.liveDialog.editPenaltiesButton}
                                             </Button>
                                             <Button
                                                 size="sm"
@@ -3032,7 +3041,7 @@ export function BracketLiveMatchDialog({
                                                 colorPalette="brand"
                                                 onClick={() => setEditGoals((v) => !v)}
                                             >
-                                                Uredi utakmicu
+                                                {t.components.bracketTab.liveDialog.editMatchButton}
                                             </Button>
                                         </HStack>
                                     </Box>
@@ -3069,7 +3078,7 @@ export function BracketLiveMatchDialog({
                                             textAlign="center"
                                             mb="2"
                                         >
-                                            Penali (neriješeno)
+                                            {t.components.bracketTab.liveDialog.penaltiesTieHeading}
                                         </Text>
                                         <HStack align="flex-start" gap="2">
                                             <VStack gap="1.5" flex="1" minW="0">
@@ -3152,20 +3161,20 @@ export function BracketLiveMatchDialog({
                                         color="fg.muted"
                                         mb="1.5"
                                     >
-                                        Tijek utakmice
+                                        {t.components.liveMatch.timeline.heading}
                                     </Text>
                                     {!eventsLoaded && events.length === 0 ? (
                                         <Text fontSize="sm" color="fg.muted">
-                                            Učitavanje…
+                                            {t.common.loading}
                                         </Text>
                                     ) : events.length === 0 ? (
                                         isFinished ? (
                                             <Text fontSize="sm" color="fg.muted">
-                                                Prikazan samo krajnji rezultat bez strijelca.
+                                                {t.components.bracketTab.liveDialog.noEventsFinished}
                                             </Text>
                                         ) : (
                                             <Text fontSize="sm" color="fg.muted">
-                                                Još nema zabilježenih događaja.
+                                                {t.components.bracketTab.liveDialog.noEventsLive}
                                             </Text>
                                         )
                                     ) : (
@@ -3195,7 +3204,7 @@ export function BracketLiveMatchDialog({
                                 utakmicu. */}
                             <HStack gap="2" justify="center" w="full" maxW="md" wrap="wrap">
                                 <Button variant="ghost" onClick={onClose} flexShrink={0}>
-                                    Zatvori
+                                    {t.common.close}
                                 </Button>
                                 {/* Result-only: save the direct score from the footer. */}
                                 {!shootout && resultOnly && (
@@ -3205,7 +3214,7 @@ export function BracketLiveMatchDialog({
                                         loading={savingScore}
                                         onClick={() => handleSaveDirectScore(directScore.s1, directScore.s2)}
                                     >
-                                        <FiEdit2 /> Spremi rezultat
+                                        <FiEdit2 /> {t.components.liveMatch.directScore.saveButton}
                                     </Button>
                                 )}
                                 {!isFinished && !shootout && (
@@ -3216,7 +3225,7 @@ export function BracketLiveMatchDialog({
                                             loading={endingHalf}
                                             onClick={handleEndFirstHalf}
                                         >
-                                            Završi 1. poluvrijeme
+                                            {t.components.bracketTab.liveDialog.endFirstHalfButton}
                                         </Button>
                                     ) : canStartSecondHalf ? (
                                         <Button
@@ -3225,7 +3234,7 @@ export function BracketLiveMatchDialog({
                                             loading={startingHalf}
                                             onClick={handleStartSecondHalf}
                                         >
-                                            Započni 2. poluvrijeme
+                                            {t.components.bracketTab.liveDialog.startSecondHalfButton}
                                         </Button>
                                     ) : (
                                         <Button
@@ -3234,7 +3243,7 @@ export function BracketLiveMatchDialog({
                                             loading={finishing}
                                             onClick={requestFinish}
                                         >
-                                            Završi
+                                            {t.components.bracketTab.liveDialog.finishButton}
                                         </Button>
                                     )
                                 )}
@@ -3246,7 +3255,7 @@ export function BracketLiveMatchDialog({
                                         loading={resetting}
                                         onClick={confirmReset}
                                     >
-                                        Poništi utakmicu
+                                        {t.components.bracketTab.liveDialog.resetMatchButton}
                                     </Button>
                                 )}
                             </HStack>
@@ -3259,18 +3268,18 @@ export function BracketLiveMatchDialog({
             open={confirmResetOpen}
             busy={resetting}
             danger
-            title="Poništiti utakmicu?"
-            description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
-            confirmLabel="Da, poništi"
+            title={t.components.bracketTab.liveDialog.resetConfirmTitle}
+            description={t.components.bracketTab.liveDialog.resetConfirmDesc}
+            confirmLabel={t.components.bracketTab.liveDialog.resetConfirmLabel}
             onClose={() => setConfirmResetOpen(false)}
             onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
         />
         <ConfirmDialog
             open={confirmFinishOpen}
             busy={finishing}
-            title="Završiti utakmicu prije kraja?"
-            description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
-            confirmLabel="Da, završi"
+            title={t.components.bracketTab.liveDialog.prematureFinishTitle}
+            description={t.components.bracketTab.liveDialog.prematureFinishDesc}
+            confirmLabel={t.components.bracketTab.liveDialog.prematureFinishConfirm}
             onClose={() => setConfirmFinishOpen(false)}
             onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
         />

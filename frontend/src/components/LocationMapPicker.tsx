@@ -10,6 +10,7 @@ import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { useColorMode } from "../color-mode"
 import { useUserLocation } from "../hooks/useUserLocation"
+import { useTranslation } from "../i18n"
 
 /**
  * Build the same teardrop pin as the /karta page so the picker and the
@@ -85,6 +86,7 @@ export default function LocationMapPicker({
      *  to ensure the map doesn't collapse if its parent has no height. */
     minH?: string | number | { base?: string; sm?: string; md?: string; lg?: string }
 }) {
+    const t = useTranslation()
     const [busy, setBusy] = useState(false)
     const [err, setErr] = useState<string | null>(null)
 
@@ -118,7 +120,7 @@ export default function LocationMapPicker({
             const displayName = await reverseGeocode(lat, lng)
             onPick({ displayName, lat, lng })
         } catch {
-            setErr("Greška pri dohvaćanju adrese.")
+            setErr(t.components.locationMapPicker.addressError)
         } finally {
             setBusy(false)
         }
@@ -196,7 +198,7 @@ export default function LocationMapPicker({
                         backdropFilter: "blur(8px)",
                     }}
                 >
-                    Klikni na kartu za odabir lokacije
+                    {t.components.locationMapPicker.clickHint}
                 </Box>
             )}
 
@@ -212,7 +214,7 @@ export default function LocationMapPicker({
                     zIndex={500}
                 >
                     <Text bg="bg" px="3" py="1" rounded="md" fontSize="sm" shadow="md">
-                        Tražim adresu…
+                        {t.components.locationMapPicker.searchingAddress}
                     </Text>
                 </Box>
             )}

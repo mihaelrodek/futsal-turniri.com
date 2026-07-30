@@ -15,6 +15,7 @@ import {
     type FlexProps,
 } from "@chakra-ui/react"
 import type { ElementType, ReactNode } from "react"
+import { useTranslation } from "../i18n"
 
 /* -- Confirm dialog (popup modal) ---------------------------------------- */
 /** A small yes/no confirmation modal - more visible than a toast for
@@ -38,6 +39,7 @@ export function ConfirmDialog({
     onClose: () => void
     onConfirm: () => void
 }) {
+    const t = useTranslation()
     return (
         <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open && !busy) onClose() }} placement="center">
             <Portal>
@@ -50,7 +52,7 @@ export function ConfirmDialog({
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="ghost" onClick={onClose} disabled={busy}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"
@@ -308,12 +310,14 @@ export function Meta({
 }
 
 /** Loader - a centered spinner with a label, for section loading states. */
-export function Loader({ label = "Učitavanje…" }: { label?: string }) {
+export function Loader({ label }: { label?: string }) {
+    const t = useTranslation()
+    const resolvedLabel = label ?? t.common.loading
     return (
         <Flex direction="column" align="center" justify="center" gap="3" py="16">
             <Spinner size="lg" color="brand.solid" />
             <Text fontSize="sm" color="fg.muted">
-                {label}
+                {resolvedLabel}
             </Text>
         </Flex>
     )

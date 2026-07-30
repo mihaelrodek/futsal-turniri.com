@@ -24,6 +24,7 @@ import { adminListTournaments, type AdminTournamentDto } from "../api/admin"
 import SpectoEmbed from "./SpectoEmbed"
 import { MonoLabel, SectionCard, StatusChip } from "../ui/pitch"
 import { showError } from "../toaster"
+import { useTranslation } from "../i18n"
 
 type LinkedStream = {
     tournament: AdminTournamentDto
@@ -52,6 +53,7 @@ type LinkedStream = {
    ────────────────────────────────────────────────────────────────────── */
 
 export default function SpectoConnectionCard() {
+    const t = useTranslation()
     const [conn, setConn] = useState<SpectoConnection | null>(null)
     const [loading, setLoading] = useState(true)
     const [baseUrl, setBaseUrl] = useState("")
@@ -212,15 +214,15 @@ export default function SpectoConnectionCard() {
     async function connect() {
         const id = streamId.trim()
         if (!id) {
-            showError("Nedostaje Stream ID", "Upiši ID postojećeg streama s platforme.")
+            showError(t.components.spectoConnectionCard.missingStreamIdTitle, t.components.spectoConnectionCard.missingStreamIdDesc)
             return
         }
         if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
-            showError("Neispravan Stream ID", "Upiši samo Stream ID s platforme, bez URL-a ili embed koda.")
+            showError(t.components.spectoConnectionCard.invalidStreamIdTitle, t.components.spectoConnectionCard.invalidStreamIdDesc)
             return
         }
         if (!tournamentUuid) {
-            showError("Nedostaje turnir", "Odaberi turnir kojem se stream pridružuje.")
+            showError(t.components.spectoConnectionCard.missingTournamentTitle, t.components.spectoConnectionCard.missingTournamentDesc)
             return
         }
         setBusy(true)
@@ -235,7 +237,7 @@ export default function SpectoConnectionCard() {
 
             const check = await verifySpectoStream(id)
             if (!check.ok) {
-                showError("Stream nije dostupan", check.reason ?? "Provjeri URL, ključ i Stream ID.")
+                showError(t.components.spectoConnectionCard.streamUnavailableTitle, check.reason ?? t.components.spectoConnectionCard.streamUnavailableDesc)
                 return
             }
             await linkSpectoStream(tournamentUuid, id)
@@ -284,7 +286,7 @@ export default function SpectoConnectionCard() {
             ? timerLeft // resuming a paused countdown
             : Math.round((parseFloat(timerMin.replace(",", ".")) || 0) * 60)
         if (secs < 1 || secs > 3600) {
-            showError("Neispravno trajanje", "Odbrojavanje mora biti između 1 s i 60 min.")
+            showError(t.components.spectoConnectionCard.invalidDurationTitle, t.components.spectoConnectionCard.invalidDurationDesc)
             return
         }
         setBusy(true)
@@ -374,7 +376,7 @@ export default function SpectoConnectionCard() {
 
     async function disconnectStream() {
         if (!tournamentUuid || !preview) return
-        if (!window.confirm("Odspojiti stream od ovog turnira?")) return
+        if (!window.confirm(t.components.spectoConnectionCard.disconnectConfirm)) return
         setBusy(true)
         try {
             await unlinkSpecto(tournamentUuid)
@@ -391,49 +393,47 @@ export default function SpectoConnectionCard() {
 
     if (loading) {
         return (
-            <SectionCard icon={FiRadio} title="Live stream - povezivanje">
-                <HStack gap="2" color="fg.muted"><Spinner size="sm" /><Text fontSize="sm">Učitavam…</Text></HStack>
+            <SectionCard icon={FiRadio} title={t.components.spectoConnectionCard.title}>
+                <HStack gap="2" color="fg.muted"><Spinner size="sm" /><Text fontSize="sm">{t.components.spectoConnectionCard.loading}</Text></HStack>
             </SectionCard>
         )
     }
 
     const keyStatus = conn?.apiKeySet
-        ? `${conn.apiKeyFromDb ? "spremljen ovdje" : "iz .env-a"} · ${conn.apiKeyHint ?? ""}`
-        : "nije postavljen"
+        ? `${conn.apiKeyFromDb ? t.components.spectoConnectionCard.keyStoredHere : t.components.spectoConnectionCard.keyFromEnv} · ${conn.apiKeyHint ?? ""}`
+        : t.components.spectoConnectionCard.keyNotSet
 
     return (
         <SectionCard
             icon={FiRadio}
-            title="Live stream - povezivanje"
+            title={t.components.spectoConnectionCard.title}
             action={
                 <StatusChip
                     status={conn?.apiKeySet ? "active" : "draft"}
-                    label={conn?.apiKeySet ? "Ključ postavljen" : "Bez ključa"}
+                    label={conn?.apiKeySet ? t.components.spectoConnectionCard.keyStatusSet : t.components.spectoConnectionCard.keyStatusUnset}
                     size="sm"
                 />
             }
         >
             <VStack align="stretch" gap="4">
                 <Text fontSize="sm" color="fg.muted">
-                    Spaja se na <b>postojeći</b> stream s platforme - ovdje se ništa ne
-                    kreira. URL i ključ vrijede za cijelu aplikaciju i primjenjuju se
-                    odmah, bez restarta; Stream ID se pridružuje odabranom turniru.
+                    {t.components.spectoConnectionCard.intro}
                 </Text>
 
                 <Box>
                     <HStack justify="space-between" align="center" gap="3" mb="2" wrap="wrap">
-                        <MonoLabel display="block">AKTIVNI STREAMOVI NA TURNIRIMA</MonoLabel>
+                        <MonoLabel display="block">{t.components.spectoConnectionCard.activeStreamsLabel}</MonoLabel>
                         <Button size="sm" colorPalette="pitch" onClick={addNewStream} disabled={busy}>
-                            <FiPlus /> Dodaj novi
+                            <FiPlus /> {t.components.spectoConnectionCard.addNew}
                         </Button>
                     </HStack>
                     {loadingLinkedStreams ? (
                         <HStack gap="2" color="fg.muted">
                             <Spinner size="xs" />
-                            <Text fontSize="sm">Učitavam streamove…</Text>
+                            <Text fontSize="sm">{t.components.spectoConnectionCard.loadingStreams}</Text>
                         </HStack>
                     ) : linkedStreams.length === 0 ? (
-                        <Text fontSize="sm" color="fg.muted">Trenutno nema povezanih streamova.</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.components.spectoConnectionCard.noStreams}</Text>
                     ) : (
                         <VStack align="stretch" gap="2">
                             {linkedStreams.map((link) => (
@@ -455,12 +455,12 @@ export default function SpectoConnectionCard() {
                                             <StatusChip
                                                 size="sm"
                                                 status={link.broadcast?.broadcasting ? "active" : "draft"}
-                                                label={link.broadcast?.broadcasting ? "Uživo" : "Povezan"}
+                                                label={link.broadcast?.broadcasting ? t.components.spectoConnectionCard.live : t.components.spectoConnectionCard.connected}
                                             />
                                         </HStack>
                                     </Box>
                                     <Button size="sm" variant="outline" colorPalette="pitch" onClick={() => editLinkedStream(link)} disabled={busy}>
-                                        <FiEdit2 /> Uredi
+                                        <FiEdit2 /> {t.components.spectoConnectionCard.edit}
                                     </Button>
                                 </HStack>
                             ))}
@@ -474,19 +474,19 @@ export default function SpectoConnectionCard() {
                             <HStack justify="space-between" gap="3" wrap="wrap">
                                 <Box>
                                     <Text fontSize="sm" fontWeight={800} color="fg.ink">
-                                        {preview ? "Uredi stream" : "Dodaj novi stream"}
+                                        {preview ? t.components.spectoConnectionCard.editStream : t.components.spectoConnectionCard.addStream}
                                     </Text>
                                     <Text fontSize="xs" color="fg.muted">
-                                        Odaberi turnir i upiši Stream ID s platforme.
+                                        {t.components.spectoConnectionCard.editHint}
                                     </Text>
                                 </Box>
                                 <Button size="sm" variant="ghost" colorPalette="gray" onClick={closeEditor} disabled={busy}>
-                                    <FiX /> Zatvori
+                                    <FiX /> {t.components.spectoConnectionCard.close}
                                 </Button>
                             </HStack>
 
                 <Box>
-                    <MonoLabel mb="1.5" display="block">URL PLATFORME</MonoLabel>
+                    <MonoLabel mb="1.5" display="block">{t.components.spectoConnectionCard.baseUrlLabel}</MonoLabel>
                     <Input
                         size="sm"
                         value={baseUrl}
@@ -498,39 +498,39 @@ export default function SpectoConnectionCard() {
                 </Box>
 
                 <Box>
-                    <MonoLabel mb="1.5" display="block">API KLJUČ</MonoLabel>
+                    <MonoLabel mb="1.5" display="block">{t.components.spectoConnectionCard.apiKeyLabel}</MonoLabel>
                     <Input
                         size="sm"
                         type="password"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="Ostavi prazno da zadržiš postojeći"
+                        placeholder={t.components.spectoConnectionCard.apiKeyPlaceholder}
                         autoComplete="off"
                         fontFamily="mono"
                         fontSize="13px"
                     />
                     <HStack justify="space-between" mt="1.5" gap="2" wrap="wrap">
-                        <Text fontSize="xs" color="fg.muted">Trenutno: {keyStatus}</Text>
+                        <Text fontSize="xs" color="fg.muted">{t.components.spectoConnectionCard.keyCurrentPrefix}{keyStatus}</Text>
                         {conn?.apiKeyFromDb && (
                             <Button size="2xs" variant="ghost" colorPalette="gray" onClick={clearKey} disabled={busy}>
-                                <FiSlash /> Obriši spremljeni ključ
+                                <FiSlash /> {t.components.spectoConnectionCard.clearKey}
                             </Button>
                         )}
                     </HStack>
                 </Box>
 
                 <Box>
-                    <MonoLabel mb="1.5" display="block">TURNIR</MonoLabel>
+                    <MonoLabel mb="1.5" display="block">{t.components.spectoConnectionCard.tournamentLabel}</MonoLabel>
                     <NativeSelect.Root size="sm" disabled={busy}>
                         <NativeSelect.Field
                             value={tournamentUuid}
                             onChange={(e) => setTournamentUuid(e.currentTarget.value)}
                         >
-                            <option value="">Odaberi turnir…</option>
-                            {tournaments.map((t) => (
-                                <option key={t.id} value={t.uuid ?? ""}>
-                                    {t.name}
-                                    {t.location ? ` · ${t.location}` : ""}
+                            <option value="">{t.components.spectoConnectionCard.tournamentPlaceholder}</option>
+                            {tournaments.map((tour) => (
+                                <option key={tour.id} value={tour.uuid ?? ""}>
+                                    {tour.name}
+                                    {tour.location ? ` · ${tour.location}` : ""}
                                 </option>
                             ))}
                         </NativeSelect.Field>
@@ -539,12 +539,12 @@ export default function SpectoConnectionCard() {
                 </Box>
 
                 <Box>
-                    <MonoLabel mb="1.5" display="block">STREAM ID</MonoLabel>
+                    <MonoLabel mb="1.5" display="block">{t.components.spectoConnectionCard.streamIdLabel}</MonoLabel>
                     <Input
                         size="sm"
                         value={streamId}
                         onChange={(e) => setStreamId(e.target.value)}
-                        placeholder="npr. d56e721b"
+                        placeholder={t.components.spectoConnectionCard.streamIdPlaceholder}
                         fontFamily="mono"
                         fontSize="13px"
                     />
@@ -552,16 +552,16 @@ export default function SpectoConnectionCard() {
 
                 <HStack gap="2" wrap="wrap">
                     <Button size="sm" colorPalette="pitch" onClick={connect} loading={busy}>
-                        <FiLink /> {preview ? "Spremi izmjene" : "Poveži i prikaži"}
+                        <FiLink /> {preview ? t.components.spectoConnectionCard.saveChanges : t.components.spectoConnectionCard.connectAndShow}
                     </Button>
                     {preview && (
                         <Button size="sm" variant="outline" colorPalette="red" onClick={disconnectStream} disabled={busy}>
-                            <FiSlash /> Odspoji stream
+                            <FiSlash /> {t.components.spectoConnectionCard.disconnect}
                         </Button>
                     )}
                     {preview && (
                         <Button size="sm" variant="outline" colorPalette="gray" onClick={() => setPreview(null)} disabled={busy}>
-                            Sakrij prikaz
+                            {t.components.spectoConnectionCard.hidePreview}
                         </Button>
                     )}
                 </HStack>
@@ -575,11 +575,11 @@ export default function SpectoConnectionCard() {
                         <VStack align="stretch" gap="3">
                             <HStack justify="space-between" gap="3" wrap="wrap">
                                 <Box>
-                                    <MonoLabel display="block" mb="0.5">EMITIRANJE</MonoLabel>
+                                    <MonoLabel display="block" mb="0.5">{t.components.spectoConnectionCard.emittingLabel}</MonoLabel>
                                     <Text fontSize="sm" fontWeight={600} color={broadcast.broadcasting ? "accent.red" : "fg.muted"}>
                                         {broadcast.broadcasting
-                                            ? "Prikazuje se na glavnoj stranici"
-                                            : "Ne prikazuje se na glavnoj"}
+                                            ? t.components.spectoConnectionCard.broadcastingOnHome
+                                            : t.components.spectoConnectionCard.notBroadcastingOnHome}
                                     </Text>
                                 </Box>
                                 <HStack gap="2">
@@ -589,7 +589,7 @@ export default function SpectoConnectionCard() {
                                         onClick={startBroadcast}
                                         loading={busy}
                                     >
-                                        <FiPlay /> Pokreni + prikaži
+                                        <FiPlay /> {t.components.spectoConnectionCard.startAndShow}
                                     </Button>
                                     <Button
                                         size="sm"
@@ -598,15 +598,15 @@ export default function SpectoConnectionCard() {
                                         onClick={stopBroadcast}
                                         loading={busy}
                                     >
-                                        <FiSquare /> Zaustavi + sakrij
+                                        <FiSquare /> {t.components.spectoConnectionCard.stopAndHide}
                                     </Button>
                                 </HStack>
                             </HStack>
                             <HStack justify="space-between" gap="3" wrap="wrap" pt="3" borderTopWidth="1px" borderColor="border.subtle">
                                 <Box>
-                                    <Text fontSize="sm" fontWeight={700} color="fg.ink">Samo glavna stranica</Text>
+                                    <Text fontSize="sm" fontWeight={700} color="fg.ink">{t.components.spectoConnectionCard.homeOnlyTitle}</Text>
                                     <Text fontSize="xs" color="fg.muted">
-                                        Ovi gumbi ne šalju stream_start ni stream_end na platformu.
+                                        {t.components.spectoConnectionCard.homeOnlyDesc}
                                     </Text>
                                 </Box>
                                 <HStack gap="2">
@@ -618,7 +618,7 @@ export default function SpectoConnectionCard() {
                                         loading={busy}
                                         disabled={broadcast.broadcasting}
                                     >
-                                        <FiEye /> Prikaži na glavnoj
+                                        <FiEye /> {t.components.spectoConnectionCard.showOnHome}
                                     </Button>
                                     <Button
                                         size="sm"
@@ -628,7 +628,7 @@ export default function SpectoConnectionCard() {
                                         loading={busy}
                                         disabled={!broadcast.broadcasting}
                                     >
-                                        <FiEyeOff /> Sakrij s glavne
+                                        <FiEyeOff /> {t.components.spectoConnectionCard.hideFromHome}
                                     </Button>
                                 </HStack>
                             </HStack>
@@ -639,21 +639,21 @@ export default function SpectoConnectionCard() {
                 {/* Overlay alati - sastavi + zasebno odbrojavanje. */}
                 {broadcast?.streamId && (
                     <Box p="3" bg="bg.surfaceTint" rounded="lg" borderWidth="1px" borderColor="border">
-                        <MonoLabel display="block" mb="2">OVERLAY</MonoLabel>
+                        <MonoLabel display="block" mb="2">{t.components.spectoConnectionCard.overlayLabel}</MonoLabel>
                         <VStack align="stretch" gap="3">
                             <HStack justify="space-between" gap="3" wrap="wrap">
                                 <Text fontSize="sm" color="fg.muted">
-                                    Sastavi utakmice u tijeku (ili sljedeće na rasporedu)
+                                    {t.components.spectoConnectionCard.lineupHint}
                                 </Text>
                                 <Button size="sm" variant="outline" colorPalette="pitch" onClick={pushLineup} loading={busy}>
-                                    <FiUsers /> Pošalji sastave
+                                    <FiUsers /> {t.components.spectoConnectionCard.sendLineup}
                                 </Button>
                             </HStack>
 
                             <HStack gap="2" wrap="wrap" align="center">
                                 <HStack gap="1.5" color="fg.muted" flexShrink={0}>
                                     <FiClock size={13} />
-                                    <Text fontSize="sm">Odbrojavanje</Text>
+                                    <Text fontSize="sm">{t.components.spectoConnectionCard.countdownLabel}</Text>
                                 </HStack>
                                 <Input
                                     size="sm"
@@ -664,24 +664,24 @@ export default function SpectoConnectionCard() {
                                     fontFamily="mono"
                                     textAlign="center"
                                 />
-                                <Text fontSize="sm" color="fg.muted">min</Text>
+                                <Text fontSize="sm" color="fg.muted">{t.components.spectoConnectionCard.minutesUnit}</Text>
                                 {(timerEndsAt != null || (timerLeft ?? 0) > 0) && (
                                     <Text fontSize="sm" fontFamily="mono" fontWeight={700} color={timerEndsAt ? "accent.red" : "fg.muted"}>
                                         {String(Math.floor(remainingSecs / 60)).padStart(2, "0")}
                                         :
                                         {String(remainingSecs % 60).padStart(2, "0")}
-                                        {timerEndsAt == null && " (pauza)"}
+                                        {timerEndsAt == null && t.components.spectoConnectionCard.pausedSuffix}
                                     </Text>
                                 )}
                                 <HStack gap="1.5" ml="auto">
                                     <Button size="xs" colorPalette="pitch" onClick={timerStart} loading={busy} disabled={timerEndsAt != null}>
-                                        <FiPlay /> {(timerLeft ?? 0) > 0 ? "Nastavi" : "Pokreni"}
+                                        <FiPlay /> {(timerLeft ?? 0) > 0 ? t.components.spectoConnectionCard.resume : t.components.spectoConnectionCard.start}
                                     </Button>
                                     <Button size="xs" variant="outline" colorPalette="gray" onClick={timerPause} loading={busy} disabled={timerEndsAt == null}>
-                                        <FiPause /> Pauza
+                                        <FiPause /> {t.components.spectoConnectionCard.pause}
                                     </Button>
                                     <Button size="xs" variant="ghost" colorPalette="gray" onClick={timerStop} loading={busy} disabled={timerEndsAt == null && (timerLeft ?? 0) === 0}>
-                                        <FiSquare /> Stop
+                                        <FiSquare /> {t.components.spectoConnectionCard.stop}
                                     </Button>
                                 </HStack>
                             </HStack>
@@ -694,7 +694,7 @@ export default function SpectoConnectionCard() {
                         <HStack gap="2" mb="2" color="pitch.500">
                             <FiCheck />
                             <Text fontSize="sm" fontWeight={600}>
-                                Povezano · stream {preview}
+                                {t.components.spectoConnectionCard.connectedStatus(preview)}
                             </Text>
                         </HStack>
                         {/* The platform's own player (video + its scoreboard overlay). */}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Box, chakra, HStack, Text } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
 import { FiX } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 /**
  * Floating help button - a small circular "?" pinned to the bottom-right of
@@ -34,6 +35,7 @@ function persistHintDismissed() {
 }
 
 export default function HelpFab() {
+    const t = useTranslation()
     const navigate = useNavigate()
     const [hintOpen, setHintOpen] = useState(false)
 
@@ -80,18 +82,18 @@ export default function HelpFab() {
                             cursor="pointer"
                             onClick={openGuide}
                             role="button"
-                            aria-label="Otvori vodič"
+                            aria-label={t.components.helpFab.openGuideAria}
                         >
                             <Text fontSize="13.5px" fontWeight={700} color="fg.ink" lineHeight="1.35">
-                                Novi ovdje? 👋
+                                {t.components.helpFab.hintTitle}
                             </Text>
                             <Text fontSize="12.5px" color="fg.muted" lineHeight="1.45" mt="0.5">
-                                Klikni <b>?</b> za kratki vodič kroz sve što aplikacija nudi.
+                                {t.components.helpFab.hintPrefix} <b>?</b> {t.components.helpFab.hintSuffix}
                             </Text>
                         </Box>
                         <chakra.button
                             type="button"
-                            aria-label="Zatvori uputu"
+                            aria-label={t.components.helpFab.closeHintAria}
                             onClick={dismissHint}
                             border="none"
                             bg="transparent"
@@ -124,8 +126,8 @@ export default function HelpFab() {
 
             <chakra.button
                 type="button"
-                aria-label="Vodič - što nudi aplikacija"
-                title="Vodič - što nudi aplikacija"
+                aria-label={t.components.helpFab.guideButtonLabel}
+                title={t.components.helpFab.guideButtonLabel}
                 onClick={openGuide}
                 position="fixed"
                 zIndex={20}

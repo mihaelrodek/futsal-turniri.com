@@ -1,6 +1,8 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ContextNotActiveException;
+import jakarta.inject.Inject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,18 +38,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * the whole default-charset question instead of depending on it.
  *
  * <h2>Active locale</h2>
- * There is no per-user locale preference anywhere in this app today (no
- * {@code Accept-Language} parsing, no profile field), so every call site uses
- * the default-Croatian convenience overloads ({@link #t(String, Object...)}).
- * The {@link Locale}-parametrized overloads exist so wiring up real locale
- * switching later is a small addition (pass a resolved {@code Locale}
- * through), not a rewrite.
+ * {@link #t(String, Object...)} (the convenience overload every existing call
+ * site uses) resolves its {@link Locale} from the request-scoped
+ * {@link RequestLocale}, populated per-request by
+ * {@link hr.mrodek.apps.futsal_turniri.filters.LocaleRequestFilter} from the
+ * {@code X-Locale} header the frontend sends for whichever language the user
+ * picked in the navbar switcher. Falls back to {@link #DEFAULT_LOCALE}
+ * (Croatian) when there's no active request context at all (a future
+ * background job calling this off a request thread) - defensive, since as of
+ * this writing every call site DOES run on a request thread.
  */
 @ApplicationScoped
 public class MessageService {
 
-    /** Default locale for every call site until a real locale-selection
-     *  mechanism exists (see class javadoc). */
+    /** Fallback locale - used when the request carries no {@code X-Locale}
+     *  header, an unsupported one, or (defensively) when there's no request
+     *  context at all to resolve one from. */
     public static final Locale DEFAULT_LOCALE = Locale.forLanguageTag("hr");
 
     private static final String BASE_NAME = "i18n.messages";
@@ -56,10 +62,19 @@ public class MessageService {
      *  once loaded, so this never needs to be invalidated. */
     private final Map<String, ResourceBundle> bundles = new ConcurrentHashMap<>();
 
-    /** Resolve {@code key} for {@link #DEFAULT_LOCALE} (Croatian), substituting
-     *  {@code args} via {@link MessageFormat} (e.g. {@code {0}}, {@code {1}}). */
+    @Inject RequestLocale requestLocale;
+
+    /** Resolve {@code key} for the current request's language (see class
+     *  javadoc "Active locale"), substituting {@code args} via
+     *  {@link MessageFormat} (e.g. {@code {0}}, {@code {1}}). */
     public String t(String key, Object... args) {
-        return t(DEFAULT_LOCALE, key, args);
+        Locale locale;
+        try {
+            locale = requestLocale.get();
+        } catch (ContextNotActiveException e) {
+            locale = DEFAULT_LOCALE;
+        }
+        return t(locale, key, args);
     }
 
     /** Resolve {@code key} for the given {@code locale}, substituting

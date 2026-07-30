@@ -31,6 +31,8 @@ import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
 import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { ExportDialog, type ExportMeta } from "./TournamentExport"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n/hr"
 
 /* ────────────────────────────────────────────────────────────────────────────
    Schedule tab - match scheduling.
@@ -46,25 +48,6 @@ import { ExportDialog, type ExportMeta } from "./TournamentExport"
      d) "Format utakmice" config box is hidden once the tournament has
         started (any match is LIVE or FINISHED).
    ─────────────────────────────────────────────────────────────────────────── */
-
-const STAGE_LABEL: Record<string, string> = {
-    GROUP: "Grupa",
-    ROUND_OF_32: "1/16 finala",
-    ROUND_OF_16: "Osmina finala",
-    QUARTERFINAL: "Četvrtfinale",
-    SEMIFINAL: "Polufinale",
-    FINAL: "Finale",
-    THIRD_PLACE: "Za 3. mjesto",
-}
-const COMPACT_STAGE_LABEL: Record<string, string> = {
-    GROUP: "Grupa",
-    ROUND_OF_32: "1/16",
-    ROUND_OF_16: "Osm.",
-    QUARTERFINAL: "ČF",
-    SEMIFINAL: "PF",
-    FINAL: "Finale",
-    THIRD_PLACE: "3. mjesto",
-}
 
 /** Kickoff time in ms for sorting; matches without a time sort to the end. */
 function kickoffMs(m: ScheduledMatch): number {
@@ -131,17 +114,20 @@ function numValOrNull(v: string): number | null {
 
 /* -- Stage badge --------------------------------------------------------- */
 function stageBadgeText(
+    t: Dictionary,
     stage: string,
     groupName?: string | null,
     knockoutCode?: string | null,
     compact = false,
 ) {
     const isGroup = stage === "GROUP"
-    const labels = compact ? COMPACT_STAGE_LABEL : STAGE_LABEL
+    const labels: Record<string, string> = compact
+        ? t.components.scheduleTab.compactStageLabels
+        : t.components.scheduleTab.stageLabels
     const stageLabel = isGroup
         ? groupName
-            ? `Grupa ${groupName}`
-            : "Grupa"
+            ? t.components.scheduleTab.groupBadge(groupName)
+            : labels.GROUP
         : labels[stage] ?? stage
     return !isGroup && knockoutCode ? `${stageLabel} - ${knockoutCode}` : stageLabel
 }
@@ -155,8 +141,9 @@ function StageBadge({
     groupName?: string | null
     knockoutCode?: string | null
 }) {
+    const t = useTranslation()
     const isGroup = stage === "GROUP"
-    const base = stageBadgeText(stage, groupName, knockoutCode)
+    const base = stageBadgeText(t, stage, groupName, knockoutCode)
     return (
         <Box
             as="span"
@@ -188,8 +175,9 @@ function CompactStageBadge({
     groupName?: string | null
     knockoutCode?: string | null
 }) {
+    const t = useTranslation()
     const isGroup = stage === "GROUP"
-    const base = stageBadgeText(stage, groupName, knockoutCode, true)
+    const base = stageBadgeText(t, stage, groupName, knockoutCode, true)
     return (
         <Box
             as="span"
@@ -415,6 +403,7 @@ function MatchRow({
      *  red border so the organizer sees what's on deck. */
     isNext?: boolean
 }) {
+    const t = useTranslation()
     const [expanded, setExpanded] = useState(false)
     const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
         matchDisplay(match)
@@ -470,7 +459,7 @@ function MatchRow({
         </HStack>
     ) : (
         <Text fontSize="xs" color="fg.subtle">
-            Termin nije određen
+            {t.components.scheduleTab.noKickoffTime}
         </Text>
     )
 
@@ -496,12 +485,12 @@ function MatchRow({
                 e.stopPropagation()
                 addToCalendar()
             }}
-            aria-label="Dodaj u kalendar"
+            aria-label={t.components.scheduleTab.addToCalendar}
             flexShrink={0}
         >
             <FiCalendar size={12} />
             <chakra.span display={{ base: "none", md: "inline" }}>
-                Dodaj u kalendar
+                {t.components.scheduleTab.addToCalendar}
             </chakra.span>
         </RowButton>
     ) : null
@@ -640,7 +629,7 @@ function MatchRow({
                         border="none"
                     >
                         {expanded ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />}
-                        Detalji
+                        {t.components.scheduleTab.detailsToggle}
                     </RowButton>
                 </Flex>
             )}
@@ -655,7 +644,7 @@ function MatchRow({
                         halfLengthMin={halfLengthMin}
                         hideEmpty={!isLive}
                         emptyNote={
-                            isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : undefined
+                            isFinished ? t.components.groupsTab.matchDialog.resultOnlyNote : undefined
                         }
                     />
                 </Box>
@@ -698,6 +687,7 @@ function MatchCard({
      *  the list row (already suppressed upstream while any match is LIVE). */
     isNext?: boolean
 }) {
+    const t = useTranslation()
     const { isLive, t1Name, t2Name, t1Muted, t2Muted, scoreText } = matchDisplay(match)
     // Add-to-calendar only for a scheduled match that has a termin; the notify
     // bell for scheduled + live (pointless once finished).
@@ -738,8 +728,8 @@ function MatchCard({
                     <Flex justify="flex-start" minW="0">
                         {showCalBtn && (
                             <IconButton
-                                aria-label="Dodaj u kalendar"
-                                title="Dodaj u kalendar"
+                                aria-label={t.components.scheduleTab.addToCalendar}
+                                title={t.components.scheduleTab.addToCalendar}
                                 size="xs"
                                 variant="ghost"
                                 colorPalette="gray"
@@ -773,7 +763,7 @@ function MatchCard({
                             </HStack>
                         ) : (
                             <Text fontSize="2xs" color="fg.subtle">
-                                Termin nije određen
+                                {t.components.scheduleTab.noKickoffTime}
                             </Text>
                         )}
                     </VStack>
@@ -869,6 +859,7 @@ function MatchCompactRow({
     /** True for the single next-to-start match - red border, same as MatchRow. */
     isNext?: boolean
 }) {
+    const t = useTranslation()
     const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
         matchDisplay(match)
     // Add-to-calendar only for a scheduled match that has a termin; the notify
@@ -977,8 +968,8 @@ function MatchCompactRow({
                     >
                         {showCalBtn && (
                             <IconButton
-                                aria-label="Dodaj u kalendar"
-                                title="Dodaj u kalendar"
+                                aria-label={t.components.scheduleTab.addToCalendar}
+                                title={t.components.scheduleTab.addToCalendar}
                                 size="xs"
                                 variant="ghost"
                                 colorPalette="gray"
@@ -1110,6 +1101,7 @@ export default function ScheduleTab({
      *  clear the request (a later manual visit won't re-open the dialog). */
     onAutoOpenKnockoutTimesConsumed?: () => void
 }) {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     const navigate = useNavigate()
     // Seed from the shared schedule cache so returning to the Raspored tab (or a
@@ -1123,9 +1115,11 @@ export default function ScheduleTab({
     const [confirmAction, setConfirmAction] = useState<null | "regenerate" | "clear">(null)
     /** Branded "Export raspored" poster dialog. */
     const [exportOpen, setExportOpen] = useState(false)
-    /** The multi-day planner: "full" plans the whole tournament, "ko" plans
-     *  only the knockout ("Raspored završnice"). null = closed. */
-    const [plannerMode, setPlannerMode] = useState<null | "full" | "ko">(null)
+    /** The multi-day planner: "generate" is the first-time "Generiraj raspored"
+     *  flow (config screen first - pick days/counts, then sketch), "full" edits
+     *  an existing schedule (skips straight to the sketch via autoSketch), "ko"
+     *  plans only the knockout ("Raspored završnice"). null = closed. */
+    const [plannerMode, setPlannerMode] = useState<null | "generate" | "full" | "ko">(null)
     /** GROUPS_KNOCKOUT only - true once groups have been drawn (so the schedule
      *  can be generated even before any fixtures exist). */
     const [groupsDrawn, setGroupsDrawn] = useState(false)
@@ -1362,7 +1356,7 @@ export default function ScheduleTab({
     }
 
     if (loading) {
-        return <Loader label="Učitavanje rasporeda..." />
+        return <Loader label={t.components.scheduleTab.loadingSchedule} />
     }
 
     const scheduleMatches = schedule?.matches ?? []
@@ -1467,12 +1461,12 @@ export default function ScheduleTab({
     // Compact label for the in-list day divider, e.g. "1. dan · pon 08.07.".
     // Unscheduled matches (no kickoff) group under "Bez termina".
     const dividerLabel = (key: string): string => {
-        if (!key) return "Bez termina"
+        if (!key) return t.components.scheduleTab.dayDivider.noTime
         const [y, mo, da] = key.split("-").map(Number)
         const wd = new Date(y, mo - 1, da).toLocaleDateString("hr-HR", { weekday: "short" })
         const p = (n: number) => String(n).padStart(2, "0")
         const num = dayOptions.indexOf(key) + 1
-        return `${num}. dan · ${wd} ${p(da)}.${p(mo)}.`
+        return t.components.scheduleTab.dayDivider.label(num, wd, p(da), p(mo))
     }
 
     const anyFilter = !!teamFilter || !!groupFilter || !!(multiDay && dayFilter)
@@ -1519,7 +1513,7 @@ export default function ScheduleTab({
             <MatchRow
                 match={m}
                 tournamentUuid={uuid}
-                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentName={tournamentName ?? t.components.scheduleTab.icsTournamentFallback}
                 tournamentLocation={tournamentLocation}
                 tournamentSlug={tournamentSlug}
                 slotMinutes={slot}
@@ -1564,7 +1558,7 @@ export default function ScheduleTab({
                 multiDay={multiDay}
                 onOpen={openMatch}
                 tournamentUuid={uuid}
-                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentName={tournamentName ?? t.components.scheduleTab.icsTournamentFallback}
                 tournamentLocation={tournamentLocation}
                 tournamentSlug={tournamentSlug}
                 slotMinutes={slot}
@@ -1592,7 +1586,7 @@ export default function ScheduleTab({
                 multiDay={multiDay}
                 onOpen={openMatch}
                 tournamentUuid={uuid}
-                tournamentName={tournamentName ?? "Futsal turnir"}
+                tournamentName={tournamentName ?? t.components.scheduleTab.icsTournamentFallback}
                 tournamentLocation={tournamentLocation}
                 tournamentSlug={tournamentSlug}
                 slotMinutes={slot}
@@ -1700,7 +1694,8 @@ export default function ScheduleTab({
     // clear). No popover, no portal:
     //   - forced open before the schedule is laid out, so the organizer has to
     //     set the format before they can generate (no toggle);
-    //   - after it's laid out, revealed on demand via the "Uredi format" button.
+    //   - after it's laid out, revealed on demand via the pencil toggle on the
+    //     format summary row.
     const configBoxForced = showEditableConfig && !scheduleLaidOut
     const configBoxToggle = showEditableConfig && scheduleLaidOut
     const showConfigBox = configBoxForced || (configBoxToggle && formatEditorOpen)
@@ -1747,7 +1742,7 @@ export default function ScheduleTab({
             _hover={{ bg: "bg.panel", color: "fg.ink" }}
         >
             <FiChevronsDown size={14} />
-            + još {hiddenUpcomingCount} utakmica
+            {t.components.scheduleTab.collapseSummary(hiddenUpcomingCount)}
         </chakra.button>
     ) : null
 
@@ -1758,7 +1753,7 @@ export default function ScheduleTab({
     const configEditor = (
         <VStack align="stretch" gap="3">
             <Text fontSize="13px" fontWeight={800} color="fg.ink" letterSpacing="-0.01em">
-                Format utakmice
+                {t.components.scheduleTab.formatEditor.heading}
             </Text>
 
             {/* Two columns: the normal (group) format on the left, the knockout
@@ -1780,22 +1775,22 @@ export default function ScheduleTab({
                             display="flex"
                             alignItems="center"
                         >
-                            Grupe
+                            {t.components.scheduleTab.formatEditor.groupsColumnHeader}
                         </Text>
                     )}
                     <Flex gap={{ base: "2", md: "3" }} wrap="wrap" align="flex-end">
                         <CfgField
-                            label="Trajanje poluvrijeme"
+                            label={t.components.scheduleTab.formatEditor.halfLengthLabel}
                             value={cfg.halfLengthMin}
                             onChange={(v) => setCfg((c) => ({ ...c, halfLengthMin: v }))}
                         />
                         <CfgField
-                            label="Pauza poluvrijeme"
+                            label={t.components.scheduleTab.formatEditor.halftimeBreakLabel}
                             value={cfg.halftimeBreakMin}
                             onChange={(v) => setCfg((c) => ({ ...c, halftimeBreakMin: v }))}
                         />
                         <CfgField
-                            label="Pauza između utakmica"
+                            label={t.components.scheduleTab.formatEditor.breakBetweenMatchesLabel}
                             value={cfg.breakBetweenMatchesMin}
                             onChange={(v) => setCfg((c) => ({ ...c, breakBetweenMatchesMin: v }))}
                         />
@@ -1843,23 +1838,23 @@ export default function ScheduleTab({
                                 flexShrink={0}
                             />
                             <Text fontSize="12px" fontWeight={700} color="fg.ink" lineHeight="1.2">
-                                Završnica se igra drugačije
+                                {t.components.scheduleTab.formatEditor.koOverrideCheckbox}
                             </Text>
                         </Flex>
                         {cfg.koEnabled && (
                             <Flex gap={{ base: "2", md: "3" }} wrap="wrap" align="flex-end">
                                 <CfgField
-                                    label="Završnica - poluvrijeme"
+                                    label={t.components.scheduleTab.formatEditor.koHalfLengthLabel}
                                     value={cfg.koHalfLengthMin}
                                     onChange={(v) => setCfg((c) => ({ ...c, koHalfLengthMin: v }))}
                                 />
                                 <CfgField
-                                    label="Završnica - pauza poluvrijeme"
+                                    label={t.components.scheduleTab.formatEditor.koHalftimeBreakLabel}
                                     value={cfg.koHalftimeBreakMin}
                                     onChange={(v) => setCfg((c) => ({ ...c, koHalftimeBreakMin: v }))}
                                 />
                                 <CfgField
-                                    label="Završnica - pauza između utakmica"
+                                    label={t.components.scheduleTab.formatEditor.koBreakBetweenMatchesLabel}
                                     placeholder={cfg.breakBetweenMatchesMin || "5"}
                                     value={cfg.koBreakBetweenMatchesMin}
                                     onChange={(v) => setCfg((c) => ({ ...c, koBreakBetweenMatchesMin: v }))}
@@ -1881,7 +1876,7 @@ export default function ScheduleTab({
             <VStack align="stretch" gap="2">
                 {!drawGenerated && (
                     <Text fontSize="12px" color="fg.muted">
-                        Prvo izvuci ždrijeb (grupe / eliminacija), pa generiraj raspored.
+                        {t.components.scheduleTab.formatEditor.drawNotGeneratedHint}
                     </Text>
                 )}
                 <Flex gap="2" wrap="wrap" align="center">
@@ -1892,7 +1887,7 @@ export default function ScheduleTab({
                                 disabled={generating || clearing}
                                 icon={<FiRefreshCw size={14} />}
                             >
-                                Ponovno postavi
+                                {t.components.scheduleTab.formatEditor.regenerateButton}
                             </PrimaryButton>
                             <GhostButton
                                 danger
@@ -1900,16 +1895,18 @@ export default function ScheduleTab({
                                 disabled={generating || clearing}
                                 icon={<FiTrash2 size={14} />}
                             >
-                                Očisti raspored
+                                {t.components.scheduleTab.formatEditor.clearButton}
                             </GhostButton>
                         </>
                     ) : (
                         <PrimaryButton
-                            onClick={() => setPlannerMode("full")}
+                            onClick={() => setPlannerMode("generate")}
                             disabled={generating || !drawGenerated}
                             icon={<LuCalendarClock size={14} />}
                         >
-                            {generating ? "Generiranje…" : "Generiraj raspored"}
+                            {generating
+                                ? t.components.scheduleTab.formatEditor.generatingButton
+                                : t.components.scheduleTab.formatEditor.generateButton}
                         </PrimaryButton>
                     )}
                 </Flex>
@@ -1917,24 +1914,14 @@ export default function ScheduleTab({
         </VStack>
     )
 
-    // The compact action cluster (Termini završnice · Uredi format · Uredi
-    // raspored · Preuzmi) that lives in the combined card's header row, in the
-    // right cluster after the prikaz toggle - the single home for these actions.
-    // `ml="auto"` keeps the cluster pinned right when the row wraps on narrow
-    // screens.
+    // The compact action cluster (Uredi raspored · Preuzmi) that lives in the
+    // combined card's header row, in the right cluster after the prikaz toggle
+    // - the single home for these actions. Toggling the format editor is the
+    // pencil on the format summary row above, not a button here - one control
+    // for one action. `ml="auto"` keeps the cluster pinned right when the row
+    // wraps on narrow screens.
     const scheduleControls = (
         <HStack gap="2" wrap="wrap" align="center" justify="flex-end" ml="auto">
-            {configBoxToggle && (
-                <GhostButton
-                    px="3.5"
-                    py="2"
-                    fontSize="13px"
-                    icon={<FiEdit2 size={14} />}
-                    onClick={() => setFormatEditorOpen((v) => !v)}
-                >
-                    {formatEditorOpen ? "Zatvori format" : "Uredi format"}
-                </GhostButton>
-            )}
             {/* "Uredi raspored" now opens the planner (same modal as sketching,
                 full mode) - all drag&drop reordering + time edits after start
                 happen there. The backend only re-plans the remaining matches. */}
@@ -1946,7 +1933,7 @@ export default function ScheduleTab({
                     icon={<FiEdit2 size={14} />}
                     onClick={() => setPlannerMode("full")}
                 >
-                    Uredi
+                    {t.components.scheduleTab.editButton}
                 </PrimaryButton>
             )}
             {rawMatches.length > 0 && (
@@ -1957,7 +1944,7 @@ export default function ScheduleTab({
                     icon={<FiDownload size={14} />}
                     onClick={() => setExportOpen(true)}
                 >
-                    Preuzmi
+                    {t.components.scheduleTab.downloadButton}
                 </GhostButton>
             )}
         </HStack>
@@ -1982,7 +1969,7 @@ export default function ScheduleTab({
                 active={viewMode === "list"}
                 onClick={() => setViewMode("list")}
                 icon={<FiList size={14} />}
-                label="Lista"
+                label={t.components.scheduleTab.viewToggle.list}
             />
             {/* Desktop only - the full-detail rows are unreadable at phone
                 width, so phones are offered just Lista + Mali prikaz (the
@@ -1992,14 +1979,14 @@ export default function ScheduleTab({
                     active={viewMode === "grid"}
                     onClick={() => setViewMode("grid")}
                     icon={<FiMenu size={14} />}
-                    label="Veliki prikaz"
+                    label={t.components.scheduleTab.viewToggle.gridFull}
                 />
             </Box>
             <ViewToggleButton
                 active={viewMode === "grid-sm"}
                 onClick={() => setViewMode("grid-sm")}
                 icon={<FiGrid size={14} />}
-                label="Mali prikaz"
+                label={t.components.scheduleTab.viewToggle.gridSmall}
             />
         </HStack>
     )
@@ -2031,16 +2018,16 @@ export default function ScheduleTab({
                 >
                     <FiInfo size={14} />
                     <Text fontFamily="mono" fontSize="xs" fontWeight={600}>
-                        Turnir je završen. Obrati se administratoru za otključavanje.
+                        {t.components.scheduleTab.lockedNotice}
                     </Text>
                 </Flex>
             )}
 
             {/* Inline format editor - an always-open, prominent box for the
                 organizer before the schedule is laid out (they must set the
-                match format here), then toggled via "Uredi format" afterwards.
-                Rendered inline (never a portal) so it can't float over other
-                dialogs the way the old popover did. */}
+                match format here), then toggled via the pencil on the format
+                summary row afterwards. Rendered inline (never a portal) so it
+                can't float over other dialogs the way the old popover did. */}
             {showConfigBox && (
                 <Box
                     bg="bg.panel"
@@ -2058,7 +2045,7 @@ export default function ScheduleTab({
                 onClose={() => setExportOpen(false)}
                 kind="schedule"
                 meta={exportMeta ?? {
-                    tournamentName: tournamentName ?? "Turnir",
+                    tournamentName: tournamentName ?? t.components.scheduleTab.tournamentFallback,
                     tournamentUrl: `${window.location.origin}/turniri/${tournamentSlug ?? uuid}`,
                 }}
                 matches={rawMatches}
@@ -2083,17 +2070,15 @@ export default function ScheduleTab({
                     <HStack gap="2" minW="0">
                         <FiClock size={16} />
                         <Text fontSize="sm" color="fg.ink" fontWeight={500}>
-                            {unscheduledCount === 1
-                                ? "1 utakmica nema raspored"
-                                : `${unscheduledCount} utakmica nema raspored`}{" "}
-                            (npr. eliminacija). Uredi termine ili ih popuni automatski.
+                            {t.components.scheduleTab.unscheduled.countLabel(unscheduledCount)}{" "}
+                            {t.components.scheduleTab.unscheduled.suffix}
                         </Text>
                     </HStack>
                     <PrimaryButton
                         onClick={() => setPlannerMode("ko")}
                         icon={<LuCalendarClock size={14} />}
                     >
-                        Uredi termine
+                        {t.components.scheduleTab.unscheduled.editButton}
                     </PrimaryButton>
                 </Flex>
             )}
@@ -2101,8 +2086,8 @@ export default function ScheduleTab({
             {/* Format summary - one compact non-expandable row above the
                 combined schedule card: group timings, then (when set) the
                 završnica timings in the same line. Organizers get a small
-                pencil on the right that toggles the inline format editor
-                (same target as the "Uredi format" button below). */}
+                pencil on the right that toggles the inline format editor -
+                the only entry point for it now. */}
             {scheduleHasConfig && schedule && (
                 <Box
                     borderWidth="1px"
@@ -2122,19 +2107,19 @@ export default function ScheduleTab({
                     >
                         <FiClock size={13} />
                         <Box as="span">
-                            Poluvrijeme:{" "}
+                            {t.components.scheduleTab.formatSummary.halfLabel}{" "}
                             <chakra.span fontWeight={700} color="fg.ink">
                                 {schedule.halfLengthMin ?? 0}
                             </chakra.span>{" "}
-                            min · pauza:{" "}
+                            {t.components.scheduleTab.formatSummary.minUnit} · {t.components.scheduleTab.formatSummary.breakLabel}{" "}
                             <chakra.span fontWeight={700} color="fg.ink">
                                 {schedule.halftimeBreakMin ?? 0}
                             </chakra.span>{" "}
-                            min · između utakmica:{" "}
+                            {t.components.scheduleTab.formatSummary.minUnit} · {t.components.scheduleTab.formatSummary.betweenMatchesLabel}{" "}
                             <chakra.span fontWeight={700} color="fg.ink">
                                 {schedule.breakBetweenMatchesMin ?? 0}
                             </chakra.span>{" "}
-                            min
+                            {t.components.scheduleTab.formatSummary.minUnit}
                         </Box>
                         {koFormatOn && (
                             <>
@@ -2142,35 +2127,35 @@ export default function ScheduleTab({
                                     ·
                                 </Box>
                                 <Box as="span">
-                                    Završnica - poluvrijeme:{" "}
+                                    {t.components.scheduleTab.formatSummary.koHalfLabel}{" "}
                                     <chakra.span fontWeight={700} color="fg.ink">
                                         {schedule.koHalfLengthMin ?? 0}
                                     </chakra.span>{" "}
-                                    min · pauza:{" "}
+                                    {t.components.scheduleTab.formatSummary.minUnit} · {t.components.scheduleTab.formatSummary.breakLabel}{" "}
                                     <chakra.span fontWeight={700} color="fg.ink">
                                         {schedule.koHalftimeBreakMin ?? 0}
                                     </chakra.span>{" "}
-                                    min
+                                    {t.components.scheduleTab.formatSummary.minUnit}
                                     {schedule.koBreakBetweenMatchesMin != null && (
                                         <>
                                             {" "}
-                                            · između utakmica:{" "}
+                                            · {t.components.scheduleTab.formatSummary.betweenMatchesLabel}{" "}
                                             <chakra.span fontWeight={700} color="fg.ink">
                                                 {schedule.koBreakBetweenMatchesMin}
                                             </chakra.span>{" "}
-                                            min
+                                            {t.components.scheduleTab.formatSummary.minUnit}
                                         </>
                                     )}
                                 </Box>
                             </>
                         )}
-                        {/* Small pencil (organizers, schedule laid out) - jumps
-                            straight into the inline format editor, same toggle
-                            as the "Uredi format" button in the card header. */}
+                        {/* Small pencil (organizers, schedule laid out) - the
+                            only entry point that jumps into the inline format
+                            editor. */}
                         {configBoxToggle && (
                             <IconButton
-                                aria-label="Uredi format"
-                                title="Uredi format"
+                                aria-label={t.components.scheduleTab.editFormatAria}
+                                title={t.components.scheduleTab.editFormatAria}
                                 size="2xs"
                                 variant="ghost"
                                 rounded="full"
@@ -2194,20 +2179,20 @@ export default function ScheduleTab({
                 <Panel>
                     <EmptyState
                         icon={LuCalendarX2}
-                        title="Nema utakmica"
-                        description="Još nema utakmica. Izvuci grupe ili generiraj eliminacijsku ljestvicu, pa generiraj raspored."
+                        title={t.components.scheduleTab.emptyState.noMatchesTitle}
+                        description={t.components.scheduleTab.emptyState.noMatchesDesc}
                     />
                 </Panel>
             ) : visibleMatches.length === 0 ? (
                 <Panel>
                     <EmptyState
                         icon={LuCalendarX2}
-                        title="Nema utakmica"
-                        description="Nijedna utakmica ne odgovara odabranom filteru."
+                        title={t.components.scheduleTab.emptyState.noMatchesTitle}
+                        description={t.components.scheduleTab.emptyState.noMatchesForFilterDesc}
                         action={
                             anyFilter ? (
                                 <Button size="sm" variant="outline" onClick={clearFilters}>
-                                    Poništi filtere
+                                    {t.components.scheduleTab.emptyState.clearFiltersButton}
                                 </Button>
                             ) : undefined
                         }
@@ -2269,12 +2254,12 @@ export default function ScheduleTab({
                                                 value={teamFilter}
                                                 onChange={(e) => setTeamFilter(e.target.value)}
                                                 fontWeight={600}
-                                                aria-label="Filtriraj po ekipi"
+                                                aria-label={t.components.scheduleTab.filters.teamAria}
                                             >
-                                                <option value="">Sve ekipe</option>
-                                                {teamOptions.map((t) => (
-                                                    <option key={t.id} value={t.id}>
-                                                        {t.name}
+                                                <option value="">{t.components.scheduleTab.filters.allTeams}</option>
+                                                {teamOptions.map((team) => (
+                                                    <option key={team.id} value={team.id}>
+                                                        {team.name}
                                                     </option>
                                                 ))}
                                             </NativeSelect.Field>
@@ -2293,12 +2278,12 @@ export default function ScheduleTab({
                                                 value={groupFilter}
                                                 onChange={(e) => setGroupFilter(e.target.value)}
                                                 fontWeight={600}
-                                                aria-label="Filtriraj po skupini"
+                                                aria-label={t.components.scheduleTab.filters.groupAria}
                                             >
-                                                <option value="">Sve skupine</option>
+                                                <option value="">{t.components.scheduleTab.filters.allGroups}</option>
                                                 {groupOptions.map((g) => (
                                                     <option key={g} value={g}>
-                                                        Skupina {g}
+                                                        {t.components.scheduleTab.filters.groupOption(g)}
                                                     </option>
                                                 ))}
                                             </NativeSelect.Field>
@@ -2322,9 +2307,9 @@ export default function ScheduleTab({
                                                 value={dayFilter}
                                                 onChange={(e) => setDayFilter(e.target.value)}
                                                 fontWeight={600}
-                                                aria-label="Filtriraj po danu"
+                                                aria-label={t.components.scheduleTab.filters.dayAria}
                                             >
-                                                <option value="">Svi dani</option>
+                                                <option value="">{t.components.scheduleTab.filters.allDays}</option>
                                                 {dayOptions.map((d) => (
                                                     <option key={d} value={d}>
                                                         {dayLabel(d)}
@@ -2340,8 +2325,8 @@ export default function ScheduleTab({
                                         row; hidden visually (not removed from
                                         layout) when no filter is active. */}
                                     <IconButton
-                                        aria-label="Poništi filtere"
-                                        title="Poništi filtere"
+                                        aria-label={t.components.scheduleTab.filters.clearFiltersAria}
+                                        title={t.components.scheduleTab.filters.clearFiltersAria}
                                         size="xs"
                                         variant="outline"
                                         colorPalette="brand"
@@ -2367,8 +2352,8 @@ export default function ScheduleTab({
                             )}
 
                             {/* Right cluster - prikaz toggle then the schedule
-                                actions (Termini završnice · Uredi format · Uredi
-                                raspored · Preuzmi). Base: its own row under the
+                                actions (Termini završnice · Uredi raspored ·
+                                Preuzmi). Base: its own row under the
                                 filters holding ONLY the actions (the toggle sits
                                 up in the filter row); with no filters at all the
                                 toggle stays here so it never disappears. lg+:
@@ -2411,7 +2396,7 @@ export default function ScheduleTab({
                                             color="green.fg"
                                             whiteSpace="nowrap"
                                         >
-                                            Završene utakmice
+                                            {t.components.scheduleTab.finishedDivider}
                                         </Text>
                                         <Box flex="1" h="1px" bg="green.muted" />
                                     </Flex>
@@ -2426,7 +2411,7 @@ export default function ScheduleTab({
                                         textTransform="uppercase"
                                         color="fg.muted"
                                     >
-                                        Završene utakmice
+                                        {t.components.scheduleTab.finishedDivider}
                                     </Text>
                                 )}
                                 {renderMatchSection(finishedMatches, null)}
@@ -2441,13 +2426,21 @@ export default function ScheduleTab({
                 open={confirmAction !== null}
                 busy={confirmAction === "clear" ? clearing : generating}
                 danger={confirmAction === "clear"}
-                title={confirmAction === "clear" ? "Očistiti raspored?" : "Ponovno postaviti raspored?"}
+                title={
+                    confirmAction === "clear"
+                        ? t.components.scheduleTab.resetDialog.title
+                        : t.components.scheduleTab.regenerateDialog.title
+                }
                 description={
                     confirmAction === "clear"
-                        ? "Svi termini utakmica bit će obrisani. Utakmice (grupe / eliminacija) ostaju, ali bez termina - možeš ih kasnije ponovno postaviti ili unijeti ručno."
-                        : "Termini svih utakmica bit će ponovno postavljeni prema trenutnim postavkama formata. Ručno upisani termini bit će prepisani."
+                        ? t.components.scheduleTab.resetDialog.description
+                        : t.components.scheduleTab.regenerateDialog.description
                 }
-                confirmLabel={confirmAction === "clear" ? "Da, očisti" : "Da, ponovno postavi"}
+                confirmLabel={
+                    confirmAction === "clear"
+                        ? t.components.scheduleTab.resetDialog.confirm
+                        : t.components.scheduleTab.regenerateDialog.confirm
+                }
                 onClose={() => setConfirmAction(null)}
                 onConfirm={async () => {
                     if (confirmAction === "clear") await runClear()
@@ -2457,12 +2450,13 @@ export default function ScheduleTab({
             />
 
             {/* Multi-day generate flow: date range → per-day matches → sketch
-                preview → confirm & generate. In "ko" mode it plans only the
-                knockout matches ("Raspored završnice") - the group kickoffs are
-                left untouched - replacing the old KnockoutTimesDialog. The
-                "full" mode ("Uredi raspored") skips straight to the sketch via
-                autoSketch, since both entry points now land on the same
-                drag-drop screen. */}
+                preview → confirm & generate. "generate" (first-time "Generiraj
+                raspored") starts on that config screen. In "ko" mode it plans
+                only the knockout matches ("Raspored završnice") - the group
+                kickoffs are left untouched - replacing the old
+                KnockoutTimesDialog. The "full" mode ("Uredi raspored" /
+                "Ponovno postavi") skips straight to the sketch via autoSketch,
+                reconstructing the day plan from the existing schedule. */}
             {plannerMode && (
                 <MultiDaySchedulePlanner
                     uuid={uuid}

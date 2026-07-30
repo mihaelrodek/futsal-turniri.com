@@ -10,6 +10,7 @@ import com.stripe.param.checkout.SessionCreateParams;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -76,6 +77,51 @@ public class StripeService {
         } catch (StripeException e) {
             throw new RuntimeException(
                     "Stripe: failed to create checkout session for recording request " + requestUuid, e);
+        }
+    }
+
+    /** One priced line on a /cjenik cart order (a tier, e.g. "Hattrick"). */
+    public record CartLineItem(String name, long amountCents) {}
+
+    /**
+     * Creates a Checkout Session (mode PAYMENT) covering an entire /cjenik
+     * cart in one payment - one Stripe line item per cart tier, so the payer
+     * sees each package priced separately even though a single charge covers
+     * all of them. The cart's group id is stamped into the session metadata
+     * so {@code StripeWebhookController} can mark every generated
+     * {@code MatchRecordingRequest} row paid from this one event.
+     */
+    public String createCartCheckoutSession(String cartGroupId, List<CartLineItem> items,
+                                             String successUrl, String cancelUrl) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Stripe is not configured (stripe.secret-key is blank).");
+        }
+
+        SessionCreateParams.Builder builder = SessionCreateParams.builder()
+                .setMode(SessionCreateParams.Mode.PAYMENT)
+                .setSuccessUrl(successUrl)
+                .setCancelUrl(cancelUrl)
+                .putMetadata("cart_group_id", cartGroupId);
+        for (CartLineItem item : items) {
+            builder.addLineItem(SessionCreateParams.LineItem.builder()
+                    .setQuantity(1L)
+                    .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                            .setCurrency("eur")
+                            .setUnitAmount(item.amountCents())
+                            .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                    .setName(item.name())
+                                    .build())
+                            .build())
+                    .build());
+        }
+
+        try {
+            StripeClient client = new StripeClient(secretKey.orElseThrow());
+            Session session = client.checkout().sessions().create(builder.build());
+            return session.getUrl();
+        } catch (StripeException e) {
+            throw new RuntimeException(
+                    "Stripe: failed to create cart checkout session for cart " + cartGroupId, e);
         }
     }
 

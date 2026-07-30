@@ -55,6 +55,8 @@ export type RecordingRequestDto = {
     goalLabel: string | null
     note: string | null
     contactEmail: string | null
+    /** Set only for an anonymous /cjenik cart order; null otherwise. */
+    contactPhone: string | null
     adminNote: string | null
     /** Price in euro cents (e.g. 2000 = 20 €). */
     priceEurCents: number

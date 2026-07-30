@@ -7,6 +7,7 @@ import type { ScorerScope, TournamentDetails, TournamentFormat } from "../types/
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { Loader } from "../ui/primitives"
+import { useTranslation } from "../i18n"
 import {
     AccentStat,
     BallIcon,
@@ -108,15 +109,6 @@ function teamColor(name: string | null | undefined): string {
 
 const MEDAL_COLORS = ["#f5c842", "#c0c5cc", "#cd8654"]
 
-/** Croatian label for a scorer-scope option. */
-const SCOPE_LABEL: Record<ScorerScope, string> = {
-    ALL: "Grupe + eliminacija",
-    KNOCKOUT: "Samo eliminacija",
-    ROUND_OF_32: "Od šesnaestine finala",
-    ROUND_OF_16: "Od osmine finala",
-    QUARTERFINAL: "Od četvrtfinala",
-    SEMIFINAL: "Od polufinala",
-}
 const SCOPE_ORDER: ScorerScope[] = [
     "KNOCKOUT",
     "ALL",
@@ -142,6 +134,7 @@ function ScorerRow({
      *  was never played, so the label must not say "s grupama". */
     hasGroups: boolean
 }) {
+    const t = useTranslation()
     const medal = rank <= 3 ? MEDAL_COLORS[rank - 1] : null
     const num = jerseyNumber(scorer.playerId)
     const tc = teamColor(scorer.teamName)
@@ -224,7 +217,9 @@ function ScorerRow({
                         whiteSpace="nowrap"
                         lineHeight="1.2"
                     >
-                        {hasGroups ? `s grupama ${scorer.goalsAll}` : `ukupno ${scorer.goalsAll}`}
+                        {hasGroups
+                            ? t.tournamentSection.statsSection.withGroupsSuffix(scorer.goalsAll)
+                            : t.tournamentSection.statsSection.totalSuffix(scorer.goalsAll)}
                     </Text>
                 )}
             </VStack>
@@ -255,6 +250,10 @@ export default function StatsSection({
      *  a uuid-based tournament URL - see `effExportMeta`. */
     exportMeta?: ExportMeta
 }) {
+    const t = useTranslation()
+    const statsT = t.tournamentSection.statsSection
+    /** Label for a scorer-scope option. */
+    const SCOPE_LABEL: Record<ScorerScope, string> = statsT.scopeOptions
     const queryClient = useQueryClient()
     // Seed from cache so returning to the Statistika tab paints instantly.
     const cachedScorers = queryClient.getQueryData<ScorerDto[]>(qk.scorers(uuid))
@@ -268,7 +267,7 @@ export default function StatsSection({
     // so fall back to a generic name + a uuid-based public URL (the QR endpoint
     // accepts the uuid). Coordinator TODO: pass `exportMeta` for the full header.
     const effExportMeta: ExportMeta = exportMeta ?? {
-        tournamentName: "Futsal turnir",
+        tournamentName: t.tournamentSection.statsSection.genericTournamentName,
         tournamentUrl: `${window.location.origin}/turniri/${uuid}`,
     }
 
@@ -346,7 +345,7 @@ export default function StatsSection({
     const scopeControl = canEdit ? (
         <HStack gap="2" wrap="wrap">
             <Text fontSize="xs" color="fg.muted" fontWeight={600} whiteSpace="nowrap">
-                Golovi se broje:
+                {statsT.scopeLabelPrefix}
             </Text>
             <NativeSelect.Root size="xs" w="auto" disabled={savingScope}>
                 <NativeSelect.Field
@@ -364,15 +363,15 @@ export default function StatsSection({
         </HStack>
     ) : (
         <Text fontSize="xs" color="fg.muted" fontWeight={600}>
-            Golovi se broje: {SCOPE_LABEL[scope]}
+            {statsT.scopeLabelPrefix} {SCOPE_LABEL[scope]}
         </Text>
     )
 
     /* ── Loading ──────────────────────────────────────────────────────── */
     if (loading) {
         return (
-            <SectionCard icon={FiTarget} title="Najbolji strijelci" subtitle="Učitavanje…">
-                <Loader label="Učitavanje statistike…" />
+            <SectionCard icon={FiTarget} title={statsT.title} subtitle={t.common.loading}>
+                <Loader label={statsT.loadingStats} />
             </SectionCard>
         )
     }
@@ -382,8 +381,8 @@ export default function StatsSection({
         return (
             <SectionCard
                 icon={FiTarget}
-                title="Najbolji strijelci"
-                subtitle="Lista strijelaca po broju postignutih golova"
+                title={statsT.title}
+                subtitle={statsT.subtitleDefault}
                 padding="0"
             >
                 <Flex direction="column" align="center" py="12" px="6" textAlign="center" gap="3">
@@ -400,10 +399,10 @@ export default function StatsSection({
                     </Flex>
                     <Box>
                         <Text fontSize="18px" fontWeight={700} color="fg.ink">
-                            Još nema golova
+                            {statsT.emptyTitle}
                         </Text>
                         <Text fontSize="14px" color="fg.muted" mt="1" maxW="md">
-                            Statistika strijelaca prikazat će se čim padne prvi gol na turniru.
+                            {statsT.emptyDesc}
                         </Text>
                     </Box>
                 </Flex>
@@ -420,17 +419,17 @@ export default function StatsSection({
             <Grid templateColumns="0.78fr 0.78fr minmax(0, 1.24fr)" gap="2" display={{ base: "grid", sm: "none" }}>
                 <StatChip
                     accent="var(--chakra-colors-pitch-500)"
-                    label="Strijelci"
+                    label={statsT.chipScorers}
                     value={scorers.length}
                 />
                 <StatChip
                     accent="var(--chakra-colors-accent-goal)"
-                    label="Golovi"
+                    label={statsT.chipGoals}
                     value={totalGoals}
                 />
                 <StatChip
                     accent="var(--chakra-colors-accent-amber)"
-                    label="Top ekipa"
+                    label={statsT.chipTopTeam}
                     value={topTeam?.name ?? "-"}
                     wide
                 />
@@ -439,29 +438,29 @@ export default function StatsSection({
                 <AccentStat
                     accent="var(--chakra-colors-pitch-500)"
                     icon={<FiTarget size={12} />}
-                    label={<MonoLabel>Različiti strijelci</MonoLabel>}
+                    label={<MonoLabel>{statsT.distinctScorersLabel}</MonoLabel>}
                     value={scorers.length}
-                    hint="aktivnih u turniru"
+                    hint={statsT.distinctScorersHint}
                 />
                 <AccentStat
                     accent="var(--chakra-colors-accent-goal)"
                     icon={<BallIcon size={12} color="var(--chakra-colors-accent-goal)" />}
-                    label={<MonoLabel>ukupno golova</MonoLabel>}
+                    label={<MonoLabel>{statsT.totalGoalsLabel}</MonoLabel>}
                     value={totalGoals}
                     hint={
                         scorers.length > 0
-                            ? `prosjek ${(totalGoals / scorers.length).toFixed(1)} / strijelcu`
+                            ? statsT.totalGoalsHint((totalGoals / scorers.length).toFixed(1))
                             : undefined
                     }
                 />
                 <AccentStat
                     accent="var(--chakra-colors-accent-amber)"
                     icon={<FiAward size={12} />}
-                    label={<MonoLabel>najviše golova ekipa</MonoLabel>}
+                    label={<MonoLabel>{statsT.topTeamLabel}</MonoLabel>}
                     value={topTeam?.name ?? "-"}
                     hint={
                         topTeam
-                            ? `${topTeam.goals} ${topTeam.goals === 1 ? "gol" : "golova"}`
+                            ? `${topTeam.goals} ${statsT.goalWord(topTeam.goals)}`
                             : undefined
                     }
                 />
@@ -470,13 +469,13 @@ export default function StatsSection({
             {/* Scorer rows */}
             <SectionCard
                 icon={() => <BallIcon size={16} color="var(--chakra-colors-pitch-500)" />}
-                title="Najbolji strijelci"
+                title={statsT.title}
                 subtitle={
                     splitTallies
                         ? hasGroups
-                            ? `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi iz grupa prikazani su odvojeno`
-                            : `Poredak: ${SCOPE_LABEL[scope].toLowerCase()} - golovi izvan tog kruga prikazani su odvojeno`
-                        : "Lista strijelaca po broju postignutih golova"
+                            ? statsT.subtitleSplitGroups(SCOPE_LABEL[scope].toLowerCase())
+                            : statsT.subtitleSplitNoGroups(SCOPE_LABEL[scope].toLowerCase())
+                        : statsT.subtitleDefault
                 }
                 action={
                     <HStack gap="3" wrap="wrap" justify="flex-end">
@@ -488,7 +487,7 @@ export default function StatsSection({
                             icon={<FiDownload size={14} />}
                             onClick={() => setExportOpen(true)}
                         >
-                            Preuzmi
+                            {t.common.download}
                         </GhostButton>
                     </HStack>
                 }

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Box, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useAuth } from "../auth/AuthContext"
+import { useTranslation } from "../i18n"
 
 /**
  * Sits at /profil and forwards to /profil/{my-slug} once the slug from
@@ -16,6 +17,7 @@ export default function ProfileRedirect() {
     const { user, loading, mySlug } = useAuth()
     const navigate = useNavigate()
     const location = useLocation()
+    const t = useTranslation()
 
     useEffect(() => {
         if (loading) return
@@ -35,7 +37,7 @@ export default function ProfileRedirect() {
         <VStack py="10" gap="3">
             <Spinner />
             <Box>
-                <Text fontSize="sm" color="fg.muted">Otvaram tvoj profil…</Text>
+                <Text fontSize="sm" color="fg.muted">{t.pages.profileRedirect.openingProfile}</Text>
             </Box>
         </VStack>
     )

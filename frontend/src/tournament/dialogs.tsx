@@ -20,26 +20,8 @@ import type { ScheduledMatch } from "../types/schedule"
 import type { PlayerDto } from "../types/players"
 import { fetchPlayers } from "../api/players"
 import { fetchScorers } from "../api/stats"
+import { useTranslation } from "../i18n"
 import { TeamAvatar } from "./parts"
-
-/** Knockout stage → Croatian label for the match-history rows. */
-const STAGE_LABEL: Record<string, string> = {
-    ROUND_OF_32: "1/16 finala",
-    ROUND_OF_16: "Osmina finala",
-    QUARTERFINAL: "Četvrtfinale",
-    SEMIFINAL: "Polufinale",
-    FINAL: "Finale",
-    THIRD_PLACE: "Za 3. mjesto",
-}
-
-/** Croatian plural for the goal-count suffix: 1 gol, 2-4 gola, else golova. */
-function golLabel(n: number): string {
-    const mod10 = n % 10
-    const mod100 = n % 100
-    if (mod10 === 1 && mod100 !== 11) return "gol"
-    if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "gola"
-    return "golova"
-}
 
 /* ──────────────────────────────────────────────────────────────────────────
    Tournament detail - dialogs.
@@ -73,13 +55,14 @@ export function SelfRegisterDialog({
     submitting: boolean
     onSubmit: () => void
 }) {
+    const t = useTranslation()
     return (
         <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open) onClose() }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxW="md">
                     <Dialog.Header py="3" px="4" borderBottomWidth="1px" borderColor="border">
-                        <Heading size="sm">Prijavi ekipu za turnir</Heading>
+                        <Heading size="sm">{t.tournamentSection.dialogs.selfRegister.title}</Heading>
                     </Dialog.Header>
                     <Dialog.Body py="4" px="4">
                         <VStack align="stretch" gap="3">
@@ -99,7 +82,7 @@ export function SelfRegisterDialog({
                                 return (
                                     <Box>
                                         <Text fontSize="xs" color="fg.muted" mb="1.5" fontWeight="medium">
-                                            Tvoje spremljene ekipe
+                                            {t.tournamentSection.dialogs.selfRegister.savedTeamsLabel}
                                         </Text>
                                         <HStack gap="1.5" wrap="wrap">
                                             {available.map((p) => (
@@ -120,11 +103,11 @@ export function SelfRegisterDialog({
 
                             <Box>
                                 <Text fontSize="xs" color="fg.muted" mb="1.5" fontWeight="medium">
-                                    Ime ekipe
+                                    {t.tournamentSection.dialogs.selfRegister.teamNameLabel}
                                 </Text>
                                 <Input
                                     autoFocus
-                                    placeholder="npr. Marko & Pero"
+                                    placeholder={t.tournamentSection.dialogs.selfRegister.teamNamePlaceholder}
                                     value={name}
                                     onChange={(e) => onNameChange(e.target.value)}
                                     onKeyDown={(e) => {
@@ -137,7 +120,9 @@ export function SelfRegisterDialog({
                             </Box>
 
                             <Text fontSize="xs" color="fg.muted">
-                                Ekipa će biti označena <chakra.b color="yellow.fg">žuto</chakra.b> dok je organizator ne potvrdi.
+                                {t.tournamentSection.dialogs.selfRegister.pendingNoticePrefix}{" "}
+                                <chakra.b color="yellow.fg">{t.tournamentSection.dialogs.selfRegister.pendingNoticeHighlight}</chakra.b>{" "}
+                                {t.tournamentSection.dialogs.selfRegister.pendingNoticeSuffix}
                             </Text>
 
                             {error && (
@@ -150,7 +135,7 @@ export function SelfRegisterDialog({
                     <Dialog.Footer py="3" px="4" borderTopWidth="1px" borderColor="border">
                         <HStack justify="flex-end" gap="2">
                             <Button variant="ghost" onClick={onClose} disabled={submitting}>
-                                Odustani
+                                {t.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"
@@ -159,7 +144,7 @@ export function SelfRegisterDialog({
                                 disabled={!name.trim() || submitting}
                                 onClick={onSubmit}
                             >
-                                Prijavi se
+                                {t.tournamentSection.dialogs.selfRegister.submit}
                             </Button>
                         </HStack>
                     </Dialog.Footer>
@@ -188,6 +173,17 @@ export function TeamInfoDialog({
     /** Open a match details page from a history row. */
     onSelectMatch?: (m: ScheduledMatch) => void
 }) {
+    const t = useTranslation()
+    const teamInfoT = t.tournamentSection.dialogs.teamInfo
+    /** Knockout stage → label for the match-history rows. */
+    const STAGE_LABEL: Record<string, string> = {
+        ROUND_OF_32: teamInfoT.stageLabels.ROUND_OF_32,
+        ROUND_OF_16: teamInfoT.stageLabels.ROUND_OF_16,
+        QUARTERFINAL: teamInfoT.stageLabels.QUARTERFINAL,
+        SEMIFINAL: teamInfoT.stageLabels.SEMIFINAL,
+        FINAL: teamInfoT.stageLabels.FINAL,
+        THIRD_PLACE: teamInfoT.stageLabels.THIRD_PLACE,
+    }
     // Roster + per-player goal tallies for the "Igrači" section. Fetched
     // lazily: only while a team is open (teamId !== null). Reset on close so
     // reopening another team never flashes the previous roster.
@@ -272,10 +268,10 @@ export function TeamInfoDialog({
                                     }
                                 }
                                 const penInfo =
-                                    myPen != null && oppPen != null ? `(${myPen}:${oppPen} pen)` : null
+                                    myPen != null && oppPen != null ? teamInfoT.penScore(myPen, oppPen) : null
                                 const stageLabel =
                                     m.stage === "GROUP"
-                                        ? m.groupName ? `Grupa ${m.groupName}` : "Grupa"
+                                        ? m.groupName ? teamInfoT.stageLabels.groupNamed(m.groupName) : teamInfoT.stageLabels.group
                                         : STAGE_LABEL[m.stage] ?? m.stage
                                 return {
                                     key: m.matchId,
@@ -310,10 +306,10 @@ export function TeamInfoDialog({
                                         <TeamAvatar name={team.name} eliminated={team.isEliminated} />
                                         <Box flex="1" minW="0">
                                             <Text fontWeight="semibold" lineHeight="short">{team.name || "-"}</Text>
-                                            <Text fontSize="xs" color="fg.muted">Povijest mečeva</Text>
+                                            <Text fontSize="xs" color="fg.muted">{teamInfoT.matchHistorySubtitle}</Text>
                                         </Box>
                                         <IconButton
-                                            aria-label="Zatvori"
+                                            aria-label={t.common.close}
                                             size="sm"
                                             variant="ghost"
                                             onClick={onClose}
@@ -336,12 +332,12 @@ export function TeamInfoDialog({
                                             textTransform="uppercase"
                                             mb="2"
                                         >
-                                            Igrači
+                                            {teamInfoT.playersLabel}
                                         </Text>
                                         {playersLoading ? (
-                                            <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
+                                            <Text fontSize="sm" color="fg.muted">{t.common.loading}</Text>
                                         ) : players.length === 0 ? (
-                                            <Text fontSize="sm" color="fg.muted">Nema igrača na popisu.</Text>
+                                            <Text fontSize="sm" color="fg.muted">{teamInfoT.noPlayers}</Text>
                                         ) : (
                                             <VStack align="stretch" gap="0.5" maxH="220px" overflowY="auto">
                                                 {[...players]
@@ -390,7 +386,7 @@ export function TeamInfoDialog({
                                                             </Text>
                                                             <HStack gap="1" flexShrink={0} align="baseline">
                                                                 <Text fontSize="sm" fontWeight="semibold">{goals}</Text>
-                                                                <Text fontSize="xs" color="fg.muted">{golLabel(goals)}</Text>
+                                                                <Text fontSize="xs" color="fg.muted">{teamInfoT.golLabel(goals)}</Text>
                                                             </HStack>
                                                         </HStack>
                                                     ))}
@@ -401,19 +397,19 @@ export function TeamInfoDialog({
                                     {/* Stat summary */}
                                     <HStack gap="6" mb="4" wrap="wrap">
                                         <Box>
-                                            <Text fontSize="xs" color="fg.muted">Odigrano</Text>
+                                            <Text fontSize="xs" color="fg.muted">{teamInfoT.statPlayed}</Text>
                                             <Text fontSize="xl" fontWeight="semibold">{finishedReal.length}</Text>
                                         </Box>
                                         <Box>
-                                            <Text fontSize="xs" color="fg.muted">Pobjede</Text>
+                                            <Text fontSize="xs" color="fg.muted">{teamInfoT.statWins}</Text>
                                             <Text fontSize="xl" fontWeight="semibold" color="green.fg">{wins}</Text>
                                         </Box>
                                         <Box>
-                                            <Text fontSize="xs" color="fg.muted">Neriješeno</Text>
+                                            <Text fontSize="xs" color="fg.muted">{teamInfoT.statDraws}</Text>
                                             <Text fontSize="xl" fontWeight="semibold" color="fg.muted">{draws}</Text>
                                         </Box>
                                         <Box>
-                                            <Text fontSize="xs" color="fg.muted">Porazi</Text>
+                                            <Text fontSize="xs" color="fg.muted">{teamInfoT.statLosses}</Text>
                                             <Text fontSize="xl" fontWeight="semibold" color="red.fg">{losses}</Text>
                                         </Box>
                                     </HStack>
@@ -429,7 +425,7 @@ export function TeamInfoDialog({
                                             textAlign="center"
                                         >
                                             <Text color="fg.muted" fontSize="sm">
-                                                Ekipa još nema nijedan meč u rasporedu.
+                                                {teamInfoT.noMatchesYet}
                                             </Text>
                                         </Box>
                                     ) : (
@@ -461,7 +457,7 @@ export function TeamInfoDialog({
                                                     }
                                                     cursor={!x.isBye && onSelectMatch ? "pointer" : undefined}
                                                     role={!x.isBye && onSelectMatch ? "button" : undefined}
-                                                    title={!x.isBye && onSelectMatch ? "Prikaži utakmicu" : undefined}
+                                                    title={!x.isBye && onSelectMatch ? teamInfoT.showMatchTitle : undefined}
                                                     transition="border-color 0.12s, background 0.12s"
                                                     _hover={
                                                         !x.isBye && onSelectMatch
@@ -497,7 +493,7 @@ export function TeamInfoDialog({
                                                             whiteSpace="nowrap"
                                                             minW="0"
                                                         >
-                                                            {x.isBye ? "Slobodan prolaz" : `vs ${x.opponentName ?? "-"}`}
+                                                            {x.isBye ? teamInfoT.byeLabel : `vs ${x.opponentName ?? "-"}`}
                                                         </Text>
                                                         <Box textAlign="center" minW={{ base: "42px", sm: "52px" }}>
                                                             {!x.isBye && (x.isFinished || x.isLive) ? (
@@ -572,23 +568,24 @@ export function DeleteTournamentDialog({
     onClose: () => void
     onConfirm: () => void
 }) {
+    const t = useTranslation()
+    const dt = t.tournamentSection.dialogs.deleteTournament
     return (
         <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open && !deleting) onClose() }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxW="sm">
-                    <Dialog.Header>Obriši turnir?</Dialog.Header>
+                    <Dialog.Header>{dt.title}</Dialog.Header>
                     <Dialog.Body>
                         <Text>
-                            Obrisati turnir{" "}
-                            <chakra.b>{tournamentName}</chakra.b>?
-                            Turnir više neće biti vidljiv u pretrazi, na karti, kalendaru ni u
-                            profilima igrača. Ova radnja se ne poništava kroz aplikaciju.
+                            {dt.bodyPrefix}{" "}
+                            <chakra.b>{tournamentName}</chakra.b>
+                            {dt.bodySuffix}
                         </Text>
                     </Dialog.Body>
                     <Dialog.Footer>
                         <Button variant="ghost" onClick={onClose} disabled={deleting}>
-                            Odustani
+                            {t.common.cancel}
                         </Button>
                         <Button
                             variant="solid"
@@ -596,7 +593,7 @@ export function DeleteTournamentDialog({
                             loading={deleting}
                             onClick={onConfirm}
                         >
-                            Da, obriši
+                            {dt.confirm}
                         </Button>
                     </Dialog.Footer>
                 </Dialog.Content>
@@ -617,22 +614,24 @@ export function DeleteTeamDialog({
     onClose: () => void
     onConfirm: () => void
 }) {
+    const t = useTranslation()
+    const dt = t.tournamentSection.dialogs.deleteTeam
     return (
         <Dialog.Root open={!!team} onOpenChange={(e) => { if (!e.open && !deleting) onClose() }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxW="sm">
-                    <Dialog.Header>Ukloni ekipu?</Dialog.Header>
+                    <Dialog.Header>{dt.title}</Dialog.Header>
                     <Dialog.Body>
                         <Text>
-                            Stvarno ukloniti ekipu
+                            {dt.bodyPrefix}
                             {" "}<chakra.b>{team?.name}</chakra.b>
-                            {" "}iz turnira? Ova radnja se ne može poništiti.
+                            {" "}{dt.bodySuffix}
                         </Text>
                     </Dialog.Body>
                     <Dialog.Footer>
                         <Button variant="ghost" onClick={onClose} disabled={deleting}>
-                            Ne
+                            {dt.no}
                         </Button>
                         <Button
                             variant="solid"
@@ -640,7 +639,7 @@ export function DeleteTeamDialog({
                             loading={deleting}
                             onClick={onConfirm}
                         >
-                            Da, ukloni
+                            {dt.confirm}
                         </Button>
                     </Dialog.Footer>
                 </Dialog.Content>

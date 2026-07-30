@@ -35,18 +35,29 @@ public record UserProfileDto(
         String firstName,
 
         @Size(max = 120, message = "lastName must be at most 120 characters")
-        String lastName
+        String lastName,
+
+        /**
+         * Per-user UI language preference - "hr", "en" or "sl". Accepted on PUT
+         * the same way colorMode is (any request carrying it applies it, and it
+         * never gets wiped by a request that omits it - see the standalone
+         * language block in {@code UserMeController#updateProfile}). Null means
+         * the user hasn't explicitly picked one on this account yet - the
+         * frontend falls back to its own browser-detected/localStorage default.
+         */
+        @Size(max = 2, message = "language must be at most 2 characters")
+        String language
 ) {
     /** Two-arg convenience for callers that only manage phone fields. */
     public UserProfileDto(String phoneCountry, String phone) {
-        this(phoneCountry, phone, null, null, null, null, null, null);
+        this(phoneCountry, phone, null, null, null, null, null, null, null);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug) {
-        this(phoneCountry, phone, displayName, slug, null, null, null, null);
+        this(phoneCountry, phone, displayName, slug, null, null, null, null, null);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug, String avatarUrl) {
-        this(phoneCountry, phone, displayName, slug, avatarUrl, null, null, null);
+        this(phoneCountry, phone, displayName, slug, avatarUrl, null, null, null, null);
     }
 }

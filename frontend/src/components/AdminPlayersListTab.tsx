@@ -13,6 +13,7 @@ import {
 import { Link as RouterLink } from "react-router-dom"
 import { FiExternalLink, FiSearch, FiUser } from "react-icons/fi"
 import { adminListAllUsers, type AdminUserDto } from "../api/admin"
+import { useTranslation } from "../i18n"
 
 /**
  * Admin-only "Popis igrača" tab on the profile page. Lists every
@@ -34,6 +35,7 @@ import { adminListAllUsers, type AdminUserDto } from "../api/admin"
  * (the existing {@code /admin/users?q=…} endpoint already supports it).
  */
 export default function AdminPlayersListTab() {
+    const t = useTranslation()
     const [users, setUsers] = useState<AdminUserDto[] | null>(null)
     const [loading, setLoading] = useState(false)
     const [search, setSearch] = useState("")
@@ -63,10 +65,9 @@ export default function AdminPlayersListTab() {
             <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="3">
                     <Box>
-                        <Text fontSize="lg" fontWeight="semibold">Popis igrača</Text>
+                        <Text fontSize="lg" fontWeight="semibold">{t.components.adminPlayersListTab.title}</Text>
                         <Text fontSize="sm" color="fg.muted">
-                            Svi registrirani igrači - klikni "Otvori profil" za
-                            navigaciju na korisničku stranicu.
+                            {t.components.adminPlayersListTab.description}
                         </Text>
                     </Box>
 
@@ -86,7 +87,7 @@ export default function AdminPlayersListTab() {
                         </Box>
                         <Input
                             pl="9"
-                            placeholder="Pretraži po imenu i prezimenu ili slug-u…"
+                            placeholder={t.components.adminPlayersListTab.searchPlaceholder}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -96,18 +97,18 @@ export default function AdminPlayersListTab() {
                         <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
                     ) : users == null ? (
                         <Text fontSize="sm" color="fg.muted">
-                            Nije moguće učitati popis igrača.
+                            {t.components.adminPlayersListTab.loadError}
                         </Text>
                     ) : filtered.length === 0 ? (
                         <Text fontSize="sm" color="fg.muted">
-                            Nema rezultata.
+                            {t.components.adminPlayersListTab.noResults}
                         </Text>
                     ) : (
                         <>
                             <Text fontSize="xs" color="fg.muted">
                                 {search.trim()
-                                    ? `${filtered.length} od ${users.length} igrača`
-                                    : `Ukupno: ${users.length} igrača`}
+                                    ? t.components.adminPlayersListTab.countFiltered(filtered.length, users.length)
+                                    : t.components.adminPlayersListTab.countTotal(users.length)}
                             </Text>
                             <VStack align="stretch" gap="2">
                                 {filtered.map((u) => (
@@ -128,7 +129,7 @@ export default function AdminPlayersListTab() {
                                             </Box>
                                             <Box minW="0" flex="1">
                                                 <Text fontSize="sm" fontWeight="medium" truncate>
-                                                    {u.displayName || "(bez imena)"}
+                                                    {u.displayName || t.components.adminPlayersListTab.noName}
                                                 </Text>
                                                 {u.slug && (
                                                     <Text fontSize="xs" color="fg.muted" truncate>
@@ -154,7 +155,7 @@ export default function AdminPlayersListTab() {
                                                 colorPalette="pitch"
                                             >
                                                 <RouterLink to={`/profil/${u.slug}`}>
-                                                    <FiExternalLink /> Otvori profil
+                                                    <FiExternalLink /> {t.components.adminPlayersListTab.openProfile}
                                                 </RouterLink>
                                             </Button>
                                         ) : (
@@ -163,9 +164,9 @@ export default function AdminPlayersListTab() {
                                                 variant="outline"
                                                 colorPalette="gray"
                                                 disabled
-                                                title="Slug nije postavljen za ovog korisnika"
+                                                title={t.components.adminPlayersListTab.noSlugTitle}
                                             >
-                                                Bez slug-a
+                                                {t.components.adminPlayersListTab.noSlug}
                                             </Button>
                                         )}
                                     </HStack>

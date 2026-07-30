@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { fetchLiveMatches } from "../api/live"
 import { qk } from "../queryClient"
 import { usePolling } from "../hooks/usePolling"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Pitch-styled nav pill that flips identity based on live state.
@@ -19,6 +20,7 @@ import { usePolling } from "../hooks/usePolling"
    the live-red treatment on the page itself.
    ────────────────────────────────────────────────────────────────────── */
 export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     // Seed the badge from the shared live cache (warmed by /uzivo, the home hero
     // and the detail page) so it's correct immediately, then the poll refreshes.
@@ -86,7 +88,7 @@ export function LiveNavItem({ onNavigate }: { onNavigate?: () => void }) {
                     />
                 )}
                 <HStack as="span" gap="1" align="center">
-                    Uživo
+                    {t.common.live}
                     {isLive ? (
                         <Box
                             as="span"

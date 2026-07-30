@@ -8,6 +8,7 @@ import { queryClient, CACHE_BUSTER, PERSIST_KEY } from "./queryClient"
 import { ColorModeProvider } from "./color-mode"
 import { system } from "./system"
 import { AuthProvider } from "./auth/AuthContext"
+import { CartProvider } from "./cart/CartContext"
 import AppToaster from "./components/AppToaster"
 import FirstRunInstallPrompt from "./components/FirstRunInstallPrompt"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -44,11 +45,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                     }}
                 >
                     <AuthProvider>
-                        <BrowserRouter>
-                            <ErrorBoundary>
-                                <App />
-                            </ErrorBoundary>
-                        </BrowserRouter>
+                        <CartProvider>
+                            <BrowserRouter>
+                                <ErrorBoundary>
+                                    <App />
+                                </ErrorBoundary>
+                            </BrowserRouter>
+                        </CartProvider>
                     </AuthProvider>
                 </PersistQueryClientProvider>
             </ColorModeProvider>

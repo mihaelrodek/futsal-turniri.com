@@ -9,6 +9,7 @@ import { LogoMark } from './components/Logo'
 import MobileBottomNav from './components/MobileBottomNav'
 import PushBootstrap from './components/PushBootstrap'
 import ThemeSync from './components/ThemeSync'
+import LocaleSync from './components/LocaleSync'
 import { RequireAuth } from "./components/RequireAuth"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ const StatsPage = lazyWithReload(() => import('./pages/StatsPage'))
 const PrivacyPage = lazyWithReload(() => import('./pages/PrivacyPage'))
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
 const PricingPage = lazyWithReload(() => import('./pages/PricingPage'))
+const CartPage = lazyWithReload(() => import('./pages/CartPage'))
 const ProfileRedirect = lazyWithReload(() => import('./pages/ProfileRedirect'))
 const PublicProfilePage = lazyWithReload(() => import('./pages/PublicProfilePage'))
 const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
@@ -172,6 +174,7 @@ export default function App() {
                 <NavBar />
                 <PushBootstrap />
                 <ThemeSync />
+                <LocaleSync />
                 <Box
                     flex="1"
                     minH="0"
@@ -203,6 +206,7 @@ export default function App() {
             <Box h="100dvh" overflowY="auto" bg="bg.canvas" css={{ scrollbarGutter: "stable" }}>
                 <PushBootstrap />
                 <ThemeSync />
+                <LocaleSync />
                 <Suspense fallback={<RouteLoading />}>
                     <Routes>
                         <Route path="/turniri/:uuid/zapisnik" element={<ZapisnikModePage />} />
@@ -223,6 +227,7 @@ export default function App() {
             {/* Pulls the user's saved theme from /user/me/profile on
                 login so the choice follows them across devices. */}
             <ThemeSync />
+            <LocaleSync />
             <Box
                 as="main"
                 bg="bg.canvas"
@@ -292,6 +297,10 @@ export default function App() {
                     <Route path="/cjenik" element={<PricingPage />} />
                     {/* English alias for the pricing page. */}
                     <Route path="/pricing" element={<Navigate to="/cjenik" replace />} />
+                    {/* Real cart/checkout for the /cjenik packages - also the
+                        Stripe success/cancel landing target (?placanje=). */}
+                    <Route path="/kosarica" element={<CartPage />} />
+                    <Route path="/kosarica/hvala" element={<CartPage />} />
                     <Route path="/pronadi-ekipu" element={<FindTeamPage />} />
                     {/* /profil bounces to /profil/{my-slug} once the backend
                         has synced. /profil/:slug is publicly visible per

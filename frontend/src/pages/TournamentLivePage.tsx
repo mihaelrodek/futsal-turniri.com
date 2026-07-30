@@ -17,6 +17,7 @@ import { usePolling } from "../hooks/usePolling"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { showSuccess } from "../toaster"
 import { qk } from "../queryClient"
+import { useTranslation, type Dictionary } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    TournamentLivePage - the shareable "turnir mode" at /turniri/:uuid/uzivo.
@@ -37,6 +38,7 @@ import { qk } from "../queryClient"
 const ORIGIN = "https://futsal-turniri.com"
 
 export default function TournamentLivePage() {
+    const t = useTranslation()
     const { uuid: param } = useParams<{ uuid: string }>()
     const navigate = useNavigate()
     const location = useLocation()
@@ -100,15 +102,13 @@ export default function TournamentLivePage() {
     const viewers = useStreamPresence(streamOn)
     const colors = useTeamColors(uuid)
     const nextMatch = useNextMatch(uuid, null, !match)
-    const scoreBug = buildScoreBug(match, colors, nextMatch)
+    const scoreBug = buildScoreBug(match, colors, nextMatch, t)
 
     const shareUrl = `${ORIGIN}/turniri/${slug ?? param ?? ""}/uzivo`
 
     useDocumentHead({
-        title: name ? `Uživo prijenos — ${name} | futsal-turniri.com` : "Uživo prijenos turnira | futsal-turniri.com",
-        description: name
-            ? `Gledaj uživo prijenos turnira ${name} putem kamere - rezultati, tijek utakmice i tablica u stvarnom vremenu.`
-            : "Gledaj uživo prijenos turnira putem kamere - rezultati, tijek utakmice i tablica u stvarnom vremenu.",
+        title: t.pages.tournamentLivePage.documentTitle(name),
+        description: t.pages.tournamentLivePage.documentDescription(name),
         canonical: shareUrl,
     })
 
@@ -127,17 +127,15 @@ export default function TournamentLivePage() {
     }
 
     async function share() {
-        const title = name ? `Uživo prijenos — ${name}` : "Uživo prijenos turnira"
-        const text = name
-            ? `Uživo prijenos turnira ${name} putem kamere.`
-            : "Uživo prijenos turnira putem kamere."
+        const title = t.pages.tournamentLivePage.shareTitle(name)
+        const text = t.pages.tournamentLivePage.shareText(name)
         if (navigator.share) {
             try { await navigator.share({ title, text, url: shareUrl }) } catch { /* dismissed */ }
             return
         }
         try {
             await navigator.clipboard.writeText(shareUrl)
-            showSuccess("Poveznica kopirana.")
+            showSuccess(t.common.linkCopied)
         } catch { /* clipboard blocked - nothing more we can do */ }
     }
 
@@ -148,11 +146,11 @@ export default function TournamentLivePage() {
                    floating top-right (NoStream below has its own Natrag /
                    Otvori turnir buttons for the rest). */
                 <Flex position="absolute" top={{ base: "2", md: "3" }} right={{ base: "2", md: "3" }} zIndex={2} gap="2">
-                    <ControlButton onClick={share} label="Podijeli poveznicu">
-                        <FiShare2 size={15} /> Podijeli
+                    <ControlButton onClick={share} label={t.pages.tournamentLivePage.shareAria}>
+                        <FiShare2 size={15} /> {t.common.share}
                     </ControlButton>
-                    <ControlButton onClick={goExit} label="Izađi iz prijenosa">
-                        <FiX size={16} /> Izađi
+                    <ControlButton onClick={goExit} label={t.pages.tournamentLivePage.exitAria}>
+                        <FiX size={16} /> {t.pages.tournamentLivePage.exitButton}
                     </ControlButton>
                 </Flex>
             )}
@@ -170,8 +168,8 @@ export default function TournamentLivePage() {
                     gap="1.5"
                 >
                     <IconButton
-                        aria-label="Podijeli poveznicu"
-                        title="Podijeli poveznicu"
+                        aria-label={t.pages.tournamentLivePage.shareAria}
+                        title={t.pages.tournamentLivePage.shareAria}
                         onClick={share}
                         size="sm"
                         rounded="full"
@@ -183,8 +181,8 @@ export default function TournamentLivePage() {
                         <FiShare2 size={14} />
                     </IconButton>
                     <IconButton
-                        aria-label="Izađi iz prijenosa"
-                        title="Izađi iz prijenosa"
+                        aria-label={t.pages.tournamentLivePage.exitAria}
+                        title={t.pages.tournamentLivePage.exitAria}
                         onClick={goExit}
                         size="sm"
                         rounded="full"
@@ -242,14 +240,14 @@ export default function TournamentLivePage() {
                             justifySelf="center"
                             mx="auto"
                         >
-                            {name ?? "Turnir"}
+                            {name ?? t.pages.tournamentLivePage.tournamentFallback}
                         </Text>
                         <HStack display={{ base: "none", md: "flex" }} justifySelf="end" gap="2">
-                            <ControlButton onClick={share} label="Podijeli poveznicu">
-                                <FiShare2 size={15} /> Podijeli
+                            <ControlButton onClick={share} label={t.pages.tournamentLivePage.shareAria}>
+                                <FiShare2 size={15} /> {t.common.share}
                             </ControlButton>
-                            <ControlButton onClick={goExit} label="Izađi iz prijenosa">
-                                <FiX size={16} /> Izađi
+                            <ControlButton onClick={goExit} label={t.pages.tournamentLivePage.exitAria}>
+                                <FiX size={16} /> {t.pages.tournamentLivePage.exitButton}
                             </ControlButton>
                         </HStack>
                     </Grid>
@@ -258,7 +256,7 @@ export default function TournamentLivePage() {
                         only. On mobile there's no room for it (and it was
                         asked to go), so the header is just the name there. */}
                     <Flex display={{ base: "none", md: "flex" }} justify="center" flexShrink={0}>
-                        <MatchStepper uuid={uuid} />
+                        <MatchStepper uuid={uuid} t={t} />
                     </Flex>
 
                     {/* The stream. On md+ it fills all remaining height
@@ -291,7 +289,7 @@ export default function TournamentLivePage() {
                     </Box>
                 </Flex>
             ) : (
-                <NoStream name={name} notFound={notFound} slug={slug ?? param ?? ""} onExit={goExit} />
+                <NoStream name={name} notFound={notFound} slug={slug ?? param ?? ""} onExit={goExit} t={t} />
             )}
         </Box>
     )
@@ -325,7 +323,7 @@ function stepperTeamName(name: string | null, predicted: string | null, slotLabe
  * matches here does not change what's playing - it answers "what's on this
  * stream, and what's coming up next" independently of it.
  */
-function MatchStepper({ uuid }: { uuid: string | null }) {
+function MatchStepper({ uuid, t }: { uuid: string | null; t: Dictionary }) {
     const [matches, setMatches] = useState<ScheduledMatch[]>([])
     const [index, setIndex] = useState<number | null>(null)
     // Auto-pick the on-deck match (LIVE, else the earliest upcoming
@@ -358,7 +356,7 @@ function MatchStepper({ uuid }: { uuid: string | null }) {
     const m = matches[index]
     const label =
         m.status === "LIVE"
-            ? "UŽIVO"
+            ? t.pages.tournamentLivePage.stepperLiveLabel
             : m.status === "FINISHED"
                 ? `${m.score1 ?? 0} : ${m.score2 ?? 0}`
                 : formatKickoff(m.kickoffAt)
@@ -366,7 +364,7 @@ function MatchStepper({ uuid }: { uuid: string | null }) {
     return (
         <Flex align="center" justify="center" gap="2.5">
             <IconButton
-                aria-label="Prethodna utakmica"
+                aria-label={t.pages.tournamentLivePage.prevMatchAria}
                 size="md"
                 rounded="full"
                 bg="whiteAlpha.200"
@@ -402,7 +400,7 @@ function MatchStepper({ uuid }: { uuid: string | null }) {
                     {stepperTeamName(m.team1Name, m.slot1PredictedName, m.slot1Label)}
                 </Text>
                 <Text fontSize="2xs" fontWeight={700} color="whiteAlpha.600" letterSpacing="0.08em" my="0.5">
-                    VS
+                    {t.pages.tournamentLivePage.stepperVsLabel}
                 </Text>
                 <Text fontSize={{ base: "sm", md: "md" }} fontWeight={800} textAlign="center" lineHeight="1.25">
                     {stepperTeamName(m.team2Name, m.slot2PredictedName, m.slot2Label)}
@@ -418,7 +416,7 @@ function MatchStepper({ uuid }: { uuid: string | null }) {
                 </Text>
             </VStack>
             <IconButton
-                aria-label="Sljedeća utakmica"
+                aria-label={t.pages.tournamentLivePage.nextMatchAria}
                 size="md"
                 rounded="full"
                 bg="whiteAlpha.200"
@@ -477,11 +475,13 @@ function NoStream({
     notFound,
     slug,
     onExit,
+    t,
 }: {
     name: string | null
     notFound: boolean
     slug: string
     onExit: () => void
+    t: Dictionary
 }) {
     const navigate = useNavigate()
     return (
@@ -489,21 +489,21 @@ function NoStream({
             <VStack gap="4" textAlign="center" maxW="sm" color="white">
                 <Box color="whiteAlpha.700"><FiVideoOff size={40} /></Box>
                 <Text fontSize="lg" fontWeight={800}>
-                    {notFound ? "Turnir nije pronađen" : "Trenutno nema prijenosa uživo"}
+                    {notFound ? t.pages.tournamentLivePage.noStreamNotFoundTitle : t.pages.tournamentLivePage.noStreamOfflineTitle}
                 </Text>
                 <Text fontSize="sm" color="whiteAlpha.700">
                     {notFound
-                        ? "Poveznica možda nije točna ili je turnir uklonjen."
-                        : `${name ? `${name} – p` : "P"}rijenos uživo trenutno nije aktivan. Provjeri kasnije ili otvori stranicu turnira.`}
+                        ? t.pages.tournamentLivePage.noStreamNotFoundDesc
+                        : t.pages.tournamentLivePage.noStreamOfflineDesc(name)}
                 </Text>
                 <HStack gap="2">
                     {!notFound && slug && (
                         <Button size="sm" colorPalette="pitch" onClick={() => navigate(`/turniri/${slug}`)}>
-                            Otvori turnir
+                            {t.pages.tournamentLivePage.openTournamentButton}
                         </Button>
                     )}
                     <Button size="sm" variant="ghost" color="white" _hover={{ bg: "whiteAlpha.200" }} onClick={onExit}>
-                        Natrag
+                        {t.common.back}
                     </Button>
                 </HStack>
             </VStack>

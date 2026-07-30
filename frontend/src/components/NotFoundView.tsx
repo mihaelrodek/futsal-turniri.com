@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { FiArrowLeft, FiHelpCircle } from "react-icons/fi"
 import { FaFutbol } from "react-icons/fa"
 import { GhostButton, PitchBackdrop, PrimaryButton } from "../ui/pitch"
+import { useTranslation } from "../i18n"
 
 /**
  * Shared "not found" panel in the Pitch theme - dark-green gradient hero with
@@ -13,14 +14,17 @@ import { GhostButton, PitchBackdrop, PrimaryButton } from "../ui/pitch"
  */
 export default function NotFoundView({
     code = "404",
-    title = "Stranica nije pronađena",
-    description = "Adresa koju si otvorio ne postoji ili je premještena.",
+    title,
+    description,
 }: {
     code?: string
     title?: string
     description?: string
 }) {
+    const t = useTranslation()
     const navigate = useNavigate()
+    const resolvedTitle = title ?? t.components.notFoundView.title
+    const resolvedDescription = description ?? t.components.notFoundView.description
     return (
         <Flex justify="center" py={{ base: "8", md: "14" }}>
             <Box
@@ -61,7 +65,7 @@ export default function NotFoundView({
                         letterSpacing="-0.01em"
                         mt="4"
                     >
-                        {title}
+                        {resolvedTitle}
                     </Heading>
                     <Text
                         fontSize="14.5px"
@@ -71,7 +75,7 @@ export default function NotFoundView({
                         mx="auto"
                         mt="2"
                     >
-                        {description}
+                        {resolvedDescription}
                     </Text>
                     <HStack justify="center" gap="3" mt="7" wrap="wrap">
                         <PrimaryButton
@@ -80,7 +84,7 @@ export default function NotFoundView({
                             css={{ background: "#fff", color: "#0E8A81" }}
                             _hover={{ background: "rgba(255,255,255,0.9)" }}
                         >
-                            Natrag na turnire
+                            {t.components.notFoundView.backToTournaments}
                         </PrimaryButton>
                         <GhostButton
                             icon={<FiHelpCircle size={15} />}
@@ -91,7 +95,7 @@ export default function NotFoundView({
                                 background: "rgba(255,255,255,0.08)",
                             }}
                         >
-                            Vodič
+                            {t.components.notFoundView.guide}
                         </GhostButton>
                     </HStack>
                 </Box>

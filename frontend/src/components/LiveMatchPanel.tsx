@@ -18,6 +18,8 @@ import { recordKnockoutResult } from "../api/bracket"
 import { recordGroupResult } from "../api/groups"
 import { fetchSchedule } from "../api/schedule"
 import { fetchPlayers } from "../api/players"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n/hr"
 import type { CreateMatchEventRequest, MatchEventDto, MatchEventType, MatchLiveMode } from "../types/matchEvents"
 import type { PlayerDto } from "../types/players"
 import { useOfflineMatchEvents, type OptimisticDisplay } from "../hooks/useOfflineMatchEvents"
@@ -134,6 +136,7 @@ export default function LiveMatchPanel({
         } | null,
     ) => void
 }) {
+    const t = useTranslation()
     const matchId = match.matchId
     const isKnockout = kind === "knockout"
     const isLive = match.status === "LIVE"
@@ -316,11 +319,11 @@ export default function LiveMatchPanel({
         phase == null
             ? ""
             : paused && canPauseResume
-                ? "PAUZA"
-                : phase === "FIRST_HALF" ? "1. POLUVRIJEME"
-                    : phase === "HALFTIME" ? "POLUVRIJEME"
-                        : phase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                            : "KRAJ"
+                ? t.components.liveMatch.phaseLabels.pause
+                : phase === "FIRST_HALF" ? t.components.liveMatch.phaseLabels.firstHalf
+                    : phase === "HALFTIME" ? t.components.liveMatch.phaseLabels.halftime
+                        : phase === "SECOND_HALF" ? t.components.liveMatch.phaseLabels.secondHalf
+                            : t.components.liveMatch.phaseLabels.fullTime
 
     async function refreshAfterMutation() {
         await refetchEvents()
@@ -533,12 +536,12 @@ export default function LiveMatchPanel({
     // THE one primary phase action: walk the state machine for a TIMER match;
     // playing without the app timer (SIMPLE) always shows plain "Završi".
     const primary = !isTimer
-        ? { label: "Završi utakmicu", run: requestFinish, busy: finishing, phase: false }
+        ? { label: t.components.liveMatchPanel.primaryAction.finishMatch, run: requestFinish, busy: finishing, phase: false }
         : canEndFirstHalf
-            ? { label: "Završi 1. poluvrijeme", run: handleEndFirstHalf, busy: phaseBusy, phase: true }
+            ? { label: t.components.liveMatchPanel.primaryAction.endFirstHalf, run: handleEndFirstHalf, busy: phaseBusy, phase: true }
             : canStartSecondHalf
-                ? { label: "Započni 2. poluvrijeme", run: handleStartSecondHalf, busy: phaseBusy, phase: true }
-                : { label: "Završi utakmicu", run: requestFinish, busy: finishing, phase: false }
+                ? { label: t.components.liveMatchPanel.primaryAction.startSecondHalf, run: handleStartSecondHalf, busy: phaseBusy, phase: true }
+                : { label: t.components.liveMatchPanel.primaryAction.finishMatch, run: requestFinish, busy: finishing, phase: false }
 
     // Current half for the fouls counters (2nd once it has started).
     const currentHalf: 1 | 2 = secondHalfStartedAt ? 2 : 1
@@ -562,7 +565,7 @@ export default function LiveMatchPanel({
                         onClick={toggleStreamClockVisibility}
                     >
                         {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
-                        {clockVisibleOnStream ? "Sakrij sat na streamu" : "Prikaži sat na streamu"}
+                        {clockVisibleOnStream ? t.components.liveMatchPanel.streamClock.hideAction : t.components.liveMatchPanel.streamClock.showAction}
                     </Button>
                 )}
             </Flex>
@@ -676,7 +679,7 @@ export default function LiveMatchPanel({
                             start buttons right below. */}
                         {isFinished && (
                             <Text textAlign="center" color="fg.muted" fontSize="sm" fontWeight={500} mb="4">
-                                Utakmica je završena.
+                                {t.components.liveMatchPanel.finishedNotice}
                             </Text>
                         )}
 
@@ -700,7 +703,7 @@ export default function LiveMatchPanel({
                                                 loading={starting}
                                                 onClick={() => handleStart("TIMER")}
                                             >
-                                                <LuTimer /> Uživo – s mjeračem vremena
+                                                <LuTimer /> {t.components.liveMatch.start.timerOption}
                                             </Button>
                                             <Button
                                                 variant="outline"
@@ -709,7 +712,7 @@ export default function LiveMatchPanel({
                                                 loading={starting}
                                                 onClick={() => handleStart("SIMPLE")}
                                             >
-                                                <LuTimerOff /> Uživo – bez mjerača (vlastiti sat)
+                                                <LuTimerOff /> {t.components.liveMatch.start.simpleOption}
                                             </Button>
                                         </>
                                     )}
@@ -736,7 +739,7 @@ export default function LiveMatchPanel({
                                             setPendingScore(null)
                                         }}
                                     >
-                                        <FiEdit2 /> {showDirectScore ? "Odustani od unosa rezultata" : "Unesi samo rezultat"}
+                                        <FiEdit2 /> {showDirectScore ? t.components.liveMatchPanel.cancelResultEntry : t.components.liveMatch.start.resultOnlyOption}
                                     </Button>
                                     {/* Save sits in the SAME row as Odustani while
                                         editing. Same contract (handleSaveDirectScore):
@@ -749,7 +752,7 @@ export default function LiveMatchPanel({
                                             loading={savingScore}
                                             onClick={() => handleSaveDirectScore(directS1, directS2)}
                                         >
-                                            <FiEdit2 /> Spremi rezultat
+                                            <FiEdit2 /> {t.components.liveMatch.directScore.saveButton}
                                         </Button>
                                     )}
                                 </HStack>
@@ -830,8 +833,8 @@ export default function LiveMatchPanel({
                                         {canPauseResume && (
                                             <Box position="absolute" left="100%" ml="3" top="50%" transform="translateY(-50%)">
                                                 <IconButton
-                                                    aria-label={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
-                                                    title={paused ? "Nastavi mjerač" : "Pauziraj mjerač"}
+                                                    aria-label={paused ? t.components.liveMatch.resumeAction : t.components.liveMatch.pauseAction}
+                                                    title={paused ? t.components.liveMatch.resumeAction : t.components.liveMatch.pauseAction}
                                                     variant={paused ? "solid" : "outline"}
                                                     colorPalette={paused ? "brand" : "gray"}
                                                     rounded="full"
@@ -906,7 +909,7 @@ export default function LiveMatchPanel({
                                         </Button>
                                     )}
                                     <IconButton
-                                        aria-label="Više opcija"
+                                        aria-label={t.components.liveMatchPanel.moreOptionsAria}
                                         variant="outline"
                                         colorPalette="gray"
                                         size="md"
@@ -924,7 +927,7 @@ export default function LiveMatchPanel({
                                         loading={resetting}
                                         onClick={() => setConfirmResetOpen(true)}
                                     >
-                                        Vrati na pripremu / poništi
+                                        {t.components.liveMatchPanel.revertToPrep}
                                     </Button>
                                 )}
                             </>
@@ -956,13 +959,13 @@ export default function LiveMatchPanel({
                             mt="6"
                             mb="2"
                         >
-                            Tijek utakmice
+                            {t.components.liveMatch.timeline.heading}
                         </Text>
                         {!eventsLoaded && events.length === 0 ? (
-                            <Text textAlign="center" fontSize="sm" color="fg.muted">Učitavanje…</Text>
+                            <Text textAlign="center" fontSize="sm" color="fg.muted">{t.common.loading}</Text>
                         ) : events.length === 0 ? (
                             <Text textAlign="center" fontSize="sm" color="fg.muted" fontWeight={500}>
-                                {isFinished ? "Prikazan samo krajnji rezultat bez strijelca." : "Još nema zabilježenih događaja."}
+                                {isFinished ? t.components.liveMatchPanel.resultOnlyDoneNotice : t.components.liveMatchPanel.noEventsNotice}
                             </Text>
                         ) : (
                             <CenterTimeline
@@ -985,7 +988,7 @@ export default function LiveMatchPanel({
                 {isFinished && (
                     <Flex justify="center" mt="4">
                         <Button variant="outline" colorPalette="red" loading={resetting} onClick={() => setConfirmResetOpen(true)}>
-                            Poništi utakmicu
+                            {t.components.liveMatchPanel.resetButton}
                         </Button>
                     </Flex>
                 )}
@@ -995,9 +998,9 @@ export default function LiveMatchPanel({
                 open={confirmResetOpen}
                 busy={resetting}
                 danger
-                title="Poništiti utakmicu?"
-                description="Rezultat i svi događaji se brišu, a utakmica se vraća na 'neodigrano'. Termin ostaje - možeš zatim ponovno unijeti rezultat."
-                confirmLabel="Da, poništi"
+                title={t.components.liveMatchPanel.resetDialog.title}
+                description={t.components.liveMatchPanel.resetDialog.description}
+                confirmLabel={t.components.liveMatchPanel.resetDialog.confirm}
                 onClose={() => setConfirmResetOpen(false)}
                 onConfirm={async () => { await doReset(); setConfirmResetOpen(false) }}
             />
@@ -1005,9 +1008,9 @@ export default function LiveMatchPanel({
             <ConfirmDialog
                 open={confirmFinishOpen}
                 busy={finishing}
-                title="Završiti utakmicu prije kraja?"
-                description="Vrijeme utakmice još nije isteklo. Jesi li siguran da želiš završiti utakmicu?"
-                confirmLabel="Da, završi"
+                title={t.components.liveMatchPanel.finishEarlyDialog.title}
+                description={t.components.liveMatchPanel.finishEarlyDialog.description}
+                confirmLabel={t.components.liveMatchPanel.finishEarlyDialog.confirm}
                 onClose={() => setConfirmFinishOpen(false)}
                 onConfirm={async () => { await handleFinish(); setConfirmFinishOpen(false) }}
             />
@@ -1052,6 +1055,7 @@ function ScoreStepper({
     onDec: () => void
     onInc: () => void
 }) {
+    const t = useTranslation()
     return (
         <Box position="relative" display="inline-flex">
             <ScoreBadge value={value} color={color} />
@@ -1063,7 +1067,7 @@ function ScoreStepper({
                 transform="translateX(-50%)"
             >
                 <IconButton
-                    aria-label="Smanji rezultat"
+                    aria-label={t.components.liveMatch.directScore.decreaseAria(t.components.liveMatchPanel.scoreNoun)}
                     variant="outline"
                     rounded="full"
                     size="sm"
@@ -1074,7 +1078,7 @@ function ScoreStepper({
                     <FiMinus />
                 </IconButton>
                 <IconButton
-                    aria-label="Povećaj rezultat"
+                    aria-label={t.components.liveMatch.directScore.increaseAria(t.components.liveMatchPanel.scoreNoun)}
                     variant="outline"
                     rounded="full"
                     size="sm"
@@ -1106,15 +1110,18 @@ type ClockArgs = {
 /** A picked player: a real roster entry, or the leading "Nepoznati igrač". */
 type PendingPlayer = { team: number; playerId: number | null; playerName: string | null }
 
-const ACTIONS: { type: MatchEventType; label: string }[] = [
-    { type: "GOAL", label: "Gol" },
-    { type: "OWN_GOAL", label: "Auto-gol" },
-    { type: "YELLOW_CARD", label: "Žuti" },
-    { type: "RED_CARD", label: "Crveni" },
-]
+function actionsFor(t: Dictionary): { type: MatchEventType; label: string }[] {
+    const a = t.components.liveMatchPanel.actions
+    return [
+        { type: "GOAL", label: a.goal },
+        { type: "OWN_GOAL", label: a.ownGoal },
+        { type: "YELLOW_CARD", label: a.yellow },
+        { type: "RED_CARD", label: a.red },
+    ]
+}
 
-function actionLabel(type: MatchEventType): string {
-    return ACTIONS.find((a) => a.type === type)?.label ?? "Radnja"
+function actionLabel(t: Dictionary, type: MatchEventType): string {
+    return actionsFor(t).find((a) => a.type === type)?.label ?? t.components.liveMatchPanel.actions.fallback
 }
 
 function PairingEntry({
@@ -1151,6 +1158,7 @@ function PairingEntry({
      *  the scorer stats; cards + fouls stay available. */
     penaltyInProgress: boolean
 }) {
+    const t = useTranslation()
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [pendingPlayer, setPendingPlayer] = useState<PendingPlayer | null>(null)
     const [pendingAction, setPendingAction] = useState<MatchEventType | null>(null)
@@ -1265,16 +1273,18 @@ function PairingEntry({
     }
 
     const hint = !minuteValid
-        ? "Unesi minutu."
+        ? t.components.liveMatch.goalEntry.minuteRequiredNote
         : pendingPlayer
-            ? `Odabran: ${pendingPlayer.playerName ?? "Nepoznati igrač"} — odaberi radnju.`
+            ? t.components.liveMatchPanel.pairingHint.playerSelected(
+                pendingPlayer.playerName ?? t.components.liveMatch.eventRow.unknownPlayerFallback,
+            )
             : pendingAction
-                ? `Radnja: ${actionLabel(pendingAction)} — odaberi igrača.`
+                ? t.components.liveMatchPanel.pairingHint.actionSelected(actionLabel(t, pendingAction))
                 : ""
 
     return (
         <Box borderWidth="1px" borderColor="border" rounded="2xl" p={{ base: "3", md: "4" }}>
-            <Eyebrow>1 · Odaberi igrača</Eyebrow>
+            <Eyebrow>{t.components.liveMatchPanel.eyebrow.pickPlayer}</Eyebrow>
             <Box display="grid" gridTemplateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={{ base: "3", md: "5" }} mb="4">
                 <RosterColumn
                     teamName={team1Name}
@@ -1317,7 +1327,7 @@ function PairingEntry({
             {/* Minute sits BETWEEN the player and the action pick on purpose:
                 the event commits the instant both are chosen, so a wrong
                 auto-minute has to be correctable BEFORE the action tap. */}
-            <Eyebrow>2 · Minuta</Eyebrow>
+            <Eyebrow>{t.components.liveMatchPanel.eyebrow.minute}</Eyebrow>
             {/* Everything in ONE row on phones too: tight gap, a narrow input
                 and xs text buttons keep the full set (− n + Sada Prati) around
                 250px, so it fits even a 320px-wide phone. The steppers stay at
@@ -1325,7 +1335,7 @@ function PairingEntry({
                 keep a proper touch target while the rest shrinks. */}
             <Flex align="center" gap={{ base: "1", md: "2.5" }} mb="4" wrap="wrap">
                 <IconButton
-                    aria-label="Manje minuta"
+                    aria-label={t.components.liveMatchPanel.minuteAdjust.decreaseAria}
                     size={{ base: "md", md: "lg" }}
                     variant="outline"
                     rounded="full"
@@ -1348,7 +1358,7 @@ function PairingEntry({
                     onChange={(e) => { setMinute(e.target.value); setAutoMinute(false) }}
                 />
                 <IconButton
-                    aria-label="Više minuta"
+                    aria-label={t.components.liveMatchPanel.minuteAdjust.increaseAria}
                     size={{ base: "md", md: "lg" }}
                     variant="outline"
                     rounded="full"
@@ -1370,9 +1380,9 @@ function PairingEntry({
                             setMinute(String(liveMatchMinute(clockArgs)))
                             setAutoMinute(false)
                         }}
-                        title="Upiši trenutnu minutu mjerača (ostaje ručno)"
+                        title={t.components.liveMatchPanel.nowButtonTitle}
                     >
-                        Sada
+                        {t.components.liveMatch.goalEntry.nowButton}
                     </Button>
                 )}
                 {/* While following manually, offer the way BACK to continuous
@@ -1386,16 +1396,16 @@ function PairingEntry({
                         colorPalette="brand"
                         fontWeight={700}
                         onClick={() => { setMinute(String(liveMatchMinute(clockArgs))); setAutoMinute(true) }}
-                        title="Nastavi pratiti mjerač - minuta se opet broji sama"
+                        title={t.components.liveMatchPanel.followClock.title}
                     >
                         <LuTimer />
-                        <Box as="span" display={{ base: "none", sm: "inline" }}>Prati mjerač</Box>
-                        <Box as="span" display={{ base: "inline", sm: "none" }}>Prati</Box>
+                        <Box as="span" display={{ base: "none", sm: "inline" }}>{t.components.liveMatchPanel.followClock.full}</Box>
+                        <Box as="span" display={{ base: "inline", sm: "none" }}>{t.components.liveMatchPanel.followClock.short}</Box>
                     </Button>
                 )}
             </Flex>
 
-            <Eyebrow>3 · Odaberi radnju</Eyebrow>
+            <Eyebrow>{t.components.liveMatchPanel.eyebrow.pickAction}</Eyebrow>
             {penaltyInProgress && (
                 <Box
                     rounded="lg"
@@ -1405,12 +1415,12 @@ function PairingEntry({
                     css={{ background: tint(CARD_YELLOW, 12) }}
                 >
                     <Text fontSize="xs" fontWeight={700} color="accent.amber" lineHeight="1.35">
-                        Penali su u tijeku - golovi se unose u penal zapisu.
+                        {t.components.liveMatch.goalEntry.penaltiesInProgressNote}
                     </Text>
                 </Box>
             )}
             <Box display="grid" gridTemplateColumns="repeat(4, 1fr)" gap="2" mb="3.5">
-                {ACTIONS.map((a) => (
+                {actionsFor(t).map((a) => (
                     <ActionButton
                         key={a.type}
                         type={a.type}
@@ -1427,7 +1437,7 @@ function PairingEntry({
                     {hint}
                 </Text>
                 <Button size="sm" variant="outline" colorPalette="gray" onClick={clearPending} disabled={!pendingPlayer && !pendingAction}>
-                    Odustani
+                    {t.common.cancel}
                 </Button>
             </Flex>
         </Box>
@@ -1482,6 +1492,7 @@ function RosterColumn({
     sentOffPlayerIds: Set<number>
     yellowCardedPlayerIds: Set<number>
 }) {
+    const t = useTranslation()
     const isPending = (playerId: number | null) =>
         pendingPlayer != null && pendingPlayer.team === teamId && pendingPlayer.playerId === playerId
     const deveterci = Math.max(0, foulsCount - 4)
@@ -1515,18 +1526,18 @@ function RosterColumn({
                 the current half. The ≥5 warning colour is preserved either way. */}
             {splitByHalf ? (
                 <VStack align="stretch" gap="1.5" rounded="lg" px="3" py="2" bg="pitch.subtle">
-                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg" textAlign="center">PREKRŠAJI</Text>
+                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg" textAlign="center">{t.components.liveMatch.foulControls.label.toUpperCase()}</Text>
                     <HStack gap="2.5" justify="center">
-                        <HalfFoulCounter label="1. pol." count={foulsFirst} active={currentHalf === 1} onFoul={onFoul} />
+                        <HalfFoulCounter label={t.components.liveMatch.clockLabels.firstHalf} count={foulsFirst} active={currentHalf === 1} onFoul={onFoul} />
                         <Text fontSize="sm" fontWeight={800} color="fg.subtle" lineHeight="1">·</Text>
-                        <HalfFoulCounter label="2. pol." count={foulsSecond} active={currentHalf === 2} onFoul={onFoul} />
+                        <HalfFoulCounter label={t.components.liveMatch.clockLabels.secondHalf} count={foulsSecond} active={currentHalf === 2} onFoul={onFoul} />
                     </HStack>
                 </VStack>
             ) : (
                 <Flex align="center" justify="space-between" rounded="lg" px="3" py="1.5" bg="pitch.subtle">
-                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg">PREKRŠAJI</Text>
+                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg">{t.components.liveMatch.foulControls.label.toUpperCase()}</Text>
                     <HStack gap="2.5">
-                        <IconButton aria-label="Manje prekršaja" size="2xs" variant="outline" disabled={foulsCount === 0} onClick={() => onFoul(-1)}>
+                        <IconButton aria-label={t.components.liveMatchPanel.foulAdjust.decreaseAria} size="2xs" variant="outline" disabled={foulsCount === 0} onClick={() => onFoul(-1)}>
                             <FiMinus />
                         </IconButton>
                         <Box textAlign="center" minW="18px" lineHeight="1">
@@ -1537,7 +1548,7 @@ function RosterColumn({
                                 <Text fontSize="9px" fontWeight={800} color="accent.red" lineHeight="1.1">9m{deveterci > 1 ? `×${deveterci}` : ""}</Text>
                             )}
                         </Box>
-                        <IconButton aria-label="Više prekršaja" size="2xs" variant="outline" onClick={() => onFoul(1)}>
+                        <IconButton aria-label={t.components.liveMatchPanel.foulAdjust.increaseAria} size="2xs" variant="outline" onClick={() => onFoul(1)}>
                             <FiPlus />
                         </IconButton>
                     </HStack>
@@ -1551,7 +1562,7 @@ function RosterColumn({
                         selected={isPending(null)}
                         color={color}
                         badge="?"
-                        name="Nepoznati igrač"
+                        name={t.components.liveMatch.eventRow.unknownPlayerFallback}
                         muted
                         onClick={() => onSelect({ team: teamId, playerId: null, playerName: null })}
                     />
@@ -1573,7 +1584,7 @@ function RosterColumn({
                     )
                 })}
                 {teamId != null && players.length === 0 && (
-                    <Text fontSize="xs" color="fg.subtle">Nema igrača</Text>
+                    <Text fontSize="xs" color="fg.subtle">{t.components.liveMatch.playerPick.noPlayers}</Text>
                 )}
             </VStack>
         </VStack>
@@ -1594,6 +1605,7 @@ function HalfFoulCounter({
     active: boolean
     onFoul: (delta: number) => void
 }) {
+    const t = useTranslation()
     const deveterci = Math.max(0, count - 4)
     return (
         <HStack
@@ -1613,7 +1625,7 @@ function HalfFoulCounter({
                 {label}
             </Text>
             {active && (
-                <IconButton aria-label="Manje prekršaja" size="2xs" variant="outline" disabled={count === 0} onClick={() => onFoul(-1)}>
+                <IconButton aria-label={t.components.liveMatchPanel.foulAdjust.decreaseAria} size="2xs" variant="outline" disabled={count === 0} onClick={() => onFoul(-1)}>
                     <FiMinus />
                 </IconButton>
             )}
@@ -1632,7 +1644,7 @@ function HalfFoulCounter({
                 )}
             </Box>
             {active && (
-                <IconButton aria-label="Više prekršaja" size="2xs" variant="outline" onClick={() => onFoul(1)}>
+                <IconButton aria-label={t.components.liveMatchPanel.foulAdjust.increaseAria} size="2xs" variant="outline" onClick={() => onFoul(1)}>
                     <FiPlus />
                 </IconButton>
             )}
@@ -1794,19 +1806,20 @@ function CenterTimeline({
      *  are counters, so they never become rows on the timeline. */
     fouls?: TimelineFouls | null
 }) {
+    const t = useTranslation()
     const hasHalves = halfLengthMin != null && halfLengthMin > 0
     const rows: TimelineRow[] = useMemo(() => {
         const sorted = [...events].sort((a, b) => a.minute - b.minute || a.id - b.id)
         const secondHalfMin = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
         const out: TimelineRow[] = [
-            { kind: "half", label: "1. poluvrijeme", half: secondHalfMin != null ? 1 : null },
+            { kind: "half", label: t.components.liveMatch.timeline.firstHalfTitle, half: secondHalfMin != null ? 1 : null },
         ]
         let h = 0
         let a = 0
         let sep2 = false
         for (const e of sorted) {
             if (secondHalfMin != null && !sep2 && e.minute > secondHalfMin) {
-                out.push({ kind: "half", label: "2. poluvrijeme", half: 2 })
+                out.push({ kind: "half", label: t.components.liveMatch.timeline.secondHalfTitle, half: 2 })
                 sep2 = true
             }
             const isHome = e.teamId === team1Id
@@ -1818,14 +1831,14 @@ function CenterTimeline({
                 clientEventId: e.clientEventId,
                 isHome,
                 type: e.type,
-                player: playerLabel(e),
+                player: playerLabel(e, t),
                 min: e.minute,
                 center: isGoal ? { score: [h, a] } : { dot: true },
                 ev: e,
             })
         }
         return out
-    }, [events, team1Id, halfLengthMin])
+    }, [events, team1Id, halfLengthMin, t])
 
     // Accumulated foul tally for a half separator. `null` half = no boundary
     // known, so the single header carries both halves combined. A 0:0 half
@@ -1856,7 +1869,7 @@ function CenterTimeline({
                         <TimelineEventRow key={r.clientEventId ?? r.id} row={r} canDelete={canDelete} onUndo={() => onUndo(r.ev)} />
                     ),
                 )}
-                {trailingFouls && <HalfPill label="2. poluvrijeme" fouls={trailingFouls} />}
+                {trailingFouls && <HalfPill label={t.components.liveMatch.timeline.secondHalfTitle} fouls={trailingFouls} />}
             </VStack>
         </Box>
     )
@@ -1889,8 +1902,9 @@ function HalfPill({ label, fouls }: { label: string; fouls: [number, number] | n
 }
 
 function TimelineEventRow({ row, canDelete, onUndo }: { row: Extract<TimelineRow, { kind: "event" }>; canDelete: boolean; onUndo: () => void }) {
+    const t = useTranslation()
     const undoBtn = canDelete ? (
-        <IconButton aria-label="Poništi događaj" size="2xs" variant="ghost" rounded="full" color="fg.subtle" onClick={onUndo} flexShrink={0}>
+        <IconButton aria-label={t.components.liveMatch.eventRow.removeAria} size="2xs" variant="ghost" rounded="full" color="fg.subtle" onClick={onUndo} flexShrink={0}>
             <FiX size={12} />
         </IconButton>
     ) : (
@@ -1929,7 +1943,12 @@ function TimelineEventRow({ row, canDelete, onUndo }: { row: Extract<TimelineRow
         <Text
             fontSize="xs"
             fontWeight={600}
-            color={row.player === "Nepoznati strijelac" || row.player === "Nepoznati igrač" || row.player === "Autogol" ? "fg.muted" : "fg.ink"}
+            color={
+                row.player === t.components.liveMatchPanel.scorerFallback.unknownScorer
+                    || row.player === t.components.liveMatch.eventRow.unknownPlayerFallback
+                    || row.player === t.components.liveMatchPanel.scorerFallback.ownGoal
+                    ? "fg.muted" : "fg.ink"
+            }
             fontStyle="italic"
             lineHeight="1.3"
             lineClamp={3}
@@ -1984,10 +2003,11 @@ function EventIcon({ type }: { type: MatchEventType }) {
     return <Box as="span" w="13px" h="16px" rounded="sm" flexShrink={0} bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
 }
 
-function playerLabel(e: MatchEventDto): string {
-    if (e.type === "OWN_GOAL") return e.playerName != null ? `${e.playerName} (ag)` : "Autogol"
+function playerLabel(e: MatchEventDto, t: Dictionary): string {
+    const sf = t.components.liveMatchPanel.scorerFallback
+    if (e.type === "OWN_GOAL") return e.playerName != null ? sf.ownGoalSuffix(e.playerName) : sf.ownGoal
     if (e.playerName != null) return e.playerName
-    if (e.type === "GOAL" || e.type === "PENALTY_GOAL") return "Nepoznati strijelac"
-    if (e.type === "PENALTY_MISSED") return "Promašaj"
-    return "Nepoznati igrač"
+    if (e.type === "GOAL" || e.type === "PENALTY_GOAL") return sf.unknownScorer
+    if (e.type === "PENALTY_MISSED") return sf.missed
+    return t.components.liveMatch.eventRow.unknownPlayerFallback
 }

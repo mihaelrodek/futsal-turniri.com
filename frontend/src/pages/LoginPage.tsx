@@ -16,28 +16,30 @@ import { getFirebase } from "../firebase"
 import { useAuth } from "../auth/AuthContext"
 import { pickSafeNext } from "../utils/safeNextPath"
 import { emailForUsername } from "../api/auth"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n"
 
-/** Translate Firebase auth error codes into Croatian, user-friendly messages. */
-function authErrorMessage(err: any): string {
+/** Translate Firebase auth error codes into user-friendly messages. */
+function authErrorMessage(err: any, t: Dictionary): string {
     const code: string = err?.code ?? ""
     switch (code) {
         case "auth/invalid-credential":
         case "auth/wrong-password":
         case "auth/user-not-found":
-            return "Pogrešan email/korisničko ime ili lozinka."
+            return t.pages.loginPage.errors.invalidCredentials
         case "auth/invalid-email":
-            return "Neispravan format email adrese."
+            return t.pages.loginPage.errors.invalidEmail
         case "auth/user-disabled":
-            return "Korisnički račun je deaktiviran."
+            return t.pages.loginPage.errors.userDisabled
         case "auth/too-many-requests":
-            return "Previše pokušaja. Pokušaj ponovno kasnije."
+            return t.pages.loginPage.errors.tooManyRequests
         case "auth/popup-blocked":
-            return "Preglednik je blokirao prozor za Google prijavu. Dopusti skočne prozore za ovu stranicu i pokušaj ponovno."
+            return t.pages.loginPage.errors.popupBlocked
         case "auth/popup-closed-by-user":
         case "auth/cancelled-popup-request":
             return "" // user closed popup - not really an error
         default:
-            return err?.message ?? "Prijava nije uspjela."
+            return err?.message ?? t.pages.loginPage.errors.loginFailed
     }
 }
 
@@ -46,6 +48,7 @@ export default function LoginPage() {
     const location = useLocation()
     const [searchParams] = useSearchParams()
     const { signInWithIdentifier, signInWithGoogle, user, loading: authLoading } = useAuth()
+    const t = useTranslation()
 
     // Holds an email OR a username; resolved in signInWithIdentifier.
     const [email, setEmail] = useState("")
@@ -88,7 +91,7 @@ export default function LoginPage() {
         setError(null)
         setResetMsg(null)
         if (!email.trim() || !password) {
-            setError("Unesi email ili korisničko ime i lozinku.")
+            setError(t.pages.loginPage.errors.missingFields)
             return
         }
         try {
@@ -96,7 +99,7 @@ export default function LoginPage() {
             await signInWithIdentifier(email.trim(), password)
             navigate(redirectTo, { replace: true })
         } catch (e: any) {
-            const msg = authErrorMessage(e)
+            const msg = authErrorMessage(e, t)
             if (msg) setError(msg)
         } finally {
             setSubmitting(false)
@@ -110,7 +113,7 @@ export default function LoginPage() {
             await signInWithGoogle()
             navigate(redirectTo, { replace: true })
         } catch (e: any) {
-            const msg = authErrorMessage(e)
+            const msg = authErrorMessage(e, t)
             if (msg) setError(msg)
         }
     }
@@ -120,7 +123,7 @@ export default function LoginPage() {
         setResetMsg(null)
         const idInput = email.trim()
         if (!idInput) {
-            setError("Upiši email ili korisničko ime u polje iznad i ponovi.")
+            setError(t.pages.loginPage.errors.resetMissingIdentifier)
             return
         }
         try {
@@ -130,7 +133,7 @@ export default function LoginPage() {
             if (!idInput.includes("@")) {
                 const resolved = await emailForUsername(idInput)
                 if (!resolved) {
-                    setError("Za promjenu lozinke upiši svoju email adresu.")
+                    setError(t.pages.loginPage.errors.resetNeedsEmail)
                     return
                 }
                 resetEmail = resolved
@@ -138,9 +141,9 @@ export default function LoginPage() {
             const [{ auth }, { sendPasswordResetEmail }] =
                 await Promise.all([getFirebase(), import("firebase/auth")])
             await sendPasswordResetEmail(auth, resetEmail)
-            setResetMsg("Poslali smo ti link za promjenu lozinke. Provjeri email.")
+            setResetMsg(t.pages.loginPage.resetEmailSent)
         } catch (e: any) {
-            setError(authErrorMessage(e))
+            setError(authErrorMessage(e, t))
         }
     }
 
@@ -149,7 +152,7 @@ export default function LoginPage() {
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "5", md: "6" }}>
                     <VStack align="stretch" gap="4">
-                        <Heading size="md">Prijava</Heading>
+                        <Heading size="md">{t.pages.loginPage.heading}</Heading>
 
                         <Button
                             variant="outline"
@@ -157,29 +160,29 @@ export default function LoginPage() {
                             onClick={onGoogle}
                             disabled={submitting}
                         >
-                            <FcGoogle size={18} /> Nastavi s Googleom
+                            <FcGoogle size={18} /> {t.pages.loginPage.continueWithGoogle}
                         </Button>
 
                         <HStack>
                             <Box flex="1" h="1px" bg="border.subtle" />
-                            <Text fontSize="xs" color="fg.muted">ili</Text>
+                            <Text fontSize="xs" color="fg.muted">{t.pages.loginPage.orDivider}</Text>
                             <Box flex="1" h="1px" bg="border.subtle" />
                         </HStack>
 
                         <form onSubmit={onSubmit}>
                             <VStack align="stretch" gap="3">
                                 <Field.Root required>
-                                    <Field.Label>Email ili korisničko ime</Field.Label>
+                                    <Field.Label>{t.pages.loginPage.identifierLabel}</Field.Label>
                                     <Input
                                         type="text"
                                         autoComplete="username"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="email@primjer.com ili marko-horvat"
+                                        placeholder={t.pages.loginPage.identifierPlaceholder}
                                     />
                                 </Field.Root>
                                 <Field.Root required>
-                                    <Field.Label>Lozinka</Field.Label>
+                                    <Field.Label>{t.pages.loginPage.passwordLabel}</Field.Label>
                                     <Input
                                         type="password"
                                         autoComplete="current-password"
@@ -206,7 +209,7 @@ export default function LoginPage() {
                                     loading={submitting}
                                     disabled={submitting}
                                 >
-                                    Prijavi se
+                                    {t.pages.loginPage.submit}
                                 </Button>
                             </VStack>
                         </form>
@@ -218,12 +221,12 @@ export default function LoginPage() {
                                 size="xs"
                                 onClick={onResetPassword}
                             >
-                                Zaboravljena lozinka?
+                                {t.pages.loginPage.forgotPassword}
                             </Button>
                             <Text fontSize="sm" color="fg.muted">
-                                Nemaš račun?{" "}
+                                {t.pages.loginPage.noAccount}{" "}
                                 <Box as="span" color="blue.fg" fontWeight="medium">
-                                    <RouterLink to="/registracija">Registriraj se</RouterLink>
+                                    <RouterLink to="/registracija">{t.pages.loginPage.registerLink}</RouterLink>
                                 </Box>
                             </Text>
                         </HStack>

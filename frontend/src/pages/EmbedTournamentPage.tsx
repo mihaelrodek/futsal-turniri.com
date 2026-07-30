@@ -5,6 +5,7 @@ import { fetchTournamentDetails } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { fetchLiveMatches } from "../api/live"
 import { usePolling } from "../hooks/usePolling"
+import { useTranslation, type Dictionary } from "../i18n"
 import type { TournamentDetails } from "../types/tournaments"
 import type { ScheduledMatch } from "../types/schedule"
 import type { LiveMatch } from "../api/live"
@@ -33,6 +34,7 @@ import type { LiveMatch } from "../api/live"
 const POLL_MS = 15_000
 
 export default function EmbedTournamentPage() {
+    const t = useTranslation()
     const { uuid } = useParams<{ uuid: string }>()
 
     const [tournament, setTournament] = useState<TournamentDetails | null>(null)
@@ -115,7 +117,7 @@ export default function EmbedTournamentPage() {
             <Shell>
                 <Flex h="180px" align="center" justify="center">
                     <Text fontSize="sm" color="fg.muted">
-                        Turnir nije pronađen.
+                        {t.pages.embedTournamentPage.notFound}
                     </Text>
                 </Flex>
             </Shell>
@@ -136,15 +138,15 @@ export default function EmbedTournamentPage() {
                     >
                         {tournament.name.toUpperCase()}
                     </Text>
-                    {live && <LivePill />}
+                    {live && <LivePill t={t} />}
                 </HStack>
 
                 {live ? (
                     <EmbedScoreboard match={live} />
                 ) : lastFinished ? (
-                    <EmbedFinished match={lastFinished} />
+                    <EmbedFinished match={lastFinished} t={t} />
                 ) : nextUpcoming ? (
-                    <EmbedUpcoming match={nextUpcoming} />
+                    <EmbedUpcoming match={nextUpcoming} t={t} />
                 ) : (
                     <Text
                         textAlign="center"
@@ -152,7 +154,7 @@ export default function EmbedTournamentPage() {
                         color="fg.muted"
                         fontSize="sm"
                     >
-                        Nema utakmica
+                        {t.pages.embedTournamentPage.emptyState}
                     </Text>
                 )}
 
@@ -171,7 +173,7 @@ export default function EmbedTournamentPage() {
                         "&:hover": { color: "var(--chakra-colors-pitch-600)" },
                     }}
                 >
-                    POWERED BY FUTSAL-TURNIRI.COM
+                    {t.pages.embedTournamentPage.poweredBy}
                 </Link>
             </VStack>
         </Shell>
@@ -210,7 +212,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     )
 }
 
-function LivePill() {
+function LivePill({ t }: { t: Dictionary }) {
     return (
         <HStack gap="1.5" align="center">
             <Box
@@ -230,7 +232,7 @@ function LivePill() {
                 letterSpacing="0.2em"
                 color="accent.red"
             >
-                UŽIVO
+                {t.pages.embedTournamentPage.liveLabel}
             </Text>
         </HStack>
     )
@@ -258,7 +260,7 @@ function EmbedScoreboard({ match }: { match: LiveMatch }) {
     )
 }
 
-function EmbedFinished({ match }: { match: ScheduledMatch }) {
+function EmbedFinished({ match, t }: { match: ScheduledMatch; t: Dictionary }) {
     return (
         <VStack gap="1" py="2">
             <Text
@@ -268,7 +270,7 @@ function EmbedFinished({ match }: { match: ScheduledMatch }) {
                 letterSpacing="0.2em"
                 color="fg.muted"
             >
-                POSLJEDNJA UTAKMICA
+                {t.pages.embedTournamentPage.lastMatchLabel}
             </Text>
             <Flex align="center" justify="space-between" gap="3" w="full">
                 <TeamName name={match.team1Name ?? "-"} align="right" />
@@ -290,7 +292,7 @@ function EmbedFinished({ match }: { match: ScheduledMatch }) {
     )
 }
 
-function EmbedUpcoming({ match }: { match: ScheduledMatch }) {
+function EmbedUpcoming({ match, t }: { match: ScheduledMatch; t: Dictionary }) {
     return (
         <VStack gap="1" py="2">
             <Text
@@ -300,7 +302,7 @@ function EmbedUpcoming({ match }: { match: ScheduledMatch }) {
                 letterSpacing="0.2em"
                 color="fg.muted"
             >
-                SLJEDEĆA UTAKMICA · {formatKickoff(match.kickoffAt)}
+                {t.pages.embedTournamentPage.nextMatchLabel(formatKickoff(match.kickoffAt))}
             </Text>
             <Flex align="center" justify="space-between" gap="3" w="full">
                 <TeamName name={match.team1Name ?? "-"} align="right" />
@@ -310,7 +312,7 @@ function EmbedUpcoming({ match }: { match: ScheduledMatch }) {
                     fontWeight={700}
                     color="fg.muted"
                 >
-                    vs
+                    {t.pages.embedTournamentPage.vsLabel}
                 </Text>
                 <TeamName name={match.team2Name ?? "-"} align="left" />
             </Flex>

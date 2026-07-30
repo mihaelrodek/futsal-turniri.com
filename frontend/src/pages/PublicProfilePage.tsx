@@ -34,19 +34,17 @@ import {
     FiInbox,
     FiList,
     FiMapPin,
-    FiMoon,
     FiPhone,
     FiRadio,
     FiUser,
     FiShare2,
     FiShield,
-    FiSun,
     FiTrash2,
     FiUsers,
     FiVideo,
 } from "react-icons/fi"
 import { PillTabBar } from "../ui/pitch"
-import { useColorMode } from "../color-mode"
+import ThemeSwitch from "../components/ThemeSwitch"
 import {
     getCareerStats,
     getTeamMatchHistory,
@@ -57,7 +55,7 @@ import {
     type PublicProfile,
 } from "../api/publicProfile"
 import type { MyTournamentParticipation } from "../api/userMe"
-import { deleteAvatar, getProfile, syncProfile, updateColorMode, updateProfile, uploadAvatar } from "../api/userMe"
+import { deleteAvatar, getProfile, syncProfile, updateLanguage, updateProfile, uploadAvatar } from "../api/userMe"
 import { checkUsernameAvailable } from "../api/auth"
 import AvatarPreview from "../components/AvatarPreview"
 import { showError } from "../toaster"
@@ -71,6 +69,7 @@ import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
 import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
 import AdminCameraInquiriesTab from "../components/AdminCameraInquiriesTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { LOCALE_LABELS, setLocale, useLocale, useTranslation, type Locale } from "../i18n"
 
 /** Country dial codes shared with FindTeam / CreateTournament. */
 const PHONE_COUNTRIES = [
@@ -125,12 +124,10 @@ type ProfileTabKey =
 
 /** Icon per tab, shared between the desktop sidebar and (implicitly, via
  *  the same lookup) anywhere else a tab needs one. */
-/** Label of the mobile pill that expands the admin tab row. */
-const ADMIN_PILL_LABEL = "Administracija"
 
 const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
-    // "profil" is a mobile-only tab (desktop carries the identity block at
-    // the top of the sidebar instead), but the icon map covers every key.
+    // "profil" isn't its own desktop sidebar nav row (the sidebar's identity
+    // block + pencil switches to it instead), but the icon map covers every key.
     profil: <FiUser size={15} />,
     turniri: <FiList size={15} />,
     "moje-snimke": <FiVideo size={15} />,
@@ -190,6 +187,7 @@ function ProfileNavItem({
 }
 
 export default function PublicProfilePage() {
+    const t = useTranslation()
     const { slug } = useParams<{ slug: string }>()
     const { user, mySlug, isAdmin, loading: authLoading } = useAuth()
     const navigate = useNavigate()
@@ -204,8 +202,10 @@ export default function PublicProfilePage() {
 
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
-    // see Turniri only.
-    const [profileTab, setProfileTab] = useState<ProfileTabKey>("turniri")
+    // see Turniri only. Owner always lands on "profil" (account details +
+    // settings) - the natural landing tab on both mobile and desktop, since
+    // it's the owner's own account-details view.
+    const [profileTab, setProfileTab] = useState<ProfileTabKey>("profil")
     // Mobile-only: whether the "Administracija" pill has expanded the row
     // of admin tabs beneath the primary tab row.
     const [mobileAdminOpen, setMobileAdminOpen] = useState(false)
@@ -325,9 +325,9 @@ export default function PublicProfilePage() {
             } catch (e: any) {
                 if (cancelled) return
                 if (e?.response?.status === 404) {
-                    setError("Profil nije pronađen.")
+                    setError(t.pages.publicProfilePage.errors.notFound)
                 } else {
-                    setError(e?.message ?? "Greška pri dohvaćanju profila.")
+                    setError(e?.message ?? t.pages.publicProfilePage.errors.generic)
                 }
                 setProfile(null)
             } finally {
@@ -353,10 +353,10 @@ export default function PublicProfilePage() {
         if (!profile) return []
         const q = search.trim().toLowerCase()
         return profile.tournaments
-            .filter((t) => activeTeam == null || teamKey(t.teamName) === teamKey(activeTeam))
-            .filter((t) => {
+            .filter((tp) => activeTeam == null || teamKey(tp.teamName) === teamKey(activeTeam))
+            .filter((tp) => {
                 if (!q) return true
-                const blob = `${t.tournamentName} ${t.tournamentLocation ?? ""}`.toLowerCase()
+                const blob = `${tp.tournamentName} ${tp.tournamentLocation ?? ""}`.toLowerCase()
                 return blob.includes(q)
             })
     }, [profile, activeTeam, search])
@@ -382,12 +382,12 @@ export default function PublicProfilePage() {
                     <Card.Body p="5">
                         <HStack gap="3" align="center" color="red.fg">
                             <FiAlertCircle />
-                            <Text>{error ?? "Profil nije dostupan."}</Text>
+                            <Text>{error ?? t.pages.publicProfilePage.errors.unavailable}</Text>
                         </HStack>
                         <HStack mt="4">
-                            <Button size="sm" variant="ghost" onClick={() => navigate(-1)}>Natrag</Button>
+                            <Button size="sm" variant="ghost" onClick={() => navigate(-1)}>{t.common.back}</Button>
                             <Button size="sm" variant="solid" colorPalette="pitch" asChild>
-                                <RouterLink to="/turniri">Na turnire</RouterLink>
+                                <RouterLink to="/turniri">{t.pages.publicProfilePage.toTournamentsButton}</RouterLink>
                             </Button>
                         </HStack>
                     </Card.Body>
@@ -407,24 +407,25 @@ export default function PublicProfilePage() {
     // admin-only tabs grouped separately (rendered below a divider on
     // desktop, in their own labelled pill row on mobile). Only ever shown
     // to the profile owner; a visitor has nothing to switch between.
+    const adminPillLabel = t.pages.publicProfilePage.adminPillLabel
     const userTabs: Array<{ key: ProfileTabKey; label: string }> = [
-        { key: "turniri", label: "Turniri" },
+        { key: "turniri", label: t.pages.publicProfilePage.tabs.tournaments },
         // Recording requests of THIS user (any signed-in account) - request
         // status, cancel, and the download link once a recording is delivered.
         ...(RECORDING_REQUEST_ENABLED
-            ? [{ key: "moje-snimke" as ProfileTabKey, label: "Moje snimke" }]
+            ? [{ key: "moje-snimke" as ProfileTabKey, label: t.pages.publicProfilePage.tabs.myRecordings }]
             : []),
     ]
     // Admin-only tabs, gated on the Firebase role=admin custom claim.
     const adminTabs: Array<{ key: ProfileTabKey; label: string }> = isAdmin
         ? [
-            { key: "dashboard", label: "Dashboard" },
-            { key: "popis-igraca", label: "Popis igrača" },
-            { key: "baza-ekipa", label: "Baza ekipa" },
-            { key: "live-stream", label: "Live stream" },
-            { key: "zahtjevi-snimke", label: "Zahtjevi za snimke" },
-            { key: "baza-snimki", label: "Baza snimki" },
-            { key: "zahtjevi-ponude", label: "Zahtjevi za ponudu" },
+            { key: "dashboard", label: t.pages.publicProfilePage.tabs.dashboard },
+            { key: "popis-igraca", label: t.pages.publicProfilePage.tabs.playersList },
+            { key: "baza-ekipa", label: t.pages.publicProfilePage.tabs.teamDatabase },
+            { key: "live-stream", label: t.pages.publicProfilePage.tabs.liveStream },
+            { key: "zahtjevi-snimke", label: t.pages.publicProfilePage.tabs.recordingRequests },
+            { key: "baza-snimki", label: t.pages.publicProfilePage.tabs.recordingsLibrary },
+            { key: "zahtjevi-ponude", label: t.pages.publicProfilePage.tabs.cameraInquiries },
         ]
         : []
 
@@ -432,16 +433,16 @@ export default function PublicProfilePage() {
     // a single "Administracija" pill that expands the admin row below it
     // on tap (instead of always showing a second crowded row).
     const mobileTabs: Array<{ key: ProfileTabKey; label: string }> = [
-        { key: "profil", label: "Profil" },
+        { key: "profil", label: t.pages.publicProfilePage.tabs.profile },
         ...userTabs,
     ]
     const isOnAdminTab = adminTabs.some((tab) => tab.key === profileTab)
     const mobileLabels = [
         ...mobileTabs.map((tab) => tab.label),
-        ...(adminTabs.length > 0 ? [ADMIN_PILL_LABEL] : []),
+        ...(adminTabs.length > 0 ? [adminPillLabel] : []),
     ]
     const activeMobileLabel = isOnAdminTab || mobileAdminOpen
-        ? ADMIN_PILL_LABEL
+        ? adminPillLabel
         : (mobileTabs.find((tab) => tab.key === profileTab)?.label ?? "")
     const adminTabLabels = adminTabs.map((tab) => tab.label)
     const activeAdminLabel = adminTabs.find((tab) => tab.key === profileTab)?.label ?? ""
@@ -460,7 +461,6 @@ export default function PublicProfilePage() {
                 <ProfileHeader
                     profile={profile}
                     isOwner={isOwner}
-                    onProfileChanged={refreshProfile}
                 />
             )}
 
@@ -489,12 +489,12 @@ export default function PublicProfilePage() {
                         <VStack align="stretch" gap="3">
                             <HStack justify="space-between" wrap="wrap" gap="2">
                                 <Heading size="md">
-                                    Turniri
+                                    {t.pages.publicProfilePage.tournamentsTab.heading}
                                     {activeTeam ? <chakra.span color="fg.muted"> - {activeTeam}</chakra.span> : null}
                                 </Heading>
                                 {activeTeam && profile.teams.length > 0 && (
                                     <Badge variant="subtle" colorPalette="pitch">
-                                        {filteredTournaments.length} turnira
+                                        {t.pages.publicProfilePage.tournamentsTab.countBadge(filteredTournaments.length)}
                                     </Badge>
                                 )}
                             </HStack>
@@ -511,7 +511,7 @@ export default function PublicProfilePage() {
                                     textAlign="center"
                                 >
                                     <Text color="fg.muted" fontSize="sm">
-                                        Igrač nije odigrao niti jedan turnir.
+                                        {t.pages.publicProfilePage.tournamentsTab.emptyNoTournaments}
                                     </Text>
                                 </Box>
                             ) : (
@@ -540,7 +540,7 @@ export default function PublicProfilePage() {
                                     <HStack gap="2" fontSize="sm" color="fg.muted">
                                         <FiShare2 size={14} />
                                         <Text>
-                                            Suvlasnik:{" "}
+                                            {t.pages.publicProfilePage.tournamentsTab.coOwnerLabel}{" "}
                                             <RouterLink
                                                 to={`/profil/${cur.partnerSlug}`}
                                                 style={{
@@ -561,7 +561,7 @@ export default function PublicProfilePage() {
                                     <Box borderTopWidth="1px" borderColor="border.emphasized" mx="-4" my="1" />
                                     <Input
                                         size="sm"
-                                        placeholder="Pretraga: naziv turnira ili lokacija…"
+                                        placeholder={t.pages.publicProfilePage.tournamentsTab.searchPlaceholder}
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
                                     />
@@ -576,7 +576,7 @@ export default function PublicProfilePage() {
                                             textAlign="center"
                                         >
                                             <Text color="fg.muted" fontSize="sm">
-                                                Nema turnira za odabrane filtere.
+                                                {t.pages.publicProfilePage.tournamentsTab.noResults}
                                             </Text>
                                         </Box>
                                     ) : (
@@ -679,7 +679,7 @@ export default function PublicProfilePage() {
                 <HStack gap="2.5" align="center" mb="2" px="0.5">
                     <AvatarPreview
                         src={profile.avatarUrl}
-                        alt={profile.displayName ?? "Profilna slika"}
+                        alt={profile.displayName ?? t.pages.publicProfilePage.avatarAlt}
                     >
                         <Box
                             w="34px"
@@ -698,7 +698,7 @@ export default function PublicProfilePage() {
                             {profile.avatarUrl ? (
                                 <Image
                                     src={profile.avatarUrl}
-                                    alt={profile.displayName ?? "Profilna slika"}
+                                    alt={profile.displayName ?? t.pages.publicProfilePage.avatarAlt}
                                     w="100%"
                                     h="100%"
                                     objectFit="cover"
@@ -709,7 +709,7 @@ export default function PublicProfilePage() {
                         </Box>
                     </AvatarPreview>
                     <Text fontWeight={700} fontSize="15px" lineClamp={1}>
-                        {profile.displayName ?? "Bezimeni igrač"}
+                        {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
                     </Text>
                 </HStack>
 
@@ -720,7 +720,7 @@ export default function PublicProfilePage() {
                     tabs={mobileLabels}
                     active={activeMobileLabel}
                     onChange={(label) => {
-                        if (label === ADMIN_PILL_LABEL) {
+                        if (label === adminPillLabel) {
                             setMobileAdminOpen((v) => !v)
                             return
                         }
@@ -795,7 +795,6 @@ export default function PublicProfilePage() {
                             <ProfileHeader
                                 profile={profile}
                                 isOwner={isOwner}
-                                onProfileChanged={refreshProfile}
                                 variant="sidebar"
                                 onEditClick={() => setProfileTab("profil")}
                             />
@@ -836,7 +835,7 @@ export default function PublicProfilePage() {
                                             letterSpacing="0.12em"
                                             color="fg.muted"
                                         >
-                                            ADMINISTRACIJA
+                                            {t.pages.publicProfilePage.adminSectionCaption}
                                         </Text>
                                     </Box>
                                     {adminTabs.map((tab) => (
@@ -870,13 +869,11 @@ export default function PublicProfilePage() {
 function ProfileHeader({
     profile,
     isOwner,
-    onProfileChanged,
     variant = "card",
     onEditClick,
 }: {
     profile: PublicProfile
     isOwner: boolean
-    onProfileChanged: () => Promise<void> | void
     /** "card" = standalone card (mobile body / visitor); "sidebar" = compact
      *  block at the top of the owner's desktop sidebar menu. */
     variant?: "card" | "sidebar"
@@ -885,67 +882,21 @@ function ProfileHeader({
      *  "profil" panel (ProfileDetailsSection). */
     onEditClick?: () => void
 }) {
-    const [uploading, setUploading] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement | null>(null)
+    const t = useTranslation()
     // For the "blurred phone → click to log in" affordance below.
     const navigate = useNavigate()
 
-    function onPickAvatar() {
-        fileInputRef.current?.click()
-    }
-
-    async function onAvatarChosen(e: React.ChangeEvent<HTMLInputElement>) {
-        const f = e.target.files?.[0]
-        // Reset value so picking the same file again still fires onChange.
-        e.target.value = ""
-        if (!f) return
-        try {
-            setUploading(true)
-            await uploadAvatar(f)
-            await onProfileChanged()
-            window.dispatchEvent(new CustomEvent("futsal:profile-updated"))
-        } catch (err: any) {
-            showError(
-                "Slika nije učitana",
-                String(
-                    err?.response?.data?.message
-                        ?? err?.response?.data
-                        ?? err?.message
-                        ?? "Pokušaj ponovno.",
-                ),
-            )
-        } finally {
-            setUploading(false)
-        }
-    }
-
-    async function onRemoveAvatar() {
-        if (!confirm("Ukloniti profilnu sliku?")) return
-        try {
-            setUploading(true)
-            await deleteAvatar()
-            await onProfileChanged()
-            window.dispatchEvent(new CustomEvent("futsal:profile-updated"))
-        } catch (err: any) {
-            showError(
-                "Brisanje slike nije uspjelo",
-                String(err?.response?.data ?? err?.message ?? "Pokušaj ponovno."),
-            )
-        } finally {
-            setUploading(false)
-        }
-    }
-
     // Avatar - image when uploaded, initials otherwise. Wrapped in
     // AvatarPreview so hovering / tapping the circle opens a full-screen
-    // lightbox of the picture. The wrapper is a no-op when there's no
-    // avatarUrl, so initials stay un-clickable. Shared by both variants.
+    // lightbox of the picture. View-only here (both variants, owner or not)
+    // - changing the picture lives exclusively in ProfileDetailsSection now,
+    // on the "Profil" tab, so it's never edited from two different places.
     const avatarSize = variant === "sidebar" ? "40px" : { base: "40px", md: "48px" }
     const avatarEl = (
         <Box position="relative" flexShrink={0}>
             <AvatarPreview
                 src={profile.avatarUrl}
-                alt={profile.displayName ?? "Profilna slika"}
+                alt={profile.displayName ?? t.pages.publicProfilePage.avatarAlt}
             >
                 <Box
                     w={avatarSize}
@@ -963,7 +914,7 @@ function ProfileHeader({
                     {profile.avatarUrl ? (
                         <Image
                             src={profile.avatarUrl}
-                            alt={profile.displayName ?? "Profilna slika"}
+                            alt={profile.displayName ?? t.pages.publicProfilePage.avatarAlt}
                             w="100%"
                             h="100%"
                             objectFit="cover"
@@ -973,56 +924,7 @@ function ProfileHeader({
                     )}
                 </Box>
             </AvatarPreview>
-            {isOwner && (
-                <>
-                    <IconButton
-                        aria-label={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
-                        title={profile.avatarUrl ? "Promijeni profilnu sliku" : "Učitaj profilnu sliku"}
-                        size="2xs"
-                        position="absolute"
-                        bottom="-2px"
-                        right="-2px"
-                        rounded="full"
-                        colorPalette="pitch"
-                        variant="solid"
-                        loading={uploading}
-                        onClick={onPickAvatar}
-                    >
-                        <FiEdit2 />
-                    </IconButton>
-                    <chakra.input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        display="none"
-                        onChange={onAvatarChosen}
-                    />
-                </>
-            )}
         </Box>
-    )
-
-    // "Ukloni profilnu sliku" - icon-only on small widths (mobile card AND
-    // the narrow sidebar), full label otherwise; the tooltip/aria-label
-    // always carries the text.
-    const removeAvatarEl = isOwner && profile.avatarUrl && (
-        <Button
-            size="2xs"
-            variant="ghost"
-            colorPalette="red"
-            onClick={onRemoveAvatar}
-            loading={uploading}
-            alignSelf="flex-start"
-            aria-label="Ukloni profilnu sliku"
-            title="Ukloni profilnu sliku"
-        >
-            <FiTrash2 />
-            {variant === "card" && (
-                <chakra.span display={{ base: "none", md: "inline" }}>
-                    Ukloni profilnu sliku
-                </chakra.span>
-            )}
-        </Button>
     )
 
     const phoneEl = profile.phone ? (
@@ -1068,7 +970,7 @@ function ProfileHeader({
                             bg="transparent"
                             border="0"
                             p="0"
-                            title="Prijavi se da vidiš broj"
+                            title={t.pages.publicProfilePage.phone.loginToViewTitle}
                             _hover={{ textDecoration: "underline" }}
                         >
                             <FiPhone size={13} />
@@ -1079,7 +981,7 @@ function ProfileHeader({
                                 +385 99 123 4567
                             </chakra.span>
                             <chakra.span fontSize="xs" color="fg.muted">
-                                (prijavi se)
+                                {t.pages.publicProfilePage.phone.loginToViewSuffix}
                             </chakra.span>
                         </chakra.button>
                     ) : null
@@ -1101,15 +1003,15 @@ function ProfileHeader({
                             flex="1"
                             minW="0"
                         >
-                            {profile.displayName ?? "Bezimeni igrač"}
+                            {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
                         </Text>
                         {isOwner && (
                             <IconButton
-                                aria-label="Uredi profil"
+                                aria-label={t.pages.publicProfilePage.editProfileAria}
                                 size="xs"
                                 variant="ghost"
                                 onClick={onEditClick}
-                                title="Uredi profil"
+                                title={t.pages.publicProfilePage.editProfileAria}
                             >
                                 <FiEdit2 />
                             </IconButton>
@@ -1117,7 +1019,6 @@ function ProfileHeader({
                     </HStack>
                 </HStack>
                 {phoneEl}
-                {removeAvatarEl}
             </VStack>
         )
     }
@@ -1137,9 +1038,8 @@ function ProfileHeader({
                                 lineHeight="short"
                                 lineClamp={2}
                             >
-                                {profile.displayName ?? "Bezimeni igrač"}
+                                {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
                             </Heading>
-                            {removeAvatarEl}
                         </VStack>
                     </HStack>
 
@@ -1157,6 +1057,7 @@ function ProfileHeader({
  * an edit pencil that swaps in the actual EditProfileForm.
  */
 function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | void }) {
+    const t = useTranslation()
     const [editing, setEditing] = useState(false)
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<{
@@ -1165,7 +1066,61 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
         username: string
         phoneCountry: string | null
         phone: string | null
+        avatarUrl: string | null
     } | null>(null)
+
+    // Avatar upload/remove - this is the ONLY place the picture can be
+    // changed from (the sidebar/header identity blocks are view-only, see
+    // ProfileHeader). Same upload/remove logic that used to live there.
+    const [avatarBusy, setAvatarBusy] = useState(false)
+    const avatarInputRef = useRef<HTMLInputElement | null>(null)
+
+    function onPickAvatar() {
+        avatarInputRef.current?.click()
+    }
+
+    async function onAvatarChosen(e: React.ChangeEvent<HTMLInputElement>) {
+        const f = e.target.files?.[0]
+        e.target.value = "" // reset so picking the same file again still fires onChange
+        if (!f) return
+        try {
+            setAvatarBusy(true)
+            await uploadAvatar(f)
+            await load()
+            await onSaved()
+            window.dispatchEvent(new CustomEvent("futsal:profile-updated"))
+        } catch (err: any) {
+            showError(
+                t.pages.publicProfilePage.avatar.uploadErrorTitle,
+                String(
+                    err?.response?.data?.message
+                        ?? err?.response?.data
+                        ?? err?.message
+                        ?? t.pages.publicProfilePage.avatar.genericRetry,
+                ),
+            )
+        } finally {
+            setAvatarBusy(false)
+        }
+    }
+
+    async function onRemoveAvatar() {
+        if (!confirm(t.pages.publicProfilePage.avatar.removeConfirm)) return
+        try {
+            setAvatarBusy(true)
+            await deleteAvatar()
+            await load()
+            await onSaved()
+            window.dispatchEvent(new CustomEvent("futsal:profile-updated"))
+        } catch (err: any) {
+            showError(
+                t.pages.publicProfilePage.avatar.removeErrorTitle,
+                String(err?.response?.data ?? err?.message ?? t.pages.publicProfilePage.avatar.genericRetry),
+            )
+        } finally {
+            setAvatarBusy(false)
+        }
+    }
 
     async function load() {
         setLoading(true)
@@ -1177,6 +1132,7 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
                 username: p.slug ?? "",
                 phoneCountry: p.phoneCountry ?? null,
                 phone: p.phone ?? null,
+                avatarUrl: p.avatarUrl ?? null,
             })
         } finally {
             setLoading(false)
@@ -1207,15 +1163,77 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
-                    <HStack justify="space-between" align="center">
-                        <Box>
-                            <Heading size="sm">Moji podaci</Heading>
-                            <Text fontSize="xs" color="fg.muted">
-                                Ime, korisničko ime i broj telefona.
-                            </Text>
-                        </Box>
+                    <HStack justify="space-between" align="start">
+                        <HStack gap="3" align="center">
+                            <Box position="relative" flexShrink={0}>
+                                <AvatarPreview
+                                    src={data?.avatarUrl}
+                                    alt={t.pages.publicProfilePage.avatarAlt}
+                                >
+                                    <Box
+                                        w="56px"
+                                        h="56px"
+                                        rounded="full"
+                                        overflow="hidden"
+                                        bg="blue.subtle"
+                                        color="blue.fg"
+                                        display="flex"
+                                        alignItems="center"
+                                        justifyContent="center"
+                                        fontWeight="bold"
+                                        fontSize="md"
+                                    >
+                                        {data?.avatarUrl ? (
+                                            <Image src={data.avatarUrl} alt={t.pages.publicProfilePage.avatarAlt} w="100%" h="100%" objectFit="cover" />
+                                        ) : (
+                                            initialsOf(`${data?.firstName ?? ""} ${data?.lastName ?? ""}`.trim())
+                                        )}
+                                    </Box>
+                                </AvatarPreview>
+                                <IconButton
+                                    aria-label={data?.avatarUrl ? t.pages.publicProfilePage.avatar.changeAria : t.pages.publicProfilePage.avatar.uploadAria}
+                                    title={data?.avatarUrl ? t.pages.publicProfilePage.avatar.changeAria : t.pages.publicProfilePage.avatar.uploadAria}
+                                    size="2xs"
+                                    position="absolute"
+                                    bottom="-2px"
+                                    right="-2px"
+                                    rounded="full"
+                                    colorPalette="pitch"
+                                    variant="solid"
+                                    loading={avatarBusy}
+                                    onClick={onPickAvatar}
+                                >
+                                    <FiEdit2 />
+                                </IconButton>
+                                <chakra.input
+                                    ref={avatarInputRef}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    display="none"
+                                    onChange={onAvatarChosen}
+                                />
+                            </Box>
+                            <Box>
+                                <Heading size="sm">{t.pages.publicProfilePage.details.heading}</Heading>
+                                <Text fontSize="xs" color="fg.muted">
+                                    {t.pages.publicProfilePage.details.description}
+                                </Text>
+                                {data?.avatarUrl && (
+                                    <Button
+                                        size="2xs"
+                                        variant="ghost"
+                                        colorPalette="red"
+                                        mt="1"
+                                        onClick={onRemoveAvatar}
+                                        loading={avatarBusy}
+                                    >
+                                        <FiTrash2 /> {t.pages.publicProfilePage.avatar.removeLabel}
+                                    </Button>
+                                )}
+                            </Box>
+                        </HStack>
                         <Button size="xs" variant="outline" onClick={() => setEditing(true)}>
-                            <FiEdit2 /> Uredi
+                            <FiEdit2 /> {t.common.edit}
                         </Button>
                     </HStack>
                     {loading || !data ? (
@@ -1228,18 +1246,18 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
                         <VStack align="stretch" gap="0">
                             <DetailRow
                                 icon={<FiUser size={15} />}
-                                label="Ime i prezime"
+                                label={t.pages.publicProfilePage.details.nameLabel}
                                 value={`${data.firstName} ${data.lastName}`.trim() || "-"}
                             />
                             <DetailRow
                                 icon={<FiAtSign size={15} />}
-                                label="Korisničko ime"
+                                label={t.pages.publicProfilePage.details.usernameLabel}
                                 value={data.username || "-"}
                             />
                             <DetailRow
                                 icon={<FiPhone size={15} />}
-                                label="Broj telefona"
-                                value={data.phone ? `${data.phoneCountry ? data.phoneCountry + " " : ""}${data.phone}` : "Nije upisan"}
+                                label={t.pages.publicProfilePage.details.phoneLabel}
+                                value={data.phone ? `${data.phoneCountry ? data.phoneCountry + " " : ""}${data.phone}` : t.pages.publicProfilePage.details.notSet}
                                 isLast
                             />
                         </VStack>
@@ -1348,6 +1366,7 @@ function EditProfileForm({
     onCancel: () => void
     onSaved: () => Promise<void> | void
 }) {
+    const t = useTranslation()
     const navigate = useNavigate()
     const [firstName, setFirstName] = useState("")
     const [lastName, setLastName] = useState("")
@@ -1416,11 +1435,11 @@ function EditProfileForm({
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (!firstName.trim() || !lastName.trim()) {
-            setError("Ime i prezime su obavezni.")
+            setError(t.pages.publicProfilePage.editForm.validationNameRequired)
             return
         }
         if (!usernameValid) {
-            setError("Odaberi dostupno korisničko ime.")
+            setError(t.pages.publicProfilePage.editForm.validationUsernameUnavailable)
             return
         }
         try {
@@ -1454,9 +1473,9 @@ function EditProfileForm({
             await onSaved()
         } catch (e: any) {
             const status = e?.response?.status
-            if (status === 409) setError("Korisničko ime je zauzeto. Odaberi drugo.")
-            else if (status === 400) setError("Korisničko ime je prekratko (najmanje 3 znaka).")
-            else setError(e?.response?.data ?? e?.message ?? "Greška pri spremanju.")
+            if (status === 409) setError(t.pages.publicProfilePage.editForm.saveErrorUsernameTaken)
+            else if (status === 400) setError(t.pages.publicProfilePage.editForm.saveErrorUsernameTooShort)
+            else setError(e?.response?.data ?? e?.message ?? t.pages.publicProfilePage.editForm.saveErrorGeneric)
         } finally {
             setSaving(false)
         }
@@ -1475,61 +1494,61 @@ function EditProfileForm({
         >
             <form onSubmit={onSubmit}>
                 <VStack align="stretch" gap="3">
-                    <Text fontWeight={700} fontSize="sm">Uredi profil</Text>
+                    <Text fontWeight={700} fontSize="sm">{t.pages.publicProfilePage.editForm.heading}</Text>
                                 <NameFields gap={compact ? "3" : "3"} align={compact ? "stretch" : "start"}>
                                     <Field.Root required>
-                                        <Field.Label>Ime <Field.RequiredIndicator /></Field.Label>
+                                        <Field.Label>{t.pages.publicProfilePage.editForm.firstNameLabel} <Field.RequiredIndicator /></Field.Label>
                                         <Input
                                             size="sm"
                                             autoFocus
                                             value={firstName}
                                             onChange={(e) => setFirstName(e.target.value)}
-                                            placeholder="Marko"
+                                            placeholder={t.pages.publicProfilePage.editForm.firstNamePlaceholder}
                                         />
                                     </Field.Root>
                                     <Field.Root required>
-                                        <Field.Label>Prezime <Field.RequiredIndicator /></Field.Label>
+                                        <Field.Label>{t.pages.publicProfilePage.editForm.lastNameLabel} <Field.RequiredIndicator /></Field.Label>
                                         <Input
                                             size="sm"
                                             value={lastName}
                                             onChange={(e) => setLastName(e.target.value)}
-                                            placeholder="Marković"
+                                            placeholder={t.pages.publicProfilePage.editForm.lastNamePlaceholder}
                                         />
                                     </Field.Root>
                                 </NameFields>
 
                                 <Field.Root required>
-                                    <Field.Label>Korisničko ime <Field.RequiredIndicator /></Field.Label>
+                                    <Field.Label>{t.pages.publicProfilePage.editForm.usernameLabel} <Field.RequiredIndicator /></Field.Label>
                                     <Input
                                         size="sm"
                                         value={username}
                                         onChange={(e) => setUsername(e.target.value)}
-                                        placeholder="marko-markovic"
+                                        placeholder={t.pages.publicProfilePage.editForm.usernamePlaceholder}
                                     />
                                     {uStatus.state === "checking" && (
-                                        <Field.HelperText>Provjeravam dostupnost…</Field.HelperText>
+                                        <Field.HelperText>{t.pages.publicProfilePage.editForm.usernameChecking}</Field.HelperText>
                                     )}
                                     {uStatus.state === "unchanged" && (
-                                        <Field.HelperText>Tvoje trenutno korisničko ime.</Field.HelperText>
+                                        <Field.HelperText>{t.pages.publicProfilePage.editForm.usernameUnchanged}</Field.HelperText>
                                     )}
                                     {uStatus.state === "ok" && (
-                                        <Field.HelperText color="green.fg">✓ „{uStatus.normalized}" je dostupno</Field.HelperText>
+                                        <Field.HelperText color="green.fg">{t.pages.publicProfilePage.editForm.usernameAvailable(uStatus.normalized)}</Field.HelperText>
                                     )}
                                     {uStatus.state === "taken" && (
-                                        <Field.HelperText color="red.fg">„{uStatus.normalized}" je zauzeto — odaberi drugo</Field.HelperText>
+                                        <Field.HelperText color="red.fg">{t.pages.publicProfilePage.editForm.usernameTaken(uStatus.normalized)}</Field.HelperText>
                                     )}
                                     {uStatus.state === "short" && (
-                                        <Field.HelperText color="red.fg">Prekratko (najmanje 3 znaka).</Field.HelperText>
+                                        <Field.HelperText color="red.fg">{t.pages.publicProfilePage.editForm.usernameTooShort}</Field.HelperText>
                                     )}
                                     {uStatus.state === "idle" && (
-                                        <Field.HelperText>Mijenjanjem se mijenja i adresa profila (/profil/…).</Field.HelperText>
+                                        <Field.HelperText>{t.pages.publicProfilePage.editForm.usernameIdleHelp}</Field.HelperText>
                                     )}
                                 </Field.Root>
 
                                 <Field.Root>
                                     <Field.Label>
-                                        Broj telefona{" "}
-                                        <chakra.span color="fg.muted" fontSize="xs">(opcionalno)</chakra.span>
+                                        {t.pages.publicProfilePage.editForm.phoneLabel}{" "}
+                                        <chakra.span color="fg.muted" fontSize="xs">{t.common.optionalTag}</chakra.span>
                                     </Field.Label>
                                     {loadingPhone ? (
                                         <Skeleton h="9" />
@@ -1551,7 +1570,7 @@ function EditProfileForm({
                                                 type="tel"
                                                 inputMode="numeric"
                                                 pattern="[0-9 ]*"
-                                                placeholder="91 234 5678"
+                                                placeholder={t.pages.publicProfilePage.editForm.phonePlaceholder}
                                                 value={phone}
                                                 // Strip non-digits (and non-spaces) so the saved
                                                 // value never contains stray "(", "-", or "+"
@@ -1571,7 +1590,7 @@ function EditProfileForm({
 
                     <HStack justify="flex-end" gap="2">
                         <Button size="sm" variant="ghost" type="button" onClick={onCancel} disabled={saving}>
-                            Odustani
+                            {t.common.cancel}
                         </Button>
                         <Button
                             size="sm"
@@ -1581,7 +1600,7 @@ function EditProfileForm({
                             loading={saving}
                             disabled={saving || loadingPhone || !firstName.trim() || !lastName.trim() || !usernameValid}
                         >
-                            Spremi
+                            {t.common.save}
                         </Button>
                     </HStack>
                 </VStack>
@@ -1599,6 +1618,7 @@ function EditProfileForm({
    have to special-case empty-state inside.
    ────────────────────────────────────────────────────────────────────── */
 function CareerStatsCard({ career }: { career: CareerStats }) {
+    const t = useTranslation()
     const winRate = career.matchesPlayed > 0
         ? Math.round((career.matchesWon / career.matchesPlayed) * 100)
         : 0
@@ -1608,7 +1628,7 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
                     <HStack justify="space-between" wrap="wrap" gap="2">
-                        <Heading size="md">Karijera</Heading>
+                        <Heading size="md">{t.pages.publicProfilePage.career.heading}</Heading>
                         {career.topTeamName && (
                             <Badge variant="subtle" colorPalette="pitch" fontSize="xs">
                                 {career.topTeamName}
@@ -1624,11 +1644,11 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                         gridTemplateColumns={{ base: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }}
                         gap={{ base: "3", md: "4" }}
                     >
-                        <CareerStat label="Turniri" value={career.tournamentsPlayed} sub={career.tournamentsWon > 0 ? `${career.tournamentsWon} pobjeda` : null} />
-                        <CareerStat label="Utakmice" value={career.matchesPlayed} sub={career.matchesPlayed > 0 ? `${winRate}% omjer` : null} />
-                        <CareerStat label="Golovi" value={career.goalsFor} sub={`Primljeno: ${career.goalsAgainst}`} />
+                        <CareerStat label={t.pages.publicProfilePage.career.tournaments} value={career.tournamentsPlayed} sub={career.tournamentsWon > 0 ? t.pages.publicProfilePage.career.tournamentsWon(career.tournamentsWon) : null} />
+                        <CareerStat label={t.pages.publicProfilePage.career.matches} value={career.matchesPlayed} sub={career.matchesPlayed > 0 ? t.pages.publicProfilePage.career.winRate(winRate) : null} />
+                        <CareerStat label={t.pages.publicProfilePage.career.goals} value={career.goalsFor} sub={t.pages.publicProfilePage.career.goalsAgainst(career.goalsAgainst)} />
                         <CareerStat
-                            label="Razlika"
+                            label={t.pages.publicProfilePage.career.goalDiff}
                             value={goalDiff > 0 ? `+${goalDiff}` : `${goalDiff}`}
                             valueColor={goalDiff > 0 ? "pitch.600" : goalDiff < 0 ? "accent.red" : "fg"}
                             sub={null}
@@ -1670,15 +1690,15 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                             >
                                 <HStack gap="1">
                                     <Box w="8px" h="8px" rounded="full" bg="pitch.500" />
-                                    <Text>P {career.matchesWon}</Text>
+                                    <Text>{t.pages.publicProfilePage.career.wonAbbrev(career.matchesWon)}</Text>
                                 </HStack>
                                 <HStack gap="1">
                                     <Box w="8px" h="8px" rounded="full" bg="border.emphasized" />
-                                    <Text>N {career.matchesDrawn}</Text>
+                                    <Text>{t.pages.publicProfilePage.career.drawnAbbrev(career.matchesDrawn)}</Text>
                                 </HStack>
                                 <HStack gap="1">
                                     <Box w="8px" h="8px" rounded="full" bg="accent.red" opacity={0.7} />
-                                    <Text>I {career.matchesLost}</Text>
+                                    <Text>{t.pages.publicProfilePage.career.lostAbbrev(career.matchesLost)}</Text>
                                 </HStack>
                             </HStack>
                         </VStack>
@@ -1694,7 +1714,7 @@ function CareerStatsCard({ career }: { career: CareerStats }) {
                                 letterSpacing="0.15em"
                                 color="fg.muted"
                             >
-                                POSLJEDNJI TURNIRI
+                                {t.pages.publicProfilePage.career.recentTournamentsLabel}
                             </Text>
                             <VStack align="stretch" gap="1.5">
                                 {career.recent.map((r, i) => (
@@ -1799,6 +1819,7 @@ function TeamChip({
     active: boolean
     onClick: () => void
 }) {
+    const t = useTranslation()
     return (
         <Button
             size="sm"
@@ -1823,7 +1844,7 @@ function TeamChip({
                     // Tiny "shared" indicator - the actual partner link
                     // renders below the chip strip so it stays accessible
                     // (no nested clickable inside the button).
-                    <Box color={active ? "blue.100" : "blue.fg"} title="Podijeljeno s partnerom">
+                    <Box color={active ? "blue.100" : "blue.fg"} title={t.pages.publicProfilePage.tournamentsTab.partnerSharedTitle}>
                         <FiShare2 size={11} />
                     </Box>
                 )}
@@ -1840,6 +1861,7 @@ function TournamentRow({
     slug: string
     row: MyTournamentParticipation
 }) {
+    const t = useTranslation()
     const [open, setOpen] = useState(false)
     const [history, setHistory] = useState<TeamMatchHistory | null>(null)
     const [loading, setLoading] = useState(false)
@@ -1854,7 +1876,7 @@ function TournamentRow({
                 setError(null)
                 setHistory(await getTeamMatchHistory(slug, row.teamId))
             } catch (e: any) {
-                setError(e?.response?.data ?? e?.message ?? "Greška pri dohvaćanju mečeva.")
+                setError(e?.response?.data ?? e?.message ?? t.pages.publicProfilePage.tournamentRow.matchHistoryError)
             } finally {
                 setLoading(false)
             }
@@ -1863,17 +1885,17 @@ function TournamentRow({
 
     let badge: { palette: string; label: string; icon?: React.ReactNode } | null = null
     if (row.isWinner) {
-        badge = { palette: "yellow", label: "Pobjednik", icon: <FaTrophy size={11} color="#F5C518" /> }
+        badge = { palette: "yellow", label: t.pages.publicProfilePage.tournamentRow.winner, icon: <FaTrophy size={11} color="#F5C518" /> }
     } else if (row.pendingApproval) {
-        badge = { palette: "yellow", label: "Čeka odobrenje" }
+        badge = { palette: "yellow", label: t.pages.publicProfilePage.tournamentRow.pendingApproval }
     } else if (row.eliminated) {
-        badge = { palette: "red", label: "Eliminiran" }
+        badge = { palette: "red", label: t.pages.publicProfilePage.tournamentRow.eliminated }
     } else if (row.tournamentStatus === "STARTED") {
-        badge = { palette: "green", label: "Aktivan" }
+        badge = { palette: "green", label: t.pages.publicProfilePage.tournamentRow.active }
     } else if (row.tournamentStatus === "FINISHED") {
-        badge = { palette: "gray", label: "Završen" }
+        badge = { palette: "gray", label: t.pages.publicProfilePage.tournamentRow.finished }
     } else {
-        badge = { palette: "blue", label: "Najavljen" }
+        badge = { palette: "blue", label: t.pages.publicProfilePage.tournamentRow.upcoming }
     }
 
     return (
@@ -1917,20 +1939,20 @@ function TournamentRow({
                         <HStack gap="1"><FiMapPin /><Text>{row.tournamentLocation}</Text></HStack>
                     )}
                     {!row.pendingApproval && (
-                        <Badge variant="subtle" colorPalette="gray" size="sm">{row.wins}W – {row.losses}L</Badge>
+                        <Badge variant="subtle" colorPalette="gray" size="sm">{t.pages.publicProfilePage.tournamentRow.record(row.wins, row.losses)}</Badge>
                     )}
-                    {row.extraLife && <Badge variant="subtle" colorPalette="red" size="sm">Život</Badge>}
+                    {row.extraLife && <Badge variant="subtle" colorPalette="red" size="sm">{t.pages.publicProfilePage.tournamentRow.extraLife}</Badge>}
                 </HStack>
             </Box>
 
             {open && (
                 <Box borderTopWidth="1px" borderColor="border.emphasized" bg="bg.subtle" p="3">
                     {loading ? (
-                        <HStack gap="2" color="fg.muted"><Spinner size="xs" /><Text fontSize="sm">Učitavanje…</Text></HStack>
+                        <HStack gap="2" color="fg.muted"><Spinner size="xs" /><Text fontSize="sm">{t.pages.publicProfilePage.loadingMatches}</Text></HStack>
                     ) : error ? (
                         <Text fontSize="sm" color="red.fg">{error}</Text>
                     ) : !history || history.matches.length === 0 ? (
-                        <Text fontSize="sm" color="fg.muted">Nema odigranih mečeva.</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.pages.publicProfilePage.noMatchesPlayed}</Text>
                     ) : (
                         <VStack align="stretch" gap="1.5">
                             {history.matches.map((m, i) => (
@@ -1939,7 +1961,7 @@ function TournamentRow({
                             <HStack pt="2" justify="flex-end">
                                 <Button size="xs" variant="ghost" asChild>
                                     <RouterLink to={`/turniri/${row.tournamentSlug ?? row.tournamentUuid}`}>
-                                        Otvori turnir
+                                        {t.pages.publicProfilePage.openTournament}
                                     </RouterLink>
                                 </Button>
                             </HStack>
@@ -1952,13 +1974,14 @@ function TournamentRow({
 }
 
 function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
+    const t = useTranslation()
     const finished = m.status === "FINISHED" || m.status === "COMPLETED"
-    const wonColor = m.won === true ? "green" : m.won === false ? "red" : "gray"
     const wonLabel = m.isBye
-        ? "Bye"
-        : m.won === true ? "Pobjeda"
-        : m.won === false ? "Poraz"
-        : finished ? "Riješeno" : "U tijeku"
+        ? t.pages.publicProfilePage.matchRow.bye
+        : m.won === true ? t.pages.publicProfilePage.matchRow.win
+        : m.won === false ? t.pages.publicProfilePage.matchRow.loss
+        : finished ? t.pages.publicProfilePage.matchRow.resolved : t.pages.publicProfilePage.matchRow.inProgress
+    const wonColor = m.won === true ? "green" : m.won === false ? "red" : "gray"
 
     return (
         <HStack
@@ -1973,13 +1996,13 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
             fontSize="sm"
         >
             <Badge variant="outline" colorPalette="pitch" size="sm">
-                Kolo {m.roundNumber ?? "?"}
+                {t.pages.publicProfilePage.matchRow.round(m.roundNumber ?? "?")}
             </Badge>
             {m.tableNo != null && (
-                <Text color="fg.muted" fontSize="xs">Stol {m.tableNo}</Text>
+                <Text color="fg.muted" fontSize="xs">{t.pages.publicProfilePage.matchRow.table(m.tableNo)}</Text>
             )}
             <Text flex="1" minW="0" lineClamp={1}>
-                vs <chakra.b>{m.opponentName ?? (m.isBye ? "-" : "?")}</chakra.b>
+                {t.pages.publicProfilePage.matchRow.vs} <chakra.b>{m.opponentName ?? (m.isBye ? "-" : "?")}</chakra.b>
             </Text>
             {(m.ourScore != null || m.opponentScore != null) && (
                 <Text fontFamily="mono" fontWeight="semibold">
@@ -2005,19 +2028,18 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
  * read direction on login.
  */
 function SettingsCard() {
-    const { colorMode, setColorMode } = useColorMode()
+    const t = useTranslation()
+    const activeLocale = useLocale()
 
-    const setTheme = async (mode: "light" | "dark") => {
-        // Flip the local theme immediately for an instant visual response,
-        // then persist to the backend. We're not waiting on the network
-        // before flipping - the response only confirms the save.
-        setColorMode(mode)
-        try {
-            await updateColorMode(mode)
-        } catch {
-            // Network failed - local theme is still right; the next login
-            // will resync via ThemeSync.
-        }
+    // This card only ever renders for the profile owner (isOwner-gated at
+    // the call site), so a signed-in user is guaranteed here - unlike the
+    // navbar's LanguagePicker, no `if (user)` check is needed before saving.
+    const pickLanguage = (loc: Locale) => {
+        setLocale(loc)
+        updateLanguage(loc).catch(() => {
+            // Network failed - local switch is still right; the next login
+            // elsewhere will resync via LocaleSync.
+        })
     }
 
     return (
@@ -2025,32 +2047,35 @@ function SettingsCard() {
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
                     <Box>
-                        <Heading size="sm">Postavke</Heading>
+                        <Heading size="sm">{t.pages.publicProfilePage.settings.heading}</Heading>
                         <Text fontSize="xs" color="fg.muted">
-                            Personalizirane postavke aplikacije i tvog profila.
+                            {t.pages.publicProfilePage.settings.description}
                         </Text>
                     </Box>
 
                     <Box>
-                        <Text fontSize="sm" fontWeight="medium" mb="2">Tema</Text>
+                        <Text fontSize="sm" fontWeight="medium" mb="2">{t.pages.publicProfilePage.settings.themeLabel}</Text>
+                        <ThemeSwitch size="lg" />
+                    </Box>
+
+                    <Box>
+                        <Text fontSize="sm" fontWeight="medium" mb="2">{t.pages.publicProfilePage.settings.languageLabel}</Text>
                         <HStack gap="2" wrap="wrap">
-                            <Button
-                                size="sm"
-                                variant={colorMode === "light" ? "solid" : "outline"}
-                                colorPalette={colorMode === "light" ? "blue" : "gray"}
-                                onClick={() => setTheme("light")}
-                            >
-                                <FiSun /> Svijetla
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant={colorMode === "dark" ? "solid" : "outline"}
-                                colorPalette={colorMode === "dark" ? "blue" : "gray"}
-                                onClick={() => setTheme("dark")}
-                            >
-                                <FiMoon /> Tamna
-                            </Button>
+                            {(["hr", "en", "sl"] as const).map((loc) => (
+                                <Button
+                                    key={loc}
+                                    size="sm"
+                                    variant={activeLocale === loc ? "solid" : "outline"}
+                                    colorPalette={activeLocale === loc ? "blue" : "gray"}
+                                    onClick={() => pickLanguage(loc)}
+                                >
+                                    <chakra.span mr="1">{LOCALE_LABELS[loc].flag}</chakra.span> {LOCALE_LABELS[loc].name}
+                                </Button>
+                            ))}
                         </HStack>
+                        <Text fontSize="xs" color="fg.muted" mt="2">
+                            {t.pages.publicProfilePage.settings.languageSyncNote}
+                        </Text>
                     </Box>
                 </VStack>
             </Card.Body>

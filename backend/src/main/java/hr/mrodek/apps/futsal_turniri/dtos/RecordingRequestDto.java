@@ -33,6 +33,8 @@ public class RecordingRequestDto {
     private String goalLabel;
     private String note;
     private String contactEmail;
+    /** Set only for an anonymous /cjenik cart order; null otherwise. */
+    private String contactPhone;
     private String adminNote;
     private int priceEurCents;
     /** True when the admin marked the request paid ({@code paidAt != null}). */

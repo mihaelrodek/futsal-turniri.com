@@ -45,6 +45,7 @@ import { fetchLiveMatches, pickFeaturedFirst, type LiveMatch } from "../api/live
 import { useUserLocation } from "../hooks/useUserLocation"
 import { haversineKm } from "../utils/distance"
 import { useDocumentHead } from "../hooks/useDocumentHead"
+import { useTranslation } from "../i18n"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { usePolling } from "../hooks/usePolling"
 import {
@@ -80,12 +81,23 @@ import { useStreamPresence } from "../hooks/useStreamPresence"
 
 type TournamentCardWithUuid = TournamentCard & { uuid: string }
 
-// ---------- formatters ----------
-const HR_MONTHS_SHORT = [
-    "SIJ", "VEL", "OŽU", "TRA", "SVI", "LIP", "SRP", "KOL", "RUJ", "LIS", "STU", "PRO",
-]
-const HR_WEEKDAYS_SHORT = ["NED", "PON", "UTO", "SRI", "ČET", "PET", "SUB"]
+/** Localized labels for `relativeDays` / `classifyStatus` - resolved on the
+ *  render thread via `useTranslation()` and passed in, since these are plain
+ *  helpers (not hooks) and can't call it directly. Mirrors the
+ *  `ClockLabels` pattern in FullscreenTournamentPage.tsx. */
+type StatusLabels = {
+    finished: string
+    live: string
+    today: string
+    tomorrow: string
+    inDays: (n: number) => string
+    upcoming: string
+}
+/** Localized short weekday/month names for the poster date-stamp badge
+ *  (`decomposeDate`). */
+type DateBadgeLabels = { weekdaysShort: string[]; monthsShort: string[] }
 
+// ---------- formatters ----------
 function formatTime(iso?: string | null) {
     if (!iso) return "-"
     const d = new Date(iso)
@@ -97,25 +109,25 @@ function fmtEuro(n?: number | null) {
     const trimmed = s.endsWith(".00") ? s.slice(0, -3) : s
     return `${trimmed}€`
 }
-function relativeDays(iso?: string | null): { days: number; label: string } | null {
+function relativeDays(iso: string | null | undefined, labels: StatusLabels): { days: number; label: string } | null {
     if (!iso) return null
     const startMs = new Date(iso).setHours(0, 0, 0, 0)
     const todayMs = new Date().setHours(0, 0, 0, 0)
     const diff = Math.round((startMs - todayMs) / (24 * 60 * 60 * 1000))
     if (diff < 0) return null
-    if (diff === 0) return { days: 0, label: "Danas" }
-    if (diff === 1) return { days: 1, label: "Sutra" }
-    if (diff <= 14) return { days: diff, label: `Za ${diff} dana` }
-    return { days: diff, label: "Nadolazeći" }
+    if (diff === 0) return { days: 0, label: labels.today }
+    if (diff === 1) return { days: 1, label: labels.tomorrow }
+    if (diff <= 14) return { days: diff, label: labels.inDays(diff) }
+    return { days: diff, label: labels.upcoming }
 }
 
-function decomposeDate(iso?: string | null) {
+function decomposeDate(iso: string | null | undefined, labels: DateBadgeLabels) {
     if (!iso) return null
     const d = new Date(iso)
     return {
-        day: HR_WEEKDAYS_SHORT[d.getDay()],
+        day: labels.weekdaysShort[d.getDay()],
         dayNum: String(d.getDate()).padStart(2, "0"),
-        month: HR_MONTHS_SHORT[d.getMonth()],
+        month: labels.monthsShort[d.getMonth()],
         time: formatTime(iso),
     }
 }
@@ -124,18 +136,19 @@ function decomposeDate(iso?: string | null) {
 function classifyStatus(
     t: TournamentCardWithUuid,
     variant: "upcoming" | "finished",
+    labels: StatusLabels,
 ): { status: "live" | "upcoming" | "soon" | "full" | "finished"; label: string } {
-    if (variant === "finished") return { status: "finished", label: "Završen" }
+    if (variant === "finished") return { status: "finished", label: labels.finished }
     // A live match OR a started (but not finished) tournament both read as the
     // same red pulsing "U TIJEKU" badge - we no longer surface a separate
     // "UŽIVO" label, so the status stays stable between individual matches.
-    if (t.liveMatch || t.status === "STARTED") return { status: "live", label: "U TIJEKU" }
+    if (t.liveMatch || t.status === "STARTED") return { status: "live", label: labels.live }
     // A full roster no longer overrides the date badge - the card shows
     // "Danas" / "Sutra" / "Za N dana" / "Nadolazeći" like every other upcoming
     // tournament (the popunjenost bar still shows the registered/max count).
-    const rel = relativeDays(t.startAt)
+    const rel = relativeDays(t.startAt, labels)
     if (rel && rel.days > 1 && rel.days <= 7) return { status: "soon", label: rel.label }
-    return { status: "upcoming", label: rel?.label ?? "Nadolazeći" }
+    return { status: "upcoming", label: rel?.label ?? labels.upcoming }
 }
 
 /** Prefetch a tournament's detail data into the react-query cache so opening it
@@ -168,6 +181,11 @@ function useTournamentPrefetch() {
 const HERO_MIN_H = { base: "300px", md: "260px" } as const
 
 function LiveHero({ match }: { match: LiveMatch }) {
+    const tr = useTranslation()
+    const heroT = tr.pages.tournamentsPage.hero
+    // Reuses the shared LiveConsoleHeader phase labels (components.liveMatch)
+    // rather than duplicating a fourth copy of the same all-caps wording.
+    const phaseLabels = tr.components.liveMatch.phaseLabels
     const queryClient = useQueryClient()
     // Warm the featured match's tournament (detail + schedule) on hover/press so
     // "Prati uživo →" opens its match page instantly.
@@ -207,12 +225,12 @@ function LiveHero({ match }: { match: LiveMatch }) {
             : null
     const heroHalfLabel =
         match.livePausedAt && (heroPhase === "FIRST_HALF" || heroPhase === "SECOND_HALF")
-            ? "PAUZA"
-            : heroPhase === "HALFTIME" ? "POLUVRIJEME"
-                : heroPhase === "SECOND_HALF" ? "2. POLUVRIJEME"
-                    : heroPhase === "FULL_TIME" ? "KRAJ"
-                        : heroPhase === "FIRST_HALF" ? "1. POLUVRIJEME"
-                            : match.secondHalfStartedAt ? "2. POLUVRIJEME" : "1. POLUVRIJEME"
+            ? phaseLabels.pause
+            : heroPhase === "HALFTIME" ? phaseLabels.halftime
+                : heroPhase === "SECOND_HALF" ? phaseLabels.secondHalf
+                    : heroPhase === "FULL_TIME" ? phaseLabels.fullTime
+                        : heroPhase === "FIRST_HALF" ? phaseLabels.firstHalf
+                            : match.secondHalfStartedAt ? phaseLabels.secondHalf : phaseLabels.firstHalf
     // Running match minute (m:ss) - TIMER matches only.
     const heroClock =
         match.liveMode === "TIMER"
@@ -259,7 +277,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                 <HStack gap="2.5">
                     <PulseDot color="white" size={8} glow />
                     <Box fontFamily="mono" fontSize="11px" fontWeight={700} letterSpacing="0.15em">
-                        UŽIVO
+                        {heroT.liveKicker}
                     </Box>
                 </HStack>
             </Flex>
@@ -481,7 +499,7 @@ function LiveHero({ match }: { match: LiveMatch }) {
                         onMouseEnter={warm}
                         onPointerDown={warm}
                     >
-                        Prati uživo →
+                        {heroT.watchLiveCta}
                     </RouterLink>
                 </Button>
             </Flex>
@@ -513,6 +531,8 @@ const MOCK_SHELL = {
 
 /* Follower: a live scoreboard with a goal + a yellow-card event logged. */
 function PromoMockLive() {
+    const tr = useTranslation()
+    const mockT = tr.pages.tournamentsPage.hero.mock
     return (
         <Box {...MOCK_SHELL} w="210px">
             <Flex
@@ -534,7 +554,7 @@ function PromoMockLive() {
                         color="#c1121f"
                         css={{ animation: "pitchPulse 1.6s infinite" }}
                     >
-                        UŽIVO
+                        {mockT.liveLabel}
                     </Box>
                 </HStack>
                 <HStack gap="1" fontFamily="mono" fontSize="10px" fontWeight={700} color="rgba(0,0,0,0.55)">
@@ -585,6 +605,8 @@ function PromoMockLive() {
 
 /* Follower: a push notification announcing a goal. */
 function PromoMockNotif() {
+    const tr = useTranslation()
+    const mockT = tr.pages.tournamentsPage.hero.mock
     return (
         <Box {...MOCK_SHELL} w="216px">
             <Flex align="center" gap="2.5" px="3" py="2.5">
@@ -612,9 +634,9 @@ function PromoMockNotif() {
                         >
                             futsal-turniri.com
                         </Box>
-                        <Box fontSize="9px" color="rgba(0,0,0,0.4)" flexShrink={0}>sada</Box>
+                        <Box fontSize="9px" color="rgba(0,0,0,0.4)" flexShrink={0}>{mockT.nowLabel}</Box>
                     </Flex>
-                    <Box fontSize="11.5px" fontWeight={800} mt="0.5">⚽ GOL! Sokol 2–1</Box>
+                    <Box fontSize="11.5px" fontWeight={800} mt="0.5">{mockT.goalNotifTitle("Sokol 2–1")}</Box>
                     <Box fontSize="10px" color="rgba(0,0,0,0.55)">Marko Horvat, 12'</Box>
                 </Box>
             </Flex>
@@ -638,13 +660,15 @@ function PromoMockFollower() {
 
 /* Organiser: the match-record console (zapisnik) with faux add controls. */
 function PromoMockZapisnik() {
+    const tr = useTranslation()
+    const mockT = tr.pages.tournamentsPage.hero.mock
     return (
         <Box {...MOCK_SHELL} w="205px">
             <Flex align="center" justify="space-between" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <HStack gap="1.5">
                     <FiEdit3 size={11} />
                     <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
-                        ZAPISNIK
+                        {mockT.zapisnikLabel}
                     </Box>
                 </HStack>
                 <Box fontFamily="mono" fontSize="11px" fontWeight={800}>2 : 1</Box>
@@ -691,7 +715,7 @@ function PromoMockZapisnik() {
                     rounded="md"
                     py="1"
                 >
-                    + Gol
+                    {mockT.addGoal}
                 </Box>
                 <Box
                     flex="1"
@@ -703,7 +727,7 @@ function PromoMockZapisnik() {
                     rounded="md"
                     py="1"
                 >
-                    + Karton
+                    {mockT.addCard}
                 </Box>
             </Flex>
         </Box>
@@ -712,6 +736,8 @@ function PromoMockZapisnik() {
 
 /* Organiser: a mini elimination bracket. */
 function PromoMockBracket() {
+    const tr = useTranslation()
+    const mockT = tr.pages.tournamentsPage.hero.mock
     const pair = (a: string, b: string, aWins: boolean) => (
         <Box borderWidth="1px" borderColor="rgba(0,0,0,0.1)" rounded="md" overflow="hidden" bg="rgba(0,0,0,0.02)">
             <Box
@@ -746,7 +772,7 @@ function PromoMockBracket() {
             <Flex align="center" gap="1.5" px="3" py="1.5" bg="#2AD4C8" color="#0B1522">
                 <FiGrid size={11} />
                 <Box fontFamily="mono" fontSize="9.5px" fontWeight={700} letterSpacing="0.1em">
-                    ELIMINACIJA
+                    {mockT.eliminationLabel}
                 </Box>
             </Flex>
             <Flex align="center" gap="1.5" px="3" py="2.5">
@@ -765,7 +791,7 @@ function PromoMockBracket() {
                         textAlign="center"
                         mt="1"
                     >
-                        FINALE
+                        {mockT.finalLabel}
                     </Box>
                 </Box>
             </Flex>
@@ -796,24 +822,11 @@ type PromoSlide = {
     mock: React.ReactNode
 }
 
-const PROMO_SLIDES: PromoSlide[] = [
-    {
-        kicker: "ZA ORGANIZATORE",
-        title: "Organiziraš turnir?",
-        gold: "Od sada to možeš potpuno besplatno!",
-        subtitle:
-            "Prijavi ekipe, izvuci ždrijeb, vodi zapisnik utakmice — bez Excela i papira, potpuno automatizirano.",
-        mock: <PromoMockOrganizer />,
-    },
-    {
-        kicker: "ZA PRATITELJE",
-        title: "Prati sve turnire uživo.",
-        gold: "Na jednom mjestu.",
-        subtitle:
-            "Prati svoju ekipu uživo, primaj obavijesti o golovima i pronađi turnire u blizini na karti.",
-        mock: <PromoMockFollower />,
-    },
-]
+/** Mock collage per slide, in the same order as
+ *  `t.pages.tournamentsPage.hero.promoSlides` (organiser, then follower). The
+ *  copy is translated; these faux "app screenshot" collages are built from
+ *  JSX so they stay here rather than in the dictionary. */
+const PROMO_MOCKS: React.ReactNode[] = [<PromoMockOrganizer key="organizer" />, <PromoMockFollower key="follower" />]
 
 function PromoHero({ data }: { data: PromoSlide }) {
     return (
@@ -948,11 +961,14 @@ function PromoHero({ data }: { data: PromoSlide }) {
    ────────────────────────────────────────────────────────────────────── */
 
 function HomeHero({ match }: { match: LiveMatch | null }) {
+    const tr = useTranslation()
     // Slide order, live content first so a live hero is never buried behind
     // the promos: the zapisnik-scored live scoreboard (when a match is in
     // progress), then the two always-present promo slides.
     const liveSlide = match ? <LiveHero key="live" match={match} /> : null
-    const promos = PROMO_SLIDES.map((p) => <PromoHero key={p.kicker} data={p} />)
+    const promos = tr.pages.tournamentsPage.hero.promoSlides.map((p, i) => (
+        <PromoHero key={i} data={{ ...p, mock: PROMO_MOCKS[i] }} />
+    ))
     const slides = liveSlide ? [liveSlide, ...promos] : promos
     const liveCount = liveSlide ? 1 : 0
     const count = slides.length
@@ -1070,7 +1086,7 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
                         <Box
                             as="button"
                             key={i}
-                            aria-label={`Prikaži slajd ${i + 1}`}
+                            aria-label={tr.pages.tournamentsPage.hero.slideIndicatorAria(i + 1)}
                             onClick={() => go(i)}
                             h="8px"
                             w={i === active ? "22px" : "8px"}
@@ -1146,8 +1162,10 @@ function TournamentCardView({
      *  loads eagerly with fetchpriority=high; the rest lazy-load. */
     priority?: boolean
 }) {
-    const ds = decomposeDate(t.startAt)
-    const status = classifyStatus(t, variant)
+    const tr = useTranslation()
+    const tp = tr.pages.tournamentsPage
+    const ds = decomposeDate(t.startAt, tp.dateBadge)
+    const status = classifyStatus(t, variant, tp.status)
     // Fill ratio for the popunjenost bar. With a real cap it's the actual
     // ratio; with no cap (unlimited, shown as "x/∞") we SIMULATE progress with
     // an asymptotic curve n/(n+5) - grows with each signup, never reaches
@@ -1238,7 +1256,7 @@ function TournamentCardView({
                             fontWeight={800}
                             letterSpacing="0.1em"
                         >
-                            🔒 SKRIVENO
+                            {tp.card.hiddenBadge}
                         </Box>
                     )}
                     {ds ? (
@@ -1345,7 +1363,7 @@ function TournamentCardView({
                                 letterSpacing="0.1em"
                                 fontWeight={700}
                             >
-                                POBJEDNIK
+                                {tp.card.winnerLabel}
                             </Box>
                             <Box
                                 bg="rgba(245,185,33,0.15)"
@@ -1363,7 +1381,7 @@ function TournamentCardView({
                         <Box>
                             <Flex justify="space-between" align="baseline" mb="1.5">
                                 <Text fontSize="12px" color="fg.muted" fontWeight={500}>
-                                    Popunjenost
+                                    {tp.card.fillLabel}
                                 </Text>
                                 <Box fontFamily="mono" fontSize="12px" fontWeight={700} color="fg.ink">
                                     {/* No cap → "x/∞"; the bar below simulates progress. */}
@@ -1405,12 +1423,12 @@ function TournamentCardView({
                                     <>
                                         <Box>{price}</Box>
                                         <Box fontSize="11px" color="fg.muted" fontWeight={500}>
-                                            kotizacija
+                                            {tp.card.entryFeeLabel}
                                         </Box>
                                     </>
                                 ) : (
                                     <Box fontSize="13px" color="fg.muted" fontWeight={500}>
-                                        Besplatan ulaz
+                                        {tp.card.freeEntry}
                                     </Box>
                                 )}
                             </HStack>
@@ -1422,7 +1440,7 @@ function TournamentCardView({
                                     <HStack gap="1.5" color="accent.amber" fontWeight={700} fontSize="16px" align="baseline">
                                         <Box>{prize}</Box>
                                         <Box fontSize="11px" color="fg.muted" fontWeight={500}>
-                                            ukupna nagrada
+                                            {tp.card.totalPrizeLabel}
                                         </Box>
                                     </HStack>
                                 </>
@@ -1515,30 +1533,27 @@ function EmptyState({
    grid view stays the default; this is the alternate, calendar-style read.
    ────────────────────────────────────────────────────────────────────── */
 
-const HR_MONTHS_NOM = [
-    "Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj",
-    "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac",
-]
-const HR_MONTHS_GEN = [
-    "siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja",
-    "srpnja", "kolovoza", "rujna", "listopada", "studenoga", "prosinca",
-]
-const HR_WEEKDAYS = [
-    "Nedjelja", "Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota",
-]
+/** Localized labels for `dayHeading` - resolved via `useTranslation()` in
+ *  `MonthList` and passed in, since `dayHeading` is a plain helper. */
+type DayHeadingLabels = {
+    today: string
+    tomorrow: string
+    weekdaysFull: string[]
+    monthsGenitive: string[]
+}
 function pad2(n: number): string {
     return String(n).padStart(2, "0")
 }
 function startOfDay(d: Date): Date {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
-function dayHeading(d: Date, today: Date): string {
+function dayHeading(d: Date, today: Date, labels: DayHeadingLabels): string {
     const diff = Math.round(
         (startOfDay(d).getTime() - startOfDay(today).getTime()) / 86400000,
     )
-    if (diff === 0) return "Danas"
-    if (diff === 1) return "Sutra"
-    return `${HR_WEEKDAYS[d.getDay()]}, ${d.getDate()}. ${HR_MONTHS_GEN[d.getMonth()]}`
+    if (diff === 0) return labels.today
+    if (diff === 1) return labels.tomorrow
+    return `${labels.weekdaysFull[d.getDay()]}, ${d.getDate()}. ${labels.monthsGenitive[d.getMonth()]}`
 }
 function timeLabel(iso?: string | null): string {
     if (!iso) return "-"
@@ -1555,7 +1570,7 @@ type MonthGroup = {
 /** Group a flat upcoming-tournament list into month → day buckets,
  *  chronological throughout. Tournaments without a start date are dropped
  *  (they can't be placed on a calendar). */
-function groupByMonth(items: TournamentCard[]): MonthGroup[] {
+function groupByMonth(items: TournamentCard[], monthsNominative: string[]): MonthGroup[] {
     const months = new Map<string, MonthGroup>()
     for (const t of items) {
         if (!t.startAt) continue
@@ -1565,7 +1580,7 @@ function groupByMonth(items: TournamentCard[]): MonthGroup[] {
         if (!mg) {
             mg = {
                 key: mKey,
-                label: `${HR_MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`,
+                label: `${monthsNominative[d.getMonth()]} ${d.getFullYear()}`,
                 sort: d.getFullYear() * 12 + d.getMonth(),
                 days: [],
             }
@@ -1595,6 +1610,8 @@ function groupByMonth(items: TournamentCard[]): MonthGroup[] {
 
 /** A single tournament row in the list view. */
 function ListRow({ t }: { t: TournamentCard }) {
+    const tr = useTranslation()
+    const lv = tr.pages.tournamentsPage.listView
     const prefetch = useTournamentPrefetch()
     const warm = () => prefetch(t.slug ?? t.uuid)
     return (
@@ -1653,7 +1670,7 @@ function ListRow({ t }: { t: TournamentCard }) {
                                 fontWeight={800}
                                 letterSpacing="0.08em"
                             >
-                                🔒 SKRIVEN
+                                {lv.hiddenBadge}
                             </Box>
                         )}
                     </HStack>
@@ -1666,7 +1683,7 @@ function ListRow({ t }: { t: TournamentCard }) {
                         ) : (
                             <>
                                 <FiClock size={11} />
-                                <Text fontSize="xs">Lokacija nije navedena</Text>
+                                <Text fontSize="xs">{lv.locationNotSpecified}</Text>
                             </>
                         )}
                     </HStack>
@@ -1723,17 +1740,20 @@ function ViewToggleButton({
 /** Month-grouped calendar list of tournaments. Ascending by default (upcoming);
  *  pass `desc` for most-recent-first (the finished archive). */
 function MonthList({ items, desc = false }: { items: TournamentCard[]; desc?: boolean }) {
+    const tr = useTranslation()
+    const tp = tr.pages.tournamentsPage
+    const lv = tp.listView
     const today = useMemo(() => new Date(), [])
     const groups = useMemo(() => {
-        const g = groupByMonth(items)
+        const g = groupByMonth(items, lv.monthsNominative)
         if (!desc) return g
         return [...g].reverse().map((m) => ({ ...m, days: [...m.days].reverse() }))
-    }, [items, desc])
+    }, [items, desc, lv.monthsNominative])
 
     if (groups.length === 0) {
         return (
             <Text fontSize="sm" color="fg.muted" textAlign="center" py="4">
-                Nijedan turnir ne odgovara odabranim filterima.
+                {tp.emptyStates.noResultsHint}
             </Text>
         )
     }
@@ -1761,7 +1781,12 @@ function MonthList({ items, desc = false }: { items: TournamentCard[]; desc?: bo
                         {m.days.map((day) => (
                             <Box key={day.key}>
                                 <MonoLabel color="pitch.500">
-                                    {dayHeading(day.date, today)}
+                                    {dayHeading(day.date, today, {
+                                        today: tp.status.today,
+                                        tomorrow: tp.status.tomorrow,
+                                        weekdaysFull: lv.weekdaysFull,
+                                        monthsGenitive: lv.monthsGenitive,
+                                    })}
                                 </MonoLabel>
                                 <VStack align="stretch" gap="1.5" mt="2">
                                     {day.items.map((t) => (
@@ -1793,13 +1818,9 @@ const RADIUS_MAX_KM = 100
    see "unknown" rows interleaved with sorted ones.
    ────────────────────────────────────────────────────────────────── */
 type SortMode = "date_asc" | "date_desc" | "price_asc" | "popular" | "name_asc"
-const SORT_OPTIONS: Array<{ key: SortMode; label: string; description: string }> = [
-    { key: "date_asc", label: "Najraniji prvi", description: "Datum početka, najbliži prvi" },
-    { key: "date_desc", label: "Najkasniji prvi", description: "Datum početka, najudaljeniji prvi" },
-    { key: "price_asc", label: "Najjeftiniji", description: "Kotizacija od najniže" },
-    { key: "popular", label: "Najpopularniji", description: "Najviše prijavljenih ekipa" },
-    { key: "name_asc", label: "Po imenu A-Ž", description: "Abecedno po imenu turnira" },
-]
+/** Order matches `t.pages.tournamentsPage.sortOptions` (label + description
+ *  live in the dictionary; only the internal keys stay here). */
+const SORT_KEYS: SortMode[] = ["date_asc", "date_desc", "price_asc", "popular", "name_asc"]
 function sortTournaments(
     list: TournamentCardWithUuid[],
     mode: SortMode,
@@ -1842,13 +1863,13 @@ function sortTournaments(
 }
 
 export default function TournamentsPage() {
+    const tr = useTranslation()
+    const tp = tr.pages.tournamentsPage
     useDocumentHead({
-        title: "Futsal turniri u Hrvatskoj - futsal-turniri.com",
-        description:
-            "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji. Pretraži po lokaciji, datumu i cijeni.",
-        ogTitle: "Futsal turniri u Hrvatskoj",
-        ogDescription:
-            "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji.",
+        title: tp.documentTitle,
+        description: tp.documentDescription,
+        ogTitle: tp.ogTitle,
+        ogDescription: tp.ogDescription,
         ogType: "website",
         canonical: "https://futsal-turniri.com/turniri",
     })
@@ -1886,6 +1907,10 @@ export default function TournamentsPage() {
     // (compact rows grouped by month - the calendar moved here from /uzivo).
     const [upcomingView, setUpcomingView] = useState<"grid" | "list">("grid")
     const [sortMode, setSortMode] = useState<SortMode>("date_asc")
+    const SORT_OPTIONS = useMemo(
+        () => SORT_KEYS.map((key, i) => ({ key, label: tp.sortOptions[i].label, description: tp.sortOptions[i].description })),
+        [tp.sortOptions],
+    )
     const [search, setSearch] = useState("")
     const [locationFilter, setLocationFilter] = useState("")
     const [priceMin, setPriceMin] = useState("")
@@ -2173,7 +2198,7 @@ export default function TournamentsPage() {
                             bg="bg.panel"
                             borderColor="border"
                             rounded="lg"
-                            placeholder="Pretraži po imenu turnira, gradu ili dvorani…"
+                            placeholder={tp.toolbar.searchPlaceholder}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -2186,7 +2211,7 @@ export default function TournamentsPage() {
                         >
                             {search ? (
                                 <IconButton
-                                    aria-label="Očisti pretragu"
+                                    aria-label={tp.toolbar.clearSearchAria}
                                     size="xs"
                                     variant="ghost"
                                     onClick={() => setSearch("")}
@@ -2229,7 +2254,7 @@ export default function TournamentsPage() {
                             onClick={() => setFiltersOpen((v) => !v)}
                             aria-expanded={filtersOpen}
                         >
-                            <FiFilter /> Filteri
+                            <FiFilter /> {tp.toolbar.filtersButton}
                             {activeFilterCount > 0 && (
                                 <Box
                                     ml="2"
@@ -2272,13 +2297,13 @@ export default function TournamentsPage() {
                                 >
                                     <FiSliders />
                                     <Box as="span" display={{ base: "none", md: "inline" }}>
-                                        Sortiraj:{" "}
+                                        {tp.toolbar.sortPrefix}{" "}
                                         <Box as="span" color="pitch.500" fontWeight={700}>
                                             {SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? "-"}
                                         </Box>
                                     </Box>
                                     <Box as="span" display={{ base: "inline", md: "none" }}>
-                                        Sortiraj
+                                        {tp.toolbar.sortButtonMobile}
                                     </Box>
                                     <FiChevronDown />
                                 </Button>
@@ -2355,13 +2380,13 @@ export default function TournamentsPage() {
                                 active={upcomingView === "grid"}
                                 onClick={() => setUpcomingView("grid")}
                                 icon={<FiGrid size={16} />}
-                                label="Mreža"
+                                label={tp.viewToggle.grid}
                             />
                             <ViewToggleButton
                                 active={upcomingView === "list"}
                                 onClick={() => setUpcomingView("list")}
                                 icon={<FiList size={16} />}
-                                label="Popis"
+                                label={tp.viewToggle.list}
                             />
                         </HStack>
                     </HStack>
@@ -2382,23 +2407,23 @@ export default function TournamentsPage() {
                             stacks into its own row. */}
                         <Grid templateColumns={{ base: "1fr", md: "minmax(160px, 1fr) auto auto" }} gap="3">
                             <Box>
-                                <MonoLabel>LOKACIJA</MonoLabel>
+                                <MonoLabel>{tp.filters.locationLabel}</MonoLabel>
                                 <Input
                                     mt="1"
                                     size="sm"
-                                    placeholder="npr. Zagreb"
+                                    placeholder={tp.filters.locationPlaceholder}
                                     value={locationFilter}
                                     onChange={(e) => setLocationFilter(e.target.value)}
                                 />
                             </Box>
                             <Box>
-                                <MonoLabel>KOTIZACIJA (€)</MonoLabel>
+                                <MonoLabel>{tp.filters.priceLabel}</MonoLabel>
                                 <HStack mt="1" gap="1.5">
                                     <Input
                                         size="sm"
                                         w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
-                                        placeholder="od"
+                                        placeholder={tp.filters.fromPlaceholder}
                                         value={priceMin}
                                         onChange={(e) => setPriceMin(sanitizeNum(e.target.value))}
                                     />
@@ -2407,20 +2432,20 @@ export default function TournamentsPage() {
                                         size="sm"
                                         w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
-                                        placeholder="do"
+                                        placeholder={tp.filters.toPlaceholder}
                                         value={priceMax}
                                         onChange={(e) => setPriceMax(sanitizeNum(e.target.value))}
                                     />
                                 </HStack>
                             </Box>
                             <Box>
-                                <MonoLabel>UKUPNA NAGRADA (€)</MonoLabel>
+                                <MonoLabel>{tp.filters.prizeLabel}</MonoLabel>
                                 <HStack mt="1" gap="1.5">
                                     <Input
                                         size="sm"
                                         w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
-                                        placeholder="od"
+                                        placeholder={tp.filters.fromPlaceholder}
                                         value={prizeMin}
                                         onChange={(e) => setPrizeMin(sanitizeNum(e.target.value))}
                                     />
@@ -2429,7 +2454,7 @@ export default function TournamentsPage() {
                                         size="sm"
                                         w={{ base: "full", md: "72px" }}
                                         inputMode="decimal"
-                                        placeholder="do"
+                                        placeholder={tp.filters.toPlaceholder}
                                         value={prizeMax}
                                         onChange={(e) => setPrizeMax(sanitizeNum(e.target.value))}
                                     />
@@ -2438,12 +2463,12 @@ export default function TournamentsPage() {
                         </Grid>
                         <Box mt="3">
                             <HStack gap="2" mb="1.5" align="center" wrap="wrap">
-                                <MonoLabel>U KRUGU OD:</MonoLabel>
+                                <MonoLabel>{tp.filters.radiusLabel}</MonoLabel>
                                 <Text fontSize="xs" fontWeight={700} color="pitch.500">
                                     {userPos
                                         ? radiusKm >= RADIUS_MAX_KM
-                                            ? "Sve"
-                                            : `${radiusKm} km`
+                                            ? tp.filters.radiusAll
+                                            : tp.filters.radiusValue(radiusKm)
                                         : "-"}
                                 </Text>
                                 {!userPos && (
@@ -2455,12 +2480,12 @@ export default function TournamentsPage() {
                                         disabled={geoStatus === "asking" || geoStatus === "unsupported"}
                                         loading={geoStatus === "asking"}
                                     >
-                                        <FiNavigation /> Uključi lokaciju
+                                        <FiNavigation /> {tp.filters.enableLocation}
                                     </Button>
                                 )}
                                 {geoStatus === "denied" && (
                                     <Text fontSize="xs" color="fg.muted">
-                                        Lokacija je odbijena u pregledniku.
+                                        {tp.filters.locationDenied}
                                     </Text>
                                 )}
                                 <Button
@@ -2470,7 +2495,7 @@ export default function TournamentsPage() {
                                     disabled={!isFiltering}
                                     ml="auto"
                                 >
-                                    Očisti sve
+                                    {tp.filters.clearAll}
                                 </Button>
                             </HStack>
                             <Slider.Root
@@ -2506,7 +2531,7 @@ export default function TournamentsPage() {
                             letterSpacing="-0.02em"
                             color="fg.ink"
                         >
-                            Nadolazeći turniri
+                            {tp.sections.upcomingHeading}
                         </Heading>
                     </Box>
                 </Flex>
@@ -2519,13 +2544,13 @@ export default function TournamentsPage() {
                     </Grid>
                 ) : upcoming.length === 0 ? (
                     <EmptyState
-                        title={error ? "Nije moguće učitati turnire" : "Nema nadolazećih turnira"}
-                        description={error ?? "Kreiraj turnir i počni primati prijave ekipa."}
+                        title={error ? tp.emptyStates.loadFailedTitle : tp.emptyStates.noUpcomingTitle}
+                        description={error ?? tp.emptyStates.noUpcomingHint}
                         cta={
                             !error && (
                                 <Button asChild size="sm" colorPalette="pitch">
                                     <RouterLink to="/turniri/novi">
-                                        <FiPlus /> Kreiraj turnir
+                                        <FiPlus /> {tr.nav.createTournament}
                                     </RouterLink>
                                 </Button>
                             )
@@ -2533,11 +2558,11 @@ export default function TournamentsPage() {
                     />
                 ) : filteredUpcoming.length === 0 ? (
                     <EmptyState
-                        title="Nema rezultata"
-                        description="Nijedan turnir ne odgovara odabranim filterima."
+                        title={tp.emptyStates.noResultsTitle}
+                        description={tp.emptyStates.noResultsHint}
                         cta={
                             <Button size="sm" variant="outline" onClick={resetFilters}>
-                                Očisti filtere
+                                {tp.emptyStates.clearFilters}
                             </Button>
                         }
                     />
@@ -2562,7 +2587,7 @@ export default function TournamentsPage() {
                         letterSpacing="-0.02em"
                         color="fg.ink"
                     >
-                        Završeni turniri
+                        {tp.sections.finishedHeading}
                     </Heading>
                     {finished.length > 0 ? (
                         <Box fontSize="13px" color="pitch.500" fontWeight={600}>
@@ -2580,13 +2605,13 @@ export default function TournamentsPage() {
                     <EmptyState
                         title={
                             errorFinished
-                                ? "Nije moguće učitati završene turnire"
-                                : "Još nema završenih turnira"
+                                ? tp.emptyStates.loadFailedFinishedTitle
+                                : tp.emptyStates.noFinishedTitle
                         }
                         description={
                             errorFinished
                                 ? errorFinished
-                                : "Završeni turniri će se pojaviti ovdje s konačnim rezultatima, statistikama i strijelcima."
+                                : tp.emptyStates.noFinishedHint
                         }
                     />
                 ) : (
@@ -2609,7 +2634,7 @@ export default function TournamentsPage() {
                                     onClick={loadMoreFinished}
                                     loading={loadingMoreFinished}
                                 >
-                                    Učitaj više ({finishedTotal - finished.length})
+                                    {tp.loadMore(finishedTotal - finished.length)}
                                 </Button>
                             </HStack>
                         )}

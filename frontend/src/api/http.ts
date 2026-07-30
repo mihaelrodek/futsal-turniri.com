@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from "axios"
 import { getFirebase } from "../firebase"
 import { showError, showSuccess, statusFallback } from "../toaster"
+import { getLocale } from "../i18n"
 
 const baseURL = import.meta.env.VITE_API_URL ?? "/api"
 
@@ -74,6 +75,19 @@ http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
             // the UI already handles).
         }
     }
+    return config
+})
+
+/**
+ * Tell the backend which language the user picked (navbar `LanguagePicker`) -
+ * `MessageService` uses it for every server-rendered string (emails, push
+ * notifications, validation messages) in this request's response. Synchronous
+ * and cheap, unlike the auth interceptor above, so it's its own interceptor
+ * rather than piggybacking on that async one.
+ */
+http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    config.headers = config.headers ?? {}
+    ;(config.headers as Record<string, string>)["X-Locale"] = getLocale()
     return config
 })
 

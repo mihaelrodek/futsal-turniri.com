@@ -12,6 +12,7 @@ import {
 import type { ElementType, ReactNode } from "react"
 import { FaFutbol } from "react-icons/fa"
 import { FiDownload } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Pitch theme primitives - Nogometni-turniri.com redesign.
@@ -642,6 +643,7 @@ export function TournamentPoster({
      *  eagerly with fetchpriority=high. Everything else lazy-loads. */
     priority?: boolean
 }) {
+    const t = useTranslation()
     if (bannerUrl) {
         // A real <img> (not a CSS background) so the preload scanner discovers
         // the LCP image during HTML/early parse - PSI's "LCP request discovery"
@@ -656,7 +658,7 @@ export function TournamentPoster({
             >
                 <chakra.img
                     src={bannerUrl}
-                    alt={`Plakat - ${name}`}
+                    alt={t.ui.pitch.posterAlt(name)}
                     display="block"
                     w="full"
                     loading={priority ? "eager" : "lazy"}
@@ -672,8 +674,8 @@ export function TournamentPoster({
                     <chakra.a
                         href={bannerUrl}
                         download={`plakat-${name}.jpg`}
-                        aria-label="Preuzmi plakat"
-                        title="Preuzmi plakat"
+                        aria-label={t.ui.pitch.downloadPosterLabel}
+                        title={t.ui.pitch.downloadPosterLabel}
                         onClick={(e) => e.stopPropagation()}
                         position="absolute"
                         top="2"
@@ -701,7 +703,7 @@ export function TournamentPoster({
             .map((w) => w[0])
             .slice(0, 2)
             .join("")
-            .toUpperCase() || "FT"
+            .toUpperCase() || t.ui.pitch.initialsFallback
     return (
         <Box
             position="relative"
@@ -1008,12 +1010,14 @@ export function PageTitle({
 export function BackLink({
     to,
     onClick,
-    label = "Natrag",
+    label,
 }: {
     to?: string
     onClick?: () => void
     label?: string
 }) {
+    const t = useTranslation()
+    const resolvedLabel = label ?? t.common.back
     return (
         <chakra.button
             type="button"
@@ -1045,7 +1049,7 @@ export function BackLink({
             >
                 <path d="M19 12H5M12 19l-7-7 7-7" />
             </Box>
-            {label}
+            {resolvedLabel}
         </chakra.button>
     )
 }

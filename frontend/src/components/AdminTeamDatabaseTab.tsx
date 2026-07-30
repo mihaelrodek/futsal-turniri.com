@@ -26,6 +26,7 @@ import {
     type TeamDuplicateGroupDto,
 } from "../api/admin"
 import { qk } from "../queryClient"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Baza ekipa" admin tab - cross-tournament team-identity management:
@@ -45,25 +46,25 @@ import { qk } from "../queryClient"
 const CUSTOM_SENTINEL = " __custom__ "
 
 export default function AdminTeamDatabaseTab() {
+    const t = useTranslation()
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="4">
                     <Box>
-                        <Text fontSize="lg" fontWeight="semibold">Baza ekipa</Text>
+                        <Text fontSize="lg" fontWeight="semibold">{t.components.adminTeamDatabaseTab.title}</Text>
                         <Text fontSize="sm" color="fg.muted">
-                            Identitet ekipe je vezan uz naziv - ovdje sakrivaš test ekipe iz
-                            baze i spajaš iste ekipe upisane pod različitim nazivima.
+                            {t.components.adminTeamDatabaseTab.description}
                         </Text>
                     </Box>
 
                     <Tabs.Root defaultValue="list" variant="line">
                         <Tabs.List>
                             <Tabs.Trigger value="list">
-                                <FiUsers /> Popis ekipa
+                                <FiUsers /> {t.components.adminTeamDatabaseTab.tabList}
                             </Tabs.Trigger>
                             <Tabs.Trigger value="duplicates">
-                                <FiGitMerge /> Slični nazivi
+                                <FiGitMerge /> {t.components.adminTeamDatabaseTab.tabDuplicates}
                             </Tabs.Trigger>
                         </Tabs.List>
                         <Tabs.Content value="list">
@@ -80,6 +81,7 @@ export default function AdminTeamDatabaseTab() {
 }
 
 function TeamIdentityList() {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     const [search, setSearch] = useState("")
     const [busyName, setBusyName] = useState<string | null>(null)
@@ -119,7 +121,7 @@ function TeamIdentityList() {
                 </Box>
                 <Input
                     pl="9"
-                    placeholder="Pretraži po nazivu ekipe…"
+                    placeholder={t.components.adminTeamDatabaseTab.list.searchPlaceholder}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
@@ -128,11 +130,13 @@ function TeamIdentityList() {
             {isLoading ? (
                 <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
             ) : filtered.length === 0 ? (
-                <Text fontSize="sm" color="fg.muted" py="2">Nema rezultata.</Text>
+                <Text fontSize="sm" color="fg.muted" py="2">{t.components.adminTeamDatabaseTab.list.noResults}</Text>
             ) : (
                 <>
                     <Text fontSize="xs" color="fg.muted">
-                        {search.trim() ? `${filtered.length} od ${teams!.length} ekipa` : `Ukupno: ${teams!.length} ekipa`}
+                        {search.trim()
+                            ? t.components.adminTeamDatabaseTab.list.countFiltered(filtered.length, teams!.length)
+                            : t.components.adminTeamDatabaseTab.list.countTotal(teams!.length)}
                     </Text>
                     <VStack align="stretch" gap="2" maxH="480px" overflowY="auto">
                         {filtered.map((team) => (
@@ -153,11 +157,11 @@ function TeamIdentityList() {
                                             {team.name}
                                         </Text>
                                         {team.demo && (
-                                            <Badge size="xs" variant="subtle" colorPalette="gray">sakriveno</Badge>
+                                            <Badge size="xs" variant="subtle" colorPalette="gray">{t.components.adminTeamDatabaseTab.list.hiddenBadge}</Badge>
                                         )}
                                     </HStack>
                                     <Text fontSize="xs" color="fg.muted">
-                                        {team.rowCount} {team.rowCount === 1 ? "nastup" : "nastupa"} · {team.tournamentsCount} {team.tournamentsCount === 1 ? "turnir" : "turnira"}
+                                        {t.components.adminTeamDatabaseTab.list.appearances(team.rowCount)} · {t.components.adminTeamDatabaseTab.list.tournaments(team.tournamentsCount)}
                                     </Text>
                                 </Box>
                                 <Button
@@ -167,7 +171,9 @@ function TeamIdentityList() {
                                     loading={busyName === team.name}
                                     onClick={() => toggleDemo(team)}
                                 >
-                                    {team.demo ? <><FiEye /> Prikaži</> : <><FiEyeOff /> Sakrij</>}
+                                    {team.demo
+                                        ? <><FiEye /> {t.components.adminTeamDatabaseTab.list.show}</>
+                                        : <><FiEyeOff /> {t.components.adminTeamDatabaseTab.list.hide}</>}
                                 </Button>
                             </HStack>
                         ))}
@@ -179,6 +185,7 @@ function TeamIdentityList() {
 }
 
 function DuplicateFinder() {
+    const t = useTranslation()
     const queryClient = useQueryClient()
     const [mergeGroup, setMergeGroup] = useState<TeamDuplicateGroupDto | null>(null)
 
@@ -196,15 +203,13 @@ function DuplicateFinder() {
     return (
         <Stack gap="3" pt="3">
             <Text fontSize="xs" color="fg.muted">
-                Grupe naziva koji su vjerojatno ista ekipa - „identičan" znači isti naziv
-                zanemarujući velika/mala slova i razmake, „sličan" znači vjerojatna
-                tipfelerska greška (mala razlika u slovima).
+                {t.components.adminTeamDatabaseTab.duplicates.intro}
             </Text>
 
             {isLoading ? (
                 <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
             ) : !groups || groups.length === 0 ? (
-                <Text fontSize="sm" color="fg.muted" py="2">Nema pronađenih dupliciranih naziva.</Text>
+                <Text fontSize="sm" color="fg.muted" py="2">{t.components.adminTeamDatabaseTab.duplicates.noResults}</Text>
             ) : (
                 <VStack align="stretch" gap="2" maxH="480px" overflowY="auto">
                     {groups.map((group, i) => (
@@ -221,7 +226,9 @@ function DuplicateFinder() {
                                     variant="subtle"
                                     colorPalette={group.type === "EXACT" ? "brand" : "orange"}
                                 >
-                                    {group.type === "EXACT" ? "identičan naziv" : "sličan naziv"}
+                                    {group.type === "EXACT"
+                                        ? t.components.adminTeamDatabaseTab.duplicates.badgeExact
+                                        : t.components.adminTeamDatabaseTab.duplicates.badgeSimilar}
                                 </Badge>
                                 <Button
                                     size="xs"
@@ -229,7 +236,7 @@ function DuplicateFinder() {
                                     colorPalette="brand"
                                     onClick={() => setMergeGroup(group)}
                                 >
-                                    <FiGitMerge /> Spoji
+                                    <FiGitMerge /> {t.components.adminTeamDatabaseTab.duplicates.mergeButton}
                                 </Button>
                             </HStack>
                             <VStack align="stretch" gap="1">
@@ -237,7 +244,7 @@ function DuplicateFinder() {
                                     <HStack key={v.name} justify="space-between" gap="2">
                                         <Text fontSize="sm" truncate>{v.name}</Text>
                                         <Text fontSize="xs" color="fg.muted" flexShrink={0}>
-                                            {v.rowCount} {v.rowCount === 1 ? "nastup" : "nastupa"}
+                                            {t.components.adminTeamDatabaseTab.duplicates.appearances(v.rowCount)}
                                         </Text>
                                     </HStack>
                                 ))}
@@ -261,6 +268,7 @@ function MergeDialog({
     onClose: () => void
     onMerged: () => void
 }) {
+    const t = useTranslation()
     const [canonical, setCanonical] = useState<string>(group?.suggestedCanonical ?? "")
     // "__custom__" in the select switches to a free-text input, so the admin
     // can keep a spelling that isn't among the observed variants (e.g. fix
@@ -316,14 +324,13 @@ function MergeDialog({
                 <Dialog.Positioner>
                     <Dialog.Content maxW={{ base: "92%", md: "md" }}>
                         <Dialog.Header>
-                            <Dialog.Title>Spoji ekipe</Dialog.Title>
+                            <Dialog.Title>{t.components.adminTeamDatabaseTab.merge.title}</Dialog.Title>
                         </Dialog.Header>
                         <Dialog.Body>
                             {group && !confirming && (
                                 <Stack gap="3">
                                     <Text fontSize="sm" color="fg.muted">
-                                        Odaberi kojim će nazivom svi nastupi ubuduće biti prikazani.
-                                        Ovo se ne može poništiti.
+                                        {t.components.adminTeamDatabaseTab.merge.intro}
                                     </Text>
                                     <NativeSelect.Root>
                                         <NativeSelect.Field
@@ -332,10 +339,10 @@ function MergeDialog({
                                         >
                                             {group.variants.map((v) => (
                                                 <option key={v.name} value={v.name}>
-                                                    {v.name} — {v.rowCount === 1 ? "1 nastup" : `${v.rowCount} nastupa`}
+                                                    {t.components.adminTeamDatabaseTab.merge.variantOption(v.name, v.rowCount)}
                                                 </option>
                                             ))}
-                                            <option value={CUSTOM_SENTINEL}>Drugi naziv (upiši ručno)…</option>
+                                            <option value={CUSTOM_SENTINEL}>{t.components.adminTeamDatabaseTab.merge.customOption}</option>
                                         </NativeSelect.Field>
                                         <NativeSelect.Indicator />
                                     </NativeSelect.Root>
@@ -343,41 +350,41 @@ function MergeDialog({
                                         <Input
                                             size="sm"
                                             autoFocus
-                                            placeholder="npr. Ekipa 1"
+                                            placeholder={t.components.adminTeamDatabaseTab.merge.customPlaceholder}
                                             value={customName}
                                             onChange={(e) => setCustomName(e.target.value)}
                                         />
                                     )}
                                     <Text fontSize="xs" color="fg.muted">
-                                        Broj iza crtice je broj nastupa — sprema se samo naziv.
+                                        {t.components.adminTeamDatabaseTab.merge.hint}
                                     </Text>
                                 </Stack>
                             )}
                             {group && confirming && (
                                 <Stack gap="2">
                                     <Text fontSize="sm">
-                                        Svi nastupi ({group.variants.map((v) => v.name).join(", ")})
-                                        bit će preimenovani u <strong>{effectiveCanonical}</strong>.
+                                        {t.components.adminTeamDatabaseTab.merge.confirmPrefix(group.variants.map((v) => v.name).join(", "))}{" "}
+                                        <strong>{effectiveCanonical}</strong>{t.components.adminTeamDatabaseTab.merge.confirmSuffix}
                                     </Text>
                                     <Text fontSize="sm" color="red.fg" fontWeight="medium">
-                                        Ova radnja je nepovratna. Nastaviti?
+                                        {t.components.adminTeamDatabaseTab.merge.warning}
                                     </Text>
                                 </Stack>
                             )}
                         </Dialog.Body>
                         <Dialog.Footer>
-                            <Button variant="ghost" onClick={onClose} disabled={busy}>Odustani</Button>
+                            <Button variant="ghost" onClick={onClose} disabled={busy}>{t.common.cancel}</Button>
                             {!confirming ? (
                                 <Button
                                     colorPalette="brand"
                                     onClick={() => setConfirming(true)}
                                     disabled={isCustom && !customName.trim()}
                                 >
-                                    Dalje
+                                    {t.components.adminTeamDatabaseTab.merge.next}
                                 </Button>
                             ) : (
                                 <Button colorPalette="red" onClick={submit} loading={busy}>
-                                    Da, spoji
+                                    {t.components.adminTeamDatabaseTab.merge.confirm}
                                 </Button>
                             )}
                         </Dialog.Footer>

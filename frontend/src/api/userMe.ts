@@ -61,6 +61,8 @@ export type UserProfile = {
     colorMode?: "light" | "dark" | null
     firstName?: string | null
     lastName?: string | null
+    /** "hr"/"en"/"sl"; null until the user explicitly picks one on this account. */
+    language?: "hr" | "en" | "sl" | null
 }
 
 /**
@@ -117,6 +119,21 @@ export async function updateColorMode(mode: "light" | "dark"): Promise<UserProfi
     const { data } = await http.put<UserProfile>(
         "/user/me/profile",
         { colorMode: mode },
+        { silent: true } as any,
+    )
+    return data
+}
+
+/**
+ * Persist the user's language choice (navbar `LanguagePicker`) to their
+ * account, so it follows them across devices. Sent on its own, same pattern
+ * as {@link updateColorMode} - silent, the picker already switches the UI
+ * instantly.
+ */
+export async function updateLanguage(language: "hr" | "en" | "sl"): Promise<UserProfile> {
+    const { data } = await http.put<UserProfile>(
+        "/user/me/profile",
+        { language },
         { silent: true } as any,
     )
     return data

@@ -31,6 +31,7 @@ import {
 } from "../api/admin"
 import { hideTournament, unhideTournament } from "../api/tournaments"
 import SpectoStreamCard from "./SpectoStreamCard"
+import { useTranslation } from "../i18n"
 import {
     FiAlertTriangle,
     FiDownload,
@@ -73,6 +74,8 @@ import {
  * doesn't share state with anything else.
  */
 export default function AdminDashboardTab() {
+    const t = useTranslation()
+
     /* ─────────────── Tournament list + selection ─────────────── */
 
     const [tournaments, setTournaments] = useState<AdminTournamentDto[] | null>(null)
@@ -195,11 +198,9 @@ export default function AdminDashboardTab() {
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
                         <Box>
-                            <Text fontSize="lg" fontWeight="semibold">Upravljanje turnirima</Text>
+                            <Text fontSize="lg" fontWeight="semibold">{t.components.adminDashboardTab.heading}</Text>
                             <Text fontSize="sm" color="fg.muted">
-                                Odaberi turnir da bi dodijelio pravo upravljanja drugoj osobi ili
-                                izvršio administratorske akcije nad turnirom (status, reset,
-                                isticanje, vidljivost, export, brisanje).
+                                {t.components.adminDashboardTab.description}
                             </Text>
                         </Box>
 
@@ -207,7 +208,7 @@ export default function AdminDashboardTab() {
                             list of matches - works for tens-to-hundreds of
                             tournaments without needing a heavier combobox. */}
                         <Box>
-                            <Text fontSize="sm" fontWeight="medium" mb="2">Turnir</Text>
+                            <Text fontSize="sm" fontWeight="medium" mb="2">{t.components.adminDashboardTab.tournamentLabel}</Text>
                             <HStack mb="2" gap="2">
                                 <Box position="relative" flex="1">
                                     <Box position="absolute" left="3" top="50%" transform="translateY(-50%)"
@@ -216,7 +217,7 @@ export default function AdminDashboardTab() {
                                     </Box>
                                     <Input
                                         pl="9"
-                                        placeholder="Pretraži turnire po imenu, lokaciji ili slug-u…"
+                                        placeholder={t.components.adminDashboardTab.searchPlaceholder}
                                         value={tournamentSearch}
                                         onChange={(e) => setTournamentSearch(e.target.value)}
                                     />
@@ -234,14 +235,14 @@ export default function AdminDashboardTab() {
                                 >
                                     {filteredTournaments.length === 0 ? (
                                         <Text p="3" fontSize="sm" color="fg.muted">
-                                            Nema rezultata.
+                                            {t.components.adminDashboardTab.noResults}
                                         </Text>
                                     ) : (
-                                        filteredTournaments.map((t) => {
-                                            const active = t.id === selectedTournamentId
+                                        filteredTournaments.map((tour) => {
+                                            const active = tour.id === selectedTournamentId
                                             return (
                                                 <Box
-                                                    key={t.id}
+                                                    key={tour.id}
                                                     px="3"
                                                     py="2"
                                                     cursor="pointer"
@@ -249,24 +250,25 @@ export default function AdminDashboardTab() {
                                                     _hover={{ bg: active ? "blue.subtle" : "bg.muted" }}
                                                     borderBottomWidth="1px"
                                                     borderColor="border.subtle"
-                                                    onClick={() => setSelectedTournamentId(t.id)}
+                                                    onClick={() => setSelectedTournamentId(tour.id)}
                                                 >
                                                     <HStack justify="space-between" gap="2">
                                                         <Box minW="0" flex="1">
                                                             <Text fontSize="sm" fontWeight={active ? "semibold" : "medium"} truncate>
-                                                                {t.name}
+                                                                {tour.name}
                                                             </Text>
                                                             <Text fontSize="xs" color="fg.muted" truncate>
-                                                                {[t.location, formatDate(t.startAt)].filter(Boolean).join(" • ")}
+                                                                {[tour.location, formatDate(tour.startAt)].filter(Boolean).join(" • ")}
                                                             </Text>
                                                             <Text fontSize="xs" color="fg.muted" truncate>
-                                                                Vlasnik: {t.createdByName || (t.createdByUid ? "(bez imena)" : "- (legacy)")}
+                                                                {t.components.adminDashboardTab.ownerPrefix}
+                                                                {tour.createdByName || (tour.createdByUid ? t.components.adminDashboardTab.noName : t.components.adminDashboardTab.ownerLegacy)}
                                                             </Text>
                                                         </Box>
-                                                        {t.status && (
+                                                        {tour.status && (
                                                             <Badge size="sm" variant="subtle"
-                                                                   colorPalette={t.status === "FINISHED" ? "gray" : "blue"}>
-                                                                {t.status}
+                                                                   colorPalette={tour.status === "FINISHED" ? "gray" : "blue"}>
+                                                                {tour.status}
                                                             </Badge>
                                                         )}
                                                     </HStack>
@@ -287,12 +289,10 @@ export default function AdminDashboardTab() {
                         <Stack gap="3">
                             <Box>
                                 <Text fontSize="md" fontWeight="semibold">
-                                    Prava na turnir
+                                    {t.components.adminDashboardTab.rights.heading}
                                 </Text>
                                 <Text fontSize="sm" color="fg.muted">
-                                    Dodijeli pravo upravljanja turnirom (detalji, ekipe, raspored,
-                                    Zapisnik…) jednoj ili više osoba - bez prijenosa vlasništva.
-                                    Vlasnik ostaje isti.
+                                    {t.components.adminDashboardTab.rights.description}
                                 </Text>
                             </Box>
 
@@ -304,28 +304,28 @@ export default function AdminDashboardTab() {
                                 borderWidth="1px"
                                 borderColor="border.subtle"
                             >
-                                <Text fontSize="xs" color="fg.muted">VLASNIK</Text>
+                                <Text fontSize="xs" color="fg.muted">{t.components.adminDashboardTab.rights.ownerLabel}</Text>
                                 <Text fontSize="sm" fontWeight="medium">
                                     {selectedTournament.createdByName
                                         || (selectedTournament.createdByUid
-                                            ? "(bez imena)"
-                                            : "- (legacy / nema vlasnika)")}
+                                            ? t.components.adminDashboardTab.noName
+                                            : t.components.adminDashboardTab.rights.ownerLegacyNoOwner)}
                                 </Text>
                             </Box>
 
                             {/* Editors (co-owners) with per-row revoke. */}
                             <Box>
                                 <Text fontSize="xs" color="fg.muted" mb="1.5">
-                                    OSOBE S PRAVIMA ({editors.length})
+                                    {t.components.adminDashboardTab.rights.editorsCount(editors.length)}
                                 </Text>
                                 {loadingEditors ? (
                                     <HStack gap="2" color="fg.muted">
                                         <Spinner size="sm" />
-                                        <Text fontSize="sm">Učitavanje…</Text>
+                                        <Text fontSize="sm">{t.common.loading}</Text>
                                     </HStack>
                                 ) : editors.length === 0 ? (
                                     <Text fontSize="sm" color="fg.muted">
-                                        Nitko još nema dodatna prava.
+                                        {t.components.adminDashboardTab.rights.noEditors}
                                     </Text>
                                 ) : (
                                     <Stack gap="1.5">
@@ -342,7 +342,7 @@ export default function AdminDashboardTab() {
                                             >
                                                 <Box minW="0">
                                                     <Text fontSize="sm" fontWeight="medium" truncate>
-                                                        {e.displayName || "(bez imena)"}
+                                                        {e.displayName || t.components.adminDashboardTab.noName}
                                                     </Text>
                                                     <Text fontSize="xs" color="fg.muted" truncate>
                                                         {e.slug ? `@${e.slug}` : e.userUid}
@@ -356,7 +356,7 @@ export default function AdminDashboardTab() {
                                                     loading={removingUid === e.userUid}
                                                     onClick={() => handleRemoveEditor(e.userUid)}
                                                 >
-                                                    <FiTrash2 /> Ukloni
+                                                    <FiTrash2 /> {t.components.adminDashboardTab.rights.remove}
                                                 </Button>
                                             </HStack>
                                         ))}
@@ -371,7 +371,7 @@ export default function AdminDashboardTab() {
                                     colorPalette="pitch"
                                     onClick={openEditorDialog}
                                 >
-                                    <FiUserPlus /> Daj prava osobi
+                                    <FiUserPlus /> {t.components.adminDashboardTab.rights.grantButton}
                                 </Button>
                             </HStack>
                         </Stack>
@@ -427,7 +427,7 @@ export default function AdminDashboardTab() {
                         <Dialog.Content maxW={{ base: "92%", md: "md" }}>
                             <Dialog.Header>
                                 <Dialog.Title>
-                                    Daj prava na turnir
+                                    {t.components.adminDashboardTab.grantDialog.title}
                                 </Dialog.Title>
                             </Dialog.Header>
                             <Dialog.Body>
@@ -440,13 +440,12 @@ export default function AdminDashboardTab() {
                                             borderWidth="1px"
                                             borderColor="border.subtle"
                                         >
-                                            <Text fontSize="xs" color="fg.muted">TURNIR</Text>
+                                            <Text fontSize="xs" color="fg.muted">{t.components.adminDashboardTab.grantDialog.tournamentLabel}</Text>
                                             <Text fontSize="sm" fontWeight="medium">
                                                 {selectedTournament.name}
                                             </Text>
                                             <Text fontSize="xs" color="fg.muted" mt="1">
-                                                Osoba dobiva pravo upravljanja, vlasništvo se ne mijenja.
-                                                Možeš dodati više osoba.
+                                                {t.components.adminDashboardTab.grantDialog.note}
                                             </Text>
                                         </Box>
                                     )}
@@ -458,7 +457,7 @@ export default function AdminDashboardTab() {
                                         </Box>
                                         <Input
                                             pl="9"
-                                            placeholder="Pretraži po imenu i prezimenu…"
+                                            placeholder={t.components.adminDashboardTab.grantDialog.searchPlaceholder}
                                             value={editorUserSearch}
                                             onChange={(e) => setEditorUserSearch(e.target.value)}
                                             autoFocus
@@ -476,7 +475,7 @@ export default function AdminDashboardTab() {
                                             <HStack py="4" justify="center"><Spinner size="sm" /></HStack>
                                         ) : editorUsers.length === 0 ? (
                                             <Text p="3" fontSize="sm" color="fg.muted">
-                                                Nema rezultata.
+                                                {t.components.adminDashboardTab.noResults}
                                             </Text>
                                         ) : (
                                             editorUsers.map((u) => {
@@ -499,16 +498,16 @@ export default function AdminDashboardTab() {
                                                         <Box minW="0" flex="1">
                                                             <HStack gap="2">
                                                                 <Text fontSize="sm" fontWeight="medium" truncate>
-                                                                    {u.displayName || "(bez imena)"}
+                                                                    {u.displayName || t.components.adminDashboardTab.noName}
                                                                 </Text>
                                                                 {isOwner && (
                                                                     <Badge size="xs" variant="subtle" colorPalette="gray">
-                                                                        vlasnik
+                                                                        {t.components.adminDashboardTab.grantDialog.ownerBadge}
                                                                     </Badge>
                                                                 )}
                                                                 {!isOwner && hasRights && (
                                                                     <Badge size="xs" variant="subtle" colorPalette="green">
-                                                                        ima prava
+                                                                        {t.components.adminDashboardTab.grantDialog.hasRightsBadge}
                                                                     </Badge>
                                                                 )}
                                                             </HStack>
@@ -526,7 +525,11 @@ export default function AdminDashboardTab() {
                                                             disabled={isOwner || hasRights}
                                                             onClick={() => handleGrantEditor(u)}
                                                         >
-                                                            {isOwner ? "Vlasnik" : hasRights ? "Dodano" : "Daj prava"}
+                                                            {isOwner
+                                                                ? t.components.adminDashboardTab.grantDialog.ownerButton
+                                                                : hasRights
+                                                                    ? t.components.adminDashboardTab.grantDialog.addedButton
+                                                                    : t.components.adminDashboardTab.grantDialog.grantButton}
                                                         </Button>
                                                     </HStack>
                                                 )
@@ -536,7 +539,7 @@ export default function AdminDashboardTab() {
                                 </Stack>
                             </Dialog.Body>
                             <Dialog.Footer>
-                                <Button variant="ghost" onClick={closeEditorDialog}>Gotovo</Button>
+                                <Button variant="ghost" onClick={closeEditorDialog}>{t.components.adminDashboardTab.grantDialog.done}</Button>
                             </Dialog.Footer>
                         </Dialog.Content>
                     </Dialog.Positioner>
@@ -566,6 +569,7 @@ function AdminTournamentActions({
     tournament: AdminTournamentDto
     onChanged: (kind: "status" | "reset" | "feature" | "hidden" | "deleted") => void
 }) {
+    const t = useTranslation()
     const [busy, setBusy] = useState<null | "status" | "reset" | "delete" | "feature" | "hidden" | "export">(null)
     // The admin endpoints accept uuid OR slug - prefer uuid, fall back
     // to slug for legacy tournaments missing one.
@@ -575,9 +579,7 @@ function AdminTournamentActions({
         if (busy) return
         if (next === tournament.status) return
         const ok = window.confirm(
-            `Postaviti status turnira "${tournament.name}" na ${next}?\n\n` +
-            `Ova akcija zaobilazi normalna pravila (broj ekipa, redoslijed kola). ` +
-            `Koristi samo ako se turnir zaglavio i ne može se popraviti kroz uobičajeni tok.`,
+            t.components.adminDashboardTab.actions.confirmStatusChange(tournament.name, next),
         )
         if (!ok) return
         try {
@@ -592,9 +594,7 @@ function AdminTournamentActions({
     async function resetTournament() {
         if (busy) return
         const ok = window.confirm(
-            `Resetirati turnir "${tournament.name}"?\n\n` +
-            `Brišu se sva kola, ždrijeb i raspored. Status se vraća na DRAFT. ` +
-            `Ekipe i postavke turnira ostaju.`,
+            t.components.adminDashboardTab.actions.confirmReset(tournament.name),
         )
         if (!ok) return
         try {
@@ -609,12 +609,11 @@ function AdminTournamentActions({
     async function deleteTournament() {
         if (busy) return
         const typed = window.prompt(
-            `OBRISATI turnir "${tournament.name}"?\n\n` +
-            `Soft-delete - turnir nestaje iz svih lista. Za potvrdu upiši ime turnira.`,
+            t.components.adminDashboardTab.actions.deletePrompt(tournament.name),
         )
         if (typed == null) return
         if (typed.trim() !== tournament.name.trim()) {
-            window.alert("Ime se ne podudara. Obriskivanje otkazano.")
+            window.alert(t.components.adminDashboardTab.actions.deleteNameMismatch)
             return
         }
         try {
@@ -698,12 +697,10 @@ function AdminTournamentActions({
                 <Stack gap="4">
                     <Box>
                         <Text fontSize="md" fontWeight="semibold">
-                            Akcije turnira
+                            {t.components.adminDashboardTab.actions.heading}
                         </Text>
                         <Text fontSize="sm" color="fg.muted">
-                            Administratorske operacije nad turnirom - koristi pažljivo.
-                            Promjene zaobilaze uobičajene provjere (vlasništvo, broj ekipa,
-                            redoslijed kola).
+                            {t.components.adminDashboardTab.actions.description}
                         </Text>
                     </Box>
 
@@ -715,7 +712,7 @@ function AdminTournamentActions({
                         borderColor="border.subtle"
                     >
                         <HStack gap="3" wrap="wrap" align="baseline">
-                            <Text fontSize="xs" color="fg.muted">TRENUTNI STATUS</Text>
+                            <Text fontSize="xs" color="fg.muted">{t.components.adminDashboardTab.actions.currentStatus}</Text>
                             <Badge
                                 variant="solid"
                                 colorPalette={
@@ -731,7 +728,7 @@ function AdminTournamentActions({
 
                     {/* Status override - three buttons, the current status is disabled. */}
                     <Box>
-                        <Text fontSize="xs" color="fg.muted" mb="2">PROMIJENI STATUS (force)</Text>
+                        <Text fontSize="xs" color="fg.muted" mb="2">{t.components.adminDashboardTab.actions.forceStatusLabel}</Text>
                         <HStack gap="2" wrap="wrap">
                             <Button
                                 size="sm"
@@ -772,7 +769,7 @@ function AdminTournamentActions({
                             loading={busy === "reset"}
                             onClick={resetTournament}
                         >
-                            <FiRotateCcw /> Resetiraj
+                            <FiRotateCcw /> {t.components.adminDashboardTab.actions.reset}
                         </Button>
                         <Button
                             size="sm"
@@ -782,7 +779,7 @@ function AdminTournamentActions({
                             loading={busy === "feature"}
                             onClick={toggleFeature}
                         >
-                            <FiStar /> Istakni
+                            <FiStar /> {t.components.adminDashboardTab.actions.feature}
                         </Button>
                         <Button
                             size="sm"
@@ -792,7 +789,7 @@ function AdminTournamentActions({
                             loading={busy === "feature"}
                             onClick={unfeature}
                         >
-                            Ukloni istaknuto
+                            {t.components.adminDashboardTab.actions.unfeature}
                         </Button>
                         {tournament.hidden ? (
                             <Button
@@ -803,7 +800,7 @@ function AdminTournamentActions({
                                 loading={busy === "hidden"}
                                 onClick={toggleHidden}
                             >
-                                <FiEye /> Javno
+                                <FiEye /> {t.components.adminDashboardTab.actions.makePublic}
                             </Button>
                         ) : (
                             <Button
@@ -814,7 +811,7 @@ function AdminTournamentActions({
                                 loading={busy === "hidden"}
                                 onClick={toggleHidden}
                             >
-                                <FiEyeOff /> Sakrij
+                                <FiEyeOff /> {t.components.adminDashboardTab.actions.hide}
                             </Button>
                         )}
                         <Button
@@ -825,7 +822,7 @@ function AdminTournamentActions({
                             loading={busy === "export"}
                             onClick={exportJson}
                         >
-                            <FiDownload /> Export u JSON
+                            <FiDownload /> {t.components.adminDashboardTab.actions.exportJson}
                         </Button>
                     </HStack>
 
@@ -841,7 +838,7 @@ function AdminTournamentActions({
                             loading={busy === "delete"}
                             onClick={deleteTournament}
                         >
-                            <FiTrash2 /> Obriši turnir
+                            <FiTrash2 /> {t.components.adminDashboardTab.actions.deleteTournament}
                         </Button>
                     </HStack>
                 </Stack>

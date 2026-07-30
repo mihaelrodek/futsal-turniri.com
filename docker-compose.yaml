@@ -53,7 +53,7 @@ services:
         echo "Waiting for MinIO..."; sleep 2;
       done;
       mc mb -p minio/$MINIO_BUCKET || true;
-      printf "[{\"AllowedOrigin\":[\"http://localhost:5175\",\"http://127.0.0.1:5175\"],\"AllowedMethod\":[\"GET\",\"PUT\",\"POST\",\"DELETE\",\"HEAD\"],\"AllowedHeader\":[\"*\"],\"ExposeHeader\":[\"ETag\"],\"MaxAgeSeconds\":3000}]" > /tmp/cors.json;
+      printf "[{\"AllowedOrigin\":[\"http://localhost:5181\",\"http://127.0.0.1:5181\"],\"AllowedMethod\":[\"GET\",\"PUT\",\"POST\",\"DELETE\",\"HEAD\"],\"AllowedHeader\":[\"*\"],\"ExposeHeader\":[\"ETag\"],\"MaxAgeSeconds\":3000}]" > /tmp/cors.json;
       mc cors set minio/$MINIO_BUCKET /tmp/cors.json || true;
       echo "MinIO bucket $MINIO_BUCKET created and CORS set.";
       '

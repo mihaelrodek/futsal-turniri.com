@@ -9,6 +9,7 @@ import type {
     Surface,
 } from "../types/tournaments"
 import type { RoundDto, MatchDto } from "../types/round"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Tournament detail - shared bits.
@@ -71,15 +72,16 @@ type StatusKind = "DRAFT" | "STARTED" | "FINISHED"
  * brand-green "U tijeku", FINISHED = yellow "Završeno".
  */
 export function StatusPill({ status }: { status?: string | null }) {
+    const t = useTranslation()
     const kind: StatusKind = status === "STARTED" || status === "IN_PROGRESS"
         ? "STARTED"
         : status === "FINISHED"
             ? "FINISHED"
             : "DRAFT"
     const cfg: Record<StatusKind, { label: string; palette: string }> = {
-        DRAFT: { label: "Nacrt", palette: "gray" },
-        STARTED: { label: "U tijeku", palette: "brand" },
-        FINISHED: { label: "Završeno", palette: "yellow" },
+        DRAFT: { label: t.tournamentSection.parts.statusDraft, palette: "gray" },
+        STARTED: { label: t.tournamentSection.parts.statusStarted, palette: "brand" },
+        FINISHED: { label: t.tournamentSection.parts.statusFinished, palette: "yellow" },
     }
     const { label, palette } = cfg[kind]
     return (
@@ -122,6 +124,7 @@ export function LiveBadge({
 }: {
     size?: "xs" | "sm"
 }) {
+    const t = useTranslation()
     ensureLiveBadgeKeyframes()
     const small = size === "xs"
     return (
@@ -163,7 +166,7 @@ export function LiveBadge({
                     bg="white"
                 />
             </Box>
-            <chakra.span as="span">UŽIVO</chakra.span>
+            <chakra.span as="span">{t.tournamentSection.parts.liveBadgeLabel}</chakra.span>
         </HStack>
     )
 }
@@ -212,6 +215,7 @@ export function ShareButton({
     title: string
     size?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "2xl"
 }) {
+    const t = useTranslation()
     const [copied, setCopied] = React.useState(false)
 
     async function onShare() {
@@ -228,14 +232,14 @@ export function ShareButton({
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
         } catch {
-            window.prompt("Kopiraj link:", url)
+            window.prompt(t.tournamentSection.parts.shareCopyPrompt, url)
         }
     }
 
     return (
         <Button size={size} variant="outline" onClick={onShare}>
             {copied ? <FiCheck /> : <FiShare2 />}
-            {copied ? "Kopirano!" : "Podijeli"}
+            {copied ? t.tournamentSection.parts.shareCopiedLabel : t.common.share}
         </Button>
     )
 }
@@ -339,6 +343,7 @@ export function SuffixInput({
  * edit form. Renders nothing if the input doesn't parse to a finite number.
  */
 export function EditPerTeamHint({ value }: { value: string }) {
+    const t = useTranslation()
     const n = (() => {
         const cleaned = (value ?? "").replace(/[ €]/g, "").replace(",", ".")
         const x = parseFloat(cleaned)
@@ -351,8 +356,8 @@ export function EditPerTeamHint({ value }: { value: string }) {
     }
     return (
         <Field.HelperText>
-            {fmt(n)}€<chakra.span color="fg.muted">/ekipa</chakra.span>{" "}
-            • {fmt(n / 2)}€<chakra.span color="fg.muted">/igrač</chakra.span>
+            {fmt(n)}€<chakra.span color="fg.muted">{t.tournamentSection.parts.perTeamSuffix}</chakra.span>{" "}
+            • {fmt(n / 2)}€<chakra.span color="fg.muted">{t.tournamentSection.parts.perPlayerSuffix}</chakra.span>
         </Field.HelperText>
     )
 }

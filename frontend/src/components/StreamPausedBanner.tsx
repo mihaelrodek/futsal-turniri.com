@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Box, Flex, HStack, Text, chakra } from "@chakra-ui/react"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StreamPausedBanner - fills the home hero slot when the stream isn't playing
@@ -28,6 +29,7 @@ export default function StreamPausedBanner({
     adUrl?: string | null
     adMediaType?: "IMAGE" | "VIDEO" | null
 }) {
+    const t = useTranslation()
     const [logoOk, setLogoOk] = useState(true)
     const isAds = mode === "ads"
 
@@ -63,7 +65,7 @@ export default function StreamPausedBanner({
                 >
                     <Box w="6px" h="6px" rounded="full" bg="fg.muted" />
                     <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.08em" color="fg.muted">
-                        {isAds ? "REKLAMA" : "PAUZIRANO"}
+                        {isAds ? t.components.streamPausedBanner.adPill : t.components.streamPausedBanner.pausedPill}
                     </Text>
                 </HStack>
 
@@ -85,7 +87,7 @@ export default function StreamPausedBanner({
                     ) : (
                         <chakra.img
                             src={adUrl}
-                            alt="Reklama"
+                            alt={t.components.streamPausedBanner.adAlt}
                             position="absolute"
                             inset="0"
                             w="full"
@@ -100,7 +102,7 @@ export default function StreamPausedBanner({
                         {isAds && logoOk && (
                             <chakra.img
                                 src={SPONSOR_LOGO}
-                                alt="Sponzor prijenosa"
+                                alt={t.components.streamPausedBanner.sponsorAlt}
                                 onError={() => setLogoOk(false)}
                                 maxH="55%"
                                 maxW={{ base: "80%", md: "70%" }}
@@ -108,7 +110,7 @@ export default function StreamPausedBanner({
                             />
                         )}
                         <Text fontSize={{ base: "sm", md: "md" }} fontWeight={700} color="fg.muted" textAlign="center">
-                            {isAds ? "Prijenos se uskoro nastavlja" : "Stream je trenutno pauziran"}
+                            {isAds ? t.components.streamPausedBanner.adText : t.components.streamPausedBanner.pausedText}
                         </Text>
                     </>
                 )}

@@ -5,6 +5,7 @@ import { FiMaximize, FiMinimize, FiEye, FiRefreshCw } from "react-icons/fi"
 import { PulseDot } from "../ui/pitch"
 import SpectoEmbed from "./SpectoEmbed"
 import { useSpectoStreamId } from "../hooks/useSpectoStreamId"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    StreamPlayer - the site-wide live-camera player (Veo & co.) shown in the
@@ -122,6 +123,7 @@ export default function StreamPlayer({
      *  logic all stay in place, unused, ready to switch back to. */
     tournamentUuid?: string | null
 }) {
+    const t = useTranslation()
     const spectoStreamIdFromUrl = useMemo(() => spectoStreamIdFromPlaybackUrl(url), [url])
     const linkedSpectoStreamId = useSpectoStreamId(tournamentUuid)
     const spectoStreamId = spectoStreamIdFromUrl ?? linkedSpectoStreamId
@@ -465,7 +467,7 @@ export default function StreamPlayer({
                 <chakra.iframe
                     key={`${src}-${retryNonce}`}
                     src={src}
-                    title="Prijenos uživo"
+                    title={t.components.streamPlayer.liveStreamTitle}
                     allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                     allowFullScreen
                     w="100%"
@@ -487,10 +489,10 @@ export default function StreamPlayer({
                     pointerEvents="none"
                 >
                     <Text fontSize="sm" color="white" fontWeight={700}>
-                        Prekid prijenosa
+                        {t.components.streamPlayer.disconnected}
                     </Text>
                     <Text fontSize="xs" color="whiteAlpha.800" fontWeight={600}>
-                        Ponovno spajanje…
+                        {t.components.streamPlayer.reconnecting}
                     </Text>
                 </Flex>
             )}
@@ -565,7 +567,7 @@ export default function StreamPlayer({
                     letterSpacing="0.1em"
                 >
                     <PulseDot color="white" size={5} />
-                    UŽIVO
+                    {t.components.streamPlayer.liveBadge}
                 </HStack>
                 {viewers != null && viewers > 0 && (
                     <HStack
@@ -579,7 +581,7 @@ export default function StreamPlayer({
                         fontSize="9px"
                         fontWeight={800}
                         css={{ backdropFilter: "blur(6px)" }}
-                        title="Gledatelja uživo na stranici"
+                        title={t.components.streamPlayer.viewersTitle}
                     >
                         <Box display="inline-flex"><FiEye size={11} /></Box>
                         {viewers}
@@ -593,8 +595,8 @@ export default function StreamPlayer({
             <chakra.button
                 type="button"
                 onClick={forceReload}
-                aria-label="Osvježi prijenos"
-                title="Osvježi prijenos"
+                aria-label={t.components.streamPlayer.refreshStream}
+                title={t.components.streamPlayer.refreshStream}
                 position="absolute"
                 top="2"
                 right="12"
@@ -617,8 +619,8 @@ export default function StreamPlayer({
             <chakra.button
                 type="button"
                 onClick={toggleFullscreen}
-                aria-label={isFs ? "Izađi iz cijelog zaslona" : "Cijeli zaslon"}
-                title={isFs ? "Izađi iz cijelog zaslona" : "Cijeli zaslon"}
+                aria-label={isFs ? t.components.streamPlayer.exitFullscreen : t.components.streamPlayer.fullscreen}
+                title={isFs ? t.components.streamPlayer.exitFullscreen : t.components.streamPlayer.fullscreen}
                 position="absolute"
                 top="2"
                 right="2"

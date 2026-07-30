@@ -12,6 +12,7 @@ import { Logo } from "../components/Logo"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { useColorMode } from "../color-mode"
+import { useTranslation } from "../i18n"
 import type { TournamentDetails } from "../types/tournaments"
 import type { ScheduledMatch } from "../types/schedule"
 import type { LiveMatch } from "../api/live"
@@ -90,6 +91,7 @@ export default function FullscreenTournamentPage() {
     const navigate = useNavigate()
     const { colorMode } = useColorMode()
     const dark = colorMode === "dark"
+    const t = useTranslation()
 
     const [tournament, setTournament] = useState<TournamentDetails | null>(null)
     const [matches, setMatches] = useState<ScheduledMatch[]>([])
@@ -273,7 +275,7 @@ export default function FullscreenTournamentPage() {
                 <Flex h="100vh" align="center" justify="center" gap="4">
                     <Spinner size="lg" color="var(--fs-accent)" />
                     <Text fontSize="2xl" color="var(--fs-fg-muted)">
-                        Učitavanje…
+                        {t.common.loading}
                     </Text>
                 </Flex>
             </FullscreenShell>
@@ -311,7 +313,7 @@ export default function FullscreenTournamentPage() {
                 display="grid"
                 css={{ placeItems: "center" }}
                 onClick={exitFullscreen}
-                aria-label="Izađi iz fullscreena"
+                aria-label={t.pages.fullscreenTournamentPage.exitAria}
                 cursor="pointer"
                 _hover={{ bg: "var(--fs-border)" }}
                 zIndex={10}
@@ -407,14 +409,14 @@ export default function FullscreenTournamentPage() {
                     align="stretch"
                 >
                     <MatchStrip
-                        title="ZAVRŠENO"
+                        title={t.pages.fullscreenTournamentPage.finishedTitle}
                         matches={lastFinished}
-                        emptyLabel="Nema završenih utakmica"
+                        emptyLabel={t.pages.fullscreenTournamentPage.noFinishedMatches}
                     />
                     <MatchStrip
-                        title="SLJEDEĆE"
+                        title={t.pages.fullscreenTournamentPage.upcomingTitle}
                         matches={nextUp}
-                        emptyLabel="Nema zakazanih utakmica"
+                        emptyLabel={t.pages.fullscreenTournamentPage.noScheduledMatches}
                     />
                 </Flex>
             </Flex>
@@ -473,15 +475,22 @@ function BigScoreboard({
     halfCount: number | null
     refreshSignal?: number
 }) {
+    const t = useTranslation()
     // Re-render every second so the clock counts up and the last-minute
     // pulse turns on/off exactly when the remaining time crosses 60s.
     const [, setTick] = useState(0)
     useEffect(() => {
-        const id = setInterval(() => setTick((t) => t + 1), 1000)
+        const id = setInterval(() => setTick((v) => v + 1), 1000)
         return () => clearInterval(id)
     }, [])
 
-    const clock = computeClock(match, halfLengthMin, halfCount)
+    const clock = computeClock(match, halfLengthMin, halfCount, {
+        pause: t.pages.fullscreenTournamentPage.pauseLabel,
+        firstHalf: t.pages.fullscreenTournamentPage.firstHalfLabel,
+        halftime: t.pages.fullscreenTournamentPage.halftimeLabel,
+        secondHalf: t.pages.fullscreenTournamentPage.secondHalfLabel,
+        fullTime: t.pages.fullscreenTournamentPage.fullTimeLabel,
+    })
     const pulsing = clock.lastMinute
 
     // Accumulated fouls for the running half (resets when the 2nd half starts).
@@ -539,7 +548,7 @@ function BigScoreboard({
                     letterSpacing="0.3em"
                     color="accent.red"
                 >
-                    UŽIVO
+                    {t.pages.fullscreenTournamentPage.liveLabel}
                 </Text>
             </Flex>
 
@@ -592,7 +601,7 @@ function BigScoreboard({
                     color="var(--fs-fg-muted)"
                     whiteSpace="nowrap"
                 >
-                    Akumulirani prekršaji
+                    {t.pages.fullscreenTournamentPage.accumulatedFouls}
                 </Text>
                 <FoulIcons fouls={fouls2} />
             </Flex>
@@ -630,7 +639,24 @@ function fmtClock(total: number): string {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
 
+/** Upper-cases the first letter - used to adapt a shared, mid-sentence i18n
+ *  label (e.g. `t.matchLive.unknownScorer`) for standalone display here. */
+function capitalize(s: string): string {
+    return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
 type ClockInfo = { display: string; label: string; lastMinute: boolean }
+
+/** Localized labels for `computeClock` - resolved on the render thread via
+ *  `useTranslation()` and passed in, since `computeClock` itself is a plain
+ *  helper (not a hook) and can't call it directly. */
+type ClockLabels = {
+    pause: string
+    firstHalf: string
+    halftime: string
+    secondHalf: string
+    fullTime: string
+}
 
 /* ── Scoreboard clock state. TIMER mode counts the cumulative match time UP,
    freezing at each half boundary (1st half → half length → 2× half length),
@@ -641,6 +667,7 @@ function computeClock(
     match: LiveMatch,
     halfLengthMin: number | null,
     halfCount: number | null,
+    labels: ClockLabels,
 ): ClockInfo {
     const paused = match.livePausedAt ?? null
     const isTimer =
@@ -648,7 +675,7 @@ function computeClock(
     if (!isTimer) {
         return {
             display: fmtClock(elapsedSecs(match.liveStartedAt, paused)),
-            label: paused ? "PAUZA" : "",
+            label: paused ? labels.pause : "",
             lastMinute: false,
         }
     }
@@ -668,18 +695,18 @@ function computeClock(
         case "FIRST_HALF": {
             const into = elapsedSecs(match.liveStartedAt, paused)
             const rem = halfSecs - into
-            return { display: fmtClock(Math.min(into, halfSecs)), label: paused ? "PAUZA" : "1. POLUVRIJEME", lastMinute: !paused && rem > 0 && rem <= 60 }
+            return { display: fmtClock(Math.min(into, halfSecs)), label: paused ? labels.pause : labels.firstHalf, lastMinute: !paused && rem > 0 && rem <= 60 }
         }
         case "HALFTIME":
-            return { display: fmtClock(halfSecs), label: "POLUVRIJEME", lastMinute: false }
+            return { display: fmtClock(halfSecs), label: labels.halftime, lastMinute: false }
         case "SECOND_HALF": {
             const into = elapsedSecs(match.secondHalfStartedAt, paused)
             const rem = halfSecs - into
-            return { display: fmtClock(Math.min(halfSecs + into, 2 * halfSecs)), label: paused ? "PAUZA" : "2. POLUVRIJEME", lastMinute: !paused && rem > 0 && rem <= 60 }
+            return { display: fmtClock(Math.min(halfSecs + into, 2 * halfSecs)), label: paused ? labels.pause : labels.secondHalf, lastMinute: !paused && rem > 0 && rem <= 60 }
         }
         case "FULL_TIME":
         default:
-            return { display: fmtClock(halves * halfSecs), label: "KRAJ", lastMinute: false }
+            return { display: fmtClock(halves * halfSecs), label: labels.fullTime, lastMinute: false }
     }
 }
 
@@ -802,19 +829,23 @@ function ScorerColumn({
     goals: MatchEventDto[]
     align: "left" | "right"
 }) {
+    const t = useTranslation()
     return (
         <VStack flex="1" minW="0" maxW="46%" gap="1" align={align === "right" ? "flex-end" : "flex-start"}>
             {goals.map((g) => {
                 const own = g.type === "OWN_GOAL"
-                // Anonymous scorer (no named player) - shown as "Nepoznati
-                // strijelac" (or "Autogol" for an unattributed own goal), in
-                // italics so it reads distinctly from a named scorer.
+                // Anonymous scorer (no named player) - shown as the shared
+                // "unknown scorer" label (or "own goal" label for an
+                // unattributed own goal), in italics so it reads distinctly
+                // from a named scorer. Reuses `t.matchLive` (same concept as
+                // the timeline/request-clip labels), capitalized since here
+                // it stands alone like a name rather than mid-sentence.
                 const noName = g.playerName == null
                 // Own goal: name of the player who put it in his own net + "(ag)"
-                // (or just "Autogol" when anonymous); a red ball marks it.
+                // (or just the own-goal label when anonymous); a red ball marks it.
                 const name = own
-                    ? g.playerName != null ? `${g.playerName} (ag)` : "Autogol"
-                    : g.playerName ?? "Nepoznati strijelac"
+                    ? g.playerName != null ? `${g.playerName} (ag)` : capitalize(t.matchLive.ownGoal)
+                    : g.playerName ?? capitalize(t.matchLive.unknownScorer)
                 const ball = own ? (
                     <chakra.span display="inline-flex" flexShrink={0} css={{ color: "#ff5c4e" }}>
                         <GiSoccerBall size="1em" />
@@ -902,6 +933,7 @@ function FoulIcons({ fouls }: { fouls: number }) {
 
 /* ── No live match - show a friendly waiting message. */
 function NoLiveMessage() {
+    const t = useTranslation()
     return (
         <VStack gap="6">
             <Text
@@ -911,14 +943,14 @@ function NoLiveMessage() {
                 letterSpacing="0.3em"
                 color="var(--fs-fg-subtle)"
             >
-                NEMA UTAKMICE U TIJEKU
+                {t.pages.fullscreenTournamentPage.noLiveMatch}
             </Text>
             <Text
                 fontSize={{ base: "28px", md: "40px" }}
                 fontWeight={600}
                 color="var(--fs-fg-subtle)"
             >
-                Čekamo sljedeći termin…
+                {t.pages.fullscreenTournamentPage.waitingNextMatch}
             </Text>
         </VStack>
     )
@@ -934,6 +966,7 @@ function MatchStrip({
     matches: ScheduledMatch[]
     emptyLabel: string
 }) {
+    const t = useTranslation()
     // Equal width (flex 1) AND equal height: the parent strip is align="stretch"
     // and the content box flex-grows, so the bordered card / empty box always
     // fill the same area in both columns regardless of content.
@@ -1028,7 +1061,7 @@ function MatchStrip({
                                                 fontWeight={700}
                                                 color="var(--fs-fg-subtle)"
                                             >
-                                                ({m.penalties1}:{m.penalties2} pen)
+                                                ({m.penalties1}:{m.penalties2} {t.pages.fullscreenTournamentPage.penaltiesAbbrev})
                                             </Box>
                                         )}
                                     </Text>

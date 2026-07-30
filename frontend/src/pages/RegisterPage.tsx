@@ -15,27 +15,29 @@ import { FcGoogle } from "react-icons/fc"
 import { useAuth } from "../auth/AuthContext"
 import { pickSafeNext } from "../utils/safeNextPath"
 import { checkUsernameAvailable } from "../api/auth"
+import { useTranslation } from "../i18n"
+import type { Dictionary } from "../i18n"
 
-function authErrorMessage(err: any): string {
+function authErrorMessage(err: any, t: Dictionary): string {
     // Backend 409 from register-profile = username taken.
     if (err?.response?.status === 409) {
-        return "Korisničko ime je upravo zauzeto. Odaberi drugo."
+        return t.pages.registerPage.errors.usernameTaken
     }
     const code: string = err?.code ?? ""
     switch (code) {
         case "auth/email-already-in-use":
-            return "Već postoji račun s tom email adresom. Probaj se prijaviti."
+            return t.pages.registerPage.errors.emailInUse
         case "auth/invalid-email":
-            return "Neispravan format email adrese."
+            return t.pages.registerPage.errors.invalidEmail
         case "auth/weak-password":
-            return "Lozinka je preslaba. Mora imati barem 6 znakova."
+            return t.pages.registerPage.errors.weakPassword
         case "auth/popup-blocked":
-            return "Preglednik je blokirao prozor za Google prijavu. Dopusti skočne prozore za ovu stranicu i pokušaj ponovno."
+            return t.pages.registerPage.errors.popupBlocked
         case "auth/popup-closed-by-user":
         case "auth/cancelled-popup-request":
             return ""
         default:
-            return err?.message ?? "Registracija nije uspjela."
+            return err?.message ?? t.pages.registerPage.errors.registerFailed
     }
 }
 
@@ -62,6 +64,7 @@ export default function RegisterPage() {
     const location = useLocation()
     const [searchParams] = useSearchParams()
     const { signUp, signInWithGoogle, user, loading: authLoading } = useAuth()
+    const t = useTranslation()
 
     const [firstName, setFirstName] = useState("")
     const [lastName, setLastName] = useState("")
@@ -128,23 +131,23 @@ export default function RegisterPage() {
         e.preventDefault()
         setError(null)
         if (!firstName.trim() || !lastName.trim()) {
-            setError("Ime i prezime su obavezni.")
+            setError(t.pages.registerPage.errors.nameRequired)
             return
         }
         if (!usernameOk) {
-            setError("Odaberi dostupno korisničko ime.")
+            setError(t.pages.registerPage.errors.usernameRequired)
             return
         }
         if (!email.trim() || !password) {
-            setError("Email i lozinka su obavezni.")
+            setError(t.pages.registerPage.errors.emailPasswordRequired)
             return
         }
         if (password.length < 6) {
-            setError("Lozinka mora imati barem 6 znakova.")
+            setError(t.pages.registerPage.errors.passwordTooShort)
             return
         }
         if (password !== confirm) {
-            setError("Lozinke se ne podudaraju.")
+            setError(t.pages.registerPage.errors.passwordMismatch)
             return
         }
         try {
@@ -156,7 +159,7 @@ export default function RegisterPage() {
             })
             navigate(redirectTo, { replace: true })
         } catch (e: any) {
-            const msg = authErrorMessage(e)
+            const msg = authErrorMessage(e, t)
             if (msg) setError(msg)
         } finally {
             setSubmitting(false)
@@ -169,7 +172,7 @@ export default function RegisterPage() {
             await signInWithGoogle()
             navigate(redirectTo, { replace: true })
         } catch (e: any) {
-            const msg = authErrorMessage(e)
+            const msg = authErrorMessage(e, t)
             if (msg) setError(msg)
         }
     }
@@ -179,15 +182,15 @@ export default function RegisterPage() {
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "5", md: "6" }}>
                     <VStack align="stretch" gap="4">
-                        <Heading size="md">Registracija</Heading>
+                        <Heading size="md">{t.pages.registerPage.heading}</Heading>
 
                         <Button variant="outline" size="md" onClick={onGoogle} disabled={submitting}>
-                            <FcGoogle size={18} /> Registriraj se s Googleom
+                            <FcGoogle size={18} /> {t.pages.registerPage.continueWithGoogle}
                         </Button>
 
                         <HStack>
                             <Box flex="1" h="1px" bg="border.subtle" />
-                            <Text fontSize="xs" color="fg.muted">ili</Text>
+                            <Text fontSize="xs" color="fg.muted">{t.pages.registerPage.orDivider}</Text>
                             <Box flex="1" h="1px" bg="border.subtle" />
                         </HStack>
 
@@ -195,27 +198,27 @@ export default function RegisterPage() {
                             <VStack align="stretch" gap="3">
                                 <HStack gap="3" align="start">
                                     <Field.Root required>
-                                        <Field.Label>Ime</Field.Label>
+                                        <Field.Label>{t.pages.registerPage.firstNameLabel}</Field.Label>
                                         <Input
                                             autoComplete="given-name"
                                             value={firstName}
                                             onChange={(e) => setFirstName(e.target.value)}
-                                            placeholder="Marko"
+                                            placeholder={t.pages.registerPage.firstNamePlaceholder}
                                         />
                                     </Field.Root>
                                     <Field.Root required>
-                                        <Field.Label>Prezime</Field.Label>
+                                        <Field.Label>{t.pages.registerPage.lastNameLabel}</Field.Label>
                                         <Input
                                             autoComplete="family-name"
                                             value={lastName}
                                             onChange={(e) => setLastName(e.target.value)}
-                                            placeholder="Horvat"
+                                            placeholder={t.pages.registerPage.lastNamePlaceholder}
                                         />
                                     </Field.Root>
                                 </HStack>
 
                                 <Field.Root required>
-                                    <Field.Label>Korisničko ime</Field.Label>
+                                    <Field.Label>{t.pages.registerPage.usernameLabel}</Field.Label>
                                     <Input
                                         autoComplete="username"
                                         value={username}
@@ -223,35 +226,35 @@ export default function RegisterPage() {
                                             usernameEditedRef.current = true
                                             setUsername(e.target.value)
                                         }}
-                                        placeholder="marko-horvat"
+                                        placeholder={t.pages.registerPage.usernamePlaceholder}
                                     />
                                     {uStatus.state === "checking" && (
-                                        <Field.HelperText>Provjeravam dostupnost…</Field.HelperText>
+                                        <Field.HelperText>{t.pages.registerPage.usernameChecking}</Field.HelperText>
                                     )}
                                     {uStatus.state === "ok" && (
                                         <Field.HelperText color="green.fg">
-                                            ✓ „{uStatus.normalized}" je dostupno
+                                            {t.pages.registerPage.usernameAvailable(uStatus.normalized)}
                                         </Field.HelperText>
                                     )}
                                     {uStatus.state === "taken" && (
                                         <Field.HelperText color="red.fg">
-                                            „{uStatus.normalized}" je zauzeto — odaberi drugo
+                                            {t.pages.registerPage.usernameTaken(uStatus.normalized)}
                                         </Field.HelperText>
                                     )}
                                     {uStatus.state === "short" && (
                                         <Field.HelperText color="red.fg">
-                                            Prekratko (najmanje 3 znaka).
+                                            {t.pages.registerPage.usernameTooShort}
                                         </Field.HelperText>
                                     )}
                                     {uStatus.state === "idle" && (
                                         <Field.HelperText>
-                                            Automatski iz imena; možeš promijeniti. Bit će tvoj profil: /profil/…
+                                            {t.pages.registerPage.usernameHelperIdle}
                                         </Field.HelperText>
                                     )}
                                 </Field.Root>
 
                                 <Field.Root required>
-                                    <Field.Label>Email</Field.Label>
+                                    <Field.Label>{t.pages.registerPage.emailLabel}</Field.Label>
                                     <Input
                                         type="email"
                                         autoComplete="email"
@@ -260,17 +263,17 @@ export default function RegisterPage() {
                                     />
                                 </Field.Root>
                                 <Field.Root required>
-                                    <Field.Label>Lozinka</Field.Label>
+                                    <Field.Label>{t.pages.registerPage.passwordLabel}</Field.Label>
                                     <Input
                                         type="password"
                                         autoComplete="new-password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                     />
-                                    <Field.HelperText>Najmanje 6 znakova.</Field.HelperText>
+                                    <Field.HelperText>{t.pages.registerPage.passwordHelper}</Field.HelperText>
                                 </Field.Root>
                                 <Field.Root required>
-                                    <Field.Label>Potvrdi lozinku</Field.Label>
+                                    <Field.Label>{t.pages.registerPage.confirmPasswordLabel}</Field.Label>
                                     <Input
                                         type="password"
                                         autoComplete="new-password"
@@ -292,15 +295,15 @@ export default function RegisterPage() {
                                     loading={submitting}
                                     disabled={submitting || !usernameOk}
                                 >
-                                    Kreiraj račun
+                                    {t.pages.registerPage.submit}
                                 </Button>
                             </VStack>
                         </form>
 
                         <Text fontSize="sm" color="fg.muted" textAlign="center">
-                            Već imaš račun?{" "}
+                            {t.pages.registerPage.haveAccount}{" "}
                             <Box as="span" color="blue.fg" fontWeight="medium">
-                                <RouterLink to="/prijava">Prijavi se</RouterLink>
+                                <RouterLink to="/prijava">{t.pages.registerPage.loginLink}</RouterLink>
                             </Box>
                         </Text>
                     </VStack>

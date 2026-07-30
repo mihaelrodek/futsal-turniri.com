@@ -18,6 +18,7 @@ import { FiMaximize, FiMinus, FiPlus } from "react-icons/fi"
 
 import type { BracketMatch, BracketRound } from "../types/bracket"
 import { MonoLabel } from "../ui/pitch"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Single-elimination bracket layout.
@@ -452,6 +453,7 @@ export function ZoomControls({
     onReset: () => void
     size?: "xs" | "sm"
 }) {
+    const t = useTranslation()
     return (
         <HStack
             gap="0.5"
@@ -463,13 +465,13 @@ export function ZoomControls({
             p="1"
             className="no-pan"
         >
-            <IconButton aria-label="Odzumiraj" title="Odzumiraj" size={size} variant="ghost" rounded="full" onClick={onZoomOut}>
+            <IconButton aria-label={t.components.bracketBoard.zoomOutAria} title={t.components.bracketBoard.zoomOutAria} size={size} variant="ghost" rounded="full" onClick={onZoomOut}>
                 <FiMinus />
             </IconButton>
-            <IconButton aria-label="Zumiraj" title="Zumiraj" size={size} variant="ghost" rounded="full" onClick={onZoomIn}>
+            <IconButton aria-label={t.components.bracketBoard.zoomInAria} title={t.components.bracketBoard.zoomInAria} size={size} variant="ghost" rounded="full" onClick={onZoomIn}>
                 <FiPlus />
             </IconButton>
-            <IconButton aria-label="Vrati prikaz" title="Vrati prikaz" size={size} variant="ghost" rounded="full" onClick={onReset}>
+            <IconButton aria-label={t.components.bracketBoard.resetViewAria} title={t.components.bracketBoard.resetViewAria} size={size} variant="ghost" rounded="full" onClick={onReset}>
                 <FiMaximize />
             </IconButton>
         </HStack>

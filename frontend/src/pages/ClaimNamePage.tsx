@@ -17,6 +17,7 @@ import {
     claimPreset,
 } from "../api/presetClaim"
 import { useAuth } from "../auth/AuthContext"
+import { useTranslation } from "../i18n"
 
 /**
  * Landing page for the preset share URL: /claim-name/{token}.
@@ -31,6 +32,7 @@ export default function ClaimNamePage() {
     const { token = "" } = useParams<{ token: string }>()
     const navigate = useNavigate()
     const { user, loading: authLoading } = useAuth()
+    const t = useTranslation()
 
     const [preview, setPreview] = useState<PresetClaimPreviewDto | null>(null)
     const [loading, setLoading] = useState(true)
@@ -66,7 +68,7 @@ export default function ClaimNamePage() {
         setMessage(null)
         try {
             await claimPreset(token)
-            setMessage({ kind: "ok", text: "Ekipa je dodana na tvoj profil." })
+            setMessage({ kind: "ok", text: t.pages.claimNamePage.claimSuccess })
             setTimeout(() => navigate("/profil", { replace: true }), 1200)
         } catch (err: any) {
             const status = err?.response?.status
@@ -74,17 +76,17 @@ export default function ClaimNamePage() {
             if (status === 409 && body === "OWNER_SAME") {
                 setMessage({
                     kind: "err",
-                    text: "Već si vlasnik ove ekipe - ne možeš preuzeti vlastitu ekipu.",
+                    text: t.pages.claimNamePage.errorOwnerSame,
                 })
             } else if (status === 409 && body === "ALREADY_CLAIMED") {
                 setMessage({
                     kind: "err",
-                    text: "Ovu ekipu je već preuzeo netko drugi.",
+                    text: t.pages.claimNamePage.errorAlreadyClaimed,
                 })
             } else if (status === 401) {
-                setMessage({ kind: "err", text: "Prijavi se da preuzmeš ekipu." })
+                setMessage({ kind: "err", text: t.pages.claimNamePage.errorLoginRequired })
             } else {
-                setMessage({ kind: "err", text: "Preuzimanje nije uspjelo." })
+                setMessage({ kind: "err", text: t.pages.claimNamePage.errorGeneric })
             }
         } finally {
             setClaiming(false)
@@ -95,7 +97,7 @@ export default function ClaimNamePage() {
         return (
             <VStack py="16" gap="3">
                 <Spinner />
-                <Text color="fg.muted" fontSize="sm">Učitavanje…</Text>
+                <Text color="fg.muted" fontSize="sm">{t.common.loading}</Text>
             </VStack>
         )
     }
@@ -105,12 +107,12 @@ export default function ClaimNamePage() {
             <Card.Root maxW="md" mx="auto" mt="6" variant="outline" rounded="xl">
                 <Card.Body p="6">
                     <VStack gap="3" align="stretch">
-                        <Heading size="md">Veza nije pronađena</Heading>
+                        <Heading size="md">{t.pages.claimNamePage.notFoundTitle}</Heading>
                         <Text fontSize="sm" color="fg.muted">
-                            Poveznica za preuzimanje ekipe nije valjana. Pitaj suigrača da ti pošalje novu vezu.
+                            {t.pages.claimNamePage.notFoundBody}
                         </Text>
                         <Button asChild variant="outline" size="sm" mt="2">
-                            <RouterLink to="/turniri">Natrag na turnire</RouterLink>
+                            <RouterLink to="/turniri">{t.pages.claimNamePage.backToTournaments}</RouterLink>
                         </Button>
                     </VStack>
                 </Card.Body>
@@ -123,13 +125,13 @@ export default function ClaimNamePage() {
             <Card.Body p="6">
                 <VStack gap="4" align="stretch">
                     <Box>
-                        <Text fontSize="xs" color="fg.muted">PREUZMI EKIPU</Text>
+                        <Text fontSize="xs" color="fg.muted">{t.pages.claimNamePage.claimTeamLabel}</Text>
                         <Heading size="lg" mt="1">{preview.name}</Heading>
                     </Box>
 
                     {preview.primaryName && (
                         <Box>
-                            <Text fontSize="sm" color="fg.muted">Dijeli:</Text>
+                            <Text fontSize="sm" color="fg.muted">{t.pages.claimNamePage.sharedByLabel}</Text>
                             <Text fontWeight="medium">
                                 {preview.primarySlug ? (
                                     <RouterLink
@@ -154,13 +156,13 @@ export default function ClaimNamePage() {
                             borderColor="orange.200"
                         >
                             <HStack gap="2">
-                                <Badge colorPalette="orange" variant="subtle">Već preuzet</Badge>
+                                <Badge colorPalette="orange" variant="subtle">{t.pages.claimNamePage.alreadyClaimedBadge}</Badge>
                                 {preview.coOwnerName && (
                                     <Text fontSize="sm">{preview.coOwnerName}</Text>
                                 )}
                             </HStack>
                             <Text fontSize="xs" color="fg.muted" mt="2">
-                                Ekipu je već preuzeo netko drugi i ne može se ponovno preuzeti.
+                                {t.pages.claimNamePage.alreadyClaimedNote}
                             </Text>
                         </Box>
                     )}
@@ -180,7 +182,7 @@ export default function ClaimNamePage() {
                     {!user?.uid ? (
                         <Button asChild colorPalette="pitch" variant="solid" size="md">
                             <RouterLink to={`/prijava?next=${encodeURIComponent(`/preuzmi-ime/${token}`)}`}>
-                                Prijavi se da preuzmeš
+                                {t.pages.claimNamePage.loginToClaimCta}
                             </RouterLink>
                         </Button>
                     ) : (
@@ -192,7 +194,7 @@ export default function ClaimNamePage() {
                             disabled={claiming || preview.alreadyClaimed || message?.kind === "ok"}
                             onClick={handleClaim}
                         >
-                            Preuzmi ekipu
+                            {t.pages.claimNamePage.claimButton}
                         </Button>
                     )}
                 </VStack>

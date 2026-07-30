@@ -10,11 +10,15 @@ import hr.mrodek.apps.futsal_turniri.model.MatchEvent;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecording;
 import hr.mrodek.apps.futsal_turniri.model.MatchRecordingRequest;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
+import hr.mrodek.apps.futsal_turniri.model.Teams;
+import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchEventRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
+import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
 import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
@@ -35,10 +39,12 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Paid match-video requests. Two kinds, same lifecycle:
@@ -63,6 +69,7 @@ import java.util.regex.Pattern;
  *   POST   /recording-requests/by-goal/{matchEventId}   - create, single goal clip (public: authenticated or anonymous)
  *   GET    /recording-requests/{uuid}/public            - limited public status view (public)
  *   POST   /recording-requests/{uuid}/checkout          - create a Stripe Checkout session (public, uuid capability)
+ *   POST   /recording-requests/cart-checkout             - /cjenik cart: pay-first, no approval gate (public)
  *   GET    /recording-requests/mine                     - own requests (user)
  *   GET    /recording-requests?status=                  - list all (admin)
  *   PUT    /recording-requests/{uuid}/status             - approve/reject (admin)
@@ -82,6 +89,34 @@ public class RecordingRequestController {
     /** local@domain.tld, TLD at least 2 letters - deliberately simple, not RFC-exhaustive. */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$");
 
+    /** Same simple, non-exhaustive pattern as CameraInquiryController - digits only after stripping
+     *  spaces, optional leading "+", 6-15 digits. Only asked for on a /cjenik cart checkout. */
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9]{6,15}$");
+
+    /**
+     * The 4 fixed-price /cjenik packages. GOAL/MATCH mirror {@link RecordingRequestKind}'s
+     * defaults; HATTRICK (any 3 matches of one tournament) and TEAM ("Zlatna kopačka" - every
+     * match of one team in a tournament) have no kind of their own - they simply resolve to
+     * several FULL_MATCH rows sharing one {@code cartGroupId} and split price.
+     */
+    private enum CartTier {
+        GOAL(500, "Gol"),
+        MATCH(2000, "Tekma"),
+        HATTRICK(5000, "Hattrick"),
+        TEAM(10000, "Zlatna kopačka");
+
+        private final int priceEurCents;
+        private final String label;
+
+        CartTier(int priceEurCents, String label) {
+            this.priceEurCents = priceEurCents;
+            this.label = label;
+        }
+
+        int priceEurCents() { return priceEurCents; }
+        String label() { return label; }
+    }
+
     /**
      * {@code app_settings} key that turns ORDERING single-goal clips on.
      * Absent/anything but "true" = off, which is the current default: the
@@ -95,6 +130,8 @@ public class RecordingRequestController {
     @Inject MatchRecordingRepository recordingRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject MatchEventRepository eventRepo;
+    @Inject TournamentsRepository tournamentsRepo;
+    @Inject TeamsRepository teamsRepo;
     @Inject AppSettingsRepository settings;
     @Inject RecordingRequestMapper mapper;
     @Inject RecordingStorageService recordingStorage;
@@ -122,6 +159,24 @@ public class RecordingRequestController {
     public record DownloadLinkResponse(String url, int expiresInSeconds) {}
 
     public record CheckoutResponse(String url) {}
+
+    /**
+     * One /cjenik cart line. {@code tier} is one of {@link CartTier}'s names.
+     * {@code matchIds} carries exactly 1 match for GOAL/MATCH, exactly 3
+     * (distinct) for HATTRICK, and is ignored for TEAM (every match of
+     * {@code teamId} in the tournament is resolved server-side instead).
+     * {@code matchEventId} is required only for GOAL.
+     */
+    public record CartItemBody(
+            String tier, String tournamentUuid, List<Long> matchIds, Long matchEventId, Long teamId
+    ) {}
+
+    /**
+     * {@code contactPhone} is required (and validated) only for an anonymous
+     * order ({@code contactEmail} may still be omitted by a signed-in caller,
+     * same fallback-to-JWT-claim rule as the ad-hoc single-request flow).
+     */
+    public record CartCheckoutBody(List<CartItemBody> items, String contactEmail, String contactPhone) {}
 
     /** Limited status view for the public capability-link page - no contactEmail/adminNote. */
     public record PublicRequestView(
@@ -169,6 +224,49 @@ public class RecordingRequestController {
 
     /** Resolved requester identity: Firebase uid (null when anonymous) + validated contact email. */
     private record RequesterContact(String uid, String email) {}
+
+    private static boolean isValidPhone(String phone) {
+        return phone != null && !phone.isEmpty() && phone.length() <= 40
+                && PHONE_PATTERN.matcher(phone.replace(" ", "")).matches();
+    }
+
+    /** Resolved cart-checkout identity: Firebase uid (null when anonymous) + validated email + phone. */
+    private record CartContact(String uid, String email, String phone) {}
+
+    /**
+     * Cart-checkout contact resolution: same email rule as {@link #resolveContact}
+     * (signed-in may omit it, falls back to the JWT claim; anonymous must supply
+     * one), PLUS a phone number that is mandatory and validated for an anonymous
+     * order - a signed-in caller may still leave it blank, but if supplied it's
+     * validated the same way.
+     */
+    private CartContact resolveCartContact(String bodyEmail, String bodyPhone) {
+        String me = currentUid();
+        String email = normalizeEmail(bodyEmail);
+        if (me != null && email == null) {
+            Object emailClaim = jwt.getClaim("email");
+            email = normalizeEmail(emailClaim == null ? null : emailClaim.toString());
+        }
+        if (email == null) {
+            throw new BadRequestException(messages.t("recording.error.contactEmailRequired"));
+        }
+        if (!isValidEmail(email)) {
+            throw new BadRequestException(messages.t("recording.error.invalidEmail"));
+        }
+
+        String phone = bodyPhone == null ? null : bodyPhone.trim();
+        if (me == null) {
+            if (phone == null || phone.isEmpty()) {
+                throw new BadRequestException(messages.t("recording.error.contactPhoneRequired"));
+            }
+            if (!isValidPhone(phone)) {
+                throw new BadRequestException(messages.t("recording.error.invalidPhone"));
+            }
+        } else if (phone != null && !phone.isEmpty() && !isValidPhone(phone)) {
+            throw new BadRequestException(messages.t("recording.error.invalidPhone"));
+        }
+        return new CartContact(me, email, (phone == null || phone.isEmpty()) ? null : phone);
+    }
 
     /**
      * Shared create-time contact resolution for both request kinds: a
@@ -405,6 +503,168 @@ public class RecordingRequestController {
 
         String url = stripeService.createCheckoutSession(
                 uuid.toString(), r.getPriceEurCents(), productName, successUrl, cancelUrl);
+        return Response.ok(new CheckoutResponse(url)).build();
+    }
+
+    private CartTier parseTier(String tier) {
+        try {
+            return CartTier.valueOf(tier == null ? "" : tier.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(messages.t("recording.error.tierInvalid"));
+        }
+    }
+
+    private UUID parseTournamentUuid(String s) {
+        try {
+            return UUID.fromString(s);
+        } catch (Exception e) {
+            throw new BadRequestException(messages.t("recording.error.tournamentNotFound"));
+        }
+    }
+
+    /** Resolves + validates exactly {@code expectedCount} distinct matches, all belonging to {@code tournament}. */
+    private List<Matches> resolveMatches(Tournaments tournament, List<Long> matchIds, int expectedCount) {
+        if (matchIds == null || matchIds.size() != expectedCount
+                || new HashSet<>(matchIds).size() != matchIds.size()) {
+            throw new BadRequestException(messages.t("recording.error.matchSelectionInvalid"));
+        }
+        List<Matches> out = new ArrayList<>(matchIds.size());
+        for (Long id : matchIds) {
+            Matches m = matchesRepo.findByIdOptional(id).orElse(null);
+            if (m == null || !m.getTournament().getId().equals(tournament.getId())) {
+                throw new BadRequestException(messages.t("recording.error.matchSelectionInvalid"));
+            }
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Even split of a tier's total price across its N generated rows - the last row absorbs the remainder. */
+    private static int[] splitPriceEurCents(int totalCents, int rowCount) {
+        int base = totalCents / rowCount;
+        int remainder = totalCents - base * rowCount;
+        int[] out = new int[rowCount];
+        for (int i = 0; i < rowCount; i++) {
+            out[i] = base + (i == rowCount - 1 ? remainder : 0);
+        }
+        return out;
+    }
+
+    /**
+     * /cjenik cart checkout: pay first, no admin-approval gate. Each cart item
+     * resolves to one or more {@link MatchRecordingRequest} rows (kind GOAL or
+     * FULL_MATCH, status APPROVED so the existing library-link delivery flow
+     * - {@link #linkRecording} / {@link RecordingAutoLinkService} - picks them
+     * up unchanged), all sharing one {@code cartGroupId} and paid together by
+     * one Stripe Checkout Session ({@link StripeWebhookController}). Public:
+     * no login required, but an anonymous order must supply a valid
+     * {@code contactEmail} AND {@code contactPhone}.
+     */
+    @POST
+    @Path("/cart-checkout")
+    @Transactional
+    public Response cartCheckout(CartCheckoutBody body) {
+        if (!stripeService.isConfigured()) {
+            return conflict("NOT_CONFIGURED");
+        }
+        List<CartItemBody> items = body == null ? null : body.items();
+        if (items == null || items.isEmpty()) {
+            throw new BadRequestException(messages.t("recording.error.cartEmpty"));
+        }
+        if (items.size() > 20) {
+            throw new BadRequestException(messages.t("recording.error.cartTooLarge"));
+        }
+
+        CartContact contact = resolveCartContact(body.contactEmail(), body.contactPhone());
+
+        UUID cartGroupId = UUID.randomUUID();
+        List<MatchRecordingRequest> created = new ArrayList<>();
+        List<StripeService.CartLineItem> lineItems = new ArrayList<>();
+        StringBuilder orderSummary = new StringBuilder();
+
+        for (CartItemBody item : items) {
+            CartTier tier = parseTier(item.tier());
+            Tournaments tournament = tournamentsRepo.findByUuid(parseTournamentUuid(item.tournamentUuid()))
+                    .orElseThrow(() -> new BadRequestException(messages.t("recording.error.tournamentNotFound")));
+
+            List<Matches> matchesForItem;
+            MatchEvent goalEvent = null;
+
+            if (tier == CartTier.GOAL) {
+                if (!goalRequestsEnabled()) return conflict("GOAL_REQUESTS_DISABLED");
+                matchesForItem = resolveMatches(tournament, item.matchIds(), 1);
+                Matches m = matchesForItem.get(0);
+                goalEvent = item.matchEventId() == null ? null : eventRepo.findByIdOptional(item.matchEventId()).orElse(null);
+                if (goalEvent == null || !isGoal(goalEvent.getType()) || !goalEvent.getMatch().getId().equals(m.getId())) {
+                    throw new BadRequestException(messages.t("recording.error.goalEventRequired"));
+                }
+                if (m.getStatus() != MatchStatus.FINISHED) return conflict("MATCH_NOT_FINISHED");
+            } else if (tier == CartTier.MATCH) {
+                matchesForItem = resolveMatches(tournament, item.matchIds(), 1);
+            } else if (tier == CartTier.HATTRICK) {
+                matchesForItem = resolveMatches(tournament, item.matchIds(), 3);
+            } else { // TEAM - "Zlatna kopačka": every match of one team in this tournament, picked server-side.
+                if (item.teamId() == null) {
+                    throw new BadRequestException(messages.t("recording.error.teamNotFound"));
+                }
+                Teams team = teamsRepo.findByIdOptional(item.teamId()).orElse(null);
+                if (team == null || !team.getTournament().getId().equals(tournament.getId())) {
+                    throw new BadRequestException(messages.t("recording.error.teamNotFound"));
+                }
+                matchesForItem = matchesRepo.findByTournament_Id(tournament.getId()).stream()
+                        .filter(m -> (m.getTeam1() != null && m.getTeam1().getId().equals(team.getId()))
+                                || (m.getTeam2() != null && m.getTeam2().getId().equals(team.getId())))
+                        .toList();
+                if (matchesForItem.isEmpty()) return conflict("TEAM_NO_MATCHES");
+            }
+
+            // Same "an open request for this match already exists" guard as the
+            // ad-hoc single-request flow - one match, one open order at a time.
+            for (Matches m : matchesForItem) {
+                boolean duplicate = contact.uid() != null
+                        ? repo.existsOpenForUserAndMatch(contact.uid(), m.getId())
+                        : repo.existsOpenForEmailAndMatch(contact.email(), m.getId());
+                if (duplicate) return conflict("DUPLICATE");
+            }
+
+            int[] shares = splitPriceEurCents(tier.priceEurCents(), matchesForItem.size());
+            for (int i = 0; i < matchesForItem.size(); i++) {
+                Matches m = matchesForItem.get(i);
+                var r = new MatchRecordingRequest();
+                r.setMatch(m);
+                r.setKind(tier == CartTier.GOAL ? RecordingRequestKind.GOAL : RecordingRequestKind.FULL_MATCH);
+                if (tier == CartTier.GOAL) {
+                    r.setMatchEvent(goalEvent);
+                    r.setGoalMinute(goalEvent.getMinute());
+                    r.setGoalLabel(buildGoalLabel(goalEvent));
+                }
+                r.setCreatedByUid(contact.uid());
+                r.setContactEmail(contact.email());
+                r.setContactPhone(contact.phone());
+                r.setStatus(RecordingRequestStatus.APPROVED);
+                r.setCartGroupId(cartGroupId);
+                r.setPriceEurCents(shares[i]);
+                repo.save(r);
+                created.add(r);
+            }
+
+            lineItems.add(new StripeService.CartLineItem(tier.label() + " - " + tournament.getName(), tier.priceEurCents()));
+            if (!orderSummary.isEmpty()) orderSummary.append("; ");
+            orderSummary.append(tier.label()).append(": ").append(matchesForItem.stream()
+                    .map(RecordingRequestNotifier::matchLabel).collect(Collectors.joining(", ")));
+        }
+
+        // Stashed on the first row's note so the single admin email sent after
+        // payment (StripeWebhookController) can show the whole order, without a
+        // dedicated cart-order mail template.
+        String summary = orderSummary.toString();
+        created.get(0).setNote(summary.length() > 1000 ? summary.substring(0, 1000) : summary);
+
+        String successCancelBase = emailService.baseUrl() + "/kosarica/hvala";
+        String url = stripeService.createCartCheckoutSession(
+                cartGroupId.toString(), lineItems,
+                successCancelBase + "?placanje=uspjeh",
+                successCancelBase + "?placanje=odustao");
         return Response.ok(new CheckoutResponse(url)).build();
     }
 

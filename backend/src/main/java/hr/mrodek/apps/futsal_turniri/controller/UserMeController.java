@@ -133,7 +133,7 @@ public class UserMeController {
     @Transactional   // touch the lazy avatar relation
     public UserProfileDto getProfile() {
         var p = profileRepo.findByUid(jwt.getSubject()).orElse(null);
-        if (p == null) return new UserProfileDto(null, null, null, null, null);
+        if (p == null) return new UserProfileDto(null, null, null, null, null, null, null, null, null);
         return toDto(p);
     }
 
@@ -153,6 +153,16 @@ public class UserMeController {
             String cm = body.colorMode().trim().toLowerCase();
             if ("light".equals(cm) || "dark".equals(cm)) {
                 existing.setColorMode(cm);
+            }
+        }
+
+        // Language: same standalone-field pattern as colorMode above - the
+        // navbar language picker sends ONLY this field, and it must never be
+        // wiped by an unrelated profile-settings save that omits it.
+        if (body.language() != null) {
+            String lang = body.language().trim().toLowerCase();
+            if ("hr".equals(lang) || "en".equals(lang) || "sl".equals(lang)) {
+                existing.setLanguage(lang);
             }
         }
 
@@ -339,7 +349,8 @@ public class UserMeController {
                 avatarUrl,
                 p.getColorMode(),
                 p.getFirstName(),
-                p.getLastName());
+                p.getLastName(),
+                p.getLanguage());
     }
 
     private MyTournamentParticipationDto toDto(Teams p) {

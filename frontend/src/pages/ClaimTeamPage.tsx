@@ -17,6 +17,7 @@ import {
     claimTeam,
 } from "../api/teamClaim"
 import { useAuth } from "../auth/AuthContext"
+import { useTranslation } from "../i18n"
 
 /**
  * Landing page for the team-sharing URL: /claim-team/{token}.
@@ -32,6 +33,7 @@ export default function ClaimTeamPage() {
     const { token = "" } = useParams<{ token: string }>()
     const navigate = useNavigate()
     const { user, loading: authLoading } = useAuth()
+    const t = useTranslation()
 
     const [preview, setPreview] = useState<ClaimPreviewDto | null>(null)
     const [loading, setLoading] = useState(true)
@@ -70,7 +72,7 @@ export default function ClaimTeamPage() {
             await claimTeam(token)
             setClaimMessage({
                 kind: "ok",
-                text: "Ekipa je dodana na tvoj profil.",
+                text: t.pages.claimTeamPage.claimSuccess,
             })
             // Short delay so the user sees confirmation, then jump to their profile.
             setTimeout(() => {
@@ -82,22 +84,22 @@ export default function ClaimTeamPage() {
             if (status === 409 && body === "OWNER_SAME") {
                 setClaimMessage({
                     kind: "err",
-                    text: "Već si vlasnik ove ekipe - ne možeš preuzeti vlastitu ekipu.",
+                    text: t.pages.claimTeamPage.errorOwnerSame,
                 })
             } else if (status === 409 && body === "ALREADY_CLAIMED") {
                 setClaimMessage({
                     kind: "err",
-                    text: "Ovu ekipu je već preuzeo netko drugi.",
+                    text: t.pages.claimTeamPage.errorAlreadyClaimed,
                 })
             } else if (status === 401) {
                 setClaimMessage({
                     kind: "err",
-                    text: "Prijavi se da preuzmeš ekipu.",
+                    text: t.pages.claimTeamPage.errorLoginRequired,
                 })
             } else {
                 setClaimMessage({
                     kind: "err",
-                    text: "Preuzimanje nije uspjelo.",
+                    text: t.pages.claimTeamPage.errorGeneric,
                 })
             }
         } finally {
@@ -109,7 +111,7 @@ export default function ClaimTeamPage() {
         return (
             <VStack py="16" gap="3">
                 <Spinner />
-                <Text color="fg.muted" fontSize="sm">Učitavanje…</Text>
+                <Text color="fg.muted" fontSize="sm">{t.common.loading}</Text>
             </VStack>
         )
     }
@@ -119,13 +121,12 @@ export default function ClaimTeamPage() {
             <Card.Root maxW="md" mx="auto" mt="6" variant="outline" rounded="xl">
                 <Card.Body p="6">
                     <VStack gap="3" align="stretch">
-                        <Heading size="md">Veza nije pronađena</Heading>
+                        <Heading size="md">{t.pages.claimTeamPage.notFoundTitle}</Heading>
                         <Text fontSize="sm" color="fg.muted">
-                            Poveznica za preuzimanje ekipe nije valjana ili je ekipa
-                            obrisana. Pitaj svojeg suigrača da ti pošalje novu vezu.
+                            {t.pages.claimTeamPage.notFoundBody}
                         </Text>
                         <Button asChild variant="outline" size="sm" mt="2">
-                            <RouterLink to="/turniri">Natrag na turnire</RouterLink>
+                            <RouterLink to="/turniri">{t.pages.claimTeamPage.backToTournaments}</RouterLink>
                         </Button>
                     </VStack>
                 </Card.Body>
@@ -138,12 +139,12 @@ export default function ClaimTeamPage() {
             <Card.Body p="6">
                 <VStack gap="4" align="stretch">
                     <Box>
-                        <Text fontSize="xs" color="fg.muted">PREUZMI EKIPU</Text>
+                        <Text fontSize="xs" color="fg.muted">{t.pages.claimTeamPage.claimTeamLabel}</Text>
                         <Heading size="lg" mt="1">{preview.teamName}</Heading>
                     </Box>
 
                     <Box>
-                        <Text fontSize="sm" color="fg.muted">Turnir:</Text>
+                        <Text fontSize="sm" color="fg.muted">{t.pages.claimTeamPage.tournamentLabel}</Text>
                         <Text fontWeight="medium">
                             {preview.tournamentRef ? (
                                 <RouterLink
@@ -171,7 +172,7 @@ export default function ClaimTeamPage() {
 
                     {preview.primaryName && (
                         <Box>
-                            <Text fontSize="sm" color="fg.muted">Prijavio:</Text>
+                            <Text fontSize="sm" color="fg.muted">{t.pages.claimTeamPage.submittedByLabel}</Text>
                             <Text fontWeight="medium">
                                 {preview.primarySlug ? (
                                     <RouterLink
@@ -196,7 +197,7 @@ export default function ClaimTeamPage() {
                             borderColor="orange.200"
                         >
                             <HStack gap="2">
-                                <Badge colorPalette="orange" variant="subtle">Već preuzet</Badge>
+                                <Badge colorPalette="orange" variant="subtle">{t.pages.claimTeamPage.alreadyClaimedBadge}</Badge>
                                 {preview.coOwnerName && (
                                     <Text fontSize="sm">
                                         {preview.coOwnerName}
@@ -204,7 +205,7 @@ export default function ClaimTeamPage() {
                                 )}
                             </HStack>
                             <Text fontSize="xs" color="fg.muted" mt="2">
-                                Ekipu je već preuzeo netko drugi i ne može se ponovno preuzeti.
+                                {t.pages.claimTeamPage.alreadyClaimedNote}
                             </Text>
                         </Box>
                     )}
@@ -231,7 +232,7 @@ export default function ClaimTeamPage() {
                             <RouterLink
                                 to={`/prijava?next=${encodeURIComponent(`/preuzmi-ekipu/${token}`)}`}
                             >
-                                Prijavi se da preuzmeš
+                                {t.pages.claimTeamPage.loginToClaimCta}
                             </RouterLink>
                         </Button>
                     ) : (
@@ -247,7 +248,7 @@ export default function ClaimTeamPage() {
                             }
                             onClick={handleClaim}
                         >
-                            Preuzmi ekipu
+                            {t.pages.claimTeamPage.claimButton}
                         </Button>
                     )}
                 </VStack>

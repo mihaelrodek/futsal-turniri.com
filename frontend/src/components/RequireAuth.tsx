@@ -2,6 +2,7 @@ import React from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { Box, HStack, Spinner, Text } from "@chakra-ui/react"
 import { useAuth } from "../auth/AuthContext"
+import { useTranslation } from "../i18n"
 
 /**
  * Wrap a route element to require authentication. Anonymous visitors get
@@ -11,6 +12,7 @@ import { useAuth } from "../auth/AuthContext"
  * the login page for users who are signed-in but the SDK hasn't restored yet.
  */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
+    const t = useTranslation()
     const { user, loading } = useAuth()
     const location = useLocation()
 
@@ -18,7 +20,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
         return (
             <HStack justify="center" py="16">
                 <Spinner />
-                <Text color="fg.muted">Provjeravam prijavu…</Text>
+                <Text color="fg.muted">{t.components.requireAuth.checkingLogin}</Text>
             </HStack>
         )
     }

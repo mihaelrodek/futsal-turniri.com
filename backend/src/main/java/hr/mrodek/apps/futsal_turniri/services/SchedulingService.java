@@ -135,11 +135,13 @@ public class SchedulingService {
      * (elimination + third place), reserved even before the bracket is drawn.
      *
      * <p>{@code remainingGroupMatches} / {@code remainingKnockoutMatches} are the
-     * PERSISTED matches that still need a slot: everything that is neither played
-     * (LIVE or FINISHED) nor a bye. Mid-tournament the planner lays out only these
-     * (see {@link #previewMultiDay}/{@link #generateMultiDay}), so the counters
-     * mirror that. Both are 0 for a stage whose matches don't exist yet or are all
-     * already played, whereas the predicted totals above stay unchanged.
+     * matches that still need a slot, mirroring exactly what
+     * {@link #previewMultiDay}/{@link #generateMultiDay} will plan: for a stage
+     * with persisted rows, everything that is neither played (LIVE or FINISHED)
+     * nor a bye; for a stage with NO rows yet (fresh tournament, fixtures are
+     * only created on generate) the predicted size - the preview plans the
+     * predicted fixtures/skeleton there, so reporting 0 would wrongly disable
+     * the planner. A stage whose rows exist but are all played stays 0.
      */
     @Transactional
     public SchedulePlanInfoDto planInfo(Tournaments t) {
@@ -150,13 +152,22 @@ public class SchedulingService {
 
         // The matches actually left to (re)schedule: not played (LIVE/FINISHED),
         // not a bye. Same remaining set the preview/generate plans range over.
+        boolean groupFixturesExist = false;
+        boolean bracketExists = false;
         int remainingGroupMatches = 0;
         int remainingKnockoutMatches = 0;
         for (Matches m : matchesRepo.findByTournament_Id(t.getId())) {
-            if (m.isKnockoutBye() || isPlayed(m)) continue;
-            if (m.getStage() == MatchStage.GROUP) remainingGroupMatches++;
-            else remainingKnockoutMatches++;
+            boolean needsSlot = !m.isKnockoutBye() && !isPlayed(m);
+            if (m.getStage() == MatchStage.GROUP) {
+                groupFixturesExist = true;
+                if (needsSlot) remainingGroupMatches++;
+            } else {
+                bracketExists = true;
+                if (needsSlot) remainingKnockoutMatches++;
+            }
         }
+        if (!groupFixturesExist) remainingGroupMatches = groupMatches;
+        if (!bracketExists) remainingKnockoutMatches = knockoutMatches;
 
         return new SchedulePlanInfoDto(groupMatches, knockoutMatches, groupMatches + knockoutMatches,
                 remainingGroupMatches, remainingKnockoutMatches);

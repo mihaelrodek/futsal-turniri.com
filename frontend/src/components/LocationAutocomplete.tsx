@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Box, chakra, HStack, Input, Spinner, Text, VStack } from "@chakra-ui/react"
 import { FiMapPin } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 type NominatimAddress = {
     village?: string
@@ -91,6 +92,7 @@ export function LocationAutocomplete({
     placeholder?: string
     disabled?: boolean
 }) {
+    const t = useTranslation()
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -147,7 +149,7 @@ export function LocationAutocomplete({
                 })
                 .catch((e) => {
                     if (e?.name === "AbortError") return
-                    setError("Greška pri dohvaćanju prijedloga.")
+                    setError(t.components.locationAutocomplete.fetchError)
                     setResults([])
                 })
                 .finally(() => setLoading(false))
@@ -244,7 +246,7 @@ export function LocationAutocomplete({
                     {loading && (
                         <HStack px="3" py="2" gap="2" color="fg.muted" fontSize="sm">
                             <Spinner size="xs" />
-                            <Text>Tražim…</Text>
+                            <Text>{t.components.locationAutocomplete.searching}</Text>
                         </HStack>
                     )}
 
@@ -254,7 +256,7 @@ export function LocationAutocomplete({
 
                     {!loading && !error && results.length === 0 && (
                         <Text px="3" py="2" color="fg.muted" fontSize="sm">
-                            Nema rezultata.
+                            {t.components.locationAutocomplete.noResults}
                         </Text>
                     )}
 

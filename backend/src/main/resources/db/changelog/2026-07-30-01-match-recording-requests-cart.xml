@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Cjenik (/cjenik) self-service cart checkout: pay first, no admin
+        approval gate, one Stripe Checkout Session covering N generated
+        match_recording_requests rows.
+
+        - contact_phone: mandatory (validated) for an anonymous cart order,
+          same pattern as CameraPackageInquiry.contactPhone. Null for the
+          existing per-match request flow, which never collects a phone.
+        - cart_group_id: shared by every row created from one cart checkout
+          (Hattrick = 3 rows, Zlatna kopačka = one row per team match) so the
+          Stripe webhook can mark them all paid from a single session's
+          metadata. Null for a request filed the old way (one row, no cart).
+    -->
+    <changeSet id="2026-07-30-01-match-recording-requests-cart" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="contact_phone" type="varchar(40)"/>
+            <column name="cart_group_id" type="uuid"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

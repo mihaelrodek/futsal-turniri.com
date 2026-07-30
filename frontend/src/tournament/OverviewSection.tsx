@@ -62,6 +62,7 @@ import {
     sanitizePhone,
 } from "./parts"
 import type { EditForm } from "./parts"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Detalji" tab - the single, cohesive tournament-details card.
@@ -114,6 +115,9 @@ type OverviewSectionProps = {
 }
 
 export default function OverviewSection(props: OverviewSectionProps) {
+    // Named `tr` (not `t`) - this component's own `t` prop is the
+    // TournamentDetails DTO, not the i18n dictionary.
+    const tr = useTranslation()
     const {
         t,
         // canEdit / shareUrl / enterEdit are still part of the props
@@ -145,19 +149,19 @@ export default function OverviewSection(props: OverviewSectionProps) {
         return (
             <VStack align="stretch" gap="5">
                 {/* Osnovne informacije - identical card to the create form. */}
-                <FormSectionCard icon={<FiInfo />} title="Osnovne informacije">
+                <FormSectionCard icon={<FiInfo />} title={tr.tournamentSection.overviewSection.edit.basicInfoTitle}>
                     <VStack align="stretch" gap="4">
                         <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "1.8fr 1.5fr 1.5fr 0.9fr 0.9fr" }} gap="4">
                             <Field.Root required>
-                                <Field.Label>Ime turnira <Field.RequiredIndicator /></Field.Label>
+                                <Field.Label>{tr.tournamentSection.overviewSection.edit.nameLabel} <Field.RequiredIndicator /></Field.Label>
                                 <Input
-                                    placeholder="npr. Futsal open"
+                                    placeholder={tr.tournamentSection.overviewSection.edit.namePlaceholder}
                                     value={editForm.name}
                                     onChange={(e) => patchEdit("name", e.target.value)}
                                 />
                             </Field.Root>
                             <Field.Root required>
-                                <Field.Label>Datum i vrijeme <Field.RequiredIndicator /></Field.Label>
+                                <Field.Label>{tr.tournamentSection.overviewSection.edit.dateTimeLabel} <Field.RequiredIndicator /></Field.Label>
                                 <Box className="futsal-datepicker-wrap" w="full">
                                     <DatePicker
                                         selected={
@@ -183,10 +187,10 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                         showTimeSelect
                                         timeIntervals={15}
                                         timeFormat="HH:mm"
-                                        timeCaption="Vrijeme"
+                                        timeCaption={tr.tournamentSection.overviewSection.edit.dateTimeCaption}
                                         dateFormat="dd/MM/yyyy HH:mm"
                                         locale="hr"
-                                        placeholderText="DD/MM/GGGG HH:MM"
+                                        placeholderText={tr.tournamentSection.overviewSection.edit.dateTimePlaceholder}
                                         wrapperClassName="futsal-datepicker-input-wrap"
                                         className="futsal-datepicker-input"
                                         popperPlacement="bottom-start"
@@ -197,31 +201,31 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 klub…). When set, the read view shows THIS as the
                                 organizer instead of the creator's account name. */}
                             <Field.Root>
-                                <Field.Label>Organizator</Field.Label>
+                                <Field.Label>{tr.tournamentSection.overviewSection.edit.organizerLabel}</Field.Label>
                                 <Input
-                                    placeholder="npr. udruga, klub..."
+                                    placeholder={tr.tournamentSection.overviewSection.edit.organizerPlaceholder}
                                     value={editForm.organizerName}
                                     onChange={(e) => patchEdit("organizerName", e.target.value)}
                                     maxLength={120}
                                 />
                             </Field.Root>
                             <Field.Root>
-                                <Field.Label>Maks. ekipa</Field.Label>
+                                <Field.Label>{tr.tournamentSection.overviewSection.edit.maxTeamsLabel}</Field.Label>
                                 <Input
                                     type="number"
                                     inputMode="numeric"
                                     min={2}
-                                    placeholder="npr. 32"
+                                    placeholder={tr.tournamentSection.overviewSection.edit.maxTeamsPlaceholder}
                                     value={editForm.maxTeams}
                                     onChange={(e) => patchEdit("maxTeams", sanitizeInt(e.target.value))}
                                 />
                             </Field.Root>
                             <Field.Root>
-                                <Field.Label>Kotizacija</Field.Label>
+                                <Field.Label>{tr.tournamentSection.overviewSection.edit.entryPriceLabel}</Field.Label>
                                 <SuffixInput
                                     value={editForm.entryPrice}
                                     onChange={(v) => patchEdit("entryPrice", sanitizeMoney(v))}
-                                    placeholder="100"
+                                    placeholder={tr.tournamentSection.overviewSection.edit.entryPricePlaceholder}
                                     suffix="€"
                                 />
                             </Field.Root>
@@ -238,14 +242,14 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             {/* RIGHT - Lokacija above the map */}
                             <VStack align="stretch" gap="4" gridColumn={{ md: "2" }} order={{ base: 0, md: 1 }}>
                                 <Field.Root required>
-                                    <Field.Label>Lokacija <Field.RequiredIndicator /></Field.Label>
+                                    <Field.Label>{tr.tournamentSection.overviewSection.edit.locationLabel} <Field.RequiredIndicator /></Field.Label>
                                     <LocationAutocomplete
                                         value={editForm.location}
                                         onChange={(v) => patchEdit("location", v)}
                                         onPickSuggestion={(s) => {
                                             setEditPickedCoords({ lat: s.latitude, lng: s.longitude })
                                         }}
-                                        placeholder="Unesi lokaciju ili izaberi na karti"
+                                        placeholder={tr.tournamentSection.overviewSection.edit.locationPlaceholder}
                                     />
                                 </Field.Root>
                                 <LocationMapPicker
@@ -268,11 +272,11 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 order={{ base: 1, md: 0 }}
                             >
                                 <Field.Root>
-                                    <Field.Label>Detalji</Field.Label>
+                                    <Field.Label>{tr.tournamentSection.overviewSection.edit.detailsLabel}</Field.Label>
                                     <Textarea
                                         rows={3}
                                         resize="none"
-                                        placeholder="Dodatne informacije - pravila, parking, hrana, piće..."
+                                        placeholder={tr.tournamentSection.overviewSection.edit.detailsPlaceholder}
                                         value={editForm.details}
                                         onChange={(e) => patchEdit("details", e.target.value)}
                                     />
@@ -280,11 +284,11 @@ export default function OverviewSection(props: OverviewSectionProps) {
 
                                 {/* Web stranica organizatora - external link. */}
                                 <Field.Root>
-                                    <Field.Label>Web stranica organizatora</Field.Label>
+                                    <Field.Label>{tr.tournamentSection.overviewSection.edit.websiteLabel}</Field.Label>
                                     <Input
                                         type="url"
                                         inputMode="url"
-                                        placeholder="npr. https://facebook.com/events/..."
+                                        placeholder={tr.tournamentSection.overviewSection.edit.websitePlaceholder}
                                         value={editForm.websiteUrl}
                                         onChange={(e) => patchEdit("websiteUrl", e.target.value)}
                                         maxLength={500}
@@ -296,9 +300,9 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     <HStack gap="2" mb="1.5" fontSize="sm" fontWeight="medium">
                                         <FiPhone />
                                         <Text>
-                                            Kontakt{" "}
+                                            {tr.tournamentSection.overviewSection.edit.contactLabel}{" "}
                                             <chakra.span color="fg.muted" fontWeight="normal">
-                                                (ime i telefon)
+                                                {tr.tournamentSection.overviewSection.edit.contactHint}
                                             </chakra.span>
                                         </Text>
                                     </HStack>
@@ -308,7 +312,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                         gap="2"
                                     >
                                         <Input
-                                            placeholder="Ime organizatora"
+                                            placeholder={tr.tournamentSection.overviewSection.edit.contactNamePlaceholder}
                                             value={editForm.contactName}
                                             onChange={(e) => patchEdit("contactName", e.target.value)}
                                         />
@@ -331,7 +335,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                                 flex="1"
                                                 inputMode="numeric"
                                                 pattern="[0-9 ]*"
-                                                placeholder="91 234 5678"
+                                                placeholder={tr.tournamentSection.overviewSection.edit.contactPhonePlaceholder}
                                                 value={editForm.contactPhone}
                                                 onChange={(e) => patchEdit("contactPhone", sanitizePhone(e.target.value))}
                                             />
@@ -344,7 +348,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     <HStack gap="2" mb="2" fontSize="sm" fontWeight="medium">
                                         <FiImage />
                                         <Text>
-                                            Plakat <chakra.span color="fg.muted" fontWeight="normal">(opcionalno)</chakra.span>
+                                            {tr.tournamentSection.overviewSection.edit.posterLabel} <chakra.span color="fg.muted" fontWeight="normal">{tr.common.optionalTag}</chakra.span>
                                         </Text>
                                     </HStack>
                                     <HStack align="center" gap="3" wrap="wrap" justify={{ base: "center", md: "flex-start" }}>
@@ -369,7 +373,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                                 />
                                                 <IconButton
                                                     type="button"
-                                                    aria-label="Ukloni plakat"
+                                                    aria-label={tr.tournamentSection.overviewSection.edit.posterRemoveAria}
                                                     size="2xs"
                                                     variant="solid"
                                                     colorPalette="red"
@@ -407,10 +411,10 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 <VStack align={{ base: "center", md: "start" }} gap="1" flex="1" minW="0">
                                     <Button as="label" variant="outline" colorPalette="brand" size="sm" cursor="pointer">
                                         {posterFile
-                                            ? "Promijeni sliku"
+                                            ? tr.tournamentSection.overviewSection.edit.posterChange
                                             : t.bannerUrl && !posterRemove
-                                                ? "Zamijeni plakat"
-                                                : "Odaberi sliku"}
+                                                ? tr.tournamentSection.overviewSection.edit.posterReplace
+                                                : tr.tournamentSection.overviewSection.edit.posterPick}
                                         <input
                                             type="file"
                                             accept={POSTER_ACCEPT.join(",")}
@@ -426,11 +430,11 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                         <Text color="red.fg" fontSize="xs">{posterUploadErr}</Text>
                                     ) : posterRemove ? (
                                         <Text color="yellow.fg" fontSize="xs">
-                                            Plakat će biti uklonjen pri spremanju.
+                                            {tr.tournamentSection.overviewSection.edit.posterRemoveNotice}
                                         </Text>
                                     ) : (
                                         <Text color="fg.muted" fontSize="xs">
-                                            PNG, JPG ili WEBP, do {POSTER_MAX_MB} MB.
+                                            {tr.tournamentSection.overviewSection.edit.posterHint(POSTER_MAX_MB)}
                                         </Text>
                                     )}
                                 </VStack>
@@ -446,21 +450,21 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     fixtures exist, so changes can't desync groups/bracket). */}
                 <FormSectionCard
                     icon={<FiGrid />}
-                    title="Format natjecanja"
-                    description="Odaberi kako je turnir strukturiran."
+                    title={tr.tournamentSection.overviewSection.edit.formatTitle}
+                    description={tr.tournamentSection.overviewSection.edit.formatDescription}
                 >
                     <VStack align="stretch" gap="4">
                         {/* Podloga - ahead of Sistem igre, mirrors the create wizard.
                             Always has a value (defaults to ASFALT), so no "required"
                             marker - unlike Sistem igre it can never be left empty. */}
                         <Field.Root>
-                            <Field.Label>Podloga</Field.Label>
+                            <Field.Label>{tr.tournamentSection.overviewSection.edit.surfaceLabel}</Field.Label>
                             <SurfacePicker value={editForm.surface} onChange={(s) => patchEdit("surface", s)} />
                         </Field.Root>
 
                         {/* Sistem igre - quick presets + free text. */}
                         <Field.Root required>
-                            <Field.Label>Sistem igre</Field.Label>
+                            <Field.Label>{tr.tournamentSection.overviewSection.edit.gameSystemLabel}</Field.Label>
                             <HStack gap="1.5" wrap="wrap" align="center">
                                 {["3vs3", "4+1", "5+1"].map((sys) => (
                                     <Button
@@ -478,7 +482,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 <Input
                                     flex="1"
                                     minW="120px"
-                                    placeholder="ili upiši ručno"
+                                    placeholder={tr.tournamentSection.overviewSection.edit.gameSystemPlaceholder}
                                     value={editForm.gameSystem}
                                     onChange={(e) => patchEdit("gameSystem", e.target.value)}
                                     maxLength={40}
@@ -495,7 +499,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 px="3"
                                 py="2"
                             >
-                                Format se ne može mijenjati nakon što turnir počne.
+                                {tr.tournamentSection.overviewSection.edit.formatLockedNotice}
                             </Box>
                         ) : (
                             <Box
@@ -506,12 +510,12 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 px="3"
                                 py="2"
                             >
-                                Format se može promijeniti samo dok raspored nije generiran.
+                                {tr.tournamentSection.overviewSection.edit.formatEditableNotice}
                             </Box>
                         )}
 
                         <Field.Root>
-                            <Field.Label>Format</Field.Label>
+                            <Field.Label>{tr.tournamentSection.overviewSection.edit.formatLabel}</Field.Label>
                             <RadioGroup.Root
                                 value={editForm.format}
                                 onValueChange={(v) =>
@@ -523,12 +527,12 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     <RadioGroup.Item value="GROUPS_KNOCKOUT">
                                         <RadioGroup.ItemHiddenInput />
                                         <RadioGroup.ItemIndicator />
-                                        <RadioGroup.ItemText>Grupe + eliminacija</RadioGroup.ItemText>
+                                        <RadioGroup.ItemText>{tr.tournamentSection.overviewSection.edit.formatGroupsKnockout}</RadioGroup.ItemText>
                                     </RadioGroup.Item>
                                     <RadioGroup.Item value="KNOCKOUT_ONLY">
                                         <RadioGroup.ItemHiddenInput />
                                         <RadioGroup.ItemIndicator />
-                                        <RadioGroup.ItemText>Samo eliminacija</RadioGroup.ItemText>
+                                        <RadioGroup.ItemText>{tr.tournamentSection.overviewSection.edit.formatKnockoutOnly}</RadioGroup.ItemText>
                                     </RadioGroup.Item>
                                 </HStack>
                             </RadioGroup.Root>
@@ -538,14 +542,13 @@ export default function OverviewSection(props: OverviewSectionProps) {
 
                         {editForm.format === "GROUPS_KNOCKOUT" && (
                             <Box fontSize="sm" color="fg.muted">
-                                Broj grupa i koliko ekipa prolazi dalje biraju se kod izvlačenja
-                                grupa (tab Ždrijeb), prema broju prijavljenih ekipa.
+                                {tr.tournamentSection.overviewSection.edit.formatGroupsHint}
                             </Box>
                         )}
 
                         {editForm.format === "KNOCKOUT_ONLY" && (
                             <Box fontSize="sm" color="fg.muted">
-                                Sve prijavljene ekipe idu izravno u eliminacijsku ljestvicu, bez grupne faze.
+                                {tr.tournamentSection.overviewSection.edit.formatKnockoutHint}
                             </Box>
                         )}
                     </VStack>
@@ -556,8 +559,8 @@ export default function OverviewSection(props: OverviewSectionProps) {
                     editMissingRequired in the page shell). */}
                 <FormSectionCard
                     icon={<FiGift />}
-                    title="Nagradni fond"
-                    description="Za svako mjesto upiši iznos (€) i po želji dodatnu napomenu (npr. Pehar, Prijelazni pehar). Nagrade za 1., 2. i 3. mjesto su obavezne; 4. mjesto i napomena su neobavezni."
+                    title={tr.tournamentSection.overviewSection.edit.rewardsTitle}
+                    description={tr.tournamentSection.overviewSection.edit.rewardsDescription}
                 >
                     <VStack align="stretch" gap="3">
                         <Box
@@ -571,9 +574,9 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             letterSpacing="0.12em"
                             color="fg.muted"
                         >
-                            <Box>MJESTO</Box>
-                            <Box>IZNOS</Box>
-                            <Box>OSTALO</Box>
+                            <Box>{tr.tournamentSection.overviewSection.rewardHeaders.place}</Box>
+                            <Box>{tr.tournamentSection.overviewSection.rewardHeaders.amount}</Box>
+                            <Box>{tr.tournamentSection.overviewSection.rewardHeaders.other}</Box>
                         </Box>
                         {([
                             { amountKey: "rewardFirst", noteKey: "rewardFirstNote", label: "1.", required: true },
@@ -620,7 +623,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 <Input
                                     value={editForm[r.noteKey]}
                                     onChange={(e) => patchEdit(r.noteKey, e.target.value)}
-                                    placeholder="npr. Pehar, Prijelazni pehar…"
+                                    placeholder={tr.tournamentSection.overviewSection.edit.rewardNotePlaceholder}
                                     maxLength={200}
                                 />
                             </Box>
@@ -657,12 +660,12 @@ export default function OverviewSection(props: OverviewSectionProps) {
                             message was removed on request. */}
                         {editMissingRequired.length > 0 && (
                             <Text fontSize="xs" color="red.fg" textAlign="right">
-                                {`Nedostaje: ${editMissingRequired.join(", ")}`}
+                                {tr.tournamentSection.overviewSection.edit.missingRequired(editMissingRequired.join(", "))}
                             </Text>
                         )}
                         <HStack gap="2" justify="flex-end">
                             <Button variant="ghost" onClick={cancelEdit} disabled={savingDetails}>
-                                Odustani
+                                {tr.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"
@@ -673,7 +676,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                     editMissingRequired.length > 0 || savingDetails
                                 }
                             >
-                                Spremi izmjene
+                                {tr.tournamentSection.overviewSection.edit.saveChanges}
                             </Button>
                         </HStack>
                     </VStack>
@@ -693,6 +696,7 @@ export default function OverviewSection(props: OverviewSectionProps) {
  *  empty box. Clamping to ~12 lines and only offering a toggle when the text
  *  genuinely overflows keeps short texts looking exactly as before. */
 function DetailsText({ text }: { text: string }) {
+    const tr = useTranslation()
     const textRef = useRef<HTMLParagraphElement>(null)
     const [expanded, setExpanded] = useState(false)
     const [overflowing, setOverflowing] = useState(false)
@@ -731,7 +735,7 @@ function DetailsText({ text }: { text: string }) {
                     fontWeight={600}
                     _hover={{ textDecoration: "underline" }}
                 >
-                    {expanded ? "Prikaži manje" : "Prikaži više"}
+                    {expanded ? tr.tournamentSection.overviewSection.read.showLess : tr.tournamentSection.overviewSection.read.showMore}
                     {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
                 </chakra.button>
             )}
@@ -752,6 +756,9 @@ function DetailsReadView({
     t: TournamentDetails
     teamCount: number
 }) {
+    // Named `tr` (not `t`) - this component's own `t` prop is the
+    // TournamentDetails DTO, not the i18n dictionary.
+    const tr = useTranslation()
     // Prize fund - up to 4 places, each an amount + optional note ("Ostalo").
     // A place is shown only if it has an amount or a note. Medal-tint for the
     // top three, neutral for 4th.
@@ -782,7 +789,7 @@ function DetailsReadView({
                         <Box position="absolute" top="0" left="0" w="3px" h="100%" bg="var(--chakra-colors-pitch-600)" />
                         <HStack color="fg.muted" gap="1.5">
                             <FiUser size={12} />
-                            <MonoLabel>ORGANIZATOR</MonoLabel>
+                            <MonoLabel>{tr.tournamentSection.overviewSection.read.organizerLabel}</MonoLabel>
                         </HStack>
                         <HStack gap="2" mt="1.5">
                             <Flex
@@ -812,7 +819,7 @@ function DetailsReadView({
                     <Box position="absolute" top="0" left="0" w="3px" h="100%" bg="var(--chakra-colors-pitch-600)" />
                     <HStack color="fg.muted" gap="1.5">
                         <FiPhone size={12} />
-                        <MonoLabel>KONTAKT</MonoLabel>
+                        <MonoLabel>{tr.tournamentSection.overviewSection.read.contactLabel}</MonoLabel>
                     </HStack>
                     <Box mt="1.5">
                         {t.contactName || t.contactPhone ? (
@@ -838,20 +845,20 @@ function DetailsReadView({
                                 )}
                             </>
                         ) : (
-                            <Text fontSize="14px" color="fg.muted">Nije navedeno</Text>
+                            <Text fontSize="14px" color="fg.muted">{tr.tournamentSection.overviewSection.read.notSpecified}</Text>
                         )}
                     </Box>
                 </Box>
                 <AccentStat
                     accent="var(--chakra-colors-pitch-400)"
                     icon={<FiCalendar size={12} />}
-                    label="DATUM"
+                    label={tr.tournamentSection.overviewSection.read.dateLabel}
                     value={formatDate(t.startAt)}
                 />
                 <AccentStat
                     accent="var(--chakra-colors-pitch-500)"
                     icon={<FiClock size={12} />}
-                    label="VRIJEME"
+                    label={tr.tournamentSection.overviewSection.read.timeLabel}
                     value={formatTime(t.startAt)}
                 />
             </Grid>
@@ -885,7 +892,7 @@ function DetailsReadView({
                     stick it up at the venue. */}
                 <SectionCard
                     icon={FiGrid}
-                    title="QR kod"
+                    title={tr.tournamentSection.overviewSection.read.qrTitle}
                     padding="16px"
                 >
                     <VStack align="center" gap="2">
@@ -895,7 +902,7 @@ function DetailsReadView({
                             // teal mark) would otherwise stay stale for a day.
                             // Bump this version whenever the rendered QR changes.
                             src={`/api/tournaments/${t.slug ?? t.uuid}/qr.png?v=3`}
-                            alt={`QR kod za turnir ${t.name}`}
+                            alt={tr.tournamentSection.overviewSection.read.qrAlt(t.name)}
                             w="200px"
                             h="200px"
                             rounded="lg"
@@ -921,7 +928,7 @@ function DetailsReadView({
                             rounded="lg"
                             _hover={{ bg: "pitch.600" }}
                         >
-                            <FiDownload size={14} /> Preuzmi QR
+                            <FiDownload size={14} /> {tr.tournamentSection.overviewSection.read.qrDownload}
                         </chakra.a>
                     </VStack>
                 </SectionCard>
@@ -945,7 +952,7 @@ function DetailsReadView({
                         <AccentStat
                             accent="var(--chakra-colors-accent-amber)"
                             icon={<FiUsers size={12} />}
-                            label="EKIPE"
+                            label={tr.tournamentSection.overviewSection.read.teamsLabel}
                             value={typeof t.maxTeams === "number" ? `${teamCount} / ${t.maxTeams}` : `${teamCount} / ∞`}
                             h="full"
                         />
@@ -953,7 +960,7 @@ function DetailsReadView({
                             <AccentStat
                                 accent="var(--chakra-colors-accent-goal)"
                                 icon={<FiDollarSign size={12} />}
-                                label="KOTIZACIJA"
+                                label={tr.tournamentSection.overviewSection.read.entryPriceLabel}
                                 value={fmtMoney(t.entryPrice)}
                                 h="full"
                             />
@@ -967,7 +974,7 @@ function DetailsReadView({
                         <AccentStat
                             accent={SURFACE_META[t.surface ?? "ASFALT"].color}
                             icon={<SurfaceSwatch color={SURFACE_META[t.surface ?? "ASFALT"].color} size="10px" />}
-                            label="PODLOGA"
+                            label={tr.tournamentSection.overviewSection.read.surfaceLabel}
                             value={SURFACE_META[t.surface ?? "ASFALT"].label}
                             h="full"
                         />
@@ -975,7 +982,7 @@ function DetailsReadView({
                             <AccentStat
                                 accent="var(--chakra-colors-pitch-500)"
                                 icon={<FiGrid size={12} />}
-                                label="SISTEM IGRE"
+                                label={tr.tournamentSection.overviewSection.read.gameSystemLabel}
                                 value={t.gameSystem}
                                 h="full"
                             />
@@ -1012,7 +1019,7 @@ function DetailsReadView({
                                 </Flex>
                                 <Box minW="0">
                                     <Text fontSize="15px" fontWeight={700} color="fg.ink">
-                                        Lokacija
+                                        {tr.tournamentSection.overviewSection.read.locationTitle}
                                     </Text>
                                     <Text fontSize="13px" color="fg.muted">
                                         {t.location}
@@ -1039,7 +1046,7 @@ function DetailsReadView({
                                 flexShrink={0}
                                 _hover={{ bg: "pitch.100", textDecoration: "none" }}
                             >
-                                <FiExternalLink /> Otvori u kartama
+                                <FiExternalLink /> {tr.tournamentSection.overviewSection.read.openInMaps}
                             </chakra.a>
                         </Box>
                     ) : null}
@@ -1066,7 +1073,7 @@ function DetailsReadView({
                         textDecoration="none"
                         _hover={{ bg: "bg.surfaceTint", textDecoration: "none" }}
                     >
-                        <FiExternalLink /> Web stranica organizatora
+                        <FiExternalLink /> {tr.tournamentSection.overviewSection.read.websiteLink}
                     </chakra.a>
                 )}
 
@@ -1075,7 +1082,7 @@ function DetailsReadView({
                     <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="xl" p="5">
                         <HStack color="fg.muted" gap="1.5" mb="3">
                             <FiInfo size={13} />
-                            <MonoLabel>DETALJI I FORMAT</MonoLabel>
+                            <MonoLabel>{tr.tournamentSection.overviewSection.read.detailsFormatLabel}</MonoLabel>
                         </HStack>
                         {t.details && <DetailsText text={t.details} />}
                         {t.format && <FormatSketch format={t.format} />}
@@ -1095,7 +1102,7 @@ function DetailsReadView({
                 {rewardRows.length > 0 && (
                     <SectionCard
                         icon={FiGift}
-                        title="Nagradni fond"
+                        title={tr.tournamentSection.overviewSection.read.rewardsTitle}
                         action={
                             totalReward > 0 ? (
                                 <Box
@@ -1109,7 +1116,7 @@ function DetailsReadView({
                                     fontFamily="mono"
                                     letterSpacing="0.05em"
                                 >
-                                    UKUPNO {fmtMoney(totalReward)}
+                                    {tr.tournamentSection.overviewSection.read.rewardsTotal(fmtMoney(totalReward))}
                                 </Box>
                             ) : null
                         }
@@ -1134,9 +1141,9 @@ function DetailsReadView({
                                 letterSpacing="0.12em"
                                 color="fg.muted"
                             >
-                                <Box>MJESTO</Box>
-                                <Box>IZNOS</Box>
-                                <Box>OSTALO</Box>
+                                <Box>{tr.tournamentSection.overviewSection.rewardHeaders.place}</Box>
+                                <Box>{tr.tournamentSection.overviewSection.rewardHeaders.amount}</Box>
+                                <Box>{tr.tournamentSection.overviewSection.rewardHeaders.other}</Box>
                             </Box>
                             {rewardRows.map((r, i) => {
                                 const color = prizeColors[r.place - 1] ?? prizeColors[3]

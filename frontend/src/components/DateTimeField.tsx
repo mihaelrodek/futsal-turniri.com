@@ -3,6 +3,7 @@ import DatePicker, { registerLocale } from "react-datepicker"
 import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
 import "../datepicker.css"
+import { useTranslation } from "../i18n"
 
 // Croatian calendar locale (month/day names, week starts Monday). The visible
 // format is forced via dateFormat below so it's dd/MM/yyyy HH:mm (24h)
@@ -19,7 +20,7 @@ export function DateTimeField({
     value,
     onChange,
     minDate,
-    placeholder = "DD/MM/GGGG HH:MM",
+    placeholder,
     timeIntervals = 5,
     compact = false,
 }: {
@@ -32,6 +33,7 @@ export function DateTimeField({
     /** Smaller trigger input for tight rows (e.g. the schedule list). */
     compact?: boolean
 }) {
+    const t = useTranslation()
     return (
         <Box className="futsal-datepicker-wrap" w="full">
             <DatePicker
@@ -40,11 +42,11 @@ export function DateTimeField({
                 showTimeSelect
                 timeIntervals={timeIntervals}
                 timeFormat="HH:mm"
-                timeCaption="Vrijeme"
+                timeCaption={t.components.dateTimeField.timeCaption}
                 dateFormat="dd/MM/yyyy HH:mm"
                 locale="hr"
                 minDate={minDate}
-                placeholderText={placeholder}
+                placeholderText={placeholder ?? t.components.dateTimeField.placeholderDefault}
                 wrapperClassName="futsal-datepicker-input-wrap"
                 className={
                     compact

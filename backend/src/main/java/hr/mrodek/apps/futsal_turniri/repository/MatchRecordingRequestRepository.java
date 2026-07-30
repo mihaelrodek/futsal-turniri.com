@@ -34,6 +34,11 @@ public class MatchRecordingRequestRepository implements AppRepository<MatchRecor
         return list("recording.id = ?1", recordingId);
     }
 
+    /** Every row created from one /cjenik cart checkout - the Stripe webhook marks them all paid together. */
+    public List<MatchRecordingRequest> findByCartGroupId(UUID cartGroupId) {
+        return list("cartGroupId", cartGroupId);
+    }
+
     /**
      * True when the user already has an open (REQUESTED or APPROVED) FULL_MATCH
      * request for this match - used to block duplicate submissions. Goal-clip

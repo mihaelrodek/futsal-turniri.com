@@ -5,6 +5,7 @@ import { LiveClock } from "./liveMatch"
 import { useTeamColors, TeamKitChip } from "./jersey"
 import type { TeamKit } from "../api/tournaments"
 import type { LiveMatch } from "../api/live"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    ActiveMatchOverview - a small "there's a match live right now" banner shown
@@ -57,6 +58,7 @@ function ActiveMatchCard({
     colors: Record<string, TeamKit>
     compact: boolean
 }) {
+    const t = useTranslation()
     const isTimer = m.liveMode === "TIMER"
     // In the stacked (SofaScore-style) layout every team name gets a full row
     // to itself — only its own score sits to the right — so names have far more
@@ -100,7 +102,7 @@ function ActiveMatchCard({
                         <HStack gap="1.5" flexShrink={0}>
                             <PulseDot color="accent.red" size={8} glow />
                             <Text fontFamily="mono" fontSize="10px" fontWeight={800} letterSpacing="0.1em" color="accent.red">
-                                UŽIVO
+                                {t.components.activeMatchOverview.liveLabel}
                             </Text>
                         </HStack>
                     ) : (
@@ -118,7 +120,7 @@ function ActiveMatchCard({
                             flexShrink={0}
                         >
                             <PulseDot color="white" size={5} />
-                            UŽIVO
+                            {t.components.activeMatchOverview.liveLabel}
                         </HStack>
                     )}
                     {isTimer && m.liveStartedAt ? (
@@ -135,7 +137,7 @@ function ActiveMatchCard({
                         />
                     ) : compact ? null : (
                         <Text fontSize="11px" fontWeight={700} color="pitch.500">
-                            NA UTAKMICU →
+                            {t.components.activeMatchOverview.openMatchCta}
                         </Text>
                     )}
                 </Flex>

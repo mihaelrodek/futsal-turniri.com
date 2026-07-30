@@ -12,6 +12,7 @@ import {
 import { fetchPlayers } from "../api/players"
 import type { TournamentDetails } from "../types/tournaments"
 import { showError } from "../toaster"
+import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    TournamentResults - the golden "Rezultati turnira" panel shown below the
@@ -52,6 +53,7 @@ export default function TournamentResults({
      *  awards grid and helper text. Default false → the full golden band. */
     compact?: boolean
 }) {
+    const tr = useTranslation()
     const [editing, setEditing] = useState(false)
     const [sug, setSug] = useState<AwardSuggestions | null>(null)
     /** All players of the tournament, for the award dropdowns. Loaded from the
@@ -63,9 +65,9 @@ export default function TournamentResults({
     const [saving, setSaving] = useState(false)
 
     const podium: PodiumSlot[] = [
-        { place: 1, label: "Pobjednik", color: GOLD, name: t.winnerName },
-        { place: 2, label: "2. mjesto", color: SILVER, name: t.secondPlaceName },
-        { place: 3, label: "3. mjesto", color: BRONZE, name: t.thirdPlaceName },
+        { place: 1, label: tr.components.tournamentResults.podiumWinner, color: GOLD, name: t.winnerName },
+        { place: 2, label: tr.components.tournamentResults.podiumSecond, color: SILVER, name: t.secondPlaceName },
+        { place: 3, label: tr.components.tournamentResults.podiumThird, color: BRONZE, name: t.thirdPlaceName },
     ]
     const shownPodium = podium.filter((p) => p.name && p.name.trim())
     const hasAwards = !!(t.bestScorerName || t.bestPlayerName || t.bestGoalkeeperName)
@@ -79,9 +81,9 @@ export default function TournamentResults({
         label: string
         name?: string | null
     }[] = [
-        { key: "scorer", icon: FaFutbol, color: GOLD, label: "Najbolji strijelac", name: t.bestScorerName },
-        { key: "mvp", icon: FaStar, color: SILVER, label: "MVP", name: t.bestPlayerName },
-        { key: "gk", icon: FaShieldAlt, color: BRONZE, label: "Najbolji vratar", name: t.bestGoalkeeperName },
+        { key: "scorer", icon: FaFutbol, color: GOLD, label: tr.components.tournamentResults.awardScorer, name: t.bestScorerName },
+        { key: "mvp", icon: FaStar, color: SILVER, label: tr.components.tournamentResults.awardMvp, name: t.bestPlayerName },
+        { key: "gk", icon: FaShieldAlt, color: BRONZE, label: tr.components.tournamentResults.awardGoalkeeper, name: t.bestGoalkeeperName },
     ]
     const shownAwards = individualAwards.filter((a) => a.name && a.name.trim())
 
@@ -137,7 +139,10 @@ export default function TournamentResults({
             onSaved(updated)
             setEditing(false)
         } catch (e: any) {
-            showError("Greška", String(e?.response?.data ?? e?.message ?? "Spremanje nije uspjelo."))
+            showError(
+                tr.components.tournamentResults.errorTitle,
+                String(e?.response?.data ?? e?.message ?? tr.components.tournamentResults.saveFailed),
+            )
         } finally {
             setSaving(false)
         }
@@ -149,28 +154,27 @@ export default function TournamentResults({
     const editingForm = (
         <VStack align="stretch" gap={compact ? "3" : "4"}>
             <Text fontSize={compact ? "11px" : "sm"} color="fg.muted">
-                Odaberi nagrade od prijavljenih igrača. Strijelac je predložen
-                automatski; za vratara je predložena ekipa s najboljom obranom.
+                {tr.components.tournamentResults.editHint}
             </Text>
 
             <AwardPicker
                 icon={FaFutbol}
                 color={GOLD}
-                label="Najbolji strijelac"
+                label={tr.components.tournamentResults.awardScorer}
                 value={scorer}
                 onChange={setScorer}
                 players={players}
                 compact={compact}
                 hint={
                     sug?.bestScorer?.name
-                        ? `Prijedlog: ${sug.bestScorer.name} (${sug.bestScorer.goals} gol${sug.bestScorer.goals === 1 ? "" : "ova"})`
+                        ? tr.components.tournamentResults.scorerHint(sug.bestScorer.name, sug.bestScorer.goals)
                         : undefined
                 }
             />
             <AwardPicker
                 icon={FaStar}
                 color={SILVER}
-                label="MVP (najbolji igrač)"
+                label={tr.components.tournamentResults.awardMvpFull}
                 value={mvp}
                 onChange={setMvp}
                 players={players}
@@ -179,18 +183,22 @@ export default function TournamentResults({
             <AwardPicker
                 icon={FaShieldAlt}
                 color={BRONZE}
-                label="Najbolji vratar"
+                label={tr.components.tournamentResults.awardGoalkeeper}
                 value={gk}
                 onChange={setGk}
                 players={players}
                 compact={compact}
                 hint={
                     sug?.bestGoalkeeperTeam?.teamName
-                        ? `Preporuka: ekipa ${sug.bestGoalkeeperTeam.teamName}` +
-                          (sug.bestGoalkeeperTeam.reachedStage
-                              ? ` (${sug.bestGoalkeeperTeam.reachedStage}, ${sug.bestGoalkeeperTeam.goalsConceded} primljenih)`
-                              : "") +
-                          " - odaberi njihovog vratara"
+                        ? tr.components.tournamentResults.goalkeeperHint(
+                              sug.bestGoalkeeperTeam.teamName,
+                              sug.bestGoalkeeperTeam.reachedStage
+                                  ? tr.components.tournamentResults.goalkeeperHintExtra(
+                                        sug.bestGoalkeeperTeam.reachedStage,
+                                        sug.bestGoalkeeperTeam.goalsConceded,
+                                    )
+                                  : undefined,
+                          )
                         : undefined
                 }
             />
@@ -207,7 +215,7 @@ export default function TournamentResults({
                         onClick={save}
                         loading={saving}
                     >
-                        Spremi nagrade
+                        {tr.components.tournamentResults.saveAwards}
                     </Button>
                     <Button
                         variant="ghost"
@@ -216,7 +224,7 @@ export default function TournamentResults({
                         onClick={() => setEditing(false)}
                         disabled={saving}
                     >
-                        Odustani
+                        {tr.common.cancel}
                     </Button>
                 </VStack>
             ) : (
@@ -227,7 +235,7 @@ export default function TournamentResults({
                         onClick={() => setEditing(false)}
                         disabled={saving}
                     >
-                        Odustani
+                        {tr.common.cancel}
                     </Button>
                     <Button
                         variant="solid"
@@ -236,7 +244,7 @@ export default function TournamentResults({
                         onClick={save}
                         loading={saving}
                     >
-                        Spremi nagrade
+                        {tr.components.tournamentResults.saveAwards}
                     </Button>
                 </HStack>
             )}
@@ -284,7 +292,7 @@ export default function TournamentResults({
                         letterSpacing="-0.01em"
                         color="fg.ink"
                     >
-                        Rezultati
+                        {tr.components.tournamentResults.resultsCompact}
                     </Text>
                 </HStack>
 
@@ -393,7 +401,7 @@ export default function TournamentResults({
                                 px="1"
                                 onClick={enterEdit}
                             >
-                                <FiEdit2 /> {hasAwards ? "Uredi nagrade" : "Dodijeli nagrade"}
+                                <FiEdit2 /> {hasAwards ? tr.components.tournamentResults.editAwards : tr.components.tournamentResults.assignAwards}
                             </Button>
                         )}
                         {onFinish && (
@@ -404,7 +412,7 @@ export default function TournamentResults({
                                 loading={finishing}
                                 onClick={onFinish}
                             >
-                                <FaTrophy /> Završi turnir
+                                <FaTrophy /> {tr.components.tournamentResults.finishTournament}
                             </Button>
                         )}
                     </VStack>
@@ -446,13 +454,13 @@ export default function TournamentResults({
                         letterSpacing="-0.01em"
                         color="fg.ink"
                     >
-                        Rezultati turnira
+                        {tr.components.tournamentResults.resultsFull}
                     </Text>
                 </HStack>
                 {canEdit && !editing && (
                     <HStack gap="2" flexShrink={0}>
                         <Button size="xs" variant="outline" onClick={enterEdit}>
-                            <FiEdit2 /> {hasAwards ? "Uredi nagrade" : "Dodijeli nagrade"}
+                            <FiEdit2 /> {hasAwards ? tr.components.tournamentResults.editAwards : tr.components.tournamentResults.assignAwards}
                         </Button>
                         {/* Only before the tournament is marked finished. */}
                         {onFinish && (
@@ -463,7 +471,7 @@ export default function TournamentResults({
                                 loading={finishing}
                                 onClick={onFinish}
                             >
-                                <FaTrophy /> Završi turnir
+                                <FaTrophy /> {tr.components.tournamentResults.finishTournament}
                             </Button>
                         )}
                     </HStack>
@@ -525,14 +533,14 @@ export default function TournamentResults({
                     editingForm
                 ) : hasAwards ? (
                     <Flex gap="3" wrap="wrap">
-                        <AwardMedal icon={FaFutbol} color={GOLD} label="Najbolji strijelac" name={t.bestScorerName} />
-                        <AwardMedal icon={FaStar} color={SILVER} label="MVP" name={t.bestPlayerName} />
-                        <AwardMedal icon={FaShieldAlt} color={BRONZE} label="Najbolji vratar" name={t.bestGoalkeeperName} />
+                        <AwardMedal icon={FaFutbol} color={GOLD} label={tr.components.tournamentResults.awardScorer} name={t.bestScorerName} />
+                        <AwardMedal icon={FaStar} color={SILVER} label={tr.components.tournamentResults.awardMvp} name={t.bestPlayerName} />
+                        <AwardMedal icon={FaShieldAlt} color={BRONZE} label={tr.components.tournamentResults.awardGoalkeeper} name={t.bestGoalkeeperName} />
                     </Flex>
                 ) : (
                     canEdit && (
                         <Text fontSize="sm" color="fg.muted">
-                            Nagrade još nisu dodijeljene. Klikni "Dodijeli nagrade" za prijedloge.
+                            {tr.components.tournamentResults.noAwardsYet}
                         </Text>
                     )
                 )}
@@ -561,9 +569,10 @@ function AwardPicker({
     hint?: string
     compact?: boolean
 }) {
+    const tr = useTranslation()
     const byTeam = new Map<string, string[]>()
     for (const p of players) {
-        const team = p.teamName?.trim() || "Bez ekipe"
+        const team = p.teamName?.trim() || tr.components.tournamentResults.noTeamGroup
         if (!byTeam.has(team)) byTeam.set(team, [])
         byTeam.get(team)!.push(p.name)
     }
@@ -584,7 +593,7 @@ function AwardPicker({
                         value={value}
                         onChange={(e) => onChange(e.target.value)}
                     >
-                        <option value="">- odaberi igrača -</option>
+                        <option value="">{tr.components.tournamentResults.pickPlayerOption}</option>
                         {value && !known.has(value) && <option value={value}>{value}</option>}
                         {[...byTeam.entries()].map(([team, names]) => (
                             <optgroup key={team} label={team}>
@@ -604,7 +613,7 @@ function AwardPicker({
                 <Input
                     size="sm"
                     w="full"
-                    placeholder="Ime i prezime"
+                    placeholder={tr.components.tournamentResults.playerNamePlaceholder}
                     value={value}
                     onChange={(e) => onChange(e.target.value.toUpperCase())}
                 />

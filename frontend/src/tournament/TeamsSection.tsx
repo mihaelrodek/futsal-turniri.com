@@ -1229,7 +1229,7 @@ function RosterPanel({
                         each keeps its exact handler/appearance, just laid out
                         in a row that can wrap under the title. */}
                     {canEdit && (
-                        <HStack gap="2" wrap="wrap">
+                        <HStack gap="1.5" wrap="wrap">
                             {/* Jersey-colour picker - organizer only. Its own
                                 endpoint, so it works regardless of edit mode
                                 and never races the teams-list save. */}
@@ -1244,7 +1244,7 @@ function RosterPanel({
                                  new player. */}
                             {!adding && (
                                 <Button
-                                    size="sm"
+                                    size="xs"
                                     variant={editMode ? "solid" : "outline"}
                                     colorPalette={editMode ? "brand" : "gray"}
                                     onClick={() => setEditMode((v) => !v)}
@@ -1265,7 +1265,7 @@ function RosterPanel({
                             {editMode && canEditTeamName && (
                                 <IconButton
                                     aria-label={t.teams.deleteTeamAria}
-                                    size="sm"
+                                    size="xs"
                                     variant="outline"
                                     colorPalette="red"
                                     onClick={onDeleteTeam}
@@ -1277,7 +1277,7 @@ function RosterPanel({
                             {!adding && (
                                 <>
                                     <Button
-                                        size="sm"
+                                        size="xs"
                                         variant="outline"
                                         colorPalette="brand"
                                         onClick={() => setBulkOpen(true)}
@@ -1286,7 +1286,7 @@ function RosterPanel({
                                         <FiPlus /> {t.teams.importManyTeams}
                                     </Button>
                                     <Button
-                                        size="sm"
+                                        size="xs"
                                         variant="solid"
                                         colorPalette="brand"
                                         onClick={() => setAdding(true)}

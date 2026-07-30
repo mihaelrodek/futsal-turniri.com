@@ -1,5 +1,6 @@
 import { Box, HStack, Text, VStack } from "@chakra-ui/react"
 import { FiShare, FiPlusSquare } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 /**
  * Shared three-step "Add to Home Screen" walkthrough for iOS Safari.
@@ -15,35 +16,35 @@ import { FiShare, FiPlusSquare } from "react-icons/fi"
  * FiPlusSquare glyphs to match what the user will see in Safari's UI.
  */
 export default function IosInstallSteps() {
+    const t = useTranslation()
     return (
         <VStack align="stretch" gap="3">
             <Text fontSize="sm" color="fg.muted">
-                Otvori stranicu u Safari pregledniku, a zatim:
+                {t.components.iosInstallSteps.intro}
             </Text>
 
             <Step n={1}>
-                Klikni ikonu{" "}
+                {t.components.iosInstallSteps.step1Before}{" "}
                 <Box as="span" display="inline-flex" alignItems="center">
                     <FiShare />
                 </Box>{" "}
-                <strong>Podijeli</strong> u donjem dijelu Safarija.
+                <strong>{t.components.iosInstallSteps.step1Bold}</strong> {t.components.iosInstallSteps.step1After}
             </Step>
 
             <Step n={2}>
-                Pomakni se i odaberi{" "}
+                {t.components.iosInstallSteps.step2Before}{" "}
                 <Box as="span" display="inline-flex" alignItems="center">
                     <FiPlusSquare />
                 </Box>{" "}
-                <strong>Dodaj na početni zaslon</strong>.
+                <strong>{t.components.iosInstallSteps.step2Bold}</strong>.
             </Step>
 
             <Step n={3}>
-                Potvrdi <strong>Dodaj</strong> u gornjem desnom kutu.
+                {t.components.iosInstallSteps.step3Before} <strong>{t.components.iosInstallSteps.step3Bold}</strong> {t.components.iosInstallSteps.step3After}
             </Step>
 
             <Text fontSize="xs" color="fg.muted" pt="2">
-                Nakon dodavanja, ikona aplikacije će se pojaviti na tvojem
-                početnom zaslonu i otvarat će se kao samostalna aplikacija.
+                {t.components.iosInstallSteps.outro}
             </Text>
         </VStack>
     )

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { FiCalendar, FiMail, FiPhone } from "react-icons/fi"
 import { fetchCameraInquiries } from "../api/cameraInquiry"
 import { qk } from "../queryClient"
+import { useTranslation } from "../i18n"
 
 /**
  * Admin-only read list of "zatraži ponudu" leads for the custom camera
@@ -10,6 +11,7 @@ import { qk } from "../queryClient"
  * admin follows up directly by email/phone, same as any other lead.
  */
 export default function AdminCameraInquiriesTab() {
+    const t = useTranslation()
     const { data: inquiries, isLoading } = useQuery({
         queryKey: qk.adminCameraInquiries,
         queryFn: fetchCameraInquiries,
@@ -21,11 +23,11 @@ export default function AdminCameraInquiriesTab() {
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <VStack align="stretch" gap="1" mb="4">
                         <HStack gap="2">
-                            <Text fontWeight={700} fontSize="lg">Zahtjevi za ponudu</Text>
+                            <Text fontWeight={700} fontSize="lg">{t.components.adminCameraInquiriesTab.title}</Text>
                             {inquiries && <Badge colorPalette="pitch" variant="subtle">{inquiries.length}</Badge>}
                         </HStack>
                         <Text fontSize="sm" color="fg.muted">
-                            Upiti za kamera paket poslani preko Cjenika - prati kontakt izravno.
+                            {t.components.adminCameraInquiriesTab.description}
                         </Text>
                     </VStack>
 
@@ -33,7 +35,7 @@ export default function AdminCameraInquiriesTab() {
                         <HStack justify="center" py="8"><Spinner /></HStack>
                     ) : !inquiries || inquiries.length === 0 ? (
                         <Text color="fg.muted" fontSize="sm" py="4" textAlign="center">
-                            Još nema zahtjeva.
+                            {t.components.adminCameraInquiriesTab.empty}
                         </Text>
                     ) : (
                         <VStack align="stretch" gap="3">

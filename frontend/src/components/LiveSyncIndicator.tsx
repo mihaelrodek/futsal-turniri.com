@@ -1,5 +1,6 @@
 import { HStack, Spinner, Text } from "@chakra-ui/react"
 import { FiCheckCircle, FiWifiOff } from "react-icons/fi"
+import { useTranslation } from "../i18n"
 
 /**
  * Tiny status pill for offline live-scoring. Hidden when everything is synced
@@ -15,6 +16,7 @@ export function LiveSyncIndicator({
     pending: number
     syncing: boolean
 }) {
+    const t = useTranslation()
     // All good - nothing to show.
     if (online && pending === 0 && !syncing) return null
 
@@ -23,11 +25,11 @@ export function LiveSyncIndicator({
 
     const label = offline
         ? pending > 0
-            ? `Bez veze · ${pending} nespremljeno`
-            : "Bez veze"
+            ? t.components.liveSyncIndicator.offlinePending(pending)
+            : t.components.liveSyncIndicator.offline
         : draining
-            ? `Sinkronizacija…${pending > 0 ? ` (${pending})` : ""}`
-            : "Spremljeno"
+            ? t.components.liveSyncIndicator.syncing(pending)
+            : t.components.liveSyncIndicator.synced
 
     const palette = offline ? "orange" : draining ? "blue" : "green"
 
