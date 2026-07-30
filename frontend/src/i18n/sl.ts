@@ -894,6 +894,8 @@ export const sl: Dictionary = {
             totalLabel: "Skupaj",
             emptySummaryHint: "Dodaj postavko za nadaljevanje plačila…",
             incompleteConfigNote: "Za vsako postavko dokončaj izbiro turnirja/tekme pred plačilom.",
+            unconfiguredLabel: "Še ni konfigurirano",
+            configureButton: "Konfiguriraj",
             payButton: (price: string) => `Plačaj ${price}`,
         },
         privacyPage: {
@@ -1084,7 +1086,7 @@ export const sl: Dictionary = {
                     ],
                 },
                 team: {
-                    name: "Zlati čevelj",
+                    name: "Premium",
                     tagline: "Cel turnir, vse tekme tvoje ekipe.",
                     features: [
                         "Posnetki vseh odigranih tekem s turnirja",

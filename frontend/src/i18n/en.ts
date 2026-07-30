@@ -893,6 +893,8 @@ export const en: Dictionary = {
             totalLabel: "Total",
             emptySummaryHint: "Add an item to continue to payment…",
             incompleteConfigNote: "Finish choosing the tournament/match for every item before paying.",
+            unconfiguredLabel: "Not configured yet",
+            configureButton: "Configure",
             payButton: (price: string) => `Pay ${price}`,
         },
         privacyPage: {
@@ -1083,7 +1085,7 @@ export const en: Dictionary = {
                     ],
                 },
                 team: {
-                    name: "Golden Boot",
+                    name: "Premium",
                     tagline: "The whole tournament, every match your team plays.",
                     features: [
                         "Recordings of every match played in the tournament",

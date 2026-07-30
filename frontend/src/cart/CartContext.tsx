@@ -44,7 +44,7 @@ export const TIER_INFO: Record<CartTier, { label: string; priceEurCents: number 
     GOAL: { label: "Gol", priceEurCents: 500 },
     MATCH: { label: "Tekma", priceEurCents: 2000 },
     HATTRICK: { label: "Hattrick", priceEurCents: 5000 },
-    TEAM: { label: "Zlatna kopačka", priceEurCents: 10000 },
+    TEAM: { label: "Premium", priceEurCents: 10000 },
 }
 
 function newId(): string {

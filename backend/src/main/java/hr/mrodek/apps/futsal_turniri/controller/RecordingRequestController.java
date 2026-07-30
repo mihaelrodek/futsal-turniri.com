@@ -95,7 +95,7 @@ public class RecordingRequestController {
 
     /**
      * The 4 fixed-price /cjenik packages. GOAL/MATCH mirror {@link RecordingRequestKind}'s
-     * defaults; HATTRICK (any 3 matches of one tournament) and TEAM ("Zlatna kopačka" - every
+     * defaults; HATTRICK (any 3 matches of one tournament) and TEAM ("Premium" - every
      * match of one team in a tournament) have no kind of their own - they simply resolve to
      * several FULL_MATCH rows sharing one {@code cartGroupId} and split price.
      */
@@ -103,7 +103,7 @@ public class RecordingRequestController {
         GOAL(500, "Gol"),
         MATCH(2000, "Tekma"),
         HATTRICK(5000, "Hattrick"),
-        TEAM(10000, "Zlatna kopačka");
+        TEAM(10000, "Premium");
 
         private final int priceEurCents;
         private final String label;
@@ -603,7 +603,7 @@ public class RecordingRequestController {
                 matchesForItem = resolveMatches(tournament, item.matchIds(), 1);
             } else if (tier == CartTier.HATTRICK) {
                 matchesForItem = resolveMatches(tournament, item.matchIds(), 3);
-            } else { // TEAM - "Zlatna kopačka": every match of one team in this tournament, picked server-side.
+            } else { // TEAM - "Premium": every match of one team in this tournament, picked server-side.
                 if (item.teamId() == null) {
                     throw new BadRequestException(messages.t("recording.error.teamNotFound"));
                 }

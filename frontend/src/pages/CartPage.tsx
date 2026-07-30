@@ -1,9 +1,9 @@
 import { useEffect } from "react"
 import type { ElementType } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Box, Button, Card, chakra, Flex, Grid, Heading, Icon, Text, VStack } from "@chakra-ui/react"
+import { Box, Card, chakra, Flex, Grid, Heading, Icon, Text, VStack } from "@chakra-ui/react"
 import { LuFlame, LuTarget, LuTrophy, LuVideo } from "react-icons/lu"
-import { FiCheck, FiPlus, FiX } from "react-icons/fi"
+import { FiCheck, FiPlus } from "react-icons/fi"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { useCart, TIER_INFO } from "../cart/CartContext"
 import { CartCheckoutSection, CartItemRow, formatPrice } from "../cart/CartShared"
@@ -55,20 +55,52 @@ function QuickAddTiers() {
                             title={t.pages.cartPage.quickAddButton}
                             textAlign="left"
                             position="relative"
+                            display="flex"
+                            flexDirection={{ base: "row", sm: "column" }}
+                            alignItems={{ base: "center", sm: "stretch" }}
+                            gap={{ base: "2.5", sm: "0" }}
                             borderWidth="1px"
                             borderColor="border"
                             rounded="lg"
-                            p="2.5"
+                            p={{ base: "2", sm: "2.5" }}
                             bg="bg.panel"
                             cursor="pointer"
                             transition="border-color 0.15s, transform 0.1s"
                             _hover={{ borderColor: "pitch.500", transform: "translateY(-1px)" }}
                             _active={{ transform: "translateY(0)" }}
                         >
+                            {/* Mobile: one compact row - name/price left, tagline
+                                right. sm+: the taller stacked card from before. */}
+                            {/* Fixed width on mobile (wide enough for "Premium",
+                                the longest tier name) so the delimiter after it
+                                lines up at the same x across every row. */}
+                            <Box w={{ base: "100px", sm: "auto" }} flexShrink={0} alignSelf="center">
+                                <HStackTierHeader icon={icon} name={copy.name} price={formatPrice(info.priceEurCents)} />
+                            </Box>
+                            <Box
+                                display={{ base: "block", sm: "none" }}
+                                alignSelf="stretch"
+                                w="1px"
+                                bg="border"
+                                flexShrink={0}
+                            />
+                            <Text
+                                flex={{ base: "1", sm: "initial" }}
+                                alignSelf="center"
+                                minW="0"
+                                fontSize="xs"
+                                color="fg.muted"
+                                mt={{ base: "0", sm: "1.5" }}
+                                pr={{ base: "6", sm: "5" }}
+                                lineClamp={{ base: 1, sm: 2 }}
+                            >
+                                {copy.tagline}
+                            </Text>
                             <Flex
                                 position="absolute"
-                                top="2"
+                                top={{ base: "50%", sm: "2" }}
                                 right="2"
+                                transform={{ base: "translateY(-50%)", sm: "none" }}
                                 w="20px"
                                 h="20px"
                                 rounded="full"
@@ -79,12 +111,6 @@ function QuickAddTiers() {
                             >
                                 <FiPlus size={12} />
                             </Flex>
-                            <Box pr="5">
-                                <HStackTierHeader icon={icon} name={copy.name} price={formatPrice(info.priceEurCents)} />
-                                <Text fontSize="xs" color="fg.muted" mt="1.5" lineClamp={2}>
-                                    {copy.tagline}
-                                </Text>
-                            </Box>
                         </chakra.button>
                     )
                 })}
@@ -149,55 +175,48 @@ export default function CartPage() {
                 </Box>
             )}
 
-            <Flex align="flex-start" gap="4" direction={{ base: "column", lg: "row" }}>
-                {/* Working column - tier picker + item rows. Full width while
-                    the cart is empty (nothing to total yet); once it has
-                    items this shrinks to make room for the summary column. */}
-                <VStack align="stretch" gap="4" flex="1" minW="0" w="full">
-                    <Panel p={{ base: "3.5", md: "4" }}>
-                        <QuickAddTiers />
-                    </Panel>
+            {/* "Brzo dodaj paket" and "Ukupno" share row 1 - a CSS grid row's
+                height is set by its tallest cell, and stretch (the grid
+                default) makes the shorter one match it, so the two boxes are
+                always the same height whether the cart is empty or not. The
+                item list is a plain row below, width-matched to the picker
+                column only (the "." cell keeps the summary column's row 2
+                empty rather than stretching under it). */}
+            <Grid
+                templateColumns={{ base: "1fr", lg: "1fr minmax(260px, 340px)" }}
+                templateAreas={{
+                    base: `"quickadd" "items" "summary"`,
+                    lg: `"quickadd summary" "items ."`,
+                }}
+                gap="4"
+            >
+                <Panel gridArea="quickadd" p={{ base: "3.5", md: "4" }}>
+                    <QuickAddTiers />
+                </Panel>
 
+                <Box gridArea="summary">
+                    <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" h="full">
+                        <Card.Body p={{ base: "4", md: "4" }}>
+                            <CartCheckoutSection />
+                        </Card.Body>
+                    </Card.Root>
+                </Box>
+
+                <Box gridArea="items">
                     {!hasItems ? (
                         <Box textAlign="center" py="2">
                             <Heading size="sm">{t.pages.cartPage.emptyCartTitle}</Heading>
                             <Text fontSize="sm" color="fg.muted" mt="1">{t.pages.cartPage.emptyCartDesc}</Text>
                         </Box>
                     ) : (
-                        <>
-                            <VStack align="stretch" gap="2.5">
-                                {cart.items.map((item) => (
-                                    <CartItemRow key={item.id} item={item} />
-                                ))}
-                            </VStack>
-                            <Button size="xs" variant="ghost" colorPalette="red" alignSelf="flex-start" onClick={() => cart.clear()}>
-                                <FiX /> {t.pages.pricingPage.clearCart}
-                            </Button>
-                        </>
+                        <VStack align="stretch" gap="2.5">
+                            {cart.items.map((item) => (
+                                <CartItemRow key={item.id} item={item} />
+                            ))}
+                        </VStack>
                     )}
-                </VStack>
-
-                {/* Summary column - "Ukupno" + contact fields + "Plati", ~20-25%
-                    of the viewport on desktop, sticky so it stays in view
-                    while the item list scrolls. Always visible (shows a
-                    "Ukupno 0 €" placeholder while the cart is empty) so the
-                    total is never a surprise that only appears once you've
-                    already added something. */}
-                <Box
-                    w={{ base: "full", lg: "25%" }}
-                    minW={{ lg: "260px" }}
-                    maxW={{ lg: "340px" }}
-                    flexShrink={0}
-                    position={{ lg: "sticky" }}
-                    top={{ lg: "20" }}
-                >
-                    <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized">
-                        <Card.Body p={{ base: "4", md: "4" }}>
-                            <CartCheckoutSection />
-                        </Card.Body>
-                    </Card.Root>
                 </Box>
-            </Flex>
+            </Grid>
         </VStack>
     )
 }

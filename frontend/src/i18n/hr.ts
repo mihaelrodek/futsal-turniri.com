@@ -913,6 +913,8 @@ export const hr = {
             totalLabel: "Ukupno",
             emptySummaryHint: "Dodaj stavku za nastavak plaćanja…",
             incompleteConfigNote: "Dovrši odabir turnira/utakmice za svaku stavku prije plaćanja.",
+            unconfiguredLabel: "Nije konfigurirano",
+            configureButton: "Konfiguriraj",
             payButton: (price: string) => `Plati ${price}`,
         },
         privacyPage: {
@@ -1103,7 +1105,7 @@ export const hr = {
                     ],
                 },
                 team: {
-                    name: "Zlatna kopačka",
+                    name: "Premium",
                     tagline: "Cijeli turnir, sve utakmice tvoje ekipe.",
                     features: [
                         "Snimke svih odigranih utakmica s turnira",

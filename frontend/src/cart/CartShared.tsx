@@ -165,7 +165,7 @@ export function ItemConfigurator({
     }
 
     return (
-        <VStack align="stretch" gap="2.5" mt="2">
+        <VStack align="stretch" gap="2" mt="1.5">
             <NativeSelect.Root size="sm">
                 <NativeSelect.Field
                     value={tournamentUuid}
@@ -305,17 +305,23 @@ export function configSummary(item: CartItem): string {
 export function CartItemRow({ item }: { item: CartItem }) {
     const t = useTranslation()
     const cart = useCart()
-    const [editing, setEditing] = useState(!item.config)
+    // Closed by default, even for a just-added, unconfigured item - the
+    // inline configurator (tournament/match/goal pickers) is tall, and
+    // auto-opening one per quick-added item used to stack several of them
+    // at once and bury the "Ukupno/Plati" summary below the fold on mobile.
+    // A collapsed row with an explicit "Konfiguriraj" CTA keeps each item to
+    // one compact line until the user actually wants to configure it.
+    const [editing, setEditing] = useState(false)
     const Icon_ = TIER_ICON[item.tier]
 
     return (
         <Box borderWidth="1px" borderColor="border.emphasized" rounded="lg" p="2.5">
             <HStack justify="space-between" align="start" gap="2">
-                <HStack gap="2" align="center">
-                    <Icon as={Icon_} boxSize="4" color="pitch.500" />
-                    <Text fontWeight={600} fontSize="sm">{item.label}</Text>
+                <HStack gap="2" align="center" minW="0">
+                    <Icon as={Icon_} boxSize="4" color="pitch.500" flexShrink={0} />
+                    <Text fontWeight={600} fontSize="sm" truncate>{item.label}</Text>
                 </HStack>
-                <HStack gap="2" align="center">
+                <HStack gap="2" align="center" flexShrink={0}>
                     <Text fontWeight={700} fontSize="sm">{formatPrice(item.priceEurCents)}</Text>
                     <chakra.button
                         type="button"
@@ -340,13 +346,20 @@ export function CartItemRow({ item }: { item: CartItem }) {
                         cart.setItemConfig(item.id, config)
                         setEditing(false)
                     }}
-                    onCancel={item.config ? () => setEditing(false) : null}
+                    onCancel={() => setEditing(false)}
                 />
-            ) : (
-                <HStack justify="space-between" align="center" mt="1.5">
+            ) : item.config ? (
+                <HStack justify="space-between" align="center" mt="1.5" gap="2">
                     <Text fontSize="xs" color="fg.muted" truncate>{configSummary(item)}</Text>
-                    <Button size="2xs" variant="ghost" onClick={() => setEditing(true)}>
+                    <Button size="2xs" variant="ghost" flexShrink={0} onClick={() => setEditing(true)}>
                         <FiEdit2 /> {t.common.edit}
+                    </Button>
+                </HStack>
+            ) : (
+                <HStack justify="space-between" align="center" mt="1.5" gap="2">
+                    <Text fontSize="xs" color="orange.fg" truncate>{t.pages.cartPage.unconfiguredLabel}</Text>
+                    <Button size="2xs" variant="solid" colorPalette="pitch" flexShrink={0} onClick={() => setEditing(true)}>
+                        {t.pages.cartPage.configureButton}
                     </Button>
                 </HStack>
             )}
@@ -424,6 +437,12 @@ export function CartCheckoutSection() {
 
     return (
         <VStack align="stretch" gap="3" w="full">
+            <HStack justify="flex-end">
+                <Button size="2xs" variant="outline" colorPalette="red" onClick={() => cart.clear()}>
+                    <LuTrash2 size={13} /> {t.pages.pricingPage.clearCart}
+                </Button>
+            </HStack>
+
             {!user && (
                 <VStack align="stretch" gap="2.5">
                     <Text fontSize="sm" fontWeight={600}>{t.pages.cartPage.anonymousContactHeading}</Text>

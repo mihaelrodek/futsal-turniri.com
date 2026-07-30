@@ -128,7 +128,7 @@ public class StripeWebhookController {
     }
 
     /**
-     * A /cjenik cart order (Hattrick, Zlatna kopačka, or a mixed cart) pays
+     * A /cjenik cart order (Hattrick, Premium, or a mixed cart) pays
      * for N {@code MatchRecordingRequest} rows in one Checkout Session, all
      * sharing {@code cartGroupId}. Marks each unpaid row in the group paid
      * (idempotent per row, same as the single-request path), auto-links a

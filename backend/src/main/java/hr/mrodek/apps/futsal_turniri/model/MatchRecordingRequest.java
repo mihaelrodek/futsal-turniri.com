@@ -123,7 +123,7 @@ public class MatchRecordingRequest {
 
     /**
      * Shared by every row created from ONE /cjenik cart checkout (Hattrick = 3
-     * rows, Zlatna kopačka = one row per team match) so the Stripe webhook can
+     * rows, Premium = one row per team match) so the Stripe webhook can
      * mark them all paid from a single Checkout Session. Null for a request
      * filed the old way (one row, its own {@code uuid} is the sole capability).
      */
