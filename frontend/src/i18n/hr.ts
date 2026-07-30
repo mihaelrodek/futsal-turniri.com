@@ -911,6 +911,7 @@ export const hr = {
             phonePlaceholder: "+385 91 234 5678",
             phoneInvalid: "Broj telefona nije ispravan.",
             totalLabel: "Ukupno",
+            emptySummaryHint: "Dodaj stavku za nastavak plaćanja…",
             incompleteConfigNote: "Dovrši odabir turnira/utakmice za svaku stavku prije plaćanja.",
             payButton: (price: string) => `Plati ${price}`,
         },
@@ -1298,6 +1299,10 @@ export const hr = {
         },
     },
     components: {
+        avatarCropDialog: {
+            title: "Namjesti profilnu sliku",
+            hint: "Pomakni i zumiraj tako da lice bude unutar kruga.",
+        },
         /** TournamentExport.tsx - branded PDF/JPG poster generator (groups,
          *  schedule, bracket, match, top-scorers) + the export dialog UI. Many
          *  fallback/empty-state/label strings are shared with the in-app

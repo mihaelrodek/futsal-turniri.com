@@ -58,6 +58,7 @@ import type { MyTournamentParticipation } from "../api/userMe"
 import { deleteAvatar, getProfile, syncProfile, updateLanguage, updateProfile, uploadAvatar } from "../api/userMe"
 import { checkUsernameAvailable } from "../api/auth"
 import AvatarPreview from "../components/AvatarPreview"
+import AvatarCropDialog from "../components/AvatarCropDialog"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
@@ -1074,18 +1075,26 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
     // ProfileHeader). Same upload/remove logic that used to live there.
     const [avatarBusy, setAvatarBusy] = useState(false)
     const avatarInputRef = useRef<HTMLInputElement | null>(null)
+    // Picking a file only stages it - AvatarCropDialog lets the user
+    // position the face inside the circle before anything is uploaded.
+    const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null)
 
     function onPickAvatar() {
         avatarInputRef.current?.click()
     }
 
-    async function onAvatarChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    function onAvatarChosen(e: React.ChangeEvent<HTMLInputElement>) {
         const f = e.target.files?.[0]
         e.target.value = "" // reset so picking the same file again still fires onChange
         if (!f) return
+        setPendingAvatarFile(f)
+    }
+
+    async function onAvatarCropConfirmed(croppedFile: File) {
         try {
             setAvatarBusy(true)
-            await uploadAvatar(f)
+            await uploadAvatar(croppedFile)
+            setPendingAvatarFile(null)
             await load()
             await onSaved()
             window.dispatchEvent(new CustomEvent("futsal:profile-updated"))
@@ -1160,6 +1169,7 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
     }
 
     return (
+        <>
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
@@ -1265,6 +1275,13 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
                 </VStack>
             </Card.Body>
         </Card.Root>
+        <AvatarCropDialog
+            file={pendingAvatarFile}
+            busy={avatarBusy}
+            onCancel={() => setPendingAvatarFile(null)}
+            onConfirm={onAvatarCropConfirmed}
+        />
+        </>
     )
 }
 

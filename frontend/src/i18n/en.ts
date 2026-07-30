@@ -891,6 +891,7 @@ export const en: Dictionary = {
             phonePlaceholder: "+385 91 234 5678",
             phoneInvalid: "Invalid phone number.",
             totalLabel: "Total",
+            emptySummaryHint: "Add an item to continue to payment…",
             incompleteConfigNote: "Finish choosing the tournament/match for every item before paying.",
             payButton: (price: string) => `Pay ${price}`,
         },
@@ -1278,6 +1279,10 @@ export const en: Dictionary = {
         },
     },
     components: {
+        avatarCropDialog: {
+            title: "Adjust profile picture",
+            hint: "Drag and zoom so the face sits inside the circle.",
+        },
         /** TournamentExport.tsx - branded PDF/JPG poster generator (groups,
          *  schedule, bracket, match, top-scorers) + the export dialog UI. Many
          *  fallback/empty-state/label strings are shared with the in-app

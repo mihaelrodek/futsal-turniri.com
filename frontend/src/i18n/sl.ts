@@ -892,6 +892,7 @@ export const sl: Dictionary = {
             phonePlaceholder: "+386 31 234 567",
             phoneInvalid: "Telefonska številka ni veljavna.",
             totalLabel: "Skupaj",
+            emptySummaryHint: "Dodaj postavko za nadaljevanje plačila…",
             incompleteConfigNote: "Za vsako postavko dokončaj izbiro turnirja/tekme pred plačilom.",
             payButton: (price: string) => `Plačaj ${price}`,
         },
@@ -1279,6 +1280,10 @@ export const sl: Dictionary = {
         },
     },
     components: {
+        avatarCropDialog: {
+            title: "Prilagodi profilno sliko",
+            hint: "Povleci in približaj tako, da je obraz znotraj kroga.",
+        },
         /** TournamentExport.tsx - branded PDF/JPG poster generator (groups,
          *  schedule, bracket, match, top-scorers) + the export dialog UI. Many
          *  fallback/empty-state/label strings are shared with the in-app

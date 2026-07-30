@@ -309,7 +309,7 @@ export function CartItemRow({ item }: { item: CartItem }) {
     const Icon_ = TIER_ICON[item.tier]
 
     return (
-        <Box borderWidth="1px" borderColor="border.emphasized" rounded="lg" p="3">
+        <Box borderWidth="1px" borderColor="border.emphasized" rounded="lg" p="2.5">
             <HStack justify="space-between" align="start" gap="2">
                 <HStack gap="2" align="center">
                     <Icon as={Icon_} boxSize="4" color="pitch.500" />
@@ -410,13 +410,25 @@ export function CartCheckoutSection() {
         }
     }
 
+    if (cart.items.length === 0) {
+        return (
+            <VStack align="stretch" gap="2.5" w="full">
+                <HStack justify="space-between">
+                    <Text fontWeight={700}>{t.pages.cartPage.totalLabel}</Text>
+                    <Text fontWeight={800} fontSize="18px">{formatPrice(0)}</Text>
+                </HStack>
+                <Text fontSize="sm" color="fg.muted">{t.pages.cartPage.emptySummaryHint}</Text>
+            </VStack>
+        )
+    }
+
     return (
         <VStack align="stretch" gap="3" w="full">
             {!user && (
                 <VStack align="stretch" gap="2.5">
                     <Text fontSize="sm" fontWeight={600}>{t.pages.cartPage.anonymousContactHeading}</Text>
-                    <HStack gap="2" wrap="wrap" align="start">
-                        <Field.Root required flex="1" minW="200px" invalid={contactEmail.trim().length > 0 && !emailOk}>
+                    <VStack gap="2.5" align="stretch">
+                        <Field.Root required invalid={contactEmail.trim().length > 0 && !emailOk}>
                             <Field.Label>{t.pages.cartPage.emailLabel} <Field.RequiredIndicator /></Field.Label>
                             <Input
                                 size="sm"
@@ -429,7 +441,7 @@ export function CartCheckoutSection() {
                                 <Field.ErrorText>{t.pages.cartPage.emailInvalid}</Field.ErrorText>
                             )}
                         </Field.Root>
-                        <Field.Root required flex="1" minW="200px" invalid={contactPhone.trim().length > 0 && !phoneOk}>
+                        <Field.Root required invalid={contactPhone.trim().length > 0 && !phoneOk}>
                             <Field.Label>{t.pages.cartPage.phoneLabel} <Field.RequiredIndicator /></Field.Label>
                             <Input
                                 size="sm"
@@ -442,7 +454,7 @@ export function CartCheckoutSection() {
                                 <Field.ErrorText>{t.pages.cartPage.phoneInvalid}</Field.ErrorText>
                             )}
                         </Field.Root>
-                    </HStack>
+                    </VStack>
                 </VStack>
             )}
 
