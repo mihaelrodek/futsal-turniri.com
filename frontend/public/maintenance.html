@@ -71,7 +71,12 @@
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.18em;
+            /* Trailing letter-spacing after the last glyph widens the text's
+               own box without adding a visible glyph, which skews centered
+               text to the left. text-indent nudges it back on-center. */
+            text-indent: 0.18em;
             text-transform: uppercase;
+            text-align: center;
             color: #2AD4C8;
             margin: 0 0 10px;
         }
