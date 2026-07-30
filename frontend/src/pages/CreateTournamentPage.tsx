@@ -214,13 +214,12 @@ export default function CreateTournamentPage() {
         selectedOptions: [],
     })
 
-    // Latitude/longitude tracked separately from `form` because they
-    // exist purely to drive the map picker's marker - they're not sent
-    // to the backend (the server forward-geocodes form.location on
-    // create, and the picker fills that string with a Nominatim
-    // display_name so the result lines up). Set from either picking a
-    // suggestion in LocationAutocomplete or clicking the map in
-    // LocationMapPicker.
+    // Latitude/longitude tracked separately from `form` - they drive the
+    // map picker's marker AND are sent to the backend on submit, where the
+    // exact pin wins over server-side forward geocoding of form.location
+    // (Nominatim often resolves the text only to the municipality
+    // centroid). Set from either picking a suggestion in
+    // LocationAutocomplete or clicking the map in LocationMapPicker.
     const [pickedCoords, setPickedCoords] = useState<{ lat: number; lng: number } | null>(null)
 
     // Prefill contact fields ("Kontakt organizatora") from the logged-in
@@ -387,6 +386,10 @@ export default function CreateTournamentPage() {
         const payload: CreateTournamentPayload = {
             name: form.name.trim(),
             location: form.location.trim() || null,
+            // Exact pinned coordinates (map click / autocomplete pick) - the
+            // backend stores them as-is and skips its own coarser geocoding.
+            latitude: pickedCoords?.lat ?? null,
+            longitude: pickedCoords?.lng ?? null,
             details: form.details.trim() || null,
             startAt: toLocalOffsetIso(form.startDate, form.startTime),
 
@@ -751,7 +754,13 @@ export default function CreateTournamentPage() {
                                 <LocationMapPicker
                                     value={pickedCoords}
                                     onPick={(p) => {
-                                        onChange("location", p.displayName)
+                                        // Fill the text field from the reverse
+                                        // geocode only while it's still empty -
+                                        // never overwrite what the user typed;
+                                        // the exact pin is persisted either way.
+                                        if (!form.location.trim()) {
+                                            onChange("location", p.displayName)
+                                        }
                                         setPickedCoords({ lat: p.lat, lng: p.lng })
                                     }}
                                     height={{ base: "240px", md: "268px" }}

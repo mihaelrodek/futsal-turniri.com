@@ -425,6 +425,73 @@ public class AdminController {
         return Response.noContent().build();
     }
 
+    /* ──────────────────────────────────────────────────────────────────
+     * Deletion requests (two-step delete). An organizer's "Obriši" only
+     * ARCHIVES the tournament (archived_at + reason + requester); final
+     * deletion is this admin surface's call. Confirm = flip the existing
+     * is_deleted soft-delete flag + stamp deleted_at (never a hard DELETE);
+     * restore = clear the request fields so the tournament is public again.
+     * ────────────────────────────────────────────────────────────────── */
+
+    /** Pending deletion requests, newest first. Already-confirmed rows are
+     *  excluded automatically by the entity's {@code @Where} soft-delete. */
+    @GET
+    @Path("/tournaments/delete-requests")
+    public Response listDeleteRequests() {
+        List<DeleteRequestDto> dtos = tournamentsRepo.findPendingDeleteRequests().stream()
+                .map(t -> new DeleteRequestDto(
+                        t.getId(),
+                        t.getUuid() != null ? t.getUuid().toString() : null,
+                        t.getSlug(),
+                        t.getName(),
+                        t.getDeleteRequestedByUid(),
+                        t.getDeleteRequestedByName(),
+                        t.getDeleteReason(),
+                        t.getArchivedAt()))
+                .toList();
+        return Response.ok(dtos).build();
+    }
+
+    /** Finalize a pending deletion request - soft delete, never a hard one. */
+    @POST
+    @Path("/tournaments/{uuid}/delete-confirm")
+    @Transactional
+    public Response confirmDelete(@PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        // Direct admin confirm on a non-archived tournament still archives it
+        // first, so archived_at always brackets the deletion timeline.
+        if (t.getArchivedAt() == null) t.setArchivedAt(now);
+        t.setDeleted(true);
+        t.setDeletedAt(now);
+        t.setFeaturedAt(null);
+        tournamentsRepo.persist(t);
+        return Response.noContent().build();
+    }
+
+    /** Reject a deletion request: clears archived_at + the request fields,
+     *  so the tournament reappears in the public listings ("Vrati"). */
+    @POST
+    @Path("/tournaments/{uuid}/delete-restore")
+    @Transactional
+    public Response restoreFromDeleteRequest(@PathParam("uuid") String uuid) {
+        Tournaments t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("TOURNAMENT_NOT_FOUND").build();
+        }
+        t.setArchivedAt(null);
+        t.setDeleteReason(null);
+        t.setDeleteRequestedByUid(null);
+        t.setDeleteRequestedByName(null);
+        tournamentsRepo.persist(t);
+        return Response.noContent().build();
+    }
+
     /** ──────────────────────────────────────────────────────────────────
      * Admin raw status override. Differs from {@code /tournaments/{uuid}/start}
      * which gates on business rules (INSUFFICIENT_TEAMS, etc.) - this
@@ -713,4 +780,10 @@ public class AdminController {
 
     public record SetStatusRequest(@NotBlank String status) {}
     public record SetStatusResponse(Long tournamentId, String uuid, String status) {}
+
+    /** One pending deletion request row for the admin dashboard. */
+    public record DeleteRequestDto(Long tournamentId, String uuid, String slug,
+                                   String name, String requestedByUid,
+                                   String requestedByName, String reason,
+                                   OffsetDateTime requestedAt) {}
 }

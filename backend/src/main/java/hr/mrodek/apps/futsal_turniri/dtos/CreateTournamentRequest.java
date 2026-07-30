@@ -22,6 +22,13 @@ public record CreateTournamentRequest(
         @Size(max = 200, message = "location must be at most 200 characters")
         String location,
 
+        // Exact map-pin coordinates picked by the client (LocationMapPicker /
+        // autocomplete suggestion). When BOTH are present they are stored
+        // as-is and server-side forward geocoding of `location` is skipped -
+        // the pin is more precise than Nominatim's municipality centroid.
+        Double latitude,
+        Double longitude,
+
         @Size(max = 4000, message = "details must be at most 4000 characters")
         String details,
 

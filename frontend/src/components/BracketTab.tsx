@@ -43,7 +43,6 @@ import { useOfflineMatchEvents } from "../hooks/useOfflineMatchEvents"
 import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { DateTimeField } from "./DateTimeField"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
-import { GhostButton } from "../ui/pitch"
 import { DirectScoreEditor, FoulControls, LiveClock, LiveConsoleHeader, LiveEventRow, LiveGoalEntry, PenaltyShootout, matchPhase } from "./liveMatch"
 import { KitSwatch, useTeamColors, teamKit } from "./jersey"
 import type { TeamKit } from "../api/tournaments"
@@ -1531,34 +1530,52 @@ export default function BracketTab({
     )
 
     // Owner draw controls. Hidden once any match is LIVE/FINISHED
-    // (re-drawing would destroy real results). The "Podijeli bracket"
-    // button now floats at the bottom (below). `false` (not JSX) when
-    // hidden, so the top row below can tell "no controls" apart from
-    // "no pills either" and skip rendering an empty right side.
+    // (re-drawing would destroy real results). Rendered as a compact pill
+    // pinned to the top-right corner of the bracket panel (same look as the
+    // bottom-centre action bar) so they stay reachable without occupying a
+    // whole top row over a mostly-empty pre-start bracket. Anchored to the
+    // panel FRAME (position:absolute inside the relative Panel), NOT to the
+    // zoom/pan canvas - so panning or horizontal scrolling the bracket never
+    // moves them. `false` (not JSX) when hidden.
     const drawControls = canEdit && !started && !finishedLocked && (
-        <>
-            <GhostButton
-                px="3.5"
-                py="2"
-                fontSize="13px"
-                icon={<FiRefreshCw size={14} />}
+        <Flex
+            position="absolute"
+            top={{ base: "2", md: "3" }}
+            right={{ base: "2", md: "3" }}
+            zIndex={2}
+            align="center"
+            gap="1"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border.emphasized"
+            rounded="full"
+            shadow="lg"
+            px="1.5"
+            py="1"
+        >
+            <Button
+                size="xs"
+                variant="ghost"
                 onClick={openManualBracket}
                 disabled={generating || generatingManual}
+                title={t.components.bracketTab.draw.manualHeading}
             >
+                <FiRefreshCw size={13} />
                 {t.components.bracketTab.draw.manualHeading}
-            </GhostButton>
-            <GhostButton
-                px="3.5"
-                py="2"
-                fontSize="13px"
-                danger
-                icon={<FiTrash2 size={14} />}
+            </Button>
+            <Box w="1px" alignSelf="stretch" my="1" bg="border" />
+            <Button
+                size="xs"
+                variant="ghost"
+                colorPalette="red"
                 onClick={confirmResetBracket}
                 disabled={generating || generatingManual || resetting}
+                title={t.components.bracketTab.draw.resetButton}
             >
+                <FiTrash2 size={13} />
                 {resetting ? t.components.bracketTab.draw.resetInProgress : t.components.bracketTab.draw.resetButton}
-            </GhostButton>
-        </>
+            </Button>
+        </Flex>
     )
 
     return (
@@ -1567,23 +1584,13 @@ export default function BracketTab({
         // Grupe tab, which uses the identical leading wrapper. `pb` keeps the
         // tail breathing room without re-introducing a top offset.
         <VStack align="stretch" gap="5" pb="2">
-            {/* Top row - the compact Grupe/Eliminacija pills (when supplied by
-                the parent) sit on the LEFT, the owner draw controls on the
-                RIGHT, so the two no longer stack as separate full-width
-                bands. Wraps on narrow screens (pills first, controls after);
-                nothing overflows. When the controls are hidden (viewer, or a
-                locked bracket) the row still renders the pills alone, so they
-                never disappear. Without `subTabs` (KNOCKOUT_ONLY) this
-                renders exactly as before - right-aligned controls only, or
-                nothing at all once they're hidden. */}
-            {subTabs ? (
-                <Flex align="center" justify="space-between" gap="3" wrap="wrap">
-                    <Flex align="center" wrap="wrap">{subTabs}</Flex>
-                    {drawControls && <Flex align="center" gap="2" wrap="wrap">{drawControls}</Flex>}
-                </Flex>
-            ) : (
-                drawControls && <Flex justify="flex-end" gap="2" wrap="wrap">{drawControls}</Flex>
-            )}
+            {/* Top row - only the compact Grupe/Eliminacija pills (when
+                supplied by the parent). The owner draw controls no longer
+                live here - they float pinned to the top-right corner of the
+                bracket panel below, so a pre-start bracket isn't crowned by
+                a band of buttons. Without `subTabs` (KNOCKOUT_ONLY) nothing
+                renders at all. */}
+            {subTabsRow}
 
             {/* Bracket-confirmation state - only for brackets that require it
                 (a group stage feeds the knockout). Once confirmed NOTHING
@@ -1657,6 +1664,10 @@ export default function BracketTab({
                         renderThirdPlace={renderBoardThirdPlace}
                     />
                 </ZoomableBracket>
+
+                {/* Owner draw controls - compact pill pinned to the panel's
+                    top-right corner (see `drawControls` above). */}
+                {drawControls}
 
                 {/* Floating action bar - anchored to the bottom-centre of the
                     bracket panel itself (not the viewport), floating over the

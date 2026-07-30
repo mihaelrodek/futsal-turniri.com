@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Two-step tournament deletion ("zahtjev za brisanje"):
+
+          1. The organizer requests deletion with a mandatory reason. That only
+             ARCHIVES the tournament: archived_at is stamped and the row drops
+             out of the public listings, but nothing is removed and the detail
+             page stays reachable by direct link.
+          2. A platform admin later either CONFIRMS (flips the existing
+             is_deleted soft-delete flag and stamps deleted_at - still never a
+             hard DELETE) or RESTORES (clears archived_at + the request fields).
+
+        All columns nullable, no defaults: NULL archived_at = active tournament,
+        NULL deleted_at = not (yet) finally deleted. Existing rows keep NULL.
+        delete_requested_by_uid/name snapshot WHO asked, so the admin dashboard
+        can show the requester even if the account is later renamed.
+    -->
+    <changeSet id="2026-07-30-03-tournament-delete-requests" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="archived_at" type="timestamptz"/>
+            <column name="deleted_at" type="timestamptz"/>
+            <column name="delete_reason" type="text"/>
+            <column name="delete_requested_by_uid" type="varchar(64)"/>
+            <column name="delete_requested_by_name" type="varchar(200)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

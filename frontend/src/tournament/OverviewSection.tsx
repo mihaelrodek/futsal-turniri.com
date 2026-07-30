@@ -255,7 +255,13 @@ export default function OverviewSection(props: OverviewSectionProps) {
                                 <LocationMapPicker
                                     value={editPickedCoords}
                                     onPick={(p) => {
-                                        patchEdit("location", p.displayName)
+                                        // Fill the text field from the reverse
+                                        // geocode only while it's still empty -
+                                        // never overwrite what the user typed;
+                                        // the exact pin is persisted either way.
+                                        if (!editForm.location.trim()) {
+                                            patchEdit("location", p.displayName)
+                                        }
                                         setEditPickedCoords({ lat: p.lat, lng: p.lng })
                                     }}
                                     height={{ base: "260px", md: "300px" }}
@@ -1027,7 +1033,14 @@ function DetailsReadView({
                                 </Box>
                             </HStack>
                             <chakra.a
-                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.location)}`}
+                                // Exact stored coordinates win over the free-text
+                                // location - a text query lets Google resolve e.g.
+                                // "Grad Lepoglava" to the whole municipality.
+                                href={
+                                    t.latitude != null && t.longitude != null
+                                        ? `https://www.google.com/maps/search/?api=1&query=${t.latitude},${t.longitude}`
+                                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.location)}`
+                                }
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 display="inline-flex"

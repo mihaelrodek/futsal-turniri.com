@@ -329,6 +329,36 @@ public class Tournaments {
     @Column(name = "specto_stream_id", length = 64)
     private String spectoStreamId;
 
+    /* ── Two-step deletion (zahtjev za brisanje) ─────────────────────────
+       An organizer never hard-deletes: their "Obriši" only ARCHIVES the
+       tournament (archivedAt stamped, dropped from public listings, detail
+       page still reachable by direct link) and records who asked and why.
+       A platform admin then either CONFIRMS - flipping the existing
+       {@link #deleted} soft-delete flag and stamping {@link #deletedAt} -
+       or RESTORES by clearing these four request fields. Rows are never
+       physically removed. */
+
+    /** When deletion was requested (tournament archived). Null = active. */
+    @Column(name = "archived_at")
+    private OffsetDateTime archivedAt;
+
+    /** When an admin confirmed the deletion (alongside {@link #deleted}).
+     *  Audit-only - visibility is driven by the {@code @Where} clause. */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
+    /** Mandatory free-text reason given with the deletion request. */
+    @Column(name = "delete_reason", columnDefinition = "text")
+    private String deleteReason;
+
+    /** Firebase UID of the user who requested deletion. */
+    @Column(name = "delete_requested_by_uid", length = 64)
+    private String deleteRequestedByUid;
+
+    /** Display-name snapshot of the requester, for the admin list. */
+    @Column(name = "delete_requested_by_name", length = 200)
+    private String deleteRequestedByName;
+
     @PrePersist
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();     // 👈 generate server-side

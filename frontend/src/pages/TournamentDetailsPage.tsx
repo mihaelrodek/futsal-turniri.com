@@ -30,9 +30,11 @@ import {
     FiMaximize2,
     FiMoreHorizontal,
     FiShare2,
+    FiTrash2,
     FiUsers,
 } from "react-icons/fi"
 import { PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
+import { ConfirmDialog } from "../ui/primitives"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
 import TournamentResults from "../components/TournamentResults"
 import { showError, showSuccess } from "../toaster"
@@ -52,6 +54,7 @@ import {
     approveTeam,
     deleteTeam,
     finishTournament,
+    requestTournamentDeletion,
     selfRegisterTeam,
 } from "../api/tournaments"
 import { useTranslation } from "../i18n"
@@ -85,6 +88,7 @@ import LiveControlTab from "../components/LiveControlTab"
 import StatsSection from "../tournament/StatsSection"
 import {
     DeleteTeamDialog,
+    DeleteTournamentDialog,
     SelfRegisterDialog,
     TeamInfoDialog,
 } from "../tournament/dialogs"
@@ -377,6 +381,10 @@ export default function TournamentDetailsPage() {
     /* ---------- Dialog / confirm state ---------- */
     const [pendingDeleteTeam, setPendingDeleteTeam] = useState<TeamShort | null>(null)
     const [deletingTeam, setDeletingTeam] = useState(false)
+    // Two-step tournament deletion: the dialog collects a mandatory reason;
+    // organizers only REQUEST (archive), platform admins finalize immediately.
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [deletingTournament, setDeletingTournament] = useState(false)
     const [infoTeamId, setInfoTeamId] = useState<number | null>(null)
     /** All tournament matches (group + knockout), loaded for the team-info
      *  history dialog. Fetched lazily when a team's info is opened. */
@@ -399,6 +407,13 @@ export default function TournamentDetailsPage() {
     const [editForm, setEditForm] = useState<EditForm | null>(null)
     const [editPickedCoords, setEditPickedCoords] = useState<{ lat: number; lng: number } | null>(null)
     const [savingDetails, setSavingDetails] = useState(false)
+    // Snapshot taken when the edit form opens - compared against current
+    // state to tell a genuinely untouched edit from one with unsaved changes.
+    const originalEditFormJsonRef = useRef<string | null>(null)
+    const originalEditCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
+    // Section the user tried to switch to while the edit form was dirty -
+    // set instead of navigating, and resolved by the confirm dialog below.
+    const [pendingSectionLeave, setPendingSectionLeave] = useState<SectionKey | null>(null)
 
     // Tournament SETTINGS (format, name, location, ...) have no realtime push
     // of their own - only live-match events do (see useLiveSocket above). An
@@ -723,15 +738,18 @@ export default function TournamentDetailsPage() {
 
     function enterDetailsEdit() {
         if (!t) return
-        setEditForm(buildEditForm(t))
+        const form = buildEditForm(t)
+        setEditForm(form)
+        originalEditFormJsonRef.current = JSON.stringify(form)
         // Seed the map picker with the SAVED coordinates so the existing
         // location shows up as a marker right away (the picker centers and
         // zooms onto a non-null value); null only when never geocoded.
-        setEditPickedCoords(
+        const coords =
             t.latitude != null && t.longitude != null
                 ? { lat: t.latitude, lng: t.longitude }
-                : null,
-        )
+                : null
+        setEditPickedCoords(coords)
+        originalEditCoordsRef.current = coords
         setEditingDetails(true)
     }
     function cancelDetailsEdit() {
@@ -742,6 +760,49 @@ export default function TournamentDetailsPage() {
         setPosterRemove(false)
         setPosterUploadErr(null)
     }
+    /** Whether the open edit form has anything an accidental tab-switch or
+     *  page close would silently throw away - compared against the snapshot
+     *  taken when the form was opened, not against the tournament as saved. */
+    function isDetailsEditDirty() {
+        if (!editingDetails) return false
+        if (posterFile != null || posterRemove) return true
+        if (JSON.stringify(editForm) !== originalEditFormJsonRef.current) return true
+        const orig = originalEditCoordsRef.current
+        if ((orig?.lat ?? null) !== (editPickedCoords?.lat ?? null)) return true
+        if ((orig?.lng ?? null) !== (editPickedCoords?.lng ?? null)) return true
+        return false
+    }
+    /** Guarded entry point for every section/tab switch (sidebar, pill tab
+     *  bar, "go to schedule" shortcuts). Editing details is the only tab with
+     *  its own unsaved local state, so leaving it while dirty needs a
+     *  confirmation instead of silently abandoning the edit "in the
+     *  background" (it used to just disable the Uredi button forever). */
+    function requestSectionChange(key: SectionKey) {
+        if (key === section) return
+        if (editingDetails) {
+            if (isDetailsEditDirty()) {
+                setPendingSectionLeave(key)
+                return
+            }
+            cancelDetailsEdit()
+        }
+        if (key === "bracket" && section !== "bracket" && hasGroupStage) {
+            resolveDrawSub()
+        }
+        setSection(key)
+    }
+    /** Closing the tab/window bypasses requestSectionChange entirely - this
+     *  is the only hook point for that, hence the native (unstyleable)
+     *  confirmation prompt rather than the ConfirmDialog used elsewhere. */
+    useEffect(() => {
+        function handleBeforeUnload(e: BeforeUnloadEvent) {
+            if (!isDetailsEditDirty()) return
+            e.preventDefault()
+            e.returnValue = ""
+        }
+        window.addEventListener("beforeunload", handleBeforeUnload)
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+    }, [editingDetails, editForm, editPickedCoords, posterFile, posterRemove])
     async function saveDetailsEdit() {
         if (!uuid || !editForm) return
         if (editMissingRequired.length > 0) {
@@ -754,7 +815,20 @@ export default function TournamentDetailsPage() {
         // Past start dates are allowed on edit too (backfilling past events).
         try {
             setSavingDetails(true)
-            let updated = await updateTournament(uuid, editFormToPayload(editForm))
+            // Send the map pin only when the user actually re-pinned (it
+            // differs from the stored coords) - editPickedCoords is pre-filled
+            // from the tournament on edit-open, and echoing that back would
+            // win server-side and block re-geocoding of an edited location
+            // text. A real pin wins even when the text is unchanged.
+            const pin =
+                editPickedCoords != null &&
+                (editPickedCoords.lat !== t?.latitude || editPickedCoords.lng !== t?.longitude)
+                    ? editPickedCoords
+                    : null
+            let updated = await updateTournament(uuid, {
+                ...editFormToPayload(editForm),
+                ...(pin ? { latitude: pin.lat, longitude: pin.lng } : {}),
+            })
             if (posterFile) {
                 updated = await uploadTournamentPoster(uuid, posterFile)
             } else if (posterRemove) {
@@ -857,6 +931,41 @@ export default function TournamentDetailsPage() {
             /* error toasted by the http interceptor */
         } finally {
             setFinishingTournament(false)
+        }
+    }
+
+    /**
+     * Confirm handler of the delete dialog. One endpoint, two outcomes:
+     * a platform admin's confirm finalizes immediately (`finalized: true`,
+     * navigate away - the tournament 404s from now on), while an organizer's
+     * only files the request (tournament archived, admin must confirm) so we
+     * stay on the page and re-pull the details to show the pending banner.
+     */
+    async function confirmDeleteTournament(reason: string) {
+        if (!uuid) return
+        const dt = t18n.tournamentSection.dialogs.deleteTournament
+        try {
+            setDeletingTournament(true)
+            const { finalized } = await requestTournamentDeletion(uuid, reason)
+            setDeleteDialogOpen(false)
+            if (finalized) {
+                showSuccess(dt.deletedToastTitle, dt.deletedToastMessage)
+                navigate("/turniri")
+            } else {
+                showSuccess(dt.requestedToastTitle, dt.requestedToastMessage)
+                refreshTournamentDetails()
+            }
+        } catch (e: any) {
+            if (e?.response?.status === 409) {
+                showError(dt.errorTitle, dt.alreadyRequested)
+            } else {
+                showError(
+                    dt.errorTitle,
+                    String(e?.response?.data ?? e?.message ?? ""),
+                )
+            }
+        } finally {
+            setDeletingTournament(false)
         }
     }
 
@@ -1101,6 +1210,13 @@ export default function TournamentDetailsPage() {
                             <FiMaximize2 size={15} /> {t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
                         </Menu.Item>
                         <TournamentNotificationBell uuid={t.uuid} asMenuItem />
+                        {/* Mobile entry point of the two-step deletion - the
+                            desktop sidebar carries the labeled Obriši button. */}
+                        {canEdit && (!isAdmin ? !t.archivedAt : true) && (
+                            <Menu.Item value="delete" onSelect={() => setDeleteDialogOpen(true)}>
+                                <FiTrash2 size={15} /> {t18n.common.delete}
+                            </Menu.Item>
+                        )}
                     </Menu.Content>
                 </Menu.Positioner>
             </Portal>
@@ -1168,6 +1284,27 @@ export default function TournamentDetailsPage() {
                     <Text fontSize="16px" lineHeight="1">🔒</Text>
                     <Text fontSize="sm" color="fg.soft" fontWeight={600}>
                         {t18n.pages.tournamentDetailsPage.hiddenNotice}
+                    </Text>
+                </HStack>
+            )}
+            {/* Pending-deletion banner - the tournament is archived (dropped
+                from public listings) and awaits the platform admin's confirm.
+                Shown to the organizer/admin only; a visitor with a direct link
+                just sees the normal page. */}
+            {canEdit && !!t.archivedAt && (
+                <HStack
+                    bg="bg.muted"
+                    borderWidth="1px"
+                    borderColor="border.emphasized"
+                    borderStyle="dashed"
+                    rounded="lg"
+                    px="4"
+                    py="2.5"
+                    gap="2.5"
+                >
+                    <Text fontSize="16px" lineHeight="1">🗑️</Text>
+                    <Text fontSize="sm" color="fg.soft" fontWeight={600}>
+                        {t18n.pages.tournamentDetailsPage.deleteRequestedNotice}
                     </Text>
                 </HStack>
             )}
@@ -1242,7 +1379,7 @@ export default function TournamentDetailsPage() {
                     active={activeLabel}
                     onChange={(label) => {
                         const next = sections.find((s) => s.label === label)
-                        if (next) setSection(next.key)
+                        if (next) requestSectionChange(next.key)
                     }}
                     padding="4px"
                     mb="0"
@@ -1372,82 +1509,81 @@ export default function TournamentDetailsPage() {
                                 icon={SECTION_ICONS[s.key]}
                                 label={s.label}
                                 active={section === s.key}
-                                onClick={() => {
-                                    // Entering Ždrijeb auto-picks the sub-tab
-                                    // (Grupe / Eliminacija) matching what's on now,
-                                    // but only when ENTERING - don't flip the sub
-                                    // while already on the bracket section - and
-                                    // only when there's a group stage (KNOCKOUT_ONLY
-                                    // is pinned to Eliminacija by the format effect).
-                                    if (s.key === "bracket" && section !== "bracket" && hasGroupStage) {
-                                        resolveDrawSub()
-                                    }
-                                    setSection(s.key)
-                                }}
+                                onClick={() => requestSectionChange(s.key)}
                             />
                         ))}
-                        {/* Actions - an icon-only toolbar under a divider at the
-                            menu card's tail. Uniform circular icon buttons (matching
-                            the notification bell) evenly spread across the row, so
-                            they read as a toolbar rather than the wrapping pill
-                            "chips" they were before. Tooltips carry the labels. */}
-                        <Flex gap="1" align="center" borderTopWidth="1px" borderColor="border" mt="2" pt="3">
-                            {/* The Uredi SLOT is reserved for any organizer of an
-                                unfinished tournament (stable across tab switches);
-                                only its VISIBILITY follows showEditAction (Detalji
-                                tab, not editing). Mount/unmount used to re-space
-                                the whole flex-1 toolbar every time the section
-                                changed - now the other icons never move. Viewers
-                                (no canEdit) never get the slot at all. */}
-                            {canEdit && t.status !== "FINISHED" && (
-                                <Box
-                                    flex="1"
-                                    display="flex"
-                                    justifyContent="center"
-                                    visibility={showEditAction ? "visible" : "hidden"}
-                                    aria-hidden={!showEditAction}
-                                >
+                        {/* Actions under a divider at the menu card's tail.
+                            Organizer/admin (canEdit) get a FIRST row of two
+                            labeled buttons - Uredi + Obriši - then everyone
+                            shares the SECOND row: the icon-only toolbar
+                            (share, turnir mode, notifications). Viewers see
+                            only the icon row, exactly as before. */}
+                        <Box borderTopWidth="1px" borderColor="border" mt="2" pt="3">
+                            {canEdit && (
+                                <Flex gap="2" mb="2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        flex="1"
+                                        onClick={() => {
+                                            // The edit form lives in the Detalji
+                                            // view - jump there first, then open it.
+                                            setSection("details")
+                                            enterDetailsEdit()
+                                        }}
+                                        disabled={t.status === "FINISHED" || editingDetails}
+                                    >
+                                        <FiEdit2 size={15} /> {t18n.common.edit}
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorPalette="red"
+                                        flex="1"
+                                        onClick={() => setDeleteDialogOpen(true)}
+                                        // A pending request can't be re-filed;
+                                        // the admin can still finalize from here.
+                                        disabled={!isAdmin && !!t.archivedAt}
+                                        title={
+                                            !isAdmin && t.archivedAt
+                                                ? t18n.pages.tournamentDetailsPage.deleteRequestedNotice
+                                                : t18n.common.delete
+                                        }
+                                    >
+                                        <FiTrash2 size={15} /> {t18n.common.delete}
+                                    </Button>
+                                </Flex>
+                            )}
+                            <Flex gap="1" align="center">
+                                <Box flex="1" display="flex" justifyContent="center">
                                     <IconButton
-                                        aria-label={t18n.common.edit}
-                                        title={t18n.common.edit}
-                                        onClick={enterDetailsEdit}
+                                        aria-label={t18n.common.share}
+                                        title={t18n.common.share}
+                                        onClick={shareTournament}
                                         size="sm"
                                         variant="outline"
                                         rounded="full"
-                                        tabIndex={showEditAction ? 0 : -1}
                                     >
-                                        <FiEdit2 size={16} />
+                                        <FiShare2 size={16} />
                                     </IconButton>
                                 </Box>
-                            )}
-                            <Box flex="1" display="flex" justifyContent="center">
-                                <IconButton
-                                    aria-label={t18n.common.share}
-                                    title={t18n.common.share}
-                                    onClick={shareTournament}
-                                    size="sm"
-                                    variant="outline"
-                                    rounded="full"
-                                >
-                                    <FiShare2 size={16} />
-                                </IconButton>
-                            </Box>
-                            <Box flex="1" display="flex" justifyContent="center">
-                                <IconButton
-                                    aria-label={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
-                                    title={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
-                                    onClick={openTournamentMode}
-                                    size="sm"
-                                    variant="outline"
-                                    rounded="full"
-                                >
-                                    <FiMaximize2 size={16} />
-                                </IconButton>
-                            </Box>
-                            <Box flex="1" display="flex" justifyContent="center">
-                                <TournamentNotificationBell uuid={t.uuid} />
-                            </Box>
-                        </Flex>
+                                <Box flex="1" display="flex" justifyContent="center">
+                                    <IconButton
+                                        aria-label={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
+                                        title={t18n.pages.tournamentDetailsPage.fullscreenModeLabel}
+                                        onClick={openTournamentMode}
+                                        size="sm"
+                                        variant="outline"
+                                        rounded="full"
+                                    >
+                                        <FiMaximize2 size={16} />
+                                    </IconButton>
+                                </Box>
+                                <Box flex="1" display="flex" justifyContent="center">
+                                    <TournamentNotificationBell uuid={t.uuid} />
+                                </Box>
+                            </Flex>
+                        </Box>
 
                     </Flex>
 
@@ -1636,7 +1772,7 @@ export default function TournamentDetailsPage() {
                                     tournamentStarted={tournamentStarted}
                                     subTabs={hasGroupStage ? drawSubPills : undefined}
                                     onSelectTeam={setInfoTeamId}
-                                    onGoToSchedule={() => setSection("raspored")}
+                                    onGoToSchedule={() => requestSectionChange("raspored")}
                                     exportMeta={{
                                         tournamentName: t.name,
                                         organizerName: t.organizerName ?? t.createdByName ?? null,
@@ -1656,7 +1792,7 @@ export default function TournamentDetailsPage() {
                                     subTabs={hasGroupStage ? drawSubPills : undefined}
                                     onGoToSchedule={(openPlanner) => {
                                         if (openPlanner) setKnockoutTimesRequest(true)
-                                        setSection("raspored")
+                                        requestSectionChange("raspored")
                                     }}
                                     exportMeta={{
                                         tournamentName: t.name,
@@ -1744,6 +1880,34 @@ export default function TournamentDetailsPage() {
                 }}
             />
 
+
+            <DeleteTournamentDialog
+                open={deleteDialogOpen}
+                tournamentName={t.name}
+                isAdmin={isAdmin}
+                deleting={deletingTournament}
+                onClose={() => setDeleteDialogOpen(false)}
+                onConfirm={confirmDeleteTournament}
+            />
+
+            <ConfirmDialog
+                open={pendingSectionLeave != null}
+                title={t18n.pages.tournamentDetailsPage.discardEditTitle}
+                description={t18n.pages.tournamentDetailsPage.discardEditDescription}
+                confirmLabel={t18n.pages.tournamentDetailsPage.discardEditConfirm}
+                danger
+                onClose={() => setPendingSectionLeave(null)}
+                onConfirm={() => {
+                    const next = pendingSectionLeave
+                    setPendingSectionLeave(null)
+                    if (!next) return
+                    cancelDetailsEdit()
+                    if (next === "bracket" && section !== "bracket" && hasGroupStage) {
+                        resolveDrawSub()
+                    }
+                    setSection(next)
+                }}
+            />
 
             <DeleteTeamDialog
                 team={pendingDeleteTeam}

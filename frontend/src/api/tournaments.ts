@@ -10,6 +10,8 @@ export async function createTournament(payload: CreateTournamentPayload): Promis
     const body: CreateTournamentPayload = {
         name: payload.name.trim(),
         location: payload.location ?? null,
+        latitude: payload.latitude ?? null,
+        longitude: payload.longitude ?? null,
         details: payload.details ?? null,
         startAt: payload.startAt ?? null,
         status: payload.status ?? "DRAFT",
@@ -355,6 +357,26 @@ export async function deleteTournament(tournamentUuid: string): Promise<void> {
         `/tournaments/${tournamentUuid}`,
         { successMessage: "Turnir je obrisan." } as any,
     )
+}
+
+/**
+ * Two-step deletion, step 1: request deletion with a mandatory reason.
+ * Owner/co-editor → the tournament is only ARCHIVED (drops out of public
+ * listings; a platform admin must confirm the final soft delete later).
+ * Platform admin → finalized immediately ({@code finalized: true}).
+ * Silent - the caller shows its own toast depending on `finalized`.
+ * 409 DELETE_ALREADY_REQUESTED when a pending request already exists.
+ */
+export async function requestTournamentDeletion(
+    tournamentUuid: string,
+    reason: string,
+): Promise<{ finalized: boolean }> {
+    const { data } = await http.post<{ finalized: boolean }>(
+        `/tournaments/${tournamentUuid}/delete-request`,
+        { reason },
+        { silent: true, silentErrorStatuses: [409] } as any,
+    )
+    return data
 }
 
 /* ── Individual awards (best GK / player / scorer) ──────────────────── */

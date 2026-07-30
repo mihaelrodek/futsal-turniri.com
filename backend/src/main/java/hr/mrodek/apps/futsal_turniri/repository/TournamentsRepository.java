@@ -184,11 +184,16 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     // additionally protects a tournament whose matches were started before the
     // auto-STARTED transition existed (still DRAFT but clearly in progress). It
     // stays live until the organizer finishes it explicitly.
+    // Both listing predicates additionally require archivedAt IS NULL: a
+    // tournament whose deletion has been requested (archived, awaiting the
+    // admin's confirm) must drop out of the public lists immediately, even
+    // though its detail page stays reachable by direct link until the admin
+    // finalizes. Prepended OUTSIDE the or-group so it applies to both arms.
     private static final String EFFECTIVELY_FINISHED =
-            "status = ?1 or (status = ?2 and startAt is not null and startAt < ?3 "
-            + "and id not in (select m.tournament.id from Matches m where m.status <> ?4))";
+            "archivedAt is null and (status = ?1 or (status = ?2 and startAt is not null and startAt < ?3 "
+            + "and id not in (select m.tournament.id from Matches m where m.status <> ?4)))";
     private static final String NOT_EFFECTIVELY_FINISHED =
-            "status <> ?1 and not (status = ?2 and startAt is not null and startAt < ?3 "
+            "archivedAt is null and status <> ?1 and not (status = ?2 and startAt is not null and startAt < ?3 "
             + "and id not in (select m.tournament.id from Matches m where m.status <> ?4))";
 
     /** Start-of-grace cutoff: drafts whose start is older than this are done. */
@@ -237,9 +242,19 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
      */
     public java.util.Optional<Tournaments> findCurrentlyFeatured() {
         return find(
-                "featuredAt is not null and status <> ?1",
+                "featuredAt is not null and archivedAt is null and status <> ?1",
                 Sort.by("featuredAt").descending(),
                 TournamentStatus.FINISHED)
                 .firstResultOptional();
+    }
+
+    /**
+     * Pending deletion requests for the admin dashboard: archived (deletion
+     * requested) but not yet finally deleted. Rows whose deletion was already
+     * confirmed are excluded automatically by the entity's
+     * {@code @Where(is_deleted = false)} clause. Newest request first.
+     */
+    public List<Tournaments> findPendingDeleteRequests() {
+        return list("archivedAt is not null", Sort.by("archivedAt").descending());
     }
 }

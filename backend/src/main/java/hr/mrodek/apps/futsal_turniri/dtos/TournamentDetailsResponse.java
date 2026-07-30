@@ -97,5 +97,10 @@ public record TournamentDetailsResponse(
 
         // Which goals count toward the best-scorer race (ScorerScope name):
         // ALL | KNOCKOUT | ROUND_OF_32 | ROUND_OF_16 | QUARTERFINAL | SEMIFINAL.
-        String scorerScope
+        String scorerScope,
+
+        // Deletion requested (tournament archived, awaiting the platform
+        // admin's final confirm). Null = active. Drives the pending-deletion
+        // banner + disables re-requesting in the SPA.
+        java.time.OffsetDateTime archivedAt
 ) {}

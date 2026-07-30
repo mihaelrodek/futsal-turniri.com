@@ -27,6 +27,34 @@ type NominatimResult = {
     address?: NominatimAddress
 }
 
+/** Subset of a Places API (New) autocomplete `placePrediction` we consume. */
+type GooglePrediction = {
+    placeId: string
+    text?: { text?: string }
+    structuredFormat?: {
+        mainText?: { text?: string }
+        secondaryText?: { text?: string }
+    }
+}
+
+/**
+ * Provider-neutral suggestion the dropdown renders. Nominatim results carry
+ * coordinates directly; Google predictions carry a `googlePlaceId` and need
+ * one Place Details round-trip on pick to resolve lat/lng.
+ */
+type Suggestion = {
+    key: string
+    /** Top line in the dropdown (place name). */
+    primary: string
+    /** Muted second line (full address for disambiguation). */
+    secondary?: string
+    /** What the input is filled with on pick. */
+    fill: string
+    latitude?: number
+    longitude?: number
+    googlePlaceId?: string
+}
+
 export type LocationSuggestion = {
     displayName: string
     latitude: number
@@ -37,6 +65,17 @@ const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 const COUNTRY_CODES = "hr,ba,si,rs,me"
 const MIN_CHARS = 3
 const DEBOUNCE_MS = 350
+
+// Google Places API (New). The key is optional: when it's absent the
+// component silently runs on Nominatim exactly as before. A browser key is
+// public by design - it must be locked down by HTTP referrer (and to the
+// Places API (New) only) in the Google Cloud console, not treated as a
+// secret.
+const GOOGLE_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
+const GOOGLE_PLACE_URL = "https://places.googleapis.com/v1/places"
+const GOOGLE_REGION_CODES = ["hr", "ba", "si", "rs", "me"]
+const GOOGLE_API_KEY: string =
+    (import.meta.env.VITE_GOOGLE_PLACES_API_KEY as string | undefined)?.trim() ?? ""
 
 /**
  * Build a short, human-friendly label from a Nominatim address. We deliberately
@@ -73,11 +112,103 @@ export function formatNominatimAddress(r: NominatimResult): string {
     return parts.slice(0, 2).join(", ") || r.display_name
 }
 
+function fromNominatim(r: NominatimResult): Suggestion {
+    const lat = parseFloat(r.lat)
+    const lng = parseFloat(r.lon)
+    return {
+        key: `n:${r.place_id}`,
+        primary: formatNominatimAddress(r),
+        secondary: r.display_name,
+        // Fill the input with Nominatim's full display_name - postcode,
+        // county, country and all. Restored after a brief stint with a
+        // shorter formatted label: the verbose form gives WhatsApp shares
+        // and the map pin enough context to be unambiguous, and the user
+        // can always trim it manually afterwards.
+        fill: r.display_name,
+        latitude: Number.isFinite(lat) ? lat : undefined,
+        longitude: Number.isFinite(lng) ? lng : undefined,
+    }
+}
+
+function fromGoogle(p: GooglePrediction): Suggestion {
+    // `text.text` is the full prediction string the user saw - use it both
+    // as the input fill and as the displayName reported to the parent, so
+    // what's picked is exactly what's stored.
+    const full = p.text?.text ?? p.structuredFormat?.mainText?.text ?? ""
+    return {
+        key: `g:${p.placeId}`,
+        primary: p.structuredFormat?.mainText?.text ?? full,
+        secondary: p.structuredFormat?.secondaryText?.text ?? full,
+        fill: full,
+        googlePlaceId: p.placeId,
+    }
+}
+
+async function searchNominatim(
+    query: string,
+    signal?: AbortSignal,
+): Promise<Suggestion[]> {
+    const url =
+        `${NOMINATIM_URL}?format=json&limit=5` +
+        `&addressdetails=1` +
+        `&countrycodes=${encodeURIComponent(COUNTRY_CODES)}` +
+        `&accept-language=hr` +
+        `&q=${encodeURIComponent(query)}`
+
+    const r = await fetch(url, { signal, headers: { "Accept": "application/json" } })
+    if (!r.ok) throw new Error(`Nominatim ${r.status}`)
+    const data = (await r.json()) as NominatimResult[]
+    return data.map(fromNominatim)
+}
+
+async function searchGoogle(
+    query: string,
+    sessionToken: string,
+    signal?: AbortSignal,
+): Promise<Suggestion[]> {
+    const r = await fetch(GOOGLE_AUTOCOMPLETE_URL, {
+        method: "POST",
+        signal,
+        headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
+            // Only the prediction fields we actually render.
+            "X-Goog-FieldMask":
+                "suggestions.placePrediction.placeId," +
+                "suggestions.placePrediction.text," +
+                "suggestions.placePrediction.structuredFormat",
+        },
+        body: JSON.stringify({
+            input: query,
+            languageCode: "hr",
+            includedRegionCodes: GOOGLE_REGION_CODES,
+            sessionToken,
+        }),
+    })
+    if (!r.ok) throw new Error(`Places autocomplete ${r.status}`)
+    const data = (await r.json()) as {
+        suggestions?: { placePrediction?: GooglePrediction }[]
+    }
+    return (data.suggestions ?? [])
+        .map((s) => s.placePrediction)
+        .filter((p): p is GooglePrediction => Boolean(p?.placeId))
+        .slice(0, 5)
+        .map(fromGoogle)
+}
+
 /**
- * Free-form text input with location suggestions powered by OpenStreetMap
- * Nominatim. The user can either pick a suggestion (which fills the input
- * with the formatted address and reports lat/lng to the parent) or keep
- * typing freely and submit any string - picking is not required.
+ * Free-form text input with location suggestions powered by Google Places
+ * API (New) when `VITE_GOOGLE_PLACES_API_KEY` is configured, with OpenStreetMap
+ * Nominatim as the automatic fallback (no key, or a failed Google request).
+ * The user can either pick a suggestion (which fills the input with the
+ * suggestion text and reports lat/lng to the parent) or keep typing freely
+ * and submit any string - picking is not required.
+ *
+ * Google cost control: all autocomplete keystrokes of one typing "session"
+ * share a random UUID session token, and the same token is passed to the
+ * Place Details call fired on pick - that terminates the session, so the
+ * keystrokes are covered by session pricing and only Details is billed.
+ * A fresh token starts on the first keystroke after a pick.
  */
 export function LocationAutocomplete({
     value,
@@ -96,12 +227,17 @@ export function LocationAutocomplete({
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [results, setResults] = useState<NominatimResult[]>([])
+    const [results, setResults] = useState<Suggestion[]>([])
     const [activeIndex, setActiveIndex] = useState<number>(-1)
 
-    const cache = useRef<Map<string, NominatimResult[]>>(new Map())
+    // Keyed `google:{q}` / `nominatim:{q}` so a query answered by the
+    // fallback provider never masquerades as a Google result set.
+    const cache = useRef<Map<string, Suggestion[]>>(new Map())
     const wrapperRef = useRef<HTMLDivElement | null>(null)
     const abortRef = useRef<AbortController | null>(null)
+    // Lazily created on the first Google request of a typing session,
+    // cleared when a pick terminates the session via Place Details.
+    const sessionTokenRef = useRef<string | null>(null)
 
     const query = useMemo(() => value.trim(), [value])
 
@@ -112,7 +248,9 @@ export function LocationAutocomplete({
             return
         }
         const key = query.toLowerCase()
-        const cached = cache.current.get(key)
+        const cached =
+            (GOOGLE_API_KEY ? cache.current.get(`google:${key}`) : undefined) ??
+            cache.current.get(`nominatim:${key}`)
         if (cached) {
             setResults(cached)
             setError(null)
@@ -127,26 +265,30 @@ export function LocationAutocomplete({
             setLoading(true)
             setError(null)
 
-            const url =
-                `${NOMINATIM_URL}?format=json&limit=5` +
-                `&addressdetails=1` +
-                `&countrycodes=${encodeURIComponent(COUNTRY_CODES)}` +
-                `&accept-language=hr` +
-                `&q=${encodeURIComponent(query)}`
+            const run = async (): Promise<void> => {
+                let data: Suggestion[]
+                if (GOOGLE_API_KEY) {
+                    sessionTokenRef.current ??= crypto.randomUUID()
+                    try {
+                        data = await searchGoogle(
+                            query, sessionTokenRef.current, controller.signal)
+                        cache.current.set(`google:${key}`, data)
+                    } catch (e) {
+                        if ((e as Error)?.name === "AbortError") throw e
+                        // Google down / quota / bad key - degrade to
+                        // Nominatim so the field never goes dead.
+                        data = await searchNominatim(query, controller.signal)
+                        cache.current.set(`nominatim:${key}`, data)
+                    }
+                } else {
+                    data = await searchNominatim(query, controller.signal)
+                    cache.current.set(`nominatim:${key}`, data)
+                }
+                setResults(data)
+                setActiveIndex(-1)
+            }
 
-            fetch(url, {
-                signal: controller.signal,
-                headers: { "Accept": "application/json" },
-            })
-                .then((r) => {
-                    if (!r.ok) throw new Error(`Nominatim ${r.status}`)
-                    return r.json() as Promise<NominatimResult[]>
-                })
-                .then((data) => {
-                    cache.current.set(key, data)
-                    setResults(data)
-                    setActiveIndex(-1)
-                })
+            run()
                 .catch((e) => {
                     if (e?.name === "AbortError") return
                     setError(t.components.locationAutocomplete.fetchError)
@@ -169,19 +311,66 @@ export function LocationAutocomplete({
         return () => document.removeEventListener("mousedown", onDocClick)
     }, [])
 
-    function pick(r: NominatimResult) {
-        const lat = parseFloat(r.lat)
-        const lng = parseFloat(r.lon)
-        // Fill the input with Nominatim's full display_name - postcode,
-        // county, country and all. Restored after a brief stint with a
-        // shorter formatted label: the verbose form gives WhatsApp shares
-        // and the map pin enough context to be unambiguous, and the user
-        // can always trim it manually afterwards.
-        onChange(r.display_name)
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            onPickSuggestion?.({ displayName: r.display_name, latitude: lat, longitude: lng })
+    /**
+     * Resolve a picked Google prediction to coordinates via Place Details
+     * (New). Passing the session token here terminates the autocomplete
+     * session (see the component doc comment). The minimal field mask
+     * keeps the call on the cheapest Details SKU.
+     */
+    async function resolveGooglePlace(s: Suggestion) {
+        const token = sessionTokenRef.current
+        sessionTokenRef.current = null // next keystroke starts a new session
+        try {
+            const url =
+                `${GOOGLE_PLACE_URL}/${encodeURIComponent(s.googlePlaceId!)}` +
+                (token ? `?sessionToken=${encodeURIComponent(token)}` : "")
+            const r = await fetch(url, {
+                headers: {
+                    "X-Goog-Api-Key": GOOGLE_API_KEY,
+                    "X-Goog-FieldMask": "location,formattedAddress",
+                },
+            })
+            if (!r.ok) throw new Error(`Places details ${r.status}`)
+            const data = (await r.json()) as {
+                location?: { latitude?: number; longitude?: number }
+            }
+            const lat = data.location?.latitude
+            const lng = data.location?.longitude
+            if (typeof lat !== "number" || typeof lng !== "number") {
+                throw new Error("Places details: no location")
+            }
+            onPickSuggestion?.({ displayName: s.fill, latitude: lat, longitude: lng })
+        } catch {
+            // Details failed - geocode the picked text via Nominatim so
+            // the parent still gets coordinates instead of a dead pick.
+            try {
+                const fallback = await searchNominatim(s.fill)
+                const first = fallback[0]
+                if (first?.latitude != null && first.longitude != null) {
+                    onPickSuggestion?.({
+                        displayName: s.fill,
+                        latitude: first.latitude,
+                        longitude: first.longitude,
+                    })
+                }
+            } catch {
+                // Both providers failed - the free-text value still stands.
+            }
         }
+    }
+
+    function pick(s: Suggestion) {
+        onChange(s.fill)
         setOpen(false)
+        if (s.googlePlaceId) {
+            void resolveGooglePlace(s)
+        } else if (s.latitude != null && s.longitude != null) {
+            onPickSuggestion?.({
+                displayName: s.fill,
+                latitude: s.latitude,
+                longitude: s.longitude,
+            })
+        }
     }
 
     function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -262,12 +451,12 @@ export function LocationAutocomplete({
 
                     {!loading && !error && results.length > 0 && (
                         <VStack align="stretch" gap="0">
-                            {results.map((r, i) => (
+                            {results.map((s, i) => (
                                 <chakra.button
-                                    key={r.place_id}
+                                    key={s.key}
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => pick(r)}
+                                    onClick={() => pick(s)}
                                     onMouseEnter={() => setActiveIndex(i)}
                                     px="3"
                                     py="2"
@@ -285,16 +474,18 @@ export function LocationAutocomplete({
                                         </Box>
                                         <VStack gap="0" align="stretch" flex="1" minW="0">
                                             <Text fontSize="sm" lineHeight="short">
-                                                {formatNominatimAddress(r)}
+                                                {s.primary}
                                             </Text>
-                                            <Text
-                                                fontSize="2xs"
-                                                color="fg.muted"
-                                                lineHeight="short"
-                                                truncate
-                                            >
-                                                {r.display_name}
-                                            </Text>
+                                            {s.secondary && (
+                                                <Text
+                                                    fontSize="2xs"
+                                                    color="fg.muted"
+                                                    lineHeight="short"
+                                                    truncate
+                                                >
+                                                    {s.secondary}
+                                                </Text>
+                                            )}
                                         </VStack>
                                     </HStack>
                                 </chakra.button>

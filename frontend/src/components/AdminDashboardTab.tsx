@@ -15,10 +15,13 @@ import {
 } from "@chakra-ui/react"
 import { FiSearch, FiUserPlus } from "react-icons/fi"
 import {
+    adminConfirmTournamentDelete,
     adminDeleteTournament,
     adminFeatureTournament,
+    adminListDeleteRequests,
     adminListTournaments,
     adminResetTournament,
+    adminRestoreTournament,
     adminSearchUsers,
     adminSetTournamentStatus,
     adminListEditors,
@@ -26,6 +29,7 @@ import {
     adminRemoveEditor,
     adminUnfeatureTournament,
     adminExportTournament,
+    type AdminDeleteRequestDto,
     type AdminTournamentDto,
     type AdminUserDto,
 } from "../api/admin"
@@ -282,6 +286,18 @@ export default function AdminDashboardTab() {
                     </Stack>
                 </Card.Body>
             </Card.Root>
+
+            {/* Pending deletion requests - organizer "Obriši" only files a
+                request (tournament archived); the final soft delete or the
+                restore back to public happens here. */}
+            <AdminDeleteRequestsCard
+                onChanged={async () => {
+                    // A confirm drops the row from the picker; a restore keeps
+                    // it - either way re-pull so the list matches reality.
+                    const rows = await adminListTournaments()
+                    setTournaments(rows)
+                }}
+            />
 
             {selectedTournament != null && (
                 <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
@@ -546,6 +562,137 @@ export default function AdminDashboardTab() {
                 </Portal>
             </Dialog.Root>
         </VStack>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   AdminDeleteRequestsCard - compact list of pending tournament-deletion
+   requests (name, requester, reason, date). "Potvrdi brisanje" finalizes
+   the SOFT delete (is_deleted + deleted_at - rows are never physically
+   removed); "Vrati" rejects the request and puts the tournament back on
+   the public listings. Always rendered so the admin knows the surface
+   exists; shows a one-line empty state when there's nothing pending.
+   ────────────────────────────────────────────────────────────────────── */
+function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
+    const t = useTranslation()
+    const dr = t.components.adminDashboardTab.deleteRequests
+    const [rows, setRows] = useState<AdminDeleteRequestDto[] | null>(null)
+    const [busyKey, setBusyKey] = useState<string | null>(null)
+
+    function load() {
+        adminListDeleteRequests()
+            .then(setRows)
+            .catch(() => setRows([]))
+    }
+    useEffect(() => { load() }, [])
+
+    async function confirmDelete(row: AdminDeleteRequestDto) {
+        const key = row.uuid ?? row.slug
+        if (!key || busyKey) return
+        if (!window.confirm(dr.confirmPrompt(row.name))) return
+        try {
+            setBusyKey(key)
+            await adminConfirmTournamentDelete(key)
+            load()
+            onChanged()
+        } finally {
+            setBusyKey(null)
+        }
+    }
+
+    async function restore(row: AdminDeleteRequestDto) {
+        const key = row.uuid ?? row.slug
+        if (!key || busyKey) return
+        try {
+            setBusyKey(key)
+            await adminRestoreTournament(key)
+            load()
+            onChanged()
+        } finally {
+            setBusyKey(null)
+        }
+    }
+
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "4", md: "6" }}>
+                <Stack gap="3">
+                    <Box>
+                        <Text fontSize="md" fontWeight="semibold">{dr.heading}</Text>
+                        <Text fontSize="sm" color="fg.muted">{dr.description}</Text>
+                    </Box>
+                    {rows === null ? (
+                        <HStack py="2" justify="center"><Spinner size="sm" /></HStack>
+                    ) : rows.length === 0 ? (
+                        <Text fontSize="sm" color="fg.muted">{dr.empty}</Text>
+                    ) : (
+                        <Stack gap="1.5">
+                            {rows.map((row) => {
+                                const key = row.uuid ?? row.slug ?? String(row.tournamentId)
+                                return (
+                                    <Box
+                                        key={key}
+                                        p="3"
+                                        bg="bg.subtle"
+                                        rounded="md"
+                                        borderWidth="1px"
+                                        borderColor="border.subtle"
+                                    >
+                                        <HStack justify="space-between" gap="3" align="flex-start" wrap="wrap">
+                                            <Box minW="0" flex="1">
+                                                <HStack gap="2" wrap="wrap">
+                                                    <Text fontSize="sm" fontWeight="semibold" truncate>
+                                                        {row.name}
+                                                    </Text>
+                                                    {formatDate(row.requestedAt) && (
+                                                        <Badge size="sm" variant="subtle" colorPalette="red">
+                                                            {formatDate(row.requestedAt)}
+                                                        </Badge>
+                                                    )}
+                                                </HStack>
+                                                <Text fontSize="xs" color="fg.muted" truncate>
+                                                    {dr.requesterPrefix}
+                                                    {row.requestedByName
+                                                        || row.requestedByUid
+                                                        || t.components.adminDashboardTab.noName}
+                                                </Text>
+                                                {row.reason && (
+                                                    <Text fontSize="xs" color="fg.muted">
+                                                        {dr.reasonPrefix}{row.reason}
+                                                    </Text>
+                                                )}
+                                            </Box>
+                                            <HStack gap="2" flexShrink={0}>
+                                                <Button
+                                                    size="xs"
+                                                    variant="outline"
+                                                    colorPalette="gray"
+                                                    disabled={busyKey != null}
+                                                    loading={busyKey === (row.uuid ?? row.slug)}
+                                                    onClick={() => restore(row)}
+                                                >
+                                                    <FiRotateCcw /> {dr.restore}
+                                                </Button>
+                                                <Button
+                                                    size="xs"
+                                                    variant="solid"
+                                                    colorPalette="red"
+                                                    disabled={busyKey != null}
+                                                    loading={busyKey === (row.uuid ?? row.slug)}
+                                                    onClick={() => confirmDelete(row)}
+                                                >
+                                                    <FiTrash2 /> {dr.confirm}
+                                                </Button>
+                                            </HStack>
+                                        </HStack>
+                                    </Box>
+                                )
+                            })}
+                        </Stack>
+                    )}
+                </Stack>
+            </Card.Body>
+        </Card.Root>
     )
 }
 

@@ -220,6 +220,22 @@ public class TournamentController {
         );
     }
 
+    /**
+     * Client-pinned map coordinates win over server-side geocoding: when the
+     * request carries BOTH latitude and longitude (map pin / autocomplete
+     * suggestion), store them as-is - Nominatim's forward geocode of the
+     * location text often resolves only to the municipality centroid.
+     *
+     * @return true when the pin was applied (caller must skip applyGeocoding)
+     */
+    private boolean applyClientCoords(Tournaments t, CreateTournamentRequest req) {
+        if (req.latitude() == null || req.longitude() == null) return false;
+        t.setLatitude(req.latitude());
+        t.setLongitude(req.longitude());
+        t.setGeocodedAt(OffsetDateTime.now());
+        return true;
+    }
+
     /* ===================== Create ===================== */
 
     @POST
@@ -230,7 +246,7 @@ public class TournamentController {
         // happened) - no future-only guard.
         Tournaments t = tournamentMapper.toEntity(req);
         stampCreator(t);
-        applyGeocoding(t);
+        if (!applyClientCoords(t, req)) applyGeocoding(t);
         // Generate slug before save so the unique index sees it on first
         // INSERT - the entity already has name + startAt populated by the
         // mapper at this point.
@@ -276,7 +292,7 @@ public class TournamentController {
             t.setResource(r);
         }
 
-        applyGeocoding(t);
+        if (!applyClientCoords(t, req)) applyGeocoding(t);
         t.setSlug(tournamentSlugService.generateUnique(t, null));
         Tournaments saved = tournamentsRepo.save(t);
         URI location = URI.create("/tournaments/" + saved.getSlug());
@@ -368,8 +384,12 @@ public class TournamentController {
         }
         t.setUpdatedAt(OffsetDateTime.now());
 
-        // Re-geocode only when the location actually changed - saves Nominatim hits.
-        if (!java.util.Objects.equals(previousLocation, t.getLocation())) {
+        // Client-pinned coordinates win outright - even when the location
+        // text is unchanged (the user may have only moved the pin). Fallback:
+        // re-geocode only when the location text actually changed - saves
+        // Nominatim hits.
+        if (!applyClientCoords(t, req)
+                && !java.util.Objects.equals(previousLocation, t.getLocation())) {
             applyGeocoding(t);
         }
 
@@ -406,10 +426,73 @@ public class TournamentController {
         assertCanEdit(t);
 
         t.setDeleted(true);
+        t.setDeletedAt(OffsetDateTime.now());
         t.setUpdatedAt(OffsetDateTime.now());
         // A deleted tournament must not linger as the daily highlight.
         t.setFeaturedAt(null);
         return Response.noContent().build();
+    }
+
+    /** Wire shape of the deletion request - just the mandatory reason. */
+    public record DeleteRequestBody(String reason) {}
+
+    /**
+     * Two-step deletion, step 1: REQUEST deletion with a mandatory reason.
+     *
+     * <p>Owner / co-editor: the tournament is only ARCHIVED ({@code archivedAt}
+     * stamped + requester/reason recorded). It drops out of the public listings
+     * immediately (see the {@code archivedAt is null} predicates in
+     * {@link TournamentsRepository}) but its detail page stays reachable by
+     * direct link, and nothing is removed - a platform admin must later confirm
+     * (final soft delete) or restore from the admin dashboard.
+     *
+     * <p>Platform admin: they ARE the confirming authority, so their request
+     * finalizes immediately - archived AND soft-deleted in one step (the reason
+     * is still recorded for the audit trail). The response's {@code finalized}
+     * flag tells the SPA which of the two happened so it can toast/navigate
+     * accordingly.
+     *
+     * <p>409 {@code DELETE_ALREADY_REQUESTED} when a pending request already
+     * exists (non-admin caller) - re-requesting would silently overwrite the
+     * original reason/requester.
+     */
+    @POST
+    @Path("/{uuid}/delete-request")
+    @Authenticated
+    @Transactional
+    public Response requestDelete(@PathParam("uuid") String uuid, DeleteRequestBody body) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        assertCanEdit(t);
+
+        String reason = body != null && body.reason() != null ? body.reason().trim() : "";
+        if (reason.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("REASON_REQUIRED").build();
+        }
+
+        boolean admin = identity != null && identity.hasRole("admin");
+        if (!admin && t.getArchivedAt() != null) {
+            return Response.status(Response.Status.CONFLICT).entity("DELETE_ALREADY_REQUESTED").build();
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        // Keep the ORIGINAL request stamp when an admin finalizes a pending
+        // organizer request through this same endpoint.
+        if (t.getArchivedAt() == null) {
+            t.setArchivedAt(now);
+            t.setDeleteReason(reason);
+            t.setDeleteRequestedByUid(jwt != null ? jwt.getSubject() : null);
+            t.setDeleteRequestedByName(displayNameFromJwt());
+        }
+        // An archived tournament can't stay the public daily highlight.
+        t.setFeaturedAt(null);
+        t.setUpdatedAt(now);
+
+        if (admin) {
+            t.setDeleted(true);
+            t.setDeletedAt(now);
+        }
+        return Response.ok(java.util.Map.of("finalized", admin)).build();
     }
 
     /**

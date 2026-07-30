@@ -228,6 +228,52 @@ export async function adminDeleteTournament(uuid: string): Promise<void> {
     )
 }
 
+/* ───────────────────── Deletion requests (two-step delete) ─────────────────
+   An organizer's "Obriši" only ARCHIVES the tournament with a mandatory
+   reason; the platform admin reviews the pending requests here and either
+   confirms (final SOFT delete - is_deleted + deleted_at, rows never removed)
+   or restores ("Vrati" - clears the request, tournament is public again). */
+
+/** One pending deletion request row. */
+export type AdminDeleteRequestDto = {
+    tournamentId: number
+    uuid: string | null
+    slug: string | null
+    name: string
+    requestedByUid: string | null
+    requestedByName: string | null
+    reason: string | null
+    /** ISO timestamp of the request (= archived_at). */
+    requestedAt: string | null
+}
+
+/** Pending deletion requests, newest first. */
+export async function adminListDeleteRequests(): Promise<AdminDeleteRequestDto[]> {
+    const { data } = await http.get<AdminDeleteRequestDto[]>(
+        "/admin/tournaments/delete-requests",
+        { silent: true } as any,
+    )
+    return data
+}
+
+/** Finalize a pending deletion request (soft delete - reversible only in DB). */
+export async function adminConfirmTournamentDelete(uuid: string): Promise<void> {
+    await http.post(
+        `/admin/tournaments/${uuid}/delete-confirm`,
+        undefined,
+        { successMessage: "Brisanje potvrđeno - turnir je obrisan." } as any,
+    )
+}
+
+/** Reject a deletion request - the tournament becomes public again. */
+export async function adminRestoreTournament(uuid: string): Promise<void> {
+    await http.post(
+        `/admin/tournaments/${uuid}/delete-restore`,
+        undefined,
+        { successMessage: "Turnir je vraćen." } as any,
+    )
+}
+
 /** Admin-toggle the daily-highlight feature flag. Same endpoints as the
  *  Detalji-tab admin button, surfaced here so the admin can feature any
  *  tournament without navigating to its detail page first. */

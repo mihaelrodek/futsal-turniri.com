@@ -9,6 +9,7 @@ import {
     IconButton,
     Input,
     Text,
+    Textarea,
     VStack,
     chakra,
 } from "@chakra-ui/react"
@@ -554,34 +555,69 @@ export function TeamInfoDialog({
         </Dialog.Root>
     )
 }
-/* ---------- Delete-tournament confirm (admin only) ---------- */
+/* ---------- Delete-tournament request (two-step delete) ----------
+   Deletion is a REQUEST, not a direct delete: the organizer gives a
+   mandatory reason, the tournament is archived (drops out of public
+   listings) and a platform admin must confirm the final deletion. For
+   platform admins the same dialog finalizes immediately - they ARE the
+   confirming authority - so the copy and the confirm label switch. */
 export function DeleteTournamentDialog({
     open,
     tournamentName,
+    isAdmin,
     deleting,
     onClose,
     onConfirm,
 }: {
     open: boolean
     tournamentName?: string | null
+    /** Platform admin (role `admin`) - their confirm finalizes immediately. */
+    isAdmin: boolean
     deleting: boolean
     onClose: () => void
-    onConfirm: () => void
+    /** Called with the trimmed, non-empty reason. */
+    onConfirm: (reason: string) => void
 }) {
     const t = useTranslation()
     const dt = t.tournamentSection.dialogs.deleteTournament
+    const [reason, setReason] = useState("")
+    // Fresh textarea on every open - a cancelled attempt's reason must not
+    // linger into the next one.
+    useEffect(() => {
+        if (open) setReason("")
+    }, [open])
+    const trimmed = reason.trim()
     return (
         <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open && !deleting) onClose() }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-                <Dialog.Content maxW="sm">
-                    <Dialog.Header>{dt.title}</Dialog.Header>
-                    <Dialog.Body>
-                        <Text>
-                            {dt.bodyPrefix}{" "}
-                            <chakra.b>{tournamentName}</chakra.b>
-                            {dt.bodySuffix}
-                        </Text>
+                <Dialog.Content maxW="md">
+                    <Dialog.Header py="3" px="4" borderBottomWidth="1px" borderColor="border">
+                        <Heading size="sm">{isAdmin ? dt.adminTitle : dt.title}</Heading>
+                    </Dialog.Header>
+                    <Dialog.Body py="4" px="4">
+                        <VStack align="stretch" gap="3">
+                            <Text fontSize="sm">
+                                {dt.bodyPrefix}{" "}
+                                <chakra.b>{tournamentName}</chakra.b>{" "}
+                                {isAdmin ? dt.adminBody : dt.requestBody}
+                            </Text>
+                            <Box>
+                                <Text fontSize="xs" color="fg.muted" mb="1.5" fontWeight="medium">
+                                    {dt.reasonLabel}
+                                </Text>
+                                <Textarea
+                                    autoFocus
+                                    rows={3}
+                                    placeholder={dt.reasonPlaceholder}
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                />
+                                <Text fontSize="xs" color="fg.muted" mt="1">
+                                    {dt.reasonRequired}
+                                </Text>
+                            </Box>
+                        </VStack>
                     </Dialog.Body>
                     <Dialog.Footer>
                         <Button variant="ghost" onClick={onClose} disabled={deleting}>
@@ -591,9 +627,10 @@ export function DeleteTournamentDialog({
                             variant="solid"
                             colorPalette="red"
                             loading={deleting}
-                            onClick={onConfirm}
+                            disabled={trimmed.length === 0}
+                            onClick={() => onConfirm(trimmed)}
                         >
-                            {dt.confirm}
+                            {isAdmin ? dt.confirmAdmin : dt.confirmRequest}
                         </Button>
                     </Dialog.Footer>
                 </Dialog.Content>

@@ -2065,6 +2065,12 @@ function BracketPosterCard({
     const s1 = finished && hasScore ? m.score1 : null
     const s2 = finished && hasScore ? m.score2 : null
     const kickoffLabel = kickoffBadgeLabel(m.kickoffAt)
+    // FINAL/THIRD_PLACE never get a lettered `knockoutCode` (there's only
+    // ever one of each, so a code number would be meaningless) - fall back
+    // to the stage name so the kickoff time still has a label to sit next
+    // to. The 3rd-place box already carries its own bottom label instead
+    // (see isThird below), so it's excluded here to avoid showing it twice.
+    const badgeCode = m.knockoutCode ?? (isFinal ? tr.components.scheduleTab.stageLabels.FINAL : null)
     return (
         <div
             style={{
@@ -2078,7 +2084,7 @@ function BracketPosterCard({
                 flexDirection: "column",
             }}
         >
-            {m.knockoutCode ? (
+            {badgeCode ? (
                 <div
                     style={{
                         flexShrink: 0,
@@ -2089,6 +2095,7 @@ function BracketPosterCard({
                         fontSize: `${Math.max(8, t.thirdLabelFont - 1)}px`,
                         fontWeight: 800,
                         letterSpacing: "0.08em",
+                        textTransform: "uppercase",
                         color: C.white,
                         background: "#17A79D",
                         borderBottom: "1px solid #0F8F87",
@@ -2098,7 +2105,7 @@ function BracketPosterCard({
                         overflow: "hidden",
                     }}
                 >
-                    <span style={{ flexShrink: 0 }}>{m.knockoutCode}</span>
+                    <span style={{ flexShrink: 0 }}>{badgeCode}</span>
                     {kickoffLabel ? (
                         <span
                             style={{
@@ -2151,6 +2158,7 @@ function BracketPosterCard({
                     }}
                 >
                     {tr.components.scheduleTab.stageLabels.THIRD_PLACE}
+                    {kickoffLabel ? ` • ${kickoffLabel}` : ""}
                 </div>
             ) : null}
         </div>

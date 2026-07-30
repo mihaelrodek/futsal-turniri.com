@@ -129,6 +129,11 @@ export type TournamentDetails = {
     /** Which goals count toward the best-scorer race. Default KNOCKOUT
      *  (group-stage goals excluded); set via PUT /{uuid}/scorer-scope. */
     scorerScope?: ScorerScope | null;
+
+    /** ISO timestamp of a pending deletion request (tournament archived,
+     *  awaiting the platform admin's final confirm). Null = active. Drives
+     *  the pending-deletion banner + disables re-requesting. */
+    archivedAt?: string | null;
 };
 
 export type CreateTournamentPayload = {
@@ -137,6 +142,11 @@ export type CreateTournamentPayload = {
 
     // optional basics
     location?: string | null;
+    /** Exact map-pin coordinates from LocationMapPicker / an autocomplete
+     *  suggestion. When BOTH are set the backend stores them as-is and skips
+     *  its own (coarser) forward geocoding of `location`. */
+    latitude?: number | null;
+    longitude?: number | null;
     details?: string | null;
     startAt?: string | null;          // ISO with offset
     status?: TournamentStatus | null; // default DRAFT (server-side safe)

@@ -98,6 +98,8 @@ public interface TournamentMapper {
             @Mapping(target = "hidden", source = "hidden"),
             // Best-scorer goal scope (which stages count toward the race).
             @Mapping(target = "scorerScope", source = "scorerScope", qualifiedByName = "enumToName"),
+            // Pending deletion request (archived, awaiting admin confirm).
+            @Mapping(target = "archivedAt", source = "archivedAt"),
     })
     TournamentDetailsResponse toDetails(Tournaments t);
 
@@ -111,6 +113,10 @@ public interface TournamentMapper {
 
             @Mapping(target = "name", source = "name"),
             @Mapping(target = "location", source = "location"),
+            // Coordinates are controller-owned (applyClientCoords /
+            // applyGeocoding) - never auto-mapped from the request.
+            @Mapping(target = "latitude", ignore = true),
+            @Mapping(target = "longitude", ignore = true),
             @Mapping(target = "details", source = "details"),
             @Mapping(target = "startAt", source = "startAt"),
 
@@ -176,6 +182,11 @@ public interface TournamentMapper {
 
             @Mapping(target = "name", source = "name"),
             @Mapping(target = "location", source = "location"),
+            // Coordinates are controller-owned (applyClientCoords /
+            // applyGeocoding). With SET_TO_NULL in force, an auto-mapping
+            // here would wipe stored coords whenever a request omits them.
+            @Mapping(target = "latitude", ignore = true),
+            @Mapping(target = "longitude", ignore = true),
             @Mapping(target = "details", source = "details"),
             @Mapping(target = "startAt", source = "startAt"),
 
