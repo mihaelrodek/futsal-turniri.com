@@ -153,6 +153,16 @@ function dayHeaderLabel(key: string, t: Dictionary): string {
     return `${t.components.tournamentExport.weekdaysFull[dt.getDay()]}, ${d}.${m}.${y}.`
 }
 
+/** "25.7.2026. 19:00" - compact kickoff label for the bracket poster's
+ *  slot-code badge (date + local time, no weekday name - the badge is tiny). */
+function kickoffBadgeLabel(iso?: string | null): string | null {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return null
+    const p = (n: number) => String(n).padStart(2, "0")
+    return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}. ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 /** HH:mm (local) kickoff time. */
 function hhmm(iso: string | null): string {
     if (!iso) return "--:--"
@@ -1561,28 +1571,50 @@ function fitsBestPlacedInline(groups: Group[], table: ThirdPlacedTable): boolean
  *  may be a partial section when a long day is split across pages. */
 type ScheduleSection = { key: string; label: string; matches: ScheduledMatch[] }
 
-/** Bucket the matches into day sections (kickoff order) + a trailing
- *  "Termin nije određen" section for the unscheduled ones. */
+/** Sections are PLAY SESSIONS, not calendar dates - a session that runs late
+ *  and spills a final match or two past midnight (23:30 → 00:00) stays in
+ *  the same section as the evening before it instead of opening its own
+ *  lonely "day" heading for one match. Mirrors the >= 6h gap heuristic
+ *  MultiDaySchedulePlanner already uses to reconstruct sessions from an
+ *  existing schedule (see GAP_NEW_DAY_MS there) - only an overnight break
+ *  starts a new section, a short gap between matches never does. */
+const SECTION_GAP_MS = 6 * 60 * 60 * 1000
+
+/** Bucket the matches into play-session sections (kickoff order) + a
+ *  trailing "Termin nije određen" section for the unscheduled ones. */
 function buildScheduleSections(matches: ScheduledMatch[], t: Dictionary): ScheduleSection[] {
     const scheduled = matches.filter((m) => m.kickoffAt)
     const unscheduled = matches.filter((m) => !m.kickoffAt)
     scheduled.sort((a, b) => new Date(a.kickoffAt!).getTime() - new Date(b.kickoffAt!).getTime())
 
-    const dayOrder: string[] = []
-    const byDay = new Map<string, ScheduledMatch[]>()
+    const sessions: ScheduledMatch[][] = []
     for (const m of scheduled) {
-        const k = dateKey(m.kickoffAt)
-        if (!byDay.has(k)) {
-            byDay.set(k, [])
-            dayOrder.push(k)
-        }
-        byDay.get(k)!.push(m)
+        const cur = sessions[sessions.length - 1]
+        const prevAt = cur ? new Date(cur[cur.length - 1].kickoffAt!).getTime() : null
+        const at = new Date(m.kickoffAt!).getTime()
+        if (prevAt != null && at - prevAt < SECTION_GAP_MS) cur.push(m)
+        else sessions.push([m])
     }
 
-    const sections: ScheduleSection[] = dayOrder.map((k) => ({
+    // Each session is labelled/keyed by its FIRST match's calendar date, even
+    // when later matches in the same session cross into the next date. Two
+    // sessions that land on the SAME date (a long intra-day break, e.g.
+    // morning groups then an evening knockout) merge back into one section
+    // instead of showing the same day heading twice in a row.
+    const sectionOrder: string[] = []
+    const byKey = new Map<string, ScheduledMatch[]>()
+    for (const s of sessions) {
+        const k = dateKey(s[0].kickoffAt)
+        if (!byKey.has(k)) {
+            byKey.set(k, [])
+            sectionOrder.push(k)
+        }
+        byKey.get(k)!.push(...s)
+    }
+    const sections: ScheduleSection[] = sectionOrder.map((k) => ({
         key: k,
         label: dayHeaderLabel(k, t),
-        matches: byDay.get(k)!,
+        matches: byKey.get(k)!,
     }))
     if (unscheduled.length > 0) {
         sections.push({ key: "none", label: t.components.scheduleTab.noKickoffTime, matches: unscheduled })
@@ -1618,15 +1650,36 @@ const SCHED_REST_SAFE_PX = SCHED_REST_PX - SCHED_SAFETY_PX
  * to 3-4 lines at 42px and pushes the left column taller than the QR column,
  * growing the whole header and eating body room 1:1 - which used to clip the
  * day's last match row off the bottom of page 1. Estimate the left column's
- * real height (title lines at ~22 chars/line, organizer row, date•location
- * line at ~60 chars/line) and subtract however much it exceeds the QR lockup,
- * plus the global safety margin.
+ * real height and subtract however much it exceeds the QR lockup, plus the
+ * global safety margin.
+ *
+ * `mode` must match whatever `headerMetaMode` the caller's poster actually
+ * renders with (PosterPage) - "inline" (organizer row + one wrapped
+ * date•location line, ~60 chars/line) for scorers, or "labels" (three
+ * separate Organizator/Datum/Lokacija rows, each independently wrapped at
+ * ~40 chars/line) for the schedule poster - otherwise the estimate is for a
+ * header shorter than the one actually rendered and a row can clip again.
  */
-function scheduleFirstPx(meta: ExportMeta): number {
+function scheduleFirstPx(meta: ExportMeta, mode: "inline" | "labels" = "inline"): number {
     const titleLines = Math.min(4, Math.max(1, Math.ceil(meta.tournamentName.length / 22)))
-    const metaChars = 20 + (meta.location?.length ?? 0) // "24. srpnja 2026.  •  " + location
-    const metaLines = Math.min(3, Math.max(1, Math.ceil(metaChars / 60)))
-    const leftPx = titleLines * 44 + (meta.organizerName ? 30 : 0) + metaLines * 20 + 6
+    let metaPx: number
+    if (mode === "labels") {
+        const organizerLines = meta.organizerName
+            ? Math.min(2, Math.max(1, Math.ceil((meta.organizerName.length + 13) / 40)))
+            : 0
+        const dateLines = 1 // "Datum: 24. srpnja 2026." never wraps
+        const locationLines = meta.location
+            ? Math.min(3, Math.max(1, Math.ceil((meta.location.length + 10) / 40)))
+            : 0
+        const rowCount = (meta.organizerName ? 1 : 0) + 1 + (meta.location ? 1 : 0)
+        const wrappedLines = organizerLines + dateLines + locationLines
+        metaPx = 16 /* marginTop above the labels block */ + wrappedLines * 18 + Math.max(0, rowCount - 1) * 5
+    } else {
+        const metaChars = 20 + (meta.location?.length ?? 0) // "24. srpnja 2026.  •  " + location
+        const metaLines = Math.min(3, Math.max(1, Math.ceil(metaChars / 60)))
+        metaPx = (meta.organizerName ? 30 : 0) + metaLines * 20
+    }
+    const leftPx = titleLines * 44 + metaPx + 6
     const excess = Math.max(0, leftPx - 167)
     return SCHED_FIRST_PX - excess - SCHED_SAFETY_PX
 }
@@ -1815,7 +1868,7 @@ function buildSchedulePages(matches: ScheduledMatch[], meta: ExportMeta, t: Dict
             </div>,
         ]
     }
-    return paginateScheduleSections(sections, scheduleFirstPx(meta)).map((secs) => <ScheduleSections sections={secs} />)
+    return paginateScheduleSections(sections, scheduleFirstPx(meta, "labels")).map((secs) => <ScheduleSections sections={secs} />)
 }
 
 /* ── Bracket poster ("Završnica") ───────────────────────────────────────────
@@ -1975,9 +2028,11 @@ function BracketTeamLine({
 
 /** One bracket-poster match card (two team lines). Round cards are pinned to a
  *  shared `cardH` (derived from the busiest round) so every column fits the
- *  landscape page; the 3rd-place box grows for its own label. Kickoff times are
- *  deliberately omitted here - they crowd out the tree and live on the schedule
- *  poster instead - which keeps the card height predictable for the fit math. */
+ *  landscape page; the 3rd-place box grows for its own label. The kickoff
+ *  label rides on the SAME line as the slot code (never wraps to a 2nd line -
+ *  it's clipped with an ellipsis instead) so the badge's height, and with it
+ *  the whole round's fixed `cardH`, never changes based on how much room a
+ *  particular card has. */
 function BracketPosterCard({
     m,
     t,
@@ -2009,6 +2064,7 @@ function BracketPosterCard({
     const w2 = m.winnerTeamId != null && m.winnerTeamId === m.team2Id
     const s1 = finished && hasScore ? m.score1 : null
     const s2 = finished && hasScore ? m.score2 : null
+    const kickoffLabel = kickoffBadgeLabel(m.kickoffAt)
     return (
         <div
             style={{
@@ -2026,6 +2082,9 @@ function BracketPosterCard({
                 <div
                     style={{
                         flexShrink: 0,
+                        display: "flex",
+                        alignItems: "baseline",
+                        gap: "6px",
                         fontFamily: F_MONO,
                         fontSize: `${Math.max(8, t.thirdLabelFont - 1)}px`,
                         fontWeight: 800,
@@ -2035,9 +2094,25 @@ function BracketPosterCard({
                         borderBottom: "1px solid #0F8F87",
                         padding: "2px 8px",
                         lineHeight: 1.2,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
                     }}
                 >
-                    {m.knockoutCode}
+                    <span style={{ flexShrink: 0 }}>{m.knockoutCode}</span>
+                    {kickoffLabel ? (
+                        <span
+                            style={{
+                                fontWeight: 600,
+                                letterSpacing: "normal",
+                                opacity: 0.9,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                            }}
+                        >
+                            • {kickoffLabel}
+                        </span>
+                    ) : null}
                 </div>
             ) : null}
             <BracketTeamLine
@@ -3280,11 +3355,13 @@ function ScorersPosterBody({
    for a long one, because PosterPage's body is `flex:1, overflow:"hidden"` -
    a taller header (long title wraps to more lines) shrinks the body and
    silently clips whatever didn't fit, with zero visual indication. This
-   poster shares PosterPage's exact header/footer with the schedule poster, so
-   scheduleFirstPx/SCHED_REST_SAFE_PX's budgets apply completely unchanged;
-   only the PER-ROW cost differs (a scorer row vs. a match row). Rounded up
-   generously, same as SCHED_ROW_PX, so an estimate error can only leave a
-   page a little emptier - never overflow it. */
+   poster shares PosterPage itself with the schedule poster, but NOT its
+   header style anymore - scorers still render the compact "inline" header
+   (schedule switched to "labels"), so scheduleFirstPx is called with the
+   matching mode below; SCHED_REST_SAFE_PX (continuation pages, no header)
+   applies unchanged either way. Per-row cost differs (a scorer row vs. a
+   match row), rounded up generously same as SCHED_ROW_PX, so an estimate
+   error can only leave a page a little emptier - never overflow it. */
 function scorerRowPx(rank: number): number {
     // Podium rows (top 3) get the bigger medallion + bolder type - visibly
     // taller than the rest.
@@ -3323,7 +3400,7 @@ function buildScorersPages(scorers: ScorerDto[], hasGroups: boolean, meta: Expor
     if (ranked.length === 0) {
         return [<ScorersPosterBody ranked={[]} hasGroups={hasGroups} showHeading />]
     }
-    return paginateScorers(ranked, scheduleFirstPx(meta)).map((pageRanked, i) => (
+    return paginateScorers(ranked, scheduleFirstPx(meta, "inline")).map((pageRanked, i) => (
         <ScorersPosterBody ranked={pageRanked} hasGroups={hasGroups} showHeading={i === 0} />
     ))
 }
@@ -3866,7 +3943,7 @@ export function ExportDialog({
                                                     pageRefs.current[i] = el
                                                 }}
                                                 orientation={orientation}
-                                                headerMetaMode={kind === "bracket" ? "labels" : "inline"}
+                                                headerMetaMode={kind === "bracket" || kind === "schedule" ? "labels" : "inline"}
                                                 pageIndex={i}
                                                 pageCount={pageCount}
                                                 headerExtra={(() => {
