@@ -231,6 +231,32 @@
           }
         },
         {
+          "name": "penalty (pogodak)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"penalty\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"home\",\n    \"scored\": true,\n    \"player_name\": \"I. Horvat\",\n    \"clock_seconds\": 512\n  }\n}"
+            },
+            "description": "Pogođen penal — scored je OBAVEZAN bool. true = +1 na rezultat tima i zapis strijelca, gledatelju se prikazuje kao običan gol (i pokreće istu „Gol donosi\" kampanju kao goal). player_name je opcionalan (bez njega se prikaže samo lopta)."
+          }
+        },
+        {
+          "name": "penalty (promašaj)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"penalty\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"team\": \"away\",\n    \"scored\": false,\n    \"player_name\": \"M. Kovač\"\n  }\n}"
+            },
+            "description": "Promašen penal — scored: false ne mijenja rezultat, ali se prikazuje kao i pogodak (chip ispod semafora na strani te ekipe, 5 s), samo s crvenim × umjesto lopte. player_name je opcionalan — bez njega ostaje samo ×."
+          }
+        },
+        {
           "name": "exclusion",
           "request": {
             "method": "POST",
@@ -311,6 +337,32 @@
               "raw": "{\n  \"type\": \"lineup\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"home\": [\n      { \"number\": 1, \"name\": \"I. Horvat\" },\n      { \"number\": 7, \"name\": \"A. Anić\" },\n      { \"number\": 4, \"name\": \"B. Babić\" }\n    ],\n    \"away\": [\n      { \"number\": 12, \"name\": \"M. Kovač\" },\n      { \"number\": 9, \"name\": \"P. Perić\" }\n    ]\n  }\n}"
             },
             "description": "Sastavi — opcionalno `home` i/ili `away`, niz { number, name } (number opcionalan 0-999, name 1-100, do 40 igrača po strani). Embed player prikaže popup sastava (broj + ime po timu) na 10 s. Poslana strana zamjenjuje prethodnu; izostavljena ostaje netaknuta. Zadnji sastav dohvatljiv preko GET /v1/streams/:id/lineups (sekcija 5). match_end briše sastave."
+          }
+        },
+        {
+          "name": "standings (podij — 1., 2., 3. mjesto)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"standings\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"title\": \"Konačni poredak\",\n    \"teams\": [\n      { \"rank\": 1, \"name\": \"VK Mladost\", \"short\": \"MLA\", \"points\": 12, \"note\": \"4-0-0\", \"jersey\": \"#1e3a8a\", \"shorts\": \"#0b1120\" },\n      { \"rank\": 2, \"name\": \"VK Jug\", \"short\": \"JUG\", \"points\": 9, \"note\": \"3-0-1\", \"jersey\": \"#f59e0b\", \"shorts\": \"#111827\" },\n      { \"rank\": 3, \"name\": \"VK Primorje\", \"short\": \"PRI\", \"points\": 6, \"note\": \"2-0-2\", \"jersey\": \"#0ea5e9\", \"shorts\": \"#0b1120\" }\n    ]\n  }\n}"
+            },
+            "description": "Poredak ekipa (tko je 1., 2., 3. …) — embed player prikaže popup u sredini ekrana na 30 s, isti format kao sažetak utakmice. Prva tri mjesta dobiju medalju (zlato/srebro/bronca) i istaknuti redak.\n\nOBAVEZNO: `teams` — niz od 1-12 objekata, u svakom je obavezno samo `name` (1-100). OPCIONALNO po ekipi: `rank` (cijeli broj 1-99), `short` (≤6), `points` (broj), `note` (≤24, npr. bilanca), `jersey`/`shorts` (hex #RRGGBB — dres se crta uz ime; ako ga ima barem jedna ekipa, ostale dobiju prazan slot iste širine). OPCIONALNO u payloadu: `title` (≤40, default „Poredak\").\n\nPoredak je stvar turnira, ne utakmice — ne mijenja rezultat/sat i može se poslati u bilo kojem trenutku (npr. odmah nakon match_end)."
+          }
+        },
+        {
+          "name": "standings (cijela ljestvica — bez rank)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/v1/streams/{{streamId}}/events", "host": ["{{baseUrl}}"], "path": ["v1", "streams", "{{streamId}}", "events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"standings\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"occurred_at\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"title\": \"Ljestvica — skupina A\",\n    \"teams\": [\n      { \"name\": \"VK Mladost\", \"short\": \"MLA\", \"points\": 12 },\n      { \"name\": \"VK Jug\", \"short\": \"JUG\", \"points\": 9 },\n      { \"name\": \"VK Primorje\", \"short\": \"PRI\", \"points\": 6 },\n      { \"name\": \"VK Medveščak\", \"short\": \"MED\", \"points\": 4 },\n      { \"name\": \"VK Šibenik\", \"short\": \"SIB\", \"points\": 3 },\n      { \"name\": \"VK Solaris\", \"short\": \"SOL\", \"points\": 1 },\n      { \"name\": \"VK Zadar\", \"short\": \"ZAD\", \"points\": 0 }\n    ]\n  }\n}"
+            },
+            "description": "Isti event bez `rank` — mjesto se izvodi iz REDOSLIJEDA u nizu (prvi element = 1. mjesto), pa integrator ne mora slati oboje. Od 7 ekipa nadalje player kartu lomi u dva stupca (prva polovica lijevo) i smanjuje font da cijela ljestvica stane u visinu embeda. Više od 12 ekipa → 400; pošalji skraćenu ljestvicu (npr. top 12)."
           }
         },
         {

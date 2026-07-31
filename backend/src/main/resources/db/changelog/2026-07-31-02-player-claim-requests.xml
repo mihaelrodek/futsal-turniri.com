@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Manual "this roster player is me" requests, decided by an admin.
+        The automatic name-match path doesn't touch this table - only the
+        fallback for people whose name doesn't fold-match a roster row.
+        user_uid is a plain Firebase UID string (no FK), same as everywhere else.
+    -->
+
+    <changeSet id="2026-07-31-02-player-claim-requests-seq" author="mrodek">
+        <createSequence sequenceName="seq_player_claim_requests_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-07-31-02-player-claim-requests" author="mrodek">
+        <createTable tableName="player_claim_requests">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_uid" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- nulled (not cascaded) if the roster row disappears; the
+                 *_name snapshots below keep the request readable -->
+            <column name="player_id" type="bigint"/>
+            <column name="player_name" type="varchar(255)"/>
+            <column name="team_name" type="varchar(255)"/>
+            <column name="tournament_name" type="varchar(255)"/>
+
+            <column name="comment" type="text"/>
+            <column name="status" type="varchar(20)" defaultValue="PENDING">
+                <constraints nullable="false"/>
+            </column>
+            <column name="admin_note" type="text"/>
+            <column name="decided_by_uid" type="varchar(64)"/>
+            <column name="decided_at" type="timestamptz"/>
+
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint
+                baseTableName="player_claim_requests" baseColumnNames="player_id"
+                constraintName="fk_player_claim_requests_player"
+                referencedTableName="players" referencedColumnNames="id"
+                onDelete="SET NULL"/>
+
+        <createIndex tableName="player_claim_requests" indexName="idx_player_claim_requests_user_uid">
+            <column name="user_uid"/>
+        </createIndex>
+        <createIndex tableName="player_claim_requests" indexName="idx_player_claim_requests_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

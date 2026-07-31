@@ -82,4 +82,32 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
                 .setParameter("stages", stages)
                 .getResultList();
     }
+
+    /**
+     * Per-match tally of what ONE person did while playing for one team -
+     * one row per (match, event type). Backs the profile's match history,
+     * where each result line also shows that person's goals/cards.
+     *
+     * <p>The person is matched by folded "ime prezime" (same folding as
+     * {@link hr.mrodek.apps.futsal_turniri.services.PersonNameFolder}, mirrored
+     * SQL-side with {@code translate}) rather than by a player id, because a
+     * roster row isn't necessarily claimed by the profile.
+     *
+     * <p>Each element is an {@code Object[3]}: [Long matchId, MatchEventType type, Long count].
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object[]> findEventCountsByMatchForTeamAndFoldedName(Long teamId, String foldedNeedle) {
+        if (teamId == null || foldedNeedle == null || foldedNeedle.isBlank()) return List.of();
+        return em.createQuery("""
+                        select e.match.id, e.type, count(e)
+                        from MatchEvent e
+                        where e.player is not null
+                          and e.player.team.id = :tid
+                          and function('translate', lower(trim(e.player.name)), 'šđčćž', 'sdccz') = :needle
+                        group by e.match.id, e.type
+                        """)
+                .setParameter("tid", teamId)
+                .setParameter("needle", foldedNeedle)
+                .getResultList();
+    }
 }

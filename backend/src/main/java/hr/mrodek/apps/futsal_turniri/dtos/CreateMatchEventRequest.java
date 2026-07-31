@@ -21,5 +21,10 @@ public record CreateMatchEventRequest(
         Long assistPlayerId,
         /** Optional client-generated idempotency key (UUID) for offline
          *  live-scoring; a resent event with the same key is deduped. */
-        String clientEventId
+        String clientEventId,
+        /** Optional; honoured only for GOAL: true marks the goal as scored
+         *  from an in-game penalty (still counts as a regular goal in the
+         *  score and scorer stats; the timeline and the stream overlay render
+         *  it as a penalty). Ignored for every other type. */
+        Boolean penalty
 ) {}

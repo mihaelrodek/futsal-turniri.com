@@ -299,6 +299,37 @@ export async function adminExportTournament(uuid: string): Promise<unknown> {
     return data
 }
 
+/** Result of a successful JSON import: the NEW tournament's identity plus
+ *  human-readable warnings for anything skipped (poster image, editor grants
+ *  whose user doesn't exist in this database). */
+export type AdminImportResponse = {
+    imported: boolean
+    tournamentId: number
+    uuid: string | null
+    slug: string | null
+    name: string
+    warnings: string[]
+    /** Inserted row counts per section (groups, teams, players, rounds, matches, events, editors). */
+    counts: Record<string, number>
+}
+
+/**
+ * Import a tournament from a JSON dump produced by {@link adminExportTournament}.
+ * Always creates a NEW tournament (fresh uuid + slug - never overwrites an
+ * existing one, even when the file's uuid collides); every old id in the file
+ * is remapped to the freshly inserted rows. The importing admin becomes the
+ * owner. The whole tree is inserted in one transaction - a validation error
+ * (400 with a message naming the exact broken field) imports nothing.
+ */
+export async function adminImportTournament(payload: unknown): Promise<AdminImportResponse> {
+    const { data } = await http.post<AdminImportResponse>(
+        "/admin/tournaments/import",
+        payload,
+        { successMessage: "Turnir uvezen." } as any,
+    )
+    return data
+}
+
 /* ───────────────────── Team database (Baza ekipa) ─────────────────────
    Cross-tournament team-identity management: the hidden/test flag and the
    duplicate-name finder + merge tool. Team identity is name-based (no
@@ -375,4 +406,13 @@ export async function adminMergeTeams(
         { successMessage: "Ekipe su spojene." },
     )
     return data
+}
+
+/**
+ * Marks a duplicate-group suggestion as "not actually the same team" so it
+ * stops showing up on "Slični nazivi". Identified by the group's name set,
+ * not an id (groups are recomputed on every fetch, not persisted rows).
+ */
+export async function adminDismissTeamDuplicate(names: string[]): Promise<void> {
+    await http.post("/admin/team-database/duplicates/dismiss", { names }, { silent: true } as any)
 }

@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.repository;
 
 import hr.mrodek.apps.futsal_turniri.model.Player;
+import hr.mrodek.apps.futsal_turniri.services.PersonNameFolder;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -72,6 +73,69 @@ public class PlayersRepository implements AppRepository<Player, Long> {
     }
 
     /**
+     * Roster players whose full name equals {@code foldedNeedle} after the
+     * same normalization the caller applied Java-side: trimmed, lower-cased,
+     * with the Croatian/Slovenian diacritics folded to ASCII (š→s, đ→d,
+     * č/ć→c, ž→z). Folding on the DB side uses SQL {@code translate()} so
+     * "ŠIMIĆ" matches a user who registered as "Simic" and vice versa.
+     *
+     * <p>Only players still worth suggesting for a self-claim are returned:
+     * non-demo players, on non-demo approved teams that NOBODY has claimed
+     * yet (both submitter uid slots null), in publicly visible tournaments.
+     * Team + tournament are join-fetched so the caller can build display
+     * DTOs without extra lazy loads. Freshest tournament first, capped at
+     * {@code limit}.
+     */
+    public List<Player> findUnclaimedByFoldedName(String foldedNeedle, int limit) {
+        if (foldedNeedle == null || foldedNeedle.isBlank()) return List.of();
+        return em.createQuery("""
+                        select p from Player p
+                        join fetch p.team t
+                        join fetch t.tournament tr
+                        where p.demo = false
+                          and t.demo = false
+                          and t.pendingApproval = false
+                          and t.submittedByUid is null
+                          and t.coSubmittedByUid is null
+                          and tr.hidden = false
+                          and function('translate', lower(trim(p.name)), 'šđčćž', 'sdccz') = :needle
+                        order by tr.startAt desc nulls last, p.id desc
+                        """, Player.class)
+                .setParameter("needle", foldedNeedle)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+
+    /**
+     * Free-text roster search for the manual "this player is me" request
+     * dialog: a folded substring match on the player's name, so "sim" finds
+     * "ŠIMIĆ". Same visibility rules as
+     * {@link #findUnclaimedByFoldedName(String, int)}, except the team's
+     * PRIMARY submitter slot may already be taken - a teammate registering
+     * the team must not make its players unrequestable. Only the co-owner
+     * slot has to be free, since that's what an approval fills.
+     */
+    public List<Player> searchClaimableByName(String q, int limit) {
+        if (q == null || q.isBlank()) return List.of();
+        String needle = "%" + PersonNameFolder.fold(q) + "%";
+        return em.createQuery("""
+                        select p from Player p
+                        join fetch p.team t
+                        join fetch t.tournament tr
+                        where p.demo = false
+                          and t.demo = false
+                          and t.pendingApproval = false
+                          and t.coSubmittedByUid is null
+                          and tr.hidden = false
+                          and function('translate', lower(trim(p.name)), 'šđčćž', 'sdccz') like :needle
+                        order by tr.startAt desc nulls last, p.id desc
+                        """, Player.class)
+                .setParameter("needle", needle)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+
+    /**
      * Distinct player names (already stored uppercase) matching the query
      * as a prefix or substring, for the roster autocomplete. Case-folded
      * compare so partial lowercase input still matches. Capped at {@code limit}.
@@ -107,6 +171,28 @@ public class PlayersRepository implements AppRepository<Player, Long> {
                         """)
                 .setParameter("tid", tournamentId)
                 .getResultList();
+    }
+
+    /**
+     * Goals scored (type {@code GOAL} only - own goals and shootout kicks
+     * don't count) by players ON THIS TEAM whose folded name matches
+     * {@code foldedNeedle}, e.g. the profile owner's own "ime prezime" -
+     * used to attribute career goals to a specific person once their team
+     * is linked, mirroring {@link #findUnclaimedByFoldedName}'s folding.
+     */
+    public long countGoalsForTeamAndFoldedName(Long teamId, String foldedNeedle) {
+        if (teamId == null || foldedNeedle == null || foldedNeedle.isBlank()) return 0L;
+        Long count = em.createQuery("""
+                        select count(e) from MatchEvent e
+                        where e.type = hr.mrodek.apps.futsal_turniri.enums.MatchEventType.GOAL
+                          and e.player is not null
+                          and e.player.team.id = :tid
+                          and function('translate', lower(trim(e.player.name)), 'šđčćž', 'sdccz') = :needle
+                        """, Long.class)
+                .setParameter("tid", teamId)
+                .setParameter("needle", foldedNeedle)
+                .getSingleResult();
+        return count == null ? 0L : count;
     }
 
     /**

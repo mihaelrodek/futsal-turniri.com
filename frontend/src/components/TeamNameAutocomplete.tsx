@@ -60,6 +60,14 @@ export default function TeamNameAutocomplete({
     const [highlight, setHighlight] = useState(-1)
     const boxRef = useRef<HTMLDivElement>(null)
     const justPickedRef = useRef(false)
+    // `onCommit` is a fresh inline closure every render (it closes over the
+    // parent's current state). Kept up to date on every render so the
+    // deferred call in `pick()` below reads the closure from AFTER the
+    // pick's state update lands, not the one captured before it.
+    const onCommitRef = useRef(onCommit)
+    useEffect(() => {
+        onCommitRef.current = onCommit
+    })
     // The field mounts pre-filled with the team's CURRENT name (renaming an
     // existing team), which is itself a valid team name - searching on mount
     // would immediately suggest close matches (e.g. "X" mounting and matching
@@ -134,8 +142,9 @@ export default function TeamNameAutocomplete({
             // handler) closes over that parent's state as of *this* render -
             // calling it synchronously would persist the value the input had
             // before the pick. By the time this macrotask runs, React has
-            // re-rendered and the parent passed a fresh `onCommit` closure.
-            setTimeout(() => onCommit(), 0)
+            // re-rendered and committed, so `onCommitRef.current` (updated by
+            // the effect above) is the fresh closure with the picked name.
+            setTimeout(() => onCommitRef.current?.(), 0)
         }
     }
 

@@ -237,6 +237,17 @@ export async function sendSpectoLineup(tournamentUuid: string): Promise<void> {
     } as any)
 }
 
+/**
+ * Push the tournament's FINAL top-3 standings (gold/silver/bronze podium)
+ * onto the overlay. 400 when the final isn't decided yet - the toast then
+ * carries the server's reason.
+ */
+export async function sendSpectoStandings(tournamentUuid: string): Promise<void> {
+    await http.post("/specto-admin/standings", { tournamentUuid }, {
+        successMessage: "Konačni poredak je poslan na stream.",
+    } as any)
+}
+
 /** Start / restart the standalone countdown chip (1-3600 s). */
 export async function startSpectoTimer(tournamentUuid: string, seconds: number): Promise<void> {
     await http.post("/specto-admin/timer/start", { tournamentUuid, seconds }, {

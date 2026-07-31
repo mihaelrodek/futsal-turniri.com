@@ -28,7 +28,15 @@ export type MatchLiveMode = "TIMER" | "SIMPLE"
  *  PENALTY_GOAL / PENALTY_MISSED record an individual knockout
  *  penalty-shootout kick (who shot + whether it scored); they never affect
  *  the match score or scorer stats - the shootout total lives in the
- *  match's penalties1/2. */
+ *  match's penalties1/2.
+ *
+ *  An IN-GAME penalty (awarded during regulation play) is different: a
+ *  SCORED one is a plain GOAL with `penalty: true` on the event (counts in
+ *  the score + scorer stats like any goal), a MISSED one is
+ *  PENALTY_MISSED_LIVE - a timeline-only record.
+ *
+ *  EXCLUSION is a futsal 2-minute suspension ("isključenje 2 min") -
+ *  timeline-only; unlike a red card it does NOT lock the player out. */
 export type MatchEventType =
     | "GOAL"
     | "OWN_GOAL"
@@ -36,6 +44,8 @@ export type MatchEventType =
     | "RED_CARD"
     | "PENALTY_GOAL"
     | "PENALTY_MISSED"
+    | "PENALTY_MISSED_LIVE"
+    | "EXCLUSION"
 
 /** A single recorded event in a live (or finished) match. */
 export type MatchEventDto = {
@@ -52,6 +62,9 @@ export type MatchEventDto = {
     /** Set only for GOAL events that had an assist; null otherwise. */
     assistPlayerId: number | null
     assistPlayerName: string | null
+    /** True only for a GOAL scored from an in-game penalty - rendered with a
+     *  "(pen.)" tag. Optional: older cached rows / optimistic rows may omit it. */
+    penalty?: boolean
     /** Client idempotency key (UUID) echoed by the backend. Present for events
      *  created through the offline-aware path; used to reconcile an optimistic
      *  (offline) event with its persisted server row. */
@@ -76,6 +89,9 @@ export type CreateMatchEventRequest = {
     minute: number
     /** Optional - only meaningful for GOAL events. */
     assistPlayerId?: number | null
+    /** Optional; honoured only for GOAL: marks an in-game penalty goal. The
+     *  goal still counts as a regular goal in the score and scorer stats. */
+    penalty?: boolean
     /** Optional client idempotency key (UUID). When set, the backend dedupes a
      *  resent event so an offline-queued goal isn't inserted twice on replay. */
     clientEventId?: string | null

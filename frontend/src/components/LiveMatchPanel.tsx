@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Box, Button, chakra, Flex, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react"
+import { Box, Button, Flex, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react"
 import { FiEdit2, FiEye, FiEyeOff, FiMinus, FiMoreHorizontal, FiPause, FiPlay, FiPlus, FiX } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
 import { LuTimer, LuTimerOff } from "react-icons/lu"
@@ -28,9 +28,11 @@ import { LiveSyncIndicator } from "./LiveSyncIndicator"
 import { ConfirmDialog } from "../ui/primitives"
 import { useTeamColors, teamColor, teamShorts, KitSwatch } from "./jersey"
 import {
+    ActionButton,
     DirectScoreEditor,
     FoulChip,
     PenaltyShootout,
+    PlayerButton,
     clockState,
     liveMatchMinute,
     matchPhase,
@@ -60,7 +62,6 @@ import {
  *  (not theme tokens) - they read on both the light and dark card surface. */
 const HOME = "#3A5A7A"
 const AWAY = "#0E8A81"
-const GOAL_GREEN = "#16A34A"
 const CARD_YELLOW = "#e8a01f"
 const CARD_RED = "#c0392b"
 /** SPECTO brand cyan - drives the active-half foul tint. */
@@ -110,6 +111,7 @@ export default function LiveMatchPanel({
     onChanged,
     selector,
     footerAction,
+    streamActive = false,
     onClockArgs,
 }: {
     uuid: string
@@ -121,6 +123,11 @@ export default function LiveMatchPanel({
     /** Optional host action (e.g. "Puni zaslon") rendered with the lower
      *  stream/clock controls so the match selector can stay perfectly centred. */
     footerAction?: React.ReactNode
+    /** True while THIS tournament is actually streaming right now (the home
+     *  banner is STREAMING and linked to this tournament). Starting a match
+     *  then only offers "Uživo - s mjeračem vremena" - a SIMPLE or result-
+     *  only match would leave the stream overlay's clock unusable. */
+    streamActive?: boolean
     /** Lifts THIS console's own clock truth up to a host (e.g. the fullscreen
      *  zapisnik header) so its clock ticks from the exact same instants and
      *  freezes together on pause. Called with the current local clockArgs while
@@ -235,6 +242,15 @@ export default function LiveMatchPanel({
         () => (events ?? []).some((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED"),
         [events],
     )
+    // A page refresh remounts this component with `shootout` back at its
+    // default `false` - but `penaltyInProgress` (server data) can already be
+    // true, e.g. the organizer reloaded mid-shootout. Without this, normal
+    // goal entry stays correctly blocked (penaltyInProgress) but the
+    // shootout recorder never reopens, stranding the organizer with no way
+    // to record the next kick. Re-derive `shootout` the moment we know.
+    useEffect(() => {
+        if (isLive && penaltyInProgress) setShootout(true)
+    }, [isLive, penaltyInProgress])
     // Show the event-derived score once events are loaded; otherwise the stored
     // score (avoids a result-only match flashing 0:0).
     const score =
@@ -688,7 +704,10 @@ export default function LiveMatchPanel({
                             and share the same outlined shape, each with its own
                             icon: mjerač (⏱), bez mjerača (⏱✕), samo rezultat (✎).
                             The two "Uživo" starters hide while the result-only
-                            form is open, leaving just its toggle. */}
+                            form is open, leaving just its toggle. While THIS
+                            tournament is actually streaming, only "s mjeračem
+                            vremena" is offered at all - a SIMPLE or result-only
+                            match never drives the stream overlay's clock. */}
                         {isScheduled && (
                             <>
                                 <HStack gap="3" justify="center" wrap="wrap" mb="3">
@@ -705,46 +724,51 @@ export default function LiveMatchPanel({
                                             >
                                                 <LuTimer /> {t.components.liveMatch.start.timerOption}
                                             </Button>
-                                            <Button
-                                                variant="outline"
-                                                fontWeight={700}
-                                                size="lg"
-                                                loading={starting}
-                                                onClick={() => handleStart("SIMPLE")}
-                                            >
-                                                <LuTimerOff /> {t.components.liveMatch.start.simpleOption}
-                                            </Button>
+                                            {!streamActive && (
+                                                <Button
+                                                    variant="outline"
+                                                    fontWeight={700}
+                                                    size="lg"
+                                                    loading={starting}
+                                                    onClick={() => handleStart("SIMPLE")}
+                                                >
+                                                    <LuTimerOff /> {t.components.liveMatch.start.simpleOption}
+                                                </Button>
+                                            )}
                                         </>
                                     )}
                                     {/* Result-only toggle - also cancels a pending
                                         shootout so closing the form never leaves the
-                                        shootout panel orphaned. */}
-                                    <Button
-                                        variant="outline"
-                                        size="lg"
-                                        fontWeight={700}
-                                        color="fg.ink"
-                                        onClick={() => {
-                                            setShowDirectScore((v) => {
-                                                const next = !v
-                                                // Seed the in-place steppers from the stored score
-                                                // each time the editor opens.
-                                                if (next) {
-                                                    setDirectS1(match.score1 ?? 0)
-                                                    setDirectS2(match.score2 ?? 0)
-                                                }
-                                                return next
-                                            })
-                                            setShootout(false)
-                                            setPendingScore(null)
-                                        }}
-                                    >
-                                        <FiEdit2 /> {showDirectScore ? t.components.liveMatchPanel.cancelResultEntry : t.components.liveMatch.start.resultOnlyOption}
-                                    </Button>
+                                        shootout panel orphaned. Not offered at all
+                                        while streaming (see note above). */}
+                                    {!streamActive && (
+                                        <Button
+                                            variant="outline"
+                                            size="lg"
+                                            fontWeight={700}
+                                            color="fg.ink"
+                                            onClick={() => {
+                                                setShowDirectScore((v) => {
+                                                    const next = !v
+                                                    // Seed the in-place steppers from the stored score
+                                                    // each time the editor opens.
+                                                    if (next) {
+                                                        setDirectS1(match.score1 ?? 0)
+                                                        setDirectS2(match.score2 ?? 0)
+                                                    }
+                                                    return next
+                                                })
+                                                setShootout(false)
+                                                setPendingScore(null)
+                                            }}
+                                        >
+                                            <FiEdit2 /> {showDirectScore ? t.components.liveMatchPanel.cancelResultEntry : t.components.liveMatch.start.resultOnlyOption}
+                                        </Button>
+                                    )}
                                     {/* Save sits in the SAME row as Odustani while
                                         editing. Same contract (handleSaveDirectScore):
                                         a level knockout score hands off to penalties. */}
-                                    {editingScore && (
+                                    {editingScore && !streamActive && (
                                         <Button
                                             size="lg"
                                             colorPalette="pitch"
@@ -757,12 +781,18 @@ export default function LiveMatchPanel({
                                     )}
                                 </HStack>
 
+                                {streamActive && (
+                                    <Text fontSize="xs" color="fg.muted" textAlign="center" mb="3">
+                                        {t.components.liveMatchPanel.streamActiveNote}
+                                    </Text>
+                                )}
+
                                 {/* Result-only panel. A level knockout score hands
                                     off to the penalty shootout RIGHT HERE - the
                                     live-branch shootout render is unreachable for
                                     a scheduled match, so without this the Spremi
                                     click would silently do nothing. */}
-                                {showDirectScore && shootout && (
+                                {!streamActive && showDirectScore && shootout && (
                                     <Box mt="3">
                                         <PenaltyShootout
                                             uuid={uuid}
@@ -1110,18 +1140,30 @@ type ClockArgs = {
 /** A picked player: a real roster entry, or the leading "Nepoznati igrač". */
 type PendingPlayer = { team: number; playerId: number | null; playerName: string | null }
 
-function actionsFor(t: Dictionary): { type: MatchEventType; label: string }[] {
+/** One tappable action of the pairing entry. `penalty: true` on a GOAL marks
+ *  an in-game penalty goal - the event stays a regular GOAL (score + scorer
+ *  stats) but carries the penalty flag for display and the stream overlay. */
+type EntryAction = { type: MatchEventType; penalty?: boolean; label: string }
+
+function actionsFor(t: Dictionary): EntryAction[] {
     const a = t.components.liveMatchPanel.actions
+    // In-game penalty (Gol/Promašaj as its own tile) was removed from this
+    // grid - a penalty attempt during regular play is recorded as a plain
+    // Gol; the shootout after a knockout draw is where PENALTY_GOAL/
+    // PENALTY_MISSED actually live (see PenaltyShootout in liveMatch.tsx,
+    // which reuses this same ActionButton tile style).
     return [
         { type: "GOAL", label: a.goal },
         { type: "OWN_GOAL", label: a.ownGoal },
         { type: "YELLOW_CARD", label: a.yellow },
         { type: "RED_CARD", label: a.red },
+        { type: "EXCLUSION", label: a.exclusion },
     ]
 }
 
-function actionLabel(t: Dictionary, type: MatchEventType): string {
-    return actionsFor(t).find((a) => a.type === type)?.label ?? t.components.liveMatchPanel.actions.fallback
+/** Identity of an action within `actionsFor` (type + penalty flag). */
+function sameAction(a: EntryAction | null, b: EntryAction): boolean {
+    return a != null && a.type === b.type && !!a.penalty === !!b.penalty
 }
 
 function PairingEntry({
@@ -1161,7 +1203,7 @@ function PairingEntry({
     const t = useTranslation()
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [pendingPlayer, setPendingPlayer] = useState<PendingPlayer | null>(null)
-    const [pendingAction, setPendingAction] = useState<MatchEventType | null>(null)
+    const [pendingAction, setPendingAction] = useState<EntryAction | null>(null)
     const [minute, setMinute] = useState<string>("0")
     // While true (TIMER) the "Min" field auto-follows the running clock; a
     // manual edit turns it off, "Sada" / "Prati mjerač" turn it back on.
@@ -1228,27 +1270,31 @@ function PairingEntry({
         return committingTeam === team1Id ? team2Id : team1Id
     }
 
-    // Gol / Auto-gol are the only regulation goal actions; they're locked while
-    // a penalty shootout is being recorded (see penaltyInProgress).
-    const isGoalAction = (type: MatchEventType) => type === "GOAL" || type === "OWN_GOAL"
+    // Goal-ish actions (Gol / Auto-gol / in-game penalties) are locked while a
+    // penalty SHOOTOUT is being recorded (see penaltyInProgress) so they can't
+    // leak into the scorer stats or be confused with shootout kicks.
+    const isGoalAction = (a: EntryAction) =>
+        a.type === "GOAL" || a.type === "OWN_GOAL" || a.type === "PENALTY_MISSED_LIVE"
 
-    function commit(pp: PendingPlayer, type: MatchEventType) {
+    function commit(pp: PendingPlayer, action: EntryAction) {
         if (!minuteValid) return
         // Penali su u tijeku - regulation goals can't be entered here.
-        if (penaltyInProgress && isGoalAction(type)) return
+        if (penaltyInProgress && isGoalAction(action)) return
         // A sent-off player can't affect play (named goals/cards).
         if (pp.playerId != null && sentOffPlayerIds.has(pp.playerId)) return
-        const side = sideFor(pp.team, type)
+        const side = sideFor(pp.team, action.type)
+        const penalty = action.penalty || undefined
         const payload: CreateMatchEventRequest =
             pp.playerId != null
-                ? { type, playerId: pp.playerId, minute: minuteNum, assistPlayerId: null }
-                : { type, playerId: null, teamId: pp.team, minute: minuteNum, assistPlayerId: null }
+                ? { type: action.type, playerId: pp.playerId, minute: minuteNum, assistPlayerId: null, penalty }
+                : { type: action.type, playerId: null, teamId: pp.team, minute: minuteNum, assistPlayerId: null, penalty }
         onAddEvent(payload, {
-            type,
+            type: action.type,
             playerId: pp.playerId,
             playerName: pp.playerName,
             teamId: side,
             minute: minuteNum,
+            penalty: !!action.penalty,
         })
         setPendingPlayer(null)
         setPendingAction(null)
@@ -1260,11 +1306,11 @@ function PairingEntry({
         else setPendingPlayer(pp)
     }
 
-    function selectAction(type: MatchEventType) {
+    function selectAction(action: EntryAction) {
         // Regulation goals are locked during a penalty shootout.
-        if (penaltyInProgress && isGoalAction(type)) return
-        if (pendingPlayer) commit(pendingPlayer, type)
-        else setPendingAction(type)
+        if (penaltyInProgress && isGoalAction(action)) return
+        if (pendingPlayer) commit(pendingPlayer, action)
+        else setPendingAction(action)
     }
 
     function clearPending() {
@@ -1279,7 +1325,7 @@ function PairingEntry({
                 pendingPlayer.playerName ?? t.components.liveMatch.eventRow.unknownPlayerFallback,
             )
             : pendingAction
-                ? t.components.liveMatchPanel.pairingHint.actionSelected(actionLabel(t, pendingAction))
+                ? t.components.liveMatchPanel.pairingHint.actionSelected(pendingAction.label)
                 : ""
 
     return (
@@ -1419,15 +1465,18 @@ function PairingEntry({
                     </Text>
                 </Box>
             )}
-            <Box display="grid" gridTemplateColumns="repeat(4, 1fr)" gap="2" mb="3.5">
+            {/* 5 tiles: 4-across on mobile (Isključenje wraps to its own row),
+                one full row on desktop/web. */}
+            <Box display="grid" gridTemplateColumns={{ base: "repeat(4, 1fr)", md: "repeat(5, 1fr)" }} gap="2" mb="3.5">
                 {actionsFor(t).map((a) => (
                     <ActionButton
-                        key={a.type}
+                        key={`${a.type}${a.penalty ? "-pen" : ""}`}
                         type={a.type}
+                        penalty={a.penalty}
                         label={a.label}
-                        selected={pendingAction === a.type}
-                        disabled={penaltyInProgress && isGoalAction(a.type)}
-                        onClick={() => selectAction(a.type)}
+                        selected={sameAction(pendingAction, a)}
+                        disabled={penaltyInProgress && isGoalAction(a)}
+                        onClick={() => selectAction(a)}
                     />
                 ))}
             </Box>
@@ -1652,120 +1701,6 @@ function HalfFoulCounter({
     )
 }
 
-function PlayerButton({
-    selected,
-    color,
-    badge,
-    name,
-    marker,
-    muted,
-    disabled,
-    onClick,
-}: {
-    selected: boolean
-    color: string
-    badge: string
-    name: string
-    marker?: string
-    muted?: boolean
-    disabled?: boolean
-    onClick: () => void
-}) {
-    return (
-        <chakra.button
-            type="button"
-            display="flex"
-            alignItems="center"
-            gap="2.5"
-            w="full"
-            textAlign="left"
-            rounded="lg"
-            px="2.5"
-            py="2"
-            borderWidth={selected ? "2px" : "1px"}
-            borderColor={selected ? GOAL_GREEN : "border"}
-            bg={selected ? tint(GOAL_GREEN, 12) : "bg.panel"}
-            opacity={disabled ? 0.5 : 1}
-            cursor={disabled ? "not-allowed" : "pointer"}
-            _hover={disabled ? undefined : { borderColor: selected ? GOAL_GREEN : "border.emphasized" }}
-            transition="border-color 0.12s, background 0.12s"
-            onClick={disabled ? undefined : onClick}
-        >
-            <Box
-                as="span"
-                w="24px"
-                h="24px"
-                rounded="md"
-                flexShrink={0}
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                fontSize="2xs"
-                fontWeight={800}
-                css={{ background: tint(color, 14), color }}
-            >
-                {badge}
-            </Box>
-            <Text fontSize="sm" fontWeight={700} color={muted ? "fg.muted" : "fg.ink"} flex="1" truncate>
-                {name}
-            </Text>
-            {marker && <Text as="span" fontSize="xs">{marker}</Text>}
-            {selected && <Text as="span" color={GOAL_GREEN} fontWeight={800}>✓</Text>}
-        </chakra.button>
-    )
-}
-
-function ActionButton({
-    type,
-    label,
-    selected,
-    disabled,
-    onClick,
-}: {
-    type: MatchEventType
-    label: string
-    selected: boolean
-    disabled?: boolean
-    onClick: () => void
-}) {
-    const accent =
-        type === "GOAL" ? GOAL_GREEN
-            : type === "OWN_GOAL" ? HOME
-                : type === "YELLOW_CARD" ? CARD_YELLOW
-                    : CARD_RED
-    const icon =
-        type === "GOAL" ? <Text as="span" fontSize="xl" lineHeight="1">⚽</Text>
-            : type === "OWN_GOAL" ? (
-                // Same ball as the timeline's autogol icon, in red.
-                <Box as="span" display="inline-flex" lineHeight="1" color="red.solid"><GiSoccerBall size={22} /></Box>
-            ) : (
-                <Box as="span" w="15px" h="19px" rounded="sm" bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
-            )
-    return (
-        <chakra.button
-            type="button"
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            gap="1"
-            rounded="xl"
-            px="1.5"
-            py="3"
-            borderWidth={selected ? "2px" : "1px"}
-            borderColor={selected ? accent : "border"}
-            bg={selected ? tint(accent, 12) : "bg.panel"}
-            opacity={disabled ? 0.4 : 1}
-            cursor={disabled ? "not-allowed" : "pointer"}
-            _hover={disabled ? undefined : { borderColor: accent }}
-            transition="border-color 0.12s, background 0.12s"
-            disabled={disabled}
-            onClick={disabled ? undefined : onClick}
-        >
-            <Box display="flex" alignItems="center" justifyContent="center" minH="20px">{icon}</Box>
-            <Text fontSize="xs" fontWeight={800} color="fg.ink">{label}</Text>
-        </chakra.button>
-    )
-}
 
 /* ──────────────────────────────────────────────────────────────────────────
    CenterTimeline - the shared "TIJEK UTAKMICE": a vertical dashed centre line
@@ -1777,6 +1712,9 @@ type TimelineRow =
     /** `half`: which half this separator opens - null when no half boundary is
      *  known, i.e. the single header covers the whole match (combined tally). */
     | { kind: "half"; label: string; half: 1 | 2 | null }
+    /** A plain section header with no fouls tally - used for "PENALI" below
+     *  the halves, since a shootout kick isn't part of either half. */
+    | { kind: "section"; label: string }
     | {
           kind: "event"
           id: number
@@ -1809,7 +1747,13 @@ function CenterTimeline({
     const t = useTranslation()
     const hasHalves = halfLengthMin != null && halfLengthMin > 0
     const rows: TimelineRow[] = useMemo(() => {
-        const sorted = [...events].sort((a, b) => a.minute - b.minute || a.id - b.id)
+        // Shootout kicks aren't part of either half - split them into their
+        // own "PENALI" section at the end, same as the public match ticker
+        // (StreamHero.tsx's REGULATION/pens split).
+        const regulation = events.filter((e) => e.type !== "PENALTY_GOAL" && e.type !== "PENALTY_MISSED")
+        const pens = events.filter((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED")
+
+        const sorted = [...regulation].sort((a, b) => a.minute - b.minute || a.id - b.id)
         const secondHalfMin = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
         const out: TimelineRow[] = [
             { kind: "half", label: t.components.liveMatch.timeline.firstHalfTitle, half: secondHalfMin != null ? 1 : null },
@@ -1836,6 +1780,23 @@ function CenterTimeline({
                 center: isGoal ? { score: [h, a] } : { dot: true },
                 ev: e,
             })
+        }
+
+        if (pens.length > 0) {
+            out.push({ kind: "section", label: t.components.streamHero.penaltiesSection })
+            for (const e of [...pens].sort((x, y) => x.id - y.id)) {
+                out.push({
+                    kind: "event",
+                    id: e.id,
+                    clientEventId: e.clientEventId,
+                    isHome: e.teamId === team1Id,
+                    type: e.type,
+                    player: playerLabel(e, t),
+                    min: e.minute,
+                    center: { dot: true },
+                    ev: e,
+                })
+            }
         }
         return out
     }, [events, team1Id, halfLengthMin, t])
@@ -1865,6 +1826,8 @@ function CenterTimeline({
                 {rows.map((r, i) =>
                     r.kind === "half" ? (
                         <HalfPill key={`h-${i}`} label={r.label} fouls={foulTally(r.half)} />
+                    ) : r.kind === "section" ? (
+                        <HalfPill key={`s-${i}`} label={r.label} fouls={null} />
                     ) : (
                         <TimelineEventRow key={r.clientEventId ?? r.id} row={r} canDelete={canDelete} onUndo={() => onUndo(r.ev)} />
                     ),
@@ -1999,13 +1962,21 @@ function EventIcon({ type }: { type: MatchEventType }) {
             </Box>
         )
     if (type === "PENALTY_GOAL") return <Text as="span" fontSize="xs" fontWeight={800} color="accent.goal" flexShrink={0}>✓</Text>
-    if (type === "PENALTY_MISSED") return <Text as="span" fontSize="xs" fontWeight={800} color="accent.red" flexShrink={0}>✗</Text>
+    if (type === "PENALTY_MISSED" || type === "PENALTY_MISSED_LIVE")
+        return <Text as="span" fontSize="xs" fontWeight={800} color="accent.red" flexShrink={0}>✗</Text>
+    if (type === "EXCLUSION") return <Text as="span" fontSize="sm" lineHeight="1.4" flexShrink={0}>🕑</Text>
     return <Box as="span" w="13px" h="16px" rounded="sm" flexShrink={0} bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
 }
 
 function playerLabel(e: MatchEventDto, t: Dictionary): string {
     const sf = t.components.liveMatchPanel.scorerFallback
+    const er = t.components.liveMatch.eventRow
     if (e.type === "OWN_GOAL") return e.playerName != null ? sf.ownGoalSuffix(e.playerName) : sf.ownGoal
+    if (e.type === "GOAL" && e.penalty) return er.penSuffix(e.playerName ?? sf.unknownScorer)
+    if (e.type === "PENALTY_MISSED_LIVE")
+        return e.playerName != null ? er.penSuffix(e.playerName) : er.missedPenaltyLive
+    if (e.type === "EXCLUSION")
+        return e.playerName != null ? er.exclusionSuffix(e.playerName) : er.exclusionLabel
     if (e.playerName != null) return e.playerName
     if (e.type === "GOAL" || e.type === "PENALTY_GOAL") return sf.unknownScorer
     if (e.type === "PENALTY_MISSED") return sf.missed

@@ -1,5 +1,8 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamDefaultKitRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
@@ -15,6 +18,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Admin-only endpoints for the cross-tournament "team database" - the
@@ -43,10 +47,16 @@ public class AdminTeamDatabaseController {
      *  edits (on the normalized form) to be flagged as a merge suggestion. */
     private static final int SUGGESTION_MAX_DISTANCE = 2;
 
+    /** Stores the dismissed-duplicate-groups list (see {@link #loadDismissed()})
+     *  as a JSON array in a single app_settings row - no migration needed. */
+    private static final String KEY_DISMISSED_DUPLICATES = "admin.dismissedTeamDuplicates";
+
     @Inject TeamsRepository teamsRepo;
     @Inject TournamentsRepository tournamentsRepo;
     @Inject UserTeamPresetRepository presetRepo;
     @Inject TeamDefaultKitRepository defaultKitRepo;
+    @Inject AppSettingsRepository settings;
+    @Inject ObjectMapper json;
 
     /**
      * Every distinct team name in the database with its usage stats and
@@ -153,7 +163,63 @@ public class AdminTeamDatabaseController {
             groups.add(buildGroupDto("SUGGESTED", variants));
         }
 
+        // Drop groups the admin already dismissed as "not actually duplicates".
+        Set<String> dismissed = loadDismissed();
+        if (!dismissed.isEmpty()) {
+            groups.removeIf(g -> dismissed.contains(dismissKey(
+                    g.variants().stream().map(TeamNameVariantDto::name).toList())));
+        }
+
         return Response.ok(groups).build();
+    }
+
+    /**
+     * Marks one duplicate group as "not actually the same team" so it stops
+     * being suggested. Identified by the group's normalized name set (not an
+     * id - groups aren't persisted rows), so if the group's membership later
+     * changes (e.g. a new similarly-named team appears) it's treated as a
+     * fresh suggestion rather than staying silently dismissed.
+     */
+    @POST
+    @Path("/duplicates/dismiss")
+    @Transactional
+    public Response dismissDuplicate(DismissDuplicateRequest body) {
+        if (body == null || body.names() == null || body.names().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("NAMES_REQUIRED").build();
+        }
+        Set<String> dismissed = loadDismissed();
+        dismissed.add(dismissKey(body.names()));
+        saveDismissed(dismissed);
+        return Response.status(Response.Status.NO_CONTENT).build();
+    }
+
+    /** Order-independent identity key for a duplicate group: each name's
+     *  normalized form, deduped and sorted. */
+    private static String dismissKey(Collection<String> names) {
+        return names.stream()
+                .map(TeamNameNormalizer::normalize)
+                .collect(Collectors.toCollection(TreeSet::new))
+                .stream()
+                .collect(Collectors.joining("|"));
+    }
+
+    private Set<String> loadDismissed() {
+        String raw = settings.get(KEY_DISMISSED_DUPLICATES);
+        if (raw == null || raw.isBlank()) return new LinkedHashSet<>();
+        try {
+            List<String> list = json.readValue(raw, new TypeReference<List<String>>() {});
+            return new LinkedHashSet<>(list);
+        } catch (Exception e) {
+            return new LinkedHashSet<>();
+        }
+    }
+
+    private void saveDismissed(Set<String> dismissed) {
+        try {
+            settings.put(KEY_DISMISSED_DUPLICATES, json.writeValueAsString(new ArrayList<>(dismissed)));
+        } catch (Exception e) {
+            // Serializing a List<String> can't realistically fail.
+        }
     }
 
     /**
@@ -260,6 +326,8 @@ public class AdminTeamDatabaseController {
     public record SetTeamDemoRequest(@NotBlank String name, boolean demo) {}
 
     public record TeamMergeRequest(@NotEmpty List<String> names, @NotBlank String canonicalName) {}
+
+    public record DismissDuplicateRequest(@NotEmpty List<String> names) {}
 
     public record TeamMergeResponse(int teamsRenamed, int podiumFieldsRenamed,
                                     int presetsRenamed, int defaultKitsRepointed) {}

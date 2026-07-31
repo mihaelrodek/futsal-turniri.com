@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link as RouterLink } from "react-router-dom"
 import {
     Badge,
     Box,
@@ -29,7 +30,9 @@ import {
     adminRemoveEditor,
     adminUnfeatureTournament,
     adminExportTournament,
+    adminImportTournament,
     type AdminDeleteRequestDto,
+    type AdminImportResponse,
     type AdminTournamentDto,
     type AdminUserDto,
 } from "../api/admin"
@@ -39,6 +42,7 @@ import { useTranslation } from "../i18n"
 import {
     FiAlertTriangle,
     FiDownload,
+    FiExternalLink,
     FiEye,
     FiEyeOff,
     FiPlay,
@@ -46,6 +50,7 @@ import {
     FiStar,
     FiStopCircle,
     FiTrash2,
+    FiUpload,
 } from "react-icons/fi"
 
 /**
@@ -294,6 +299,17 @@ export default function AdminDashboardTab() {
                 onChanged={async () => {
                     // A confirm drops the row from the picker; a restore keeps
                     // it - either way re-pull so the list matches reality.
+                    const rows = await adminListTournaments()
+                    setTournaments(rows)
+                }}
+            />
+
+            {/* Import a tournament from an exported JSON dump - the inverse of
+                the per-tournament "Export u JSON" action. Always creates a NEW
+                tournament, so it sits at the global level (no selection needed). */}
+            <AdminImportCard
+                onImported={async () => {
+                    // The freshly created tournament should appear in the picker.
                     const rows = await adminListTournaments()
                     setTournaments(rows)
                 }}
@@ -689,6 +705,125 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
                                 )
                             })}
                         </Stack>
+                    )}
+                </Stack>
+            </Card.Body>
+        </Card.Root>
+    )
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   AdminImportCard - "Uvoz iz JSON-a": file picker for a .json dump made
+   by the per-tournament export action. The file is parsed client-side
+   (bad JSON never leaves the browser) and POSTed verbatim to
+   /admin/tournaments/import, which creates a NEW tournament (fresh
+   uuid + slug, the admin becomes owner) with every id in the file
+   remapped. On success the card shows a link to the new tournament and
+   any server warnings (skipped poster, missing editor users).
+   ────────────────────────────────────────────────────────────────────── */
+function AdminImportCard({ onImported }: { onImported: () => void }) {
+    const t = useTranslation()
+    const ic = t.components.adminDashboardTab.importCard
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [busy, setBusy] = useState(false)
+    const [parseError, setParseError] = useState<string | null>(null)
+    const [result, setResult] = useState<AdminImportResponse | null>(null)
+
+    async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        // Reset so re-selecting the same file fires onChange again.
+        e.target.value = ""
+        if (!file || busy) return
+        setParseError(null)
+        let payload: unknown
+        try {
+            payload = JSON.parse(await file.text())
+        } catch {
+            setParseError(ic.invalidFile)
+            return
+        }
+        try {
+            setBusy(true)
+            const res = await adminImportTournament(payload)
+            setResult(res)
+            onImported()
+        } catch {
+            // 400 with the exact broken field / other errors - the http
+            // interceptor already showed the server's message as a toast.
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "4", md: "6" }}>
+                <Stack gap="3">
+                    <Box>
+                        <Text fontSize="md" fontWeight="semibold">{ic.heading}</Text>
+                        <Text fontSize="sm" color="fg.muted">{ic.description}</Text>
+                    </Box>
+
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".json,application/json"
+                        style={{ display: "none" }}
+                        onChange={onFileSelected}
+                    />
+                    <HStack>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            colorPalette="pitch"
+                            loading={busy}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <FiUpload /> {ic.button}
+                        </Button>
+                    </HStack>
+
+                    {parseError && (
+                        <Text fontSize="sm" color="red.fg">{parseError}</Text>
+                    )}
+
+                    {result && (
+                        <Box
+                            p="3"
+                            bg="bg.muted"
+                            rounded="md"
+                            borderWidth="1px"
+                            borderColor="border.subtle"
+                        >
+                            <Text fontSize="sm" fontWeight="medium">
+                                {ic.successTitle(result.name)}
+                            </Text>
+                            {result.warnings.length > 0 && (
+                                <Box mt="1.5">
+                                    <Text fontSize="xs" color="fg.muted" fontWeight="medium">
+                                        {ic.warningsLabel}
+                                    </Text>
+                                    <Stack gap="0.5" mt="0.5">
+                                        {result.warnings.map((w, i) => (
+                                            <Text key={i} fontSize="xs" color="fg.muted">• {w}</Text>
+                                        ))}
+                                    </Stack>
+                                </Box>
+                            )}
+                            {(result.slug || result.uuid) && (
+                                <Button
+                                    asChild
+                                    size="xs"
+                                    variant="outline"
+                                    colorPalette="pitch"
+                                    mt="2"
+                                >
+                                    <RouterLink to={`/turniri/${result.slug ?? result.uuid}`}>
+                                        <FiExternalLink /> {ic.openTournament}
+                                    </RouterLink>
+                                </Button>
+                            )}
+                        </Box>
                     )}
                 </Stack>
             </Card.Body>

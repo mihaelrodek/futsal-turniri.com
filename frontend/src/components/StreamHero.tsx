@@ -348,7 +348,9 @@ export default function StreamHero({
 
 /* ═══════════════════ Tijek utakmice ═══════════════════ */
 
-const REGULATION: ReadonlySet<string> = new Set(["GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD"])
+const REGULATION: ReadonlySet<string> = new Set([
+    "GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD", "PENALTY_MISSED_LIVE", "EXCLUSION",
+])
 
 /** A live match's events: load on match switch, then poll while it runs
  *  (visible-tab only). Split out of {@link useMatchTicker} so a parent can
@@ -658,21 +660,30 @@ export function MatchTickerPanel({
 function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
     const t = useTranslation()
     const f = t.components.streamHero.scorerFallback
+    const er = t.components.liveMatch.eventRow
     const own = e.type === "OWN_GOAL"
     const noName = e.playerName == null
     const name = own
         ? (e.playerName != null ? f.ownGoalNamed(e.playerName) : f.ownGoalUnknown)
-        : e.type === "PENALTY_MISSED" || e.type === "PENALTY_GOAL"
-            ? (e.playerName ?? f.unknownPenaltyTaker)
-            : (e.playerName ?? (e.type === "GOAL" ? f.unknownScorer : f.unknownPlayer))
+        : e.type === "GOAL" && e.penalty
+            ? er.penSuffix(e.playerName ?? f.unknownScorer)
+            : e.type === "PENALTY_MISSED_LIVE"
+                ? (e.playerName != null ? er.penSuffix(e.playerName) : er.missedPenaltyLive)
+                : e.type === "EXCLUSION"
+                    ? (e.playerName != null ? er.exclusionSuffix(e.playerName) : er.exclusionLabel)
+                    : e.type === "PENALTY_MISSED" || e.type === "PENALTY_GOAL"
+                        ? (e.playerName ?? f.unknownPenaltyTaker)
+                        : (e.playerName ?? (e.type === "GOAL" ? f.unknownScorer : f.unknownPlayer))
 
     const icon =
         e.type === "GOAL" || e.type === "PENALTY_GOAL" ? (
             <Box color="accent.goal" display="inline-flex"><GiSoccerBall size={13} /></Box>
         ) : own ? (
             <Box color="accent.red" display="inline-flex"><GiSoccerBall size={13} /></Box>
-        ) : e.type === "PENALTY_MISSED" ? (
+        ) : e.type === "PENALTY_MISSED" || e.type === "PENALTY_MISSED_LIVE" ? (
             <Box color="fg.muted" display="inline-flex"><FiX size={13} /></Box>
+        ) : e.type === "EXCLUSION" ? (
+            <Text as="span" fontSize="11px" lineHeight="1" flexShrink={0}>🕑</Text>
         ) : (
             <Box
                 w="9px"

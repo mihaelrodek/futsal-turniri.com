@@ -20,15 +20,30 @@ public record CareerStatsDto(
         /** Tournaments the user's team won (by {@code Tournaments.winnerName}). */
         int tournamentsWon,
 
+        /** Tournaments the user's team finished 2nd/3rd (by
+         *  {@code Tournaments.secondPlaceName}/{@code thirdPlaceName}). */
+        int tournamentsSecond,
+        int tournamentsThird,
+
+        /** 1/2/3 - the best podium finish across every tournament, or null
+         *  when the user has never finished on the podium. */
+        Integer bestPlacement,
+
         /** FINISHED matches the user's teams played. */
         int matchesPlayed,
         int matchesWon,
         int matchesDrawn,
         int matchesLost,
 
-        /** Sum of goals scored across every FINISHED match. */
+        /** Sum of goals scored across every FINISHED match (TEAM score, not
+         *  the user's personal tally - see {@link #playerGoals}). */
         int goalsFor,
         int goalsAgainst,
+
+        /** Goals personally scored by the roster player whose name matches
+         *  the profile's own "ime prezime", on teams the profile owns - 0
+         *  when the profile has no name set or never matched a scorer. */
+        int playerGoals,
 
         /** Team name that's appeared in the most tournaments - null when no plays yet. */
         String topTeamName,

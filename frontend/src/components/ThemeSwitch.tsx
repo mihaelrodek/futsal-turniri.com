@@ -19,6 +19,10 @@ export default function ThemeSwitch({ size = "md" }: { size?: "sm" | "md" | "lg"
     const { user } = useAuth()
     const t = useTranslation()
 
+    // Glyph tracks the control size - the "lg" slider used in the nav menus
+    // would otherwise carry the same tiny 11px icon as the "sm" one.
+    const iconSize = size === "lg" ? 13 : size === "sm" ? 9 : 11
+
     function handleChange(dark: boolean) {
         const next = dark ? "dark" : "light"
         setColorMode(next)
@@ -39,8 +43,8 @@ export default function ThemeSwitch({ size = "md" }: { size?: "sm" | "md" | "lg"
             <Switch.HiddenInput aria-label={t.nav.themeLabel} />
             <Switch.Control>
                 <Switch.Thumb>
-                    <Switch.ThumbIndicator fallback={<FiSun size={11} color="var(--chakra-colors-yellow-500)" />}>
-                        <FiMoon size={11} />
+                    <Switch.ThumbIndicator fallback={<FiSun size={iconSize} color="var(--chakra-colors-yellow-500)" />}>
+                        <FiMoon size={iconSize} />
                     </Switch.ThumbIndicator>
                 </Switch.Thumb>
             </Switch.Control>

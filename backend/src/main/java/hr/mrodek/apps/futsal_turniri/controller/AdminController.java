@@ -1,11 +1,27 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
+import hr.mrodek.apps.futsal_turniri.model.Groups;
+import hr.mrodek.apps.futsal_turniri.model.MatchEvent;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
+import hr.mrodek.apps.futsal_turniri.model.Player;
+import hr.mrodek.apps.futsal_turniri.model.Rounds;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
+import hr.mrodek.apps.futsal_turniri.model.TournamentEditor;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.model.UserTeamPreset;
 import hr.mrodek.apps.futsal_turniri.model.UserProfile;
+import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
+import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
+import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.RewardType;
+import hr.mrodek.apps.futsal_turniri.enums.RoundStatus;
+import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
+import hr.mrodek.apps.futsal_turniri.enums.Surface;
+import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
+import hr.mrodek.apps.futsal_turniri.services.TournamentSlugService;
 import hr.mrodek.apps.futsal_turniri.repository.GroupsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchEventRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
@@ -23,11 +39,16 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +87,8 @@ public class AdminController {
     @Inject MatchesRepository matchesRepo;
     @Inject MatchEventRepository matchEventRepo;
     @Inject PlayersRepository playersRepo;
+    @Inject TournamentSlugService tournamentSlugService;
+    @Inject JsonWebToken jwt;
 
     /** Cap on user-search results - see UserProfileRepository.searchByDisplayName. */
     private static final int USER_SEARCH_LIMIT = 25;
@@ -666,6 +689,7 @@ public class AdminController {
                         : (ev.getTeam() != null ? ev.getTeam().getId() : null));
                 em.put("assistPlayerId", ev.getAssistPlayer() != null ? ev.getAssistPlayer().getId() : null);
                 em.put("assistPlayerName", ev.getAssistPlayer() != null ? ev.getAssistPlayer().getName() : null);
+                em.put("penalty", ev.isPenalty());
                 em.put("createdAt", ev.getCreatedAt());
                 return em;
             }).toList());
@@ -739,6 +763,524 @@ public class AdminController {
         m.put("featuredAt", t.getFeaturedAt());
         return m;
     }
+
+    /** ──────────────────────────────────────────────────────────────────
+     * Import a tournament from the JSON produced by
+     * {@link #exportTournament} - the exact inverse: a round trip
+     * (export → import) yields an equivalent tournament under a NEW
+     * identity.
+     *
+     * <p>Rules:
+     *   - ALWAYS creates a new tournament. The file's id/uuid/slug are
+     *     informational only - a fresh uuid is generated ({@code @PrePersist})
+     *     and a fresh unique slug is derived from name + startAt, so importing
+     *     the same file twice yields two independent tournaments and never
+     *     overwrites an existing one.
+     *   - The importing admin becomes owner ({@code createdByUid/Name}).
+     *   - Every FK in the file (group/team/player/round/match ids) is
+     *     remapped in memory: old id → freshly persisted entity. A reference
+     *     to an id that isn't in the file is a 400.
+     *   - Two-phase: the whole tree is parsed/validated and persisted inside
+     *     ONE transaction; any 400 thrown mid-way rolls everything back, so a
+     *     half-imported tournament can never remain.
+     *   - Non-recreatable bits are skipped with a warning in the response:
+     *     the poster resource (binary lives in MinIO, not in the JSON) and
+     *     editor grants whose user doesn't exist in this database.
+     *     {@code featuredAt} is deliberately dropped (admin curation, and two
+     *     "featured" copies would fight over the daily hero); created/updated
+     *     timestamps are re-stamped by Hibernate.
+     *   - Matches are inserted in the file's order (export sorts by old id),
+     *     so relative id order - which the frontend's knockout-code
+     *     derivation ({@code indexInStage}) depends on - is preserved.
+     * ──────────────────────────────────────────────────────────────── */
+    @POST
+    @Path("/tournaments/import")
+    @Transactional
+    public Response importTournament(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            throw badImport("Neispravan uvoz: JSON je prazan.");
+        }
+        List<String> warnings = new ArrayList<>();
+
+        /* ── tournament scalar fields ── */
+        Map<String, Object> tj = impObj(body.get("tournament"), "tournament");
+        String name = impString(tj, "name");
+        if (name == null || name.isBlank()) {
+            throw badImport("Neispravan uvoz: 'tournament.name' nedostaje.");
+        }
+
+        Tournaments t = new Tournaments();
+        t.setName(name.trim());
+        t.setLocation(impString(tj, "location"));
+        t.setDetails(impString(tj, "details"));
+        t.setStartAt(impTime(tj, "startAt", "tournament.startAt"));
+        TournamentStatus status = impEnum(TournamentStatus.class, tj, "status", "tournament.status");
+        t.setStatus(status != null ? status : TournamentStatus.DRAFT);
+        t.setMaxTeams(impInt(tj, "maxTeams", "tournament.maxTeams"));
+        TournamentFormat format = impEnum(TournamentFormat.class, tj, "format", "tournament.format");
+        t.setFormat(format != null ? format : TournamentFormat.GROUPS_KNOCKOUT);
+        t.setGroupCount(impInt(tj, "groupCount", "tournament.groupCount"));
+        t.setAdvancePerGroup(impInt(tj, "advancePerGroup", "tournament.advancePerGroup"));
+        Integer bestThird = impInt(tj, "bestThirdCount", "tournament.bestThirdCount");
+        t.setBestThirdCount(bestThird != null ? bestThird : 0);
+        t.setBracketFill(impEnum(BracketFill.class, tj, "bracketFill", "tournament.bracketFill"));
+        t.setBracketConfirmedAt(impTime(tj, "bracketConfirmedAt", "tournament.bracketConfirmedAt"));
+        t.setHalfCount(impInt(tj, "halfCount", "tournament.halfCount"));
+        t.setHalfLengthMin(impInt(tj, "halfLengthMin", "tournament.halfLengthMin"));
+        t.setHalftimeBreakMin(impInt(tj, "halftimeBreakMin", "tournament.halftimeBreakMin"));
+        t.setKoHalfLengthMin(impInt(tj, "koHalfLengthMin", "tournament.koHalfLengthMin"));
+        t.setKoHalftimeBreakMin(impInt(tj, "koHalftimeBreakMin", "tournament.koHalftimeBreakMin"));
+        t.setBreakBetweenMatchesMin(impInt(tj, "breakBetweenMatchesMin", "tournament.breakBetweenMatchesMin"));
+        t.setKoBreakBetweenMatchesMin(impInt(tj, "koBreakBetweenMatchesMin", "tournament.koBreakBetweenMatchesMin"));
+        t.setBufferMin(impInt(tj, "bufferMin", "tournament.bufferMin"));
+        BigDecimal entryPrice = impDecimal(tj, "entryPrice", "tournament.entryPrice");
+        t.setEntryPrice(entryPrice != null ? entryPrice : BigDecimal.ZERO);
+        t.setContactName(impString(tj, "contactName"));
+        t.setContactPhone(impString(tj, "contactPhone"));
+        t.setGameSystem(impString(tj, "gameSystem"));
+        Surface surface = impEnum(Surface.class, tj, "surface", "tournament.surface");
+        t.setSurface(surface != null ? surface : Surface.ASFALT);
+        t.setWebsiteUrl(impString(tj, "websiteUrl"));
+        t.setOrganizerName(impString(tj, "organizerName"));
+        t.setRewardType(impEnum(RewardType.class, tj, "rewardType", "tournament.rewardType"));
+        t.setRewardFirst(impDecimal(tj, "rewardFirst", "tournament.rewardFirst"));
+        t.setRewardFirstNote(impString(tj, "rewardFirstNote"));
+        t.setRewardSecond(impDecimal(tj, "rewardSecond", "tournament.rewardSecond"));
+        t.setRewardSecondNote(impString(tj, "rewardSecondNote"));
+        t.setRewardThird(impDecimal(tj, "rewardThird", "tournament.rewardThird"));
+        t.setRewardThirdNote(impString(tj, "rewardThirdNote"));
+        t.setRewardFourth(impDecimal(tj, "rewardFourth", "tournament.rewardFourth"));
+        t.setRewardFourthNote(impString(tj, "rewardFourthNote"));
+        t.setWinnerName(impString(tj, "winnerName"));
+        t.setSecondPlaceName(impString(tj, "secondPlaceName"));
+        t.setThirdPlaceName(impString(tj, "thirdPlaceName"));
+        t.setBestGoalkeeperName(impString(tj, "bestGoalkeeperName"));
+        t.setBestPlayerName(impString(tj, "bestPlayerName"));
+        t.setBestScorerName(impString(tj, "bestScorerName"));
+        t.setLatitude(impDouble(tj, "latitude", "tournament.latitude"));
+        t.setLongitude(impDouble(tj, "longitude", "tournament.longitude"));
+        t.setGeocodedAt(impTime(tj, "geocodedAt", "tournament.geocodedAt"));
+        Boolean hidden = impBool(tj, "hidden", "tournament.hidden");
+        t.setHidden(Boolean.TRUE.equals(hidden));
+        ScorerScope scorerScope = impEnum(ScorerScope.class, tj, "scorerScope", "tournament.scorerScope");
+        t.setScorerScope(scorerScope != null ? scorerScope : ScorerScope.KNOCKOUT);
+        // featuredAt deliberately NOT copied - admin curation, not tournament data.
+
+        // The poster lives as a binary in MinIO under a Resources row of the
+        // SOURCE database - a bare id in the JSON can't recreate it here.
+        if (tj.get("posterResourceId") != null) {
+            warnings.add("Plakat turnira nije prenesen - slika se ne može rekreirati iz JSON-a.");
+        }
+
+        // The importing admin becomes the owner; ownership can be handed to
+        // the real organiser afterwards via the existing transfer action.
+        String adminUid = jwt != null ? jwt.getSubject() : null;
+        t.setCreatedByUid(adminUid);
+        t.setCreatedByName(adminDisplayNameFromJwt());
+
+        // Fresh unique slug from name + startAt; uuid comes from @PrePersist.
+        t.setSlug(tournamentSlugService.generateUnique(t, null));
+        tournamentsRepo.persist(t);
+
+        /* ── groups ── */
+        Map<Long, Groups> groupByOldId = new HashMap<>();
+        int groupCount = 0;
+        for (Object o : impList(body, "groups")) {
+            Map<String, Object> gm = impObj(o, "groups[" + groupCount + "]");
+            String gName = impString(gm, "name");
+            if (gName == null || gName.isBlank()) {
+                throw badImport("Neispravan uvoz: 'groups[" + groupCount + "].name' nedostaje.");
+            }
+            Groups g = new Groups();
+            g.setTournament(t);
+            g.setName(gName.trim());
+            Integer ordinal = impInt(gm, "ordinal", "groups[" + groupCount + "].ordinal");
+            g.setOrdinal(ordinal != null ? ordinal : groupCount);
+            g.setAdvanceCount(impInt(gm, "advanceCount", "groups[" + groupCount + "].advanceCount"));
+            groupsRepo.persist(g);
+            Long oldId = impLong(gm, "id", "groups[" + groupCount + "].id");
+            if (oldId != null) groupByOldId.put(oldId, g);
+            groupCount++;
+        }
+
+        /* ── teams + rosters ── */
+        Map<Long, Teams> teamByOldId = new HashMap<>();
+        Map<Long, Player> playerByOldId = new HashMap<>();
+        int teamCount = 0, playerCount = 0;
+        for (Object o : impList(body, "teams")) {
+            Map<String, Object> tm = impObj(o, "teams[" + teamCount + "]");
+            String teamName = impString(tm, "name");
+            if (teamName == null || teamName.isBlank()) {
+                throw badImport("Neispravan uvoz: 'teams[" + teamCount + "].name' nedostaje.");
+            }
+            Teams team = new Teams();
+            team.setTournament(t);
+            team.setName(teamName.trim());
+            Long oldGroupId = impLong(tm, "groupId", "teams[" + teamCount + "].groupId");
+            if (oldGroupId != null) {
+                Groups g = groupByOldId.get(oldGroupId);
+                if (g == null) {
+                    throw badImport("Neispravan uvoz: ekipa „" + teamName
+                            + "“ referencira nepoznatu grupu (id " + oldGroupId + ").");
+                }
+                team.setGroup(g);
+            }
+            team.setDrawPosition(impInt(tm, "drawPosition", "teams[" + teamCount + "].drawPosition"));
+            team.setManualRank(impInt(tm, "manualRank", "teams[" + teamCount + "].manualRank"));
+            team.setJerseyColor(impString(tm, "jerseyColor"));
+            team.setShortsColor(impString(tm, "shortsColor"));
+            team.setEliminated(Boolean.TRUE.equals(impBool(tm, "eliminated", "teams[" + teamCount + "].eliminated")));
+            team.setPendingApproval(Boolean.TRUE.equals(impBool(tm, "pendingApproval", "teams[" + teamCount + "].pendingApproval")));
+            team.setSubmittedByUid(impString(tm, "submittedByUid"));
+            team.setCoSubmittedByUid(impString(tm, "coSubmittedByUid"));
+            // Fresh token - the source database's claim links must not work here.
+            team.setClaimToken(generateClaimToken());
+            teamsRepo.persist(team);
+            Long oldTeamId = impLong(tm, "id", "teams[" + teamCount + "].id");
+            if (oldTeamId != null) teamByOldId.put(oldTeamId, team);
+
+            int pi = 0;
+            for (Object po : impList(tm, "players")) {
+                Map<String, Object> pm = impObj(po, "teams[" + teamCount + "].players[" + pi + "]");
+                String pName = impString(pm, "name");
+                if (pName == null || pName.isBlank()) {
+                    throw badImport("Neispravan uvoz: 'teams[" + teamCount + "].players[" + pi + "].name' nedostaje.");
+                }
+                Player p = new Player();
+                p.setTeam(team);
+                p.setName(pName.trim());
+                p.setNumber(impInt(pm, "number", "players.number"));
+                p.setCaptain(Boolean.TRUE.equals(impBool(pm, "captain", "players.captain")));
+                p.setSortOrder(impInt(pm, "sortOrder", "players.sortOrder"));
+                playersRepo.persist(p);
+                Long oldPlayerId = impLong(pm, "id", "players.id");
+                if (oldPlayerId != null) playerByOldId.put(oldPlayerId, p);
+                pi++;
+                playerCount++;
+            }
+            teamCount++;
+        }
+
+        /* ── rounds ── */
+        Map<Long, Rounds> roundByOldId = new HashMap<>();
+        int roundCount = 0;
+        for (Object o : impList(body, "rounds")) {
+            Map<String, Object> rm = impObj(o, "rounds[" + roundCount + "]");
+            Integer number = impInt(rm, "number", "rounds[" + roundCount + "].number");
+            if (number == null) {
+                throw badImport("Neispravan uvoz: 'rounds[" + roundCount + "].number' nedostaje.");
+            }
+            Rounds r = new Rounds();
+            r.setTournament(t);
+            r.setNumber(number);
+            RoundStatus rs = impEnum(RoundStatus.class, rm, "status", "rounds[" + roundCount + "].status");
+            r.setStatus(rs != null ? rs : RoundStatus.IN_PROGRESS);
+            r.setLockedAt(impTime(rm, "lockedAt", "rounds[" + roundCount + "].lockedAt"));
+            r.setCompletedAt(impTime(rm, "completedAt", "rounds[" + roundCount + "].completedAt"));
+            roundsRepo.persist(r);
+            Long oldId = impLong(rm, "id", "rounds[" + roundCount + "].id");
+            if (oldId != null) roundByOldId.put(oldId, r);
+            roundCount++;
+        }
+
+        /* ── matches, pass 1: everything except the nextMatch link ──
+           nextMatchId may point FORWARD to a match that appears later in the
+           file, so the bracket linkage is resolved in a second pass once
+           every match exists in the old-id map. Insertion follows the file
+           order (export sorts by old id) so relative id order - which the
+           frontend's knockout-code derivation depends on - is preserved. */
+        Map<Long, Matches> matchByOldId = new HashMap<>();
+        Map<Matches, Long> pendingNextByMatch = new LinkedHashMap<>();
+        int matchCount = 0, eventCount = 0;
+        for (Object o : impList(body, "matches")) {
+            String ctx = "matches[" + matchCount + "]";
+            Map<String, Object> mm = impObj(o, ctx);
+            Matches match = new Matches();
+            match.setTournament(t);
+
+            Long oldRoundId = impLong(mm, "roundId", ctx + ".roundId");
+            Rounds round = oldRoundId != null ? roundByOldId.get(oldRoundId) : null;
+            if (round == null) {
+                throw badImport("Neispravan uvoz: " + ctx + " referencira nepoznato kolo (id " + oldRoundId + ").");
+            }
+            match.setRound(round);
+
+            MatchStage stage = impEnum(MatchStage.class, mm, "stage", ctx + ".stage");
+            match.setStage(stage != null ? stage : MatchStage.GROUP);
+            match.setKnockoutCode(impString(mm, "knockoutCode"));
+
+            Long oldGroupId = impLong(mm, "groupId", ctx + ".groupId");
+            if (oldGroupId != null) {
+                Groups g = groupByOldId.get(oldGroupId);
+                if (g == null) {
+                    throw badImport("Neispravan uvoz: " + ctx + " referencira nepoznatu grupu (id " + oldGroupId + ").");
+                }
+                match.setGroup(g);
+            }
+
+            match.setTableNo(impInt(mm, "tableNo", ctx + ".tableNo"));
+            match.setKickoffAt(impTime(mm, "kickoffAt", ctx + ".kickoffAt"));
+            match.setTeam1(resolveTeamRef(teamByOldId, impLong(mm, "team1Id", ctx + ".team1Id"), ctx + ".team1Id"));
+            match.setTeam2(resolveTeamRef(teamByOldId, impLong(mm, "team2Id", ctx + ".team2Id"), ctx + ".team2Id"));
+            match.setScore1(impInt(mm, "score1", ctx + ".score1"));
+            match.setScore2(impInt(mm, "score2", ctx + ".score2"));
+            match.setPenalties1(impInt(mm, "penalties1", ctx + ".penalties1"));
+            match.setPenalties2(impInt(mm, "penalties2", ctx + ".penalties2"));
+            match.setWinnerTeam(resolveTeamRef(teamByOldId, impLong(mm, "winnerTeamId", ctx + ".winnerTeamId"), ctx + ".winnerTeamId"));
+            match.setNextSlot(impInt(mm, "nextSlot", ctx + ".nextSlot"));
+            match.setSlot1Source(impString(mm, "slot1Source"));
+            match.setSlot2Source(impString(mm, "slot2Source"));
+            match.setFouls1First(impInt(mm, "fouls1First", ctx + ".fouls1First"));
+            match.setFouls1Second(impInt(mm, "fouls1Second", ctx + ".fouls1Second"));
+            match.setFouls2First(impInt(mm, "fouls2First", ctx + ".fouls2First"));
+            match.setFouls2Second(impInt(mm, "fouls2Second", ctx + ".fouls2Second"));
+            MatchStatus ms = impEnum(MatchStatus.class, mm, "status", ctx + ".status");
+            match.setStatus(ms != null ? ms : MatchStatus.SCHEDULED);
+            match.setLiveMode(impEnum(MatchLiveMode.class, mm, "liveMode", ctx + ".liveMode"));
+            match.setLiveStartedAt(impTime(mm, "liveStartedAt", ctx + ".liveStartedAt"));
+            match.setFirstHalfEndedAt(impTime(mm, "firstHalfEndedAt", ctx + ".firstHalfEndedAt"));
+            match.setSecondHalfStartedAt(impTime(mm, "secondHalfStartedAt", ctx + ".secondHalfStartedAt"));
+            match.setLivePausedAt(impTime(mm, "livePausedAt", ctx + ".livePausedAt"));
+            matchesRepo.persist(match);
+
+            Long oldMatchId = impLong(mm, "id", ctx + ".id");
+            if (oldMatchId != null) matchByOldId.put(oldMatchId, match);
+            Long oldNextId = impLong(mm, "nextMatchId", ctx + ".nextMatchId");
+            if (oldNextId != null) pendingNextByMatch.put(match, oldNextId);
+
+            /* ── events of this match ── */
+            int ei = 0;
+            for (Object eo : impList(mm, "events")) {
+                String ectx = ctx + ".events[" + ei + "]";
+                Map<String, Object> em = impObj(eo, ectx);
+                MatchEventType type = impEnum(MatchEventType.class, em, "type", ectx + ".type");
+                if (type == null) {
+                    throw badImport("Neispravan uvoz: '" + ectx + ".type' nedostaje.");
+                }
+                Integer minute = impInt(em, "minute", ectx + ".minute");
+                if (minute == null) {
+                    throw badImport("Neispravan uvoz: '" + ectx + ".minute' nedostaje.");
+                }
+                MatchEvent ev = new MatchEvent();
+                ev.setMatch(match);
+                ev.setType(type);
+                ev.setMinute(minute);
+                Long oldPlayerId = impLong(em, "playerId", ectx + ".playerId");
+                if (oldPlayerId != null) {
+                    Player p = playerByOldId.get(oldPlayerId);
+                    if (p == null) {
+                        throw badImport("Neispravan uvoz: " + ectx + " referencira nepoznatog igrača (id " + oldPlayerId + ").");
+                    }
+                    ev.setPlayer(p);
+                } else {
+                    // Export writes teamId for every event (derived from the
+                    // player when one is set); the entity contract stores the
+                    // explicit team ONLY for unattributed events.
+                    Long oldTeamId = impLong(em, "teamId", ectx + ".teamId");
+                    ev.setTeam(resolveTeamRef(teamByOldId, oldTeamId, ectx + ".teamId"));
+                }
+                Long oldAssistId = impLong(em, "assistPlayerId", ectx + ".assistPlayerId");
+                if (oldAssistId != null) {
+                    Player ap = playerByOldId.get(oldAssistId);
+                    if (ap == null) {
+                        throw badImport("Neispravan uvoz: " + ectx + " referencira nepoznatog asistenta (id " + oldAssistId + ").");
+                    }
+                    ev.setAssistPlayer(ap);
+                }
+                // Absent in files exported before the in-game-penalty flag
+                // existed - default false, exactly what those rows had.
+                ev.setPenalty(Boolean.TRUE.equals(impBool(em, "penalty", ectx + ".penalty")));
+                matchEventRepo.persist(ev);
+                ei++;
+                eventCount++;
+            }
+            matchCount++;
+        }
+
+        /* ── matches, pass 2: bracket linkage ── */
+        for (Map.Entry<Matches, Long> e : pendingNextByMatch.entrySet()) {
+            Matches next = matchByOldId.get(e.getValue());
+            if (next == null) {
+                throw badImport("Neispravan uvoz: utakmica referencira nepoznatu sljedeću utakmicu (id " + e.getValue() + ").");
+            }
+            e.getKey().setNextMatch(next);
+        }
+
+        /* ── editor grants - only for users that exist in THIS database ── */
+        int editorCount = 0;
+        int edIdx = 0;
+        for (Object o : impList(body, "editors")) {
+            Map<String, Object> em = impObj(o, "editors[" + edIdx + "]");
+            edIdx++;
+            String uid = impString(em, "userUid");
+            if (uid == null || uid.isBlank() || uid.equals(adminUid)) continue;
+            if (profileRepo.findByUid(uid).isPresent()) {
+                if (!editorRepo.isEditor(t.getId(), uid)) {
+                    editorRepo.persist(new TournamentEditor(t, uid));
+                    editorCount++;
+                }
+            } else {
+                String label = impString(em, "displayName");
+                warnings.add("Urednik " + (label != null && !label.isBlank() ? "„" + label + "“" : uid)
+                        + " nije prenesen - korisnik ne postoji u ovoj bazi.");
+            }
+        }
+
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        counts.put("groups", groupCount);
+        counts.put("teams", teamCount);
+        counts.put("players", playerCount);
+        counts.put("rounds", roundCount);
+        counts.put("matches", matchCount);
+        counts.put("events", eventCount);
+        counts.put("editors", editorCount);
+
+        return Response.status(Response.Status.CREATED)
+                .entity(new ImportTournamentResponse(
+                        true,
+                        t.getId(),
+                        t.getUuid() != null ? t.getUuid().toString() : null,
+                        t.getSlug(),
+                        t.getName(),
+                        warnings,
+                        counts))
+                .build();
+    }
+
+    /* ─────────────────── import parsing helpers ───────────────────
+       The export payload is consumed as a raw Map tree (never bound to the
+       entities - the relations are recursive and every FK must be remapped),
+       so each scalar goes through one of these defensive converters. A type
+       mismatch or unparseable value throws a 400 naming the exact field;
+       @Transactional then rolls the whole import back. */
+
+    /** 400 with a plain-text Croatian message - shown verbatim in the admin UI toast. */
+    private static WebApplicationException badImport(String message) {
+        return new WebApplicationException(
+                Response.status(Response.Status.BAD_REQUEST)
+                        .type(MediaType.TEXT_PLAIN)
+                        .entity(message)
+                        .build());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> impObj(Object v, String what) {
+        if (!(v instanceof Map)) {
+            throw badImport("Neispravan uvoz: sekcija '" + what + "' nedostaje ili nije objekt.");
+        }
+        return (Map<String, Object>) v;
+    }
+
+    /** Section list: absent → empty; present but not a list → 400. */
+    private static List<?> impList(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        if (v == null) return List.of();
+        if (!(v instanceof List<?> list)) {
+            throw badImport("Neispravan uvoz: sekcija '" + key + "' nije lista.");
+        }
+        return list;
+    }
+
+    private static String impString(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof String s) return s;
+        throw badImport("Neispravan uvoz: polje '" + key + "' nije tekst.");
+    }
+
+    private static Long impLong(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije broj.");
+    }
+
+    private static Integer impInt(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof Number n) return n.intValue();
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije broj.");
+    }
+
+    private static Double impDouble(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof Number n) return n.doubleValue();
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije broj.");
+    }
+
+    private static BigDecimal impDecimal(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof BigDecimal bd) return bd;
+        if (v instanceof Number || v instanceof String) {
+            try {
+                return new BigDecimal(v.toString());
+            } catch (NumberFormatException ignored) {
+                // falls through to the 400 below
+            }
+        }
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije ispravan iznos.");
+    }
+
+    private static Boolean impBool(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof Boolean b) return b;
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije true/false.");
+    }
+
+    private static OffsetDateTime impTime(Map<String, Object> m, String key, String ctx) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof String s && !s.isBlank()) {
+            try {
+                return OffsetDateTime.parse(s);
+            } catch (DateTimeParseException ignored) {
+                // falls through to the 400 below
+            }
+        }
+        throw badImport("Neispravan uvoz: polje '" + ctx + "' nije ispravan datum/vrijeme.");
+    }
+
+    private static <E extends Enum<E>> E impEnum(Class<E> type, Map<String, Object> m, String key, String ctx) {
+        String s = impString(m, key);
+        if (s == null || s.isBlank()) return null;
+        try {
+            return Enum.valueOf(type, s.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw badImport("Neispravan uvoz: polje '" + ctx + "' ima nepoznatu vrijednost '" + s + "'.");
+        }
+    }
+
+    /** Old team id → new entity; null id → null; unknown id → 400. */
+    private static Teams resolveTeamRef(Map<Long, Teams> teamByOldId, Long oldId, String ctx) {
+        if (oldId == null) return null;
+        Teams team = teamByOldId.get(oldId);
+        if (team == null) {
+            throw badImport("Neispravan uvoz: " + ctx + " referencira nepoznatu ekipu (id " + oldId + ").");
+        }
+        return team;
+    }
+
+    /** Importing admin's display name from the verified ID token - the
+     *  {@code name} claim, falling back to {@code email}, else null.
+     *  Mirrors TournamentController.stampCreator. */
+    private String adminDisplayNameFromJwt() {
+        if (jwt == null || jwt.getRawToken() == null) return null;
+        Object name = jwt.getClaim("name");
+        if (name != null) return name.toString();
+        Object email = jwt.getClaim("email");
+        return email != null ? email.toString() : null;
+    }
+
+    /** Result of a successful import: the new tournament's identity, what was
+     *  created, and human-readable warnings for skipped bits (poster, missing
+     *  editor users). */
+    public record ImportTournamentResponse(boolean imported, Long tournamentId,
+                                           String uuid, String slug, String name,
+                                           List<String> warnings,
+                                           Map<String, Integer> counts) {}
 
     /* ─────────────────── helpers + DTOs ─────────────────── */
 

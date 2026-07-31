@@ -15,9 +15,10 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { FiEye, FiEyeOff, FiGitMerge, FiSearch, FiUsers } from "react-icons/fi"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { FiEye, FiEyeOff, FiGitMerge, FiSearch, FiUsers, FiX } from "react-icons/fi"
 import {
+    adminDismissTeamDuplicate,
     adminListTeamDuplicates,
     adminListTeamIdentities,
     adminMergeTeams,
@@ -188,6 +189,7 @@ function DuplicateFinder() {
     const t = useTranslation()
     const queryClient = useQueryClient()
     const [mergeGroup, setMergeGroup] = useState<TeamDuplicateGroupDto | null>(null)
+    const [dismissingKey, setDismissingKey] = useState<string | null>(null)
 
     const { data: groups, isLoading } = useQuery({
         queryKey: qk.adminTeamDuplicates,
@@ -199,6 +201,14 @@ function DuplicateFinder() {
         queryClient.invalidateQueries({ queryKey: qk.adminTeamDuplicates })
         queryClient.invalidateQueries({ queryKey: qk.adminTeamIdentities })
     }
+
+    const dismissMutation = useMutation({
+        mutationFn: (names: string[]) => adminDismissTeamDuplicate(names),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: qk.adminTeamDuplicates })
+        },
+        onSettled: () => setDismissingKey(null),
+    })
 
     return (
         <Stack gap="3" pt="3">
@@ -230,14 +240,28 @@ function DuplicateFinder() {
                                         ? t.components.adminTeamDatabaseTab.duplicates.badgeExact
                                         : t.components.adminTeamDatabaseTab.duplicates.badgeSimilar}
                                 </Badge>
-                                <Button
-                                    size="xs"
-                                    variant="solid"
-                                    colorPalette="brand"
-                                    onClick={() => setMergeGroup(group)}
-                                >
-                                    <FiGitMerge /> {t.components.adminTeamDatabaseTab.duplicates.mergeButton}
-                                </Button>
+                                <HStack gap="1.5">
+                                    <Button
+                                        size="xs"
+                                        variant="outline"
+                                        colorPalette="gray"
+                                        loading={dismissingKey === `${group.type}-${i}`}
+                                        onClick={() => {
+                                            setDismissingKey(`${group.type}-${i}`)
+                                            dismissMutation.mutate(group.variants.map((v) => v.name))
+                                        }}
+                                    >
+                                        <FiX /> {t.components.adminTeamDatabaseTab.duplicates.dismissButton}
+                                    </Button>
+                                    <Button
+                                        size="xs"
+                                        variant="solid"
+                                        colorPalette="brand"
+                                        onClick={() => setMergeGroup(group)}
+                                    >
+                                        <FiGitMerge /> {t.components.adminTeamDatabaseTab.duplicates.mergeButton}
+                                    </Button>
+                                </HStack>
                             </HStack>
                             <VStack align="stretch" gap="1">
                                 {group.variants.map((v) => (

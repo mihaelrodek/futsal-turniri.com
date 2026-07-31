@@ -10,6 +10,7 @@ import MobileBottomNav from './components/MobileBottomNav'
 import PushBootstrap from './components/PushBootstrap'
 import ThemeSync from './components/ThemeSync'
 import LocaleSync from './components/LocaleSync'
+import PlayerClaimFirstRun from './components/PlayerClaimFirstRun'
 import { RequireAuth } from "./components/RequireAuth"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -228,6 +229,10 @@ export default function App() {
                 login so the choice follows them across devices. */}
             <ThemeSync />
             <LocaleSync />
+            {/* "Pronašli smo igrača s tvojim imenom - jesi li to ti?" on the
+                first visit after registering. Mounted here (not on the
+                profile) because registration lands the user on /turniri. */}
+            <PlayerClaimFirstRun />
             <Box
                 as="main"
                 bg="bg.canvas"

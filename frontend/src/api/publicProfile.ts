@@ -35,6 +35,8 @@ export type PublicProfile = {
 
 /** One row of /public/users/{slug}/teams/{teamId}/matches. */
 export type TeamMatchRow = {
+    /** Lets the profile link straight into /turniri/{ref}/utakmica/{matchId}. */
+    matchId: number
     roundNumber: number | null
     tableNo: number | null
     opponentName: string | null
@@ -43,6 +45,11 @@ export type TeamMatchRow = {
     status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "FINISHED" | string | null
     won: boolean | null
     isBye: boolean
+    /** What THIS profile's own roster player did in the match (0 when nothing). */
+    goals: number
+    ownGoals: number
+    yellowCards: number
+    redCards: number
 }
 
 export type TeamMatchHistory = {
@@ -78,12 +85,21 @@ export type CareerRecentTournament = {
 export type CareerStats = {
     tournamentsPlayed: number
     tournamentsWon: number
+    /** Tournaments finished 2nd/3rd (by Tournaments.secondPlaceName/thirdPlaceName). */
+    tournamentsSecond: number
+    tournamentsThird: number
+    /** 1/2/3 - best-ever podium finish, or null when never on the podium. */
+    bestPlacement: number | null
     matchesPlayed: number
     matchesWon: number
     matchesDrawn: number
     matchesLost: number
+    /** TEAM goals (match score sum) - not the same as `playerGoals`. */
     goalsFor: number
     goalsAgainst: number
+    /** Goals personally scored by the roster player matching this profile's
+     *  own name, across every team the profile owns. */
+    playerGoals: number
     topTeamName: string | null
     recent: CareerRecentTournament[]
 }

@@ -2335,6 +2335,10 @@ public class TournamentController {
             // overlay shows it until the following match_start.
             specto.matchEnd(t, matchId, matchesRepo.findNextScheduled(t.getId(), matchId));
         }
+        // If this happened to be the tournament's last remaining match (an
+        // edit-mode replay after the knockout stage was already done), arm
+        // the automatic top-3 podium popup. No-op when matches remain.
+        if (t != null) specto.maybeSchedulePodiumAfterLastMatch(t);
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
 
@@ -2923,7 +2927,26 @@ public class TournamentController {
         event.setMinute(body.minute());
         event.setAssistPlayer(assist);
         event.setClientEventId(clientEventId);
+        // In-game penalty marker - honoured for GOAL only. The goal still
+        // counts everywhere like a regular goal; the flag only changes how the
+        // timeline and the stream overlay render it.
+        event.setPenalty(type == MatchEventType.GOAL && Boolean.TRUE.equals(body.penalty()));
         matchEventRepo.persist(event);
+
+        // A red card always sends the player off for a 2-minute exclusion in
+        // futsal - auto-record it as its own EXCLUSION event (same player/
+        // side) so the organizer doesn't have to tap it separately. No
+        // clientEventId (nothing offline-queued this on the client side).
+        MatchEvent autoExclusion = null;
+        if (type == MatchEventType.RED_CARD) {
+            autoExclusion = new MatchEvent();
+            autoExclusion.setMatch(match);
+            autoExclusion.setType(MatchEventType.EXCLUSION);
+            autoExclusion.setPlayer(player);
+            autoExclusion.setTeam(player == null ? eventTeam : null);
+            autoExclusion.setMinute(body.minute());
+            matchEventRepo.persist(autoExclusion);
+        }
 
         // A goal (own or regular) changes the score; cards never do.
         if (type == MatchEventType.GOAL || type == MatchEventType.OWN_GOAL) {
@@ -2947,25 +2970,47 @@ public class TournamentController {
 
         // SpectoStream: mirror the event onto the overlay after the persist +
         // score recompute (commit-safe point). TIMER matches only; async
-        // fire-and-forget. GOAL/OWN_GOAL credit the side whose score rose;
-        // PENALTY_GOAL is announced as a regular goal during the shootout, while
-        // PENALTY_MISSED stays local. Cards carry the carded player's side.
+        // fire-and-forget. GOAL/OWN_GOAL credit the side whose score rose; a
+        // GOAL flagged as an in-game penalty goes out as `penalty` (scored) so
+        // the overlay shows the penalty chip AND bumps the score. A shootout
+        // kick (PENALTY_GOAL/PENALTY_MISSED) is ALSO a `penalty` event, but
+        // never touches the score - the shootout isn't part of the match
+        // score, only `matches.penalties1/2`. PENALTY_MISSED_LIVE is the
+        // same in-game `penalty` shape with scored=false; EXCLUSION is the
+        // 2-minute suspension chip. Cards carry the carded player's side.
         if (spectoDrives(match)) {
             Tournaments st = match.getTournament();
             if (st != null) {
                 switch (type) {
-                    case GOAL, OWN_GOAL, PENALTY_GOAL -> {
+                    case GOAL, OWN_GOAL -> {
                         String pn = event.getPlayer() != null ? event.getPlayer().getName() : null;
                         if (type == MatchEventType.OWN_GOAL && pn != null) pn = pn + " (ag)";
-                        specto.goal(st, event.getId(), spectoSide(match, spectoEventTeam(event)), pn);
+                        String side = spectoSide(match, spectoEventTeam(event));
+                        if (event.isPenalty()) specto.penalty(st, event.getId(), side, pn, true);
+                        else specto.goal(st, event.getId(), side, pn);
                     }
+                    case PENALTY_GOAL -> specto.penalty(st, event.getId(),
+                            spectoSide(match, spectoEventTeam(event)),
+                            event.getPlayer() != null ? event.getPlayer().getName() : null, true);
+                    case PENALTY_MISSED, PENALTY_MISSED_LIVE -> specto.penalty(st, event.getId(),
+                            spectoSide(match, spectoEventTeam(event)),
+                            event.getPlayer() != null ? event.getPlayer().getName() : null, false);
+                    case EXCLUSION -> specto.exclusion(st, event.getId(),
+                            spectoSide(match, spectoEventTeam(event)),
+                            event.getPlayer() != null ? event.getPlayer().getName() : null);
                     case YELLOW_CARD -> specto.card(st, event.getId(),
                             spectoSide(match, spectoEventTeam(event)),
                             event.getPlayer() != null ? event.getPlayer().getName() : null, "yellow");
-                    case RED_CARD -> specto.card(st, event.getId(),
-                            spectoSide(match, spectoEventTeam(event)),
-                            event.getPlayer() != null ? event.getPlayer().getName() : null, "red");
-                    default -> { /* PENALTY_MISSED: no stream event */ }
+                    case RED_CARD -> {
+                        specto.card(st, event.getId(),
+                                spectoSide(match, spectoEventTeam(event)),
+                                event.getPlayer() != null ? event.getPlayer().getName() : null, "red");
+                        if (autoExclusion != null) {
+                            specto.exclusion(st, autoExclusion.getId(),
+                                    spectoSide(match, spectoEventTeam(autoExclusion)),
+                                    autoExclusion.getPlayer() != null ? autoExclusion.getPlayer().getName() : null);
+                        }
+                    }
                 }
             }
         }
@@ -3002,12 +3047,10 @@ public class TournamentController {
 
         boolean wasScoreGoal = event.getType() == MatchEventType.GOAL
                 || event.getType() == MatchEventType.OWN_GOAL;
-        boolean wasSpectoGoal = wasScoreGoal
-                || event.getType() == MatchEventType.PENALTY_GOAL;
         // SpectoStream: capture the credited side + event id BEFORE the row is
         // deleted (its lazy team/player are still loadable here), so the overlay
         // can decrement the same side that must now lose the goal.
-        String cancelSide = wasSpectoGoal ? spectoSide(match, spectoEventTeam(event)) : null;
+        String cancelSide = wasScoreGoal ? spectoSide(match, spectoEventTeam(event)) : null;
         long cancelEventId = event.getId();
         matchEventRepo.delete(event);
 
@@ -3017,10 +3060,11 @@ public class TournamentController {
 
         notifyLive(match);
         // SpectoStream: cancel the goal on the overlay (its score just decreased).
-        // TIMER matches only; async fire-and-forget. Successful shootout kicks
-        // are also mirrored as goals, so deleting/editing them must undo the
-        // same Specto event. Missed penalties and cards have nothing to cancel.
-        if (wasSpectoGoal && spectoDrives(match)) {
+        // TIMER matches only; async fire-and-forget. Shootout kicks
+        // (PENALTY_GOAL/PENALTY_MISSED) never touched the score as a `penalty`
+        // popup - not a `goal` - and the API has no cancel for that event, so
+        // deleting/re-editing a shootout kick just leaves the earlier popup be.
+        if (wasScoreGoal && spectoDrives(match)) {
             Tournaments st = match.getTournament();
             if (st != null) specto.goalCancelled(st, cancelEventId, cancelSide);
         }

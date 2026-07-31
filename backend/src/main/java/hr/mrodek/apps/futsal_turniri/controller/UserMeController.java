@@ -1,18 +1,23 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.dtos.MyTournamentParticipationDto;
+import hr.mrodek.apps.futsal_turniri.dtos.PlayerClaimSuggestionDto;
 import hr.mrodek.apps.futsal_turniri.dtos.RegisterProfileRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.SyncProfileRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.UserProfileDto;
+import hr.mrodek.apps.futsal_turniri.model.Player;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Resources;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.model.UserTeamPreset;
 import hr.mrodek.apps.futsal_turniri.model.UserProfile;
+import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserTeamPresetRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
 import hr.mrodek.apps.futsal_turniri.services.MessageService;
+import hr.mrodek.apps.futsal_turniri.services.PersonNameFolder;
+import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
 import hr.mrodek.apps.futsal_turniri.services.SlugService;
 import hr.mrodek.apps.futsal_turniri.services.StorageService;
 import io.quarkus.security.Authenticated;
@@ -23,10 +28,12 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -48,11 +55,13 @@ import java.util.List;
 public class UserMeController {
 
     @Inject TeamsRepository teamRepo;
+    @Inject PlayersRepository playersRepo;
     @Inject UserTeamPresetRepository presetRepo;
     @Inject UserProfileRepository profileRepo;
     @Inject SlugService slugService;
     @Inject StorageService storageService;
     @Inject MessageService messages;
+    @Inject PlayerClaimRequestMapper claimMapper;
     @Inject JsonWebToken jwt;
 
     @GET
@@ -127,6 +136,84 @@ public class UserMeController {
         }
         return out;
     }
+
+    /** Cap on "je li ovo ti?" suggestions - a short list, not a search page. */
+    private static final int PLAYER_SUGGESTION_LIMIT = 5;
+
+    /**
+     * "Je li ovo ti?" - roster players across all tournaments whose full
+     * name matches the signed-in user's registered first+last name
+     * (case- and diacritics-insensitively) and whose team nobody has
+     * claimed yet. Backs the suggestion card on the owner's Turniri tab.
+     *
+     * <p>Returns an empty list when the user hasn't set both name parts -
+     * a no-name spectator account has nothing to match on.
+     */
+    @GET
+    @Path("/player-suggestions")
+    @Transactional
+    public List<PlayerClaimSuggestionDto> playerSuggestions() {
+        var profile = profileRepo.findByUid(jwt.getSubject()).orElse(null);
+        String needle = suggestionNeedle(profile);
+        if (needle == null) return List.of();
+        return playersRepo.findUnclaimedByFoldedName(needle, PLAYER_SUGGESTION_LIMIT).stream()
+                .map(claimMapper::toSuggestionDto)
+                .toList();
+    }
+
+    /**
+     * "To sam ja" - self-claim the team a suggested roster player belongs
+     * to. Performs the SAME mutation the token-claim flow does
+     * ({@link TeamClaimController}: set {@code coSubmittedByUid}, the
+     * "equal participant" slot), but authorised by a server-side re-check
+     * of the suggestion rule instead of token possession: the caller's
+     * registered first+last name must fold-match the roster name AND the
+     * team must still be unclaimed. The client-sent player id is never
+     * trusted on its own.
+     *
+     * Conflict states:
+     *   - profile has no first/last name        → 409 NAME_NOT_SET
+     *   - name no longer matches the player     → 409 NAME_MISMATCH
+     *   - team claimed by someone else meanwhile → 409 ALREADY_CLAIMED
+     *   - viewer already holds either slot       → no-op, 200
+     */
+    @POST
+    @Path("/player-suggestions/{playerId}/claim")
+    @Transactional
+    public PlayerSuggestionClaimResultDto claimPlayerSuggestion(@PathParam("playerId") Long playerId) {
+        String uid = jwt.getSubject();
+        var profile = profileRepo.findByUid(uid).orElse(null);
+        String needle = suggestionNeedle(profile);
+        if (needle == null) throw new ClientErrorException("NAME_NOT_SET", 409);
+
+        Player player = playersRepo.findByIdOptional(playerId).orElse(null);
+        if (player == null || player.isDemo()) throw new NotFoundException("Igrač nije pronađen.");
+
+        Teams team = player.getTeam();
+        Tournaments tournament = team.getTournament();
+        if (team.isDemo() || team.isPendingApproval()
+                || (tournament != null && tournament.isHidden())) {
+            throw new NotFoundException("Igrač nije pronađen.");
+        }
+
+        if (!needle.equals(PersonNameFolder.fold(player.getName()))) {
+            throw new ClientErrorException("NAME_MISMATCH", 409);
+        }
+
+        // Idempotent when the viewer already holds either submitter slot.
+        if (uid.equals(team.getSubmittedByUid()) || uid.equals(team.getCoSubmittedByUid())) {
+            return new PlayerSuggestionClaimResultDto(true, team.getId(), team.getName());
+        }
+        if (team.getSubmittedByUid() != null || team.getCoSubmittedByUid() != null) {
+            throw new ClientErrorException("ALREADY_CLAIMED", 409);
+        }
+
+        team.setCoSubmittedByUid(uid);
+        teamRepo.persist(team);
+        return new PlayerSuggestionClaimResultDto(true, team.getId(), team.getName());
+    }
+
+    public record PlayerSuggestionClaimResultDto(boolean claimed, Long teamId, String teamName) {}
 
     @GET
     @Path("/profile")
@@ -321,6 +408,23 @@ public class UserMeController {
     private static String blank(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
+
+    /**
+     * The folded "ime prezime" needle for player suggestions, or null when
+     * there's nothing safe to match on.
+     *
+     * <p>Prefers the separate first/last fields; falls back to the display
+     * name for social-login accounts that never filled them in, as long as it
+     * has at least two words (see
+     * {@link PersonNameFolder#needleFromDisplayName(String)}).
+     */
+    static String suggestionNeedle(UserProfile profile) {
+        if (profile == null) return null;
+        String needle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+        if (needle != null) return needle;
+        return PersonNameFolder.needleFromDisplayName(profile.getDisplayName());
+    }
+
 
     /** "First Last" from the two parts, trimmed; null when both are blank. */
     private static String buildDisplayName(String first, String last) {

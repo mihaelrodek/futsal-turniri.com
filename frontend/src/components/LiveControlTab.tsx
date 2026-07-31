@@ -164,6 +164,21 @@ export default function LiveControlTab({
     const [showFinished, setShowFinished] = useState(false)
     const [pickerOpen, setPickerOpen] = useState(false)
 
+    // Lifted here (rather than fetched only inside StreamSection below) so
+    // LiveMatchPanel can also see it: while THIS tournament is actually
+    // streaming, the mode picker only offers "s mjeračem vremena" - a
+    // SIMPLE/result-only match would leave the overlay clock unusable.
+    const [banner, setBanner] = useState<StreamBanner | null>(null)
+    useEffect(() => {
+        let cancelled = false
+        fetchStreamBanner().then((b) => { if (!cancelled) setBanner(b) }).catch(() => { /* silent - next poll retries */ })
+        return () => { cancelled = true }
+    }, [])
+    usePolling(() => {
+        fetchStreamBanner().then(setBanner).catch(() => { /* silent */ })
+    }, 30_000)
+    const streamActive = !!banner?.live && banner.tournamentUuid === uuid
+
     const reload = useCallback(async () => {
         const [g, b] = await Promise.all([
             fetchGroups(uuid).catch(() => [] as Group[]),
@@ -460,6 +475,7 @@ export default function LiveControlTab({
                 match={selected.match}
                 onChanged={reload}
                 selector={selector}
+                streamActive={streamActive}
                 onClockArgs={onClockArgs}
                 footerAction={
                     standaloneHref ? (
@@ -478,7 +494,7 @@ export default function LiveControlTab({
                 only when the admin has linked a stream to THIS tournament. Kept
                 below the console and low-key when collapsed - it's a nice-to-have,
                 not the main event. */}
-            <StreamSection uuid={uuid} />
+            <StreamSection uuid={uuid} banner={banner} />
         </VStack>
     ) : null
 }
@@ -490,10 +506,9 @@ export default function LiveControlTab({
    there's no URL to paste. Off by default; the show/hide choice is remembered
    per tournament. Renders nothing when no stream is linked here.
    ────────────────────────────────────────────────────────────────────────── */
-function StreamSection({ uuid }: { uuid: string }) {
+function StreamSection({ uuid, banner }: { uuid: string; banner: StreamBanner | null }) {
     const t = useTranslation()
     const tc = t.components.liveControlTab
-    const [banner, setBanner] = useState<StreamBanner | null>(null)
     const [shown, setShown] = useState<boolean>(() => {
         try {
             return localStorage.getItem(`zapisnik-stream-${uuid}`) === "1"
@@ -501,18 +516,6 @@ function StreamSection({ uuid }: { uuid: string }) {
             return false
         }
     })
-
-    useEffect(() => {
-        let cancelled = false
-        fetchStreamBanner()
-            .then((b) => { if (!cancelled) setBanner(b) })
-            .catch(() => { /* silent - next poll retries */ })
-        return () => { cancelled = true }
-    }, [])
-    // The admin may link/paste a stream mid-match; keep it fresh.
-    usePolling(() => {
-        fetchStreamBanner().then(setBanner).catch(() => { /* silent */ })
-    }, 30_000)
 
     // A stream is available here only when the admin linked one to THIS
     // tournament (t.uuid is canonical, same as banner.tournamentUuid).

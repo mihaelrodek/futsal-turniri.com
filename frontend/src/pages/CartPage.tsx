@@ -74,7 +74,7 @@ function QuickAddTiers() {
                             {/* Fixed width on mobile (wide enough for "Premium",
                                 the longest tier name) so the delimiter after it
                                 lines up at the same x across every row. */}
-                            <Box w={{ base: "100px", sm: "auto" }} flexShrink={0} alignSelf="center">
+                            <Box w={{ base: "120px", sm: "auto" }} flexShrink={0} alignSelf="center">
                                 <HStackTierHeader icon={icon} name={copy.name} price={formatPrice(info.priceEurCents)} />
                             </Box>
                             <Box
@@ -92,7 +92,7 @@ function QuickAddTiers() {
                                 color="fg.muted"
                                 mt={{ base: "0", sm: "1.5" }}
                                 pr={{ base: "6", sm: "5" }}
-                                lineClamp={{ base: 1, sm: 2 }}
+                                lineClamp={{ base: 2, sm: 2 }}
                             >
                                 {copy.tagline}
                             </Text>

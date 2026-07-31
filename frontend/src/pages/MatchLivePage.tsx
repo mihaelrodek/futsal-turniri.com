@@ -1070,8 +1070,12 @@ function PlayerGoalMark({ count }: { count: number }) {
                     h="12px"
                     px="0.5"
                     rounded="full"
-                    bg="fg.ink"
-                    color="white"
+                    // NOT fg.ink/white: in dark mode fg.ink resolves to
+                    // #F5F7FA, so the count was white-on-white and only
+                    // appeared once a hover style repainted it. The brand
+                    // solid/contrast pair is legible in both themes.
+                    bg="pitch.solid"
+                    color="pitch.contrast"
                     fontFamily="mono"
                     fontSize="8px"
                     fontWeight={900}

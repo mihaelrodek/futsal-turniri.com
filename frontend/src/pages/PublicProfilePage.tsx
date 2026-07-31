@@ -7,6 +7,7 @@ import {
     chakra,
     Field,
     Flex,
+    Grid,
     Heading,
     HStack,
     IconButton,
@@ -15,6 +16,7 @@ import {
     NativeSelect,
     Skeleton,
     Spinner,
+    Tabs,
     Text,
     VStack,
 } from "@chakra-ui/react"
@@ -27,6 +29,7 @@ import {
     FiCalendar,
     FiChevronDown,
     FiChevronRight,
+    FiDownload,
     FiEdit2,
     FiFileText,
     FiFolder,
@@ -37,6 +40,7 @@ import {
     FiPhone,
     FiRadio,
     FiUser,
+    FiUserCheck,
     FiShare2,
     FiShield,
     FiTrash2,
@@ -55,10 +59,20 @@ import {
     type PublicProfile,
 } from "../api/publicProfile"
 import type { MyTournamentParticipation } from "../api/userMe"
-import { deleteAvatar, getProfile, syncProfile, updateLanguage, updateProfile, uploadAvatar } from "../api/userMe"
+import {
+    deleteAvatar,
+    getPlayerSuggestions,
+    getProfile,
+    syncProfile,
+    updateLanguage,
+    updateProfile,
+    uploadAvatar,
+} from "../api/userMe"
 import { checkUsernameAvailable } from "../api/auth"
 import AvatarPreview from "../components/AvatarPreview"
 import AvatarCropDialog from "../components/AvatarCropDialog"
+import PlayerSilhouette from "../components/PlayerSilhouette"
+import { toPng } from "html-to-image"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
 import AdminDashboardTab from "../components/AdminDashboardTab"
@@ -67,6 +81,13 @@ import AdminPlayersListTab from "../components/AdminPlayersListTab"
 import AdminTeamDatabaseTab from "../components/AdminTeamDatabaseTab"
 import MyRecordingsTab from "../components/MyRecordingsTab"
 import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
+import AdminPlayerClaimRequestsTab from "../components/AdminPlayerClaimRequestsTab"
+import { MyPlayerClaimRequests, PlayerClaimRequestDialog } from "../components/PlayerClaimDialogs"
+import { PLAYER_CLAIMS_CHANGED_EVENT } from "../components/PlayerClaimFirstRun"
+import {
+    getMyPlayerClaimRequests,
+    type PlayerClaimRequest as PlayerClaimRequestRow,
+} from "../api/playerClaims"
 import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
 import AdminCameraInquiriesTab from "../components/AdminCameraInquiriesTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
@@ -122,6 +143,7 @@ type ProfileTabKey =
     | "zahtjevi-snimke"
     | "baza-snimki"
     | "zahtjevi-ponude"
+    | "zahtjevi-igraci"
 
 /** Icon per tab, shared between the desktop sidebar and (implicitly, via
  *  the same lookup) anywhere else a tab needs one. */
@@ -139,6 +161,7 @@ const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
     "zahtjevi-snimke": <FiInbox size={15} />,
     "baza-snimki": <FiFolder size={15} />,
     "zahtjevi-ponude": <FiFileText size={15} />,
+    "zahtjevi-igraci": <FiUserCheck size={15} />,
 }
 
 /** One desktop-sidebar navigation row - same shape/spacing as
@@ -198,8 +221,13 @@ export default function PublicProfilePage() {
     const [error, setError] = useState<string | null>(null)
     const [career, setCareer] = useState<CareerStats | null>(null)
 
-    const [activeTeam, setActiveTeam] = useState<string | null>(null) // team name (case preserved)
     const [search, setSearch] = useState("")
+
+    // Manual (admin-approved) player-claim requests of the profile owner.
+    const [claimRequests, setClaimRequests] = useState<PlayerClaimRequestRow[]>([])
+    const [claimRequestsVersion, setClaimRequestsVersion] = useState(0)
+    const [requestDialogOpen, setRequestDialogOpen] = useState(false)
+    const requestDialogAutoOpened = useRef(false)
 
     // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
     // only show for the profile owner; visitors viewing someone else's page
@@ -317,12 +345,10 @@ export default function PublicProfilePage() {
             try {
                 setLoading(true)
                 setError(null)
-                setActiveTeam(null)
                 setSearch("")
                 const data = await getPublicProfile(slug)
                 if (cancelled) return
                 setProfile(data)
-                if (data.teams.length > 0) setActiveTeam(data.teams[0].name)
             } catch (e: any) {
                 if (cancelled) return
                 if (e?.response?.status === 404) {
@@ -349,22 +375,57 @@ export default function PublicProfilePage() {
         return () => { cancelled = true }
     }, [slug])
 
-    /** Tournaments filtered to the active team, then optionally to the search query. */
-    const filteredTournaments = useMemo<MyTournamentParticipation[]>(() => {
-        if (!profile) return []
-        const q = search.trim().toLowerCase()
-        return profile.tournaments
-            .filter((tp) => activeTeam == null || teamKey(tp.teamName) === teamKey(activeTeam))
-            .filter((tp) => {
-                if (!q) return true
-                const blob = `${tp.tournamentName} ${tp.tournamentLocation ?? ""}`.toLowerCase()
-                return blob.includes(q)
-            })
-    }, [profile, activeTeam, search])
-
     // Owner detection - backend deliberately doesn't ship the target UID, so
     // we compare slugs. mySlug is populated after /user/me/sync runs.
     const isOwner = !!profile && !!user?.uid && !!mySlug && mySlug === profile.slug
+
+    // Does an exact name match still exist for this account? The automatic
+    // linking itself happens app-level (PlayerClaimFirstRun, so it also fires
+    // right after registration) - here we only need to know whether to offer
+    // the manual, admin-approved request instead.
+    const hasSuggestions = usePlayerSuggestionProbe(isOwner ? user?.uid : undefined, !!profile)
+
+    // App-level auto-claim just linked something - refetch so the new team
+    // shows up without a reload. `refreshProfile` is a hoisted function
+    // declaration further down, so it's already callable here.
+    useEffect(() => {
+        const onChanged = () => {
+            refreshProfile()
+            setClaimRequestsVersion((v) => v + 1)
+        }
+        window.addEventListener(PLAYER_CLAIMS_CHANGED_EVENT, onChanged)
+        return () => window.removeEventListener(PLAYER_CLAIMS_CHANGED_EVENT, onChanged)
+    }, [])
+
+    // The owner's own manual claim requests (the admin-approved path). Only
+    // fetched for the owner - nobody else may see them.
+    useEffect(() => {
+        if (!isOwner) { setClaimRequests([]); return }
+        let cancelled = false
+        getMyPlayerClaimRequests()
+            .then((rows) => { if (!cancelled) setClaimRequests(rows) })
+            .catch(() => { if (!cancelled) setClaimRequests([]) })
+        return () => { cancelled = true }
+    }, [isOwner, user?.uid, claimRequestsVersion])
+
+    // Nothing matched automatically and nothing is queued - offer the manual
+    // request dialog, and open it once by itself when the owner lands on
+    // Turniri, which is where they'd expect their history to be.
+    const hasOpenOrGrantedRequest = claimRequests.some(
+        (r) => r.status === "PENDING" || r.status === "APPROVED",
+    )
+    const needsManualClaim =
+        isOwner
+        && hasSuggestions === false
+        && (profile?.teams.length ?? 0) === 0
+        && !hasOpenOrGrantedRequest
+
+    useEffect(() => {
+        if (!needsManualClaim || profileTab !== "turniri") return
+        if (requestDialogAutoOpened.current) return
+        requestDialogAutoOpened.current = true
+        setRequestDialogOpen(true)
+    }, [needsManualClaim, profileTab])
 
     if (loading) {
         return (
@@ -427,6 +488,7 @@ export default function PublicProfilePage() {
             { key: "zahtjevi-snimke", label: t.pages.publicProfilePage.tabs.recordingRequests },
             { key: "baza-snimki", label: t.pages.publicProfilePage.tabs.recordingsLibrary },
             { key: "zahtjevi-ponude", label: t.pages.publicProfilePage.tabs.cameraInquiries },
+            { key: "zahtjevi-igraci", label: t.pages.publicProfilePage.tabs.playerClaimRequests },
         ]
         : []
 
@@ -454,16 +516,11 @@ export default function PublicProfilePage() {
      *  shell it's sitting in. */
     const bodyContent = (
         <>
-            {/* Profile header - the identity card. Only for VISITORS here -
-                the owner's own name/avatar lives in the desktop sidebar and,
-                on mobile, in the persistent header above the tab bar, so it
-                never needs repeating inside a tab. */}
-            {!isOwner && (
-                <ProfileHeader
-                    profile={profile}
-                    isOwner={isOwner}
-                />
-            )}
+            {/* NOTE: the small visitor identity card (ProfileHeader, "card"
+                variant) used to sit here. It's gone on purpose - the spotlight
+                card below IS the player's identity/detail display now, and it
+                carries the name, photo and phone itself. ProfileHeader still
+                renders in its "sidebar" variant for the owner's desktop nav. */}
 
             {/* === PROFIL panel - owner-only. Account details + app settings
                   (Postavke folded in here rather than getting its own tab).
@@ -476,126 +533,62 @@ export default function PublicProfilePage() {
                 </>
             )}
 
-            {/* === KARIJERA card - always above the Turniri tab. Visible to
-                  everyone, owner or visitor. Hidden until career fetch
-                  resolves and the user has actually played anything. === */}
-            {(!isOwner || profileTab === "turniri") && career && career.tournamentsPlayed > 0 && (
-                <CareerStatsCard career={career} />
+            {/* === PLAYER SPOTLIGHT - "FIFA card"-style header, and the whole
+                  identity + career summary in one: photo, name, phone,
+                  tournaments/matches/goals, W-D-L and best placement. Renders
+                  even with an empty career (zeros) - it's the profile's main
+                  display, not a stats-only extra. === */}
+            {(!isOwner || profileTab === "turniri") && profile && (
+                <PlayerSpotlightCard
+                    profile={profile}
+                    career={career}
+                    isOwner={isOwner}
+                    onAddPhoto={() => setProfileTab("profil")}
+                />
             )}
 
-            {/* === TURNIRI tab (default, shown for everyone) === */}
-            {(!isOwner || profileTab === "turniri") && (
+            {/* === Manual player claim - the owner's own requests plus the
+                  "ask to be linked" CTA. Only for the owner, on Turniri:
+                  a visitor has nothing to claim here. === */}
+            {isOwner && profileTab === "turniri" && (claimRequests.length > 0 || needsManualClaim) && (
                 <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                     <Card.Body p={{ base: "4", md: "5" }}>
                         <VStack align="stretch" gap="3">
-                            <HStack justify="space-between" wrap="wrap" gap="2">
-                                <Heading size="md">
-                                    {t.pages.publicProfilePage.tournamentsTab.heading}
-                                    {activeTeam ? <chakra.span color="fg.muted"> - {activeTeam}</chakra.span> : null}
-                                </Heading>
-                                {activeTeam && profile.teams.length > 0 && (
-                                    <Badge variant="subtle" colorPalette="pitch">
-                                        {t.pages.publicProfilePage.tournamentsTab.countBadge(filteredTournaments.length)}
-                                    </Badge>
-                                )}
-                            </HStack>
-
-                            {/* Team picker - filter chips */}
-                            {profile.teams.length === 0 ? (
-                                <Box
-                                    borderWidth="1px"
-                                    borderColor="border.emphasized"
-                                    borderStyle="dashed"
-                                    rounded="md"
-                                    py="6"
-                                    px="4"
-                                    textAlign="center"
-                                >
-                                    <Text color="fg.muted" fontSize="sm">
-                                        {t.pages.publicProfilePage.tournamentsTab.emptyNoTournaments}
-                                    </Text>
-                                </Box>
-                            ) : (
-                                <HStack gap="2" wrap="wrap">
-                                    {profile.teams.map((p) => (
-                                        <TeamChip
-                                            key={p.name}
-                                            team={p}
-                                            active={activeTeam != null && teamKey(activeTeam) === teamKey(p.name)}
-                                            onClick={() => setActiveTeam(p.name)}
-                                        />
-                                    ))}
-                                </HStack>
-                            )}
-
-                            {/* Partner link for the currently selected team.
-                                Rendered as a separate clickable element
-                                because nesting it inside the chip button is
-                                an HTML anti-pattern (button-in-button). */}
-                            {activeTeam && (() => {
-                                const cur = profile.teams.find(
-                                    (p) => teamKey(p.name) === teamKey(activeTeam),
-                                )
-                                if (!cur || !cur.partnerSlug) return null
-                                return (
-                                    <HStack gap="2" fontSize="sm" color="fg.muted">
-                                        <FiShare2 size={14} />
-                                        <Text>
-                                            {t.pages.publicProfilePage.tournamentsTab.coOwnerLabel}{" "}
-                                            <RouterLink
-                                                to={`/profil/${cur.partnerSlug}`}
-                                                style={{
-                                                    color: "var(--chakra-colors-blue-fg)",
-                                                    fontWeight: 500,
-                                                }}
-                                            >
-                                                {cur.partnerName || cur.partnerSlug}
-                                            </RouterLink>
-                                        </Text>
-                                    </HStack>
-                                )
-                            })()}
-
-                            {/* Tournament list - only after a team is picked */}
-                            {activeTeam && (
+                            {needsManualClaim && (
                                 <>
-                                    <Box borderTopWidth="1px" borderColor="border.emphasized" mx="-4" my="1" />
-                                    <Input
-                                        size="sm"
-                                        placeholder={t.pages.publicProfilePage.tournamentsTab.searchPlaceholder}
-                                        value={search}
-                                        onChange={(e) => setSearch(e.target.value)}
-                                    />
-                                    {filteredTournaments.length === 0 ? (
-                                        <Box
-                                            borderWidth="1px"
-                                            borderColor="border.emphasized"
-                                            borderStyle="dashed"
-                                            rounded="md"
-                                            py="6"
-                                            px="4"
-                                            textAlign="center"
+                                    <Text fontSize="sm" color="fg.muted">
+                                        {t.components.playerClaim.myRequests.noMatchHint}
+                                    </Text>
+                                    <HStack>
+                                        <Button
+                                            size="sm"
+                                            variant="solid"
+                                            colorPalette="pitch"
+                                            onClick={() => setRequestDialogOpen(true)}
                                         >
-                                            <Text color="fg.muted" fontSize="sm">
-                                                {t.pages.publicProfilePage.tournamentsTab.noResults}
-                                            </Text>
-                                        </Box>
-                                    ) : (
-                                        <VStack align="stretch" gap="2.5">
-                                            {filteredTournaments.map((t) => (
-                                                <TournamentRow
-                                                    key={`${t.tournamentUuid}-${t.teamId}`}
-                                                    slug={profile.slug}
-                                                    row={t}
-                                                />
-                                            ))}
-                                        </VStack>
-                                    )}
+                                            <FiUserCheck />
+                                            {t.components.playerClaim.myRequests.openDialogButton}
+                                        </Button>
+                                    </HStack>
                                 </>
                             )}
+                            <MyPlayerClaimRequests
+                                requests={claimRequests}
+                                onChanged={() => setClaimRequestsVersion((v) => v + 1)}
+                            />
                         </VStack>
                     </Card.Body>
                 </Card.Root>
+            )}
+
+            {/* === Ekipe / Turniri card - just the two tabs now; the career
+                  headline stats moved up into the spotlight card. === */}
+            {(!isOwner || profileTab === "turniri") && (
+                <KarijeraCard
+                    profile={profile}
+                    search={search}
+                    setSearch={setSearch}
+                />
             )}
 
             {/* === MOJE SNIMKE tab - owner-only: recording requests === */}
@@ -639,6 +632,23 @@ export default function PublicProfilePage() {
                   "Zatraži ponudu" leads for the custom camera package. === */}
             {isOwner && isAdmin && profileTab === "zahtjevi-ponude" && (
                 <AdminCameraInquiriesTab />
+            )}
+
+            {/* === ZAHTJEVI ZA IGRAČA tab - admin-only: manual "this roster
+                  player is me" claims waiting for a human decision. === */}
+            {isOwner && isAdmin && profileTab === "zahtjevi-igraci" && (
+                <AdminPlayerClaimRequestsTab />
+            )}
+
+            {/* The manual request dialog - owner-only, outside the tab switch
+                so it survives a tab change while it's open. (The automatic
+                "is this you?" confirm is app-level, in PlayerClaimFirstRun.) */}
+            {isOwner && (
+                <PlayerClaimRequestDialog
+                    open={requestDialogOpen}
+                    onClose={() => setRequestDialogOpen(false)}
+                    onSubmitted={() => setClaimRequestsVersion((v) => v + 1)}
+                />
             )}
         </>
     )
@@ -884,8 +894,6 @@ function ProfileHeader({
     onEditClick?: () => void
 }) {
     const t = useTranslation()
-    // For the "blurred phone → click to log in" affordance below.
-    const navigate = useNavigate()
 
     // Avatar - image when uploaded, initials otherwise. Wrapped in
     // AvatarPreview so hovering / tapping the circle opens a full-screen
@@ -928,7 +936,83 @@ function ProfileHeader({
         </Box>
     )
 
-    const phoneEl = profile.phone ? (
+    const phoneEl = <ProfilePhoneLink profile={profile} />
+
+    // ── Sidebar variant: the FIRST item of the owner's desktop menu - a
+    //    compact identity row; the pencil expands the edit fields inline,
+    //    right here in the sidebar (no modal). ──
+    if (variant === "sidebar") {
+        return (
+            <VStack align="stretch" gap="1.5" px="1" pt="1">
+                <HStack gap="2.5" align="center" minW="0">
+                    {avatarEl}
+                    <HStack gap="1" align="center" flex="1" minW="0">
+                        <Text
+                            fontWeight={700}
+                            fontSize="14px"
+                            lineHeight="short"
+                            lineClamp={2}
+                            flex="1"
+                            minW="0"
+                        >
+                            {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
+                        </Text>
+                        {isOwner && (
+                            <IconButton
+                                aria-label={t.pages.publicProfilePage.editProfileAria}
+                                size="xs"
+                                variant="ghost"
+                                onClick={onEditClick}
+                                title={t.pages.publicProfilePage.editProfileAria}
+                            >
+                                <FiEdit2 />
+                            </IconButton>
+                        )}
+                    </HStack>
+                </HStack>
+                {phoneEl}
+            </VStack>
+        )
+    }
+
+    // ── Card variant: mobile body (owner). A visitor no longer gets this at
+    //    all - PlayerSpotlightCard is their identity display. ──
+    return (
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "3", md: "5" }}>
+                <VStack align="stretch" gap={{ base: "2", md: "3" }}>
+                    <HStack gap={{ base: "2", md: "3" }} align="start">
+                        {avatarEl}
+                        <VStack align="stretch" gap="0.5" flex="1" minW="0">
+                            <Heading
+                                size={{ base: "sm", md: "md" }}
+                                lineHeight="short"
+                                lineClamp={2}
+                            >
+                                {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
+                            </Heading>
+                        </VStack>
+                    </HStack>
+
+                    {phoneEl}
+                </VStack>
+            </Card.Body>
+        </Card.Root>
+    )
+}
+
+/**
+ * The profile's phone affordance: a tel: link when the backend actually
+ * returned the number, the blurred "log in to see it" placeholder when it
+ * only told us one exists, nothing at all otherwise. Shared by the sidebar
+ * identity block and the spotlight card, which are the two places a phone
+ * number shows up.
+ */
+function ProfilePhoneLink({ profile }: { profile: PublicProfile }) {
+    const t = useTranslation()
+    const navigate = useNavigate()
+
+    return profile.phone ? (
                         <chakra.a
                             href={`tel:${(profile.phoneCountry ?? "")}${profile.phone}`.replace(/\s+/g, "")}
                             color="blue.fg"
@@ -986,69 +1070,6 @@ function ProfileHeader({
                             </chakra.span>
                         </chakra.button>
                     ) : null
-
-    // ── Sidebar variant: the FIRST item of the owner's desktop menu - a
-    //    compact identity row; the pencil expands the edit fields inline,
-    //    right here in the sidebar (no modal). ──
-    if (variant === "sidebar") {
-        return (
-            <VStack align="stretch" gap="1.5" px="1" pt="1">
-                <HStack gap="2.5" align="center" minW="0">
-                    {avatarEl}
-                    <HStack gap="1" align="center" flex="1" minW="0">
-                        <Text
-                            fontWeight={700}
-                            fontSize="14px"
-                            lineHeight="short"
-                            lineClamp={2}
-                            flex="1"
-                            minW="0"
-                        >
-                            {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
-                        </Text>
-                        {isOwner && (
-                            <IconButton
-                                aria-label={t.pages.publicProfilePage.editProfileAria}
-                                size="xs"
-                                variant="ghost"
-                                onClick={onEditClick}
-                                title={t.pages.publicProfilePage.editProfileAria}
-                            >
-                                <FiEdit2 />
-                            </IconButton>
-                        )}
-                    </HStack>
-                </HStack>
-                {phoneEl}
-            </VStack>
-        )
-    }
-
-    // ── Card variant: mobile body (owner) + any visitor view. Editing
-    //    (owner) doesn't happen here - it's the ProfileDetailsSection panel
-    //    rendered right below, automatically, on the "Profil" tab. ──
-    return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "3", md: "5" }}>
-                <VStack align="stretch" gap={{ base: "2", md: "3" }}>
-                    <HStack gap={{ base: "2", md: "3" }} align="start">
-                        {avatarEl}
-                        <VStack align="stretch" gap="0.5" flex="1" minW="0">
-                            <Heading
-                                size={{ base: "sm", md: "md" }}
-                                lineHeight="short"
-                                lineClamp={2}
-                            >
-                                {profile.displayName ?? t.pages.publicProfilePage.unnamedPlayer}
-                            </Heading>
-                        </VStack>
-                    </HStack>
-
-                    {phoneEl}
-                </VStack>
-            </Card.Body>
-        </Card.Root>
-    )
 }
 
 /**
@@ -1627,246 +1648,402 @@ function EditProfileForm({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   CareerStatsCard - aggregate W/D/L + goals across every team the user
-   has played as. Rendered at the top of the Turniri tab.
-
-   Visible to everyone (owner and visitors). When `tournamentsPlayed`
-   comes back as 0 the parent doesn't render this at all, so we don't
-   have to special-case empty-state inside.
+   PlayerSpotlightCard - "FIFA Ultimate Team card"-style header for the
+   Turniri tab, but re-skinned in the app's own colours/tokens rather than
+   FIFA's gold-chrome look: a horizontal split, photo on the left (~1/3,
+   full-bleed, PlayerSilhouette placeholder when no avatar is set) and the
+   profile's own achievements on the right (~2/3) - tournaments played,
+   career GOALS (this specific person's scorer tally, not the team's match
+   score), and a podium tally (or a "no podium yet" badge). Fully theme-
+   reactive (semantic tokens only), and downloadable as a PNG via the same
+   html-to-image mechanism TournamentExport.tsx uses for posters/schedules.
+   Same visibility rule as CareerStatsCard right below it - everyone, hidden
+   until there's a real play to show. Same gold/silver/bronze palette as the
+   all-time team medal table on /statistika (StatsPage.tsx MEDAL_COLORS).
    ────────────────────────────────────────────────────────────────────── */
-function CareerStatsCard({ career }: { career: CareerStats }) {
+const SPOTLIGHT_MEDAL_COLORS = { gold: "#f5c842", silver: "#c0c5cc", bronze: "#cd8654" } as const
+
+function PlayerSpotlightCard({
+    profile,
+    career,
+    isOwner,
+    onAddPhoto,
+}: {
+    profile: PublicProfile
+    /** Null while the (separate, slower) career request is still in flight, or
+     *  when it failed - the card still renders, with zeros. */
+    career: CareerStats | null
+    isOwner: boolean
+    /** Owner-only: jump to the "Profil" panel, where the avatar is uploaded. */
+    onAddPhoto: () => void
+}) {
     const t = useTranslation()
-    const winRate = career.matchesPlayed > 0
-        ? Math.round((career.matchesWon / career.matchesPlayed) * 100)
-        : 0
-    const goalDiff = career.goalsFor - career.goalsAgainst
+    const s = t.pages.publicProfilePage.spotlight
+    const c = t.pages.publicProfilePage.career
+    const cardRef = useRef<HTMLDivElement>(null)
+    const [downloading, setDownloading] = useState(false)
+
+    const best = career?.bestPlacement ?? null
+    const bestPlacementText =
+        best === 1 ? s.firstPlace
+        : best === 2 ? s.secondPlace
+        : best === 3 ? s.thirdPlace
+        : s.noBestPlacement
+    const bestPlacementColor =
+        best === 1 ? SPOTLIGHT_MEDAL_COLORS.gold
+        : best === 2 ? SPOTLIGHT_MEDAL_COLORS.silver
+        : best === 3 ? SPOTLIGHT_MEDAL_COLORS.bronze
+        : undefined
+
+    async function handleDownload() {
+        if (!cardRef.current) return
+        setDownloading(true)
+        try {
+            // html-to-image bakes in COMPUTED colours (not CSS variables), so
+            // reading the card's own resolved background here is what makes
+            // the exported PNG match whichever theme (light/dark) is active
+            // right now, without hand-picking a colour ourselves.
+            const bg = getComputedStyle(cardRef.current).backgroundColor
+            const dataUrl = await toPng(cardRef.current, {
+                pixelRatio: 2,
+                backgroundColor: bg,
+                cacheBust: true,
+                // Anything marked data-no-export stays out of the shared PNG -
+                // the phone number and the download button itself.
+                filter: (node) => !(node instanceof HTMLElement) || node.dataset.noExport !== "1",
+            })
+            const a = document.createElement("a")
+            a.href = dataUrl
+            a.download = `${profile.slug || "igrac"}-kartica.png`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+        } catch {
+            showError(s.downloadErrorTitle, s.downloadErrorDescription)
+        } finally {
+            setDownloading(false)
+        }
+    }
+
+    return (
+        <Box
+            ref={cardRef}
+            position="relative"
+            borderWidth="1px"
+            borderColor="border.emphasized"
+            rounded="xl"
+            shadow="sm"
+            overflow="hidden"
+            bg="bg.panel"
+        >
+            <Grid templateColumns="minmax(96px, 1fr) 2fr" minH={{ base: "240px", md: "300px" }}>
+                {/* Left ~1/3 - full-bleed photo, or the silhouette placeholder
+                    on a tinted panel when no avatar is set. Tall enough that
+                    a portrait photo isn't cropped down to a sliver. */}
+                <Box position="relative" bg="pitch.subtle" overflow="hidden">
+                    {profile.avatarUrl ? (
+                        <Image
+                            src={profile.avatarUrl}
+                            alt={profile.displayName ?? t.pages.publicProfilePage.avatarAlt}
+                            position="absolute"
+                            inset="0"
+                            w="full"
+                            h="full"
+                            objectFit="cover"
+                        />
+                    ) : (
+                        // No avatar: silhouette, plus an "add a photo" button
+                        // for the OWNER ONLY (it jumps to the Profil panel,
+                        // where the upload lives). A visitor - signed in or
+                        // not - just gets the silhouette: they can't add
+                        // someone else's photo, so the prompt would only read
+                        // as a broken control on a stranger's profile.
+                        <Flex position="absolute" inset="0" direction="column" align="center" justify="center" gap="2" p="3">
+                            <PlayerSilhouette size="55%" color="pitch.400" />
+                            {isOwner && (
+                                <Button size="xs" variant="outline" colorPalette="pitch" onClick={onAddPhoto}>
+                                    {s.addPhoto}
+                                </Button>
+                            )}
+                        </Flex>
+                    )}
+                </Box>
+
+                {/* Right ~2/3 - name + the whole career summary as a plain
+                    label:value list (no chips/tiles). */}
+                <VStack align="stretch" justify="center" gap="3" p={{ base: "4", md: "6" }} minW="0">
+                    <Text fontSize={{ base: "lg", md: "2xl" }} fontWeight="black" color="fg.ink" truncate>
+                        {profile.displayName ?? s.fallbackName}
+                    </Text>
+
+                    <VStack align="stretch" gap="1.5">
+                        <SpotlightRow label={s.tournamentsLabel} value={career?.tournamentsPlayed ?? 0} />
+                        <SpotlightRow label={s.matchesLabel} value={career?.matchesPlayed ?? 0} />
+                        <SpotlightRow label={s.goalsLabel} value={career?.playerGoals ?? 0} />
+                        <HStack justify="space-between" gap="2">
+                            <Text fontSize="sm" color="fg.muted">{s.recordLabel}:</Text>
+                            <HStack gap="2.5" fontFamily="mono" fontSize="xs" fontWeight={800} letterSpacing="0.06em">
+                                <HStack gap="1">
+                                    <Box w="8px" h="8px" rounded="full" bg="pitch.500" flexShrink={0} />
+                                    <Text color="fg.ink">{c.wonAbbrev(career?.matchesWon ?? 0)}</Text>
+                                </HStack>
+                                <HStack gap="1">
+                                    <Box w="8px" h="8px" rounded="full" bg="border.emphasized" flexShrink={0} />
+                                    <Text color="fg.ink">{c.drawnAbbrev(career?.matchesDrawn ?? 0)}</Text>
+                                </HStack>
+                                <HStack gap="1">
+                                    <Box w="8px" h="8px" rounded="full" bg="accent.red" opacity={0.7} flexShrink={0} />
+                                    <Text color="fg.ink">{c.lostAbbrev(career?.matchesLost ?? 0)}</Text>
+                                </HStack>
+                            </HStack>
+                        </HStack>
+                        <HStack justify="space-between" gap="2">
+                            <Text fontSize="sm" color="fg.muted">{s.bestPlacementLabel}:</Text>
+                            <HStack gap="1.5">
+                                {bestPlacementColor && <Box w="8px" h="8px" rounded="full" bg={bestPlacementColor} flexShrink={0} />}
+                                <Text fontSize="sm" fontWeight={800} color="fg.ink">{bestPlacementText}</Text>
+                            </HStack>
+                        </HStack>
+                    </VStack>
+
+                    {/* Contact - it used to live in the visitor identity card
+                        that this one replaced, so it moves here. Kept OUT of
+                        the exported PNG (data-no-export) - a downloadable,
+                        shareable image shouldn't carry a phone number. */}
+                    <Box data-no-export="1">
+                        <ProfilePhoneLink profile={profile} />
+                    </Box>
+                </VStack>
+            </Grid>
+
+            <IconButton
+                aria-label={s.downloadAria}
+                title={s.downloadAria}
+                size="xs"
+                variant="solid"
+                colorPalette="pitch"
+                position="absolute"
+                top="2"
+                right="2"
+                loading={downloading}
+                onClick={handleDownload}
+                data-no-export="1"
+            >
+                <FiDownload />
+            </IconButton>
+        </Box>
+    )
+}
+
+/** One "label: value" line of the spotlight card's stat list. */
+function SpotlightRow({ label, value }: { label: string; value: number | string }) {
+    return (
+        <HStack justify="space-between" gap="2">
+            <Text fontSize="sm" color="fg.muted">{label}:</Text>
+            <Text fontSize="sm" fontWeight={800} color="fg.ink">{value}</Text>
+        </HStack>
+    )
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   KarijeraCard - now just the two tabs under the spotlight card: "Ekipe"
+   (every team this profile has played for; tapping one expands the
+   tournaments played with THAT team inline) and "Turniri" (the full
+   tournament history, searchable, regardless of team).
+
+   The old behaviour where tapping a team jumped you to the Turniri tab is
+   gone on purpose - each tab is now self-contained. The career headline
+   stats that used to sit on top of this card moved into
+   PlayerSpotlightCard.
+
+   Visible to everyone, owner or visitor.
+   ────────────────────────────────────────────────────────────────────── */
+function KarijeraCard({
+    profile,
+    search,
+    setSearch,
+}: {
+    profile: PublicProfile
+    search: string
+    setSearch: (v: string) => void
+}) {
+    const t = useTranslation()
+    const tt = t.pages.publicProfilePage.tournamentsTab
+    const [tab, setTab] = useState<"ekipe" | "turniri">("turniri")
+
+    /** Full tournament history, search-filtered. Not team-filtered anymore -
+     *  per-team lists live inside the Ekipe tab's expanded rows. */
+    const searchedTournaments = useMemo<MyTournamentParticipation[]>(() => {
+        const q = search.trim().toLowerCase()
+        if (!q) return profile.tournaments
+        return profile.tournaments.filter((tp) => {
+            const blob = `${tp.tournamentName} ${tp.tournamentLocation ?? ""} ${tp.teamName}`.toLowerCase()
+            return blob.includes(q)
+        })
+    }, [profile.tournaments, search])
+
+    const emptyBox = (label: string) => (
+        <Box borderWidth="1px" borderColor="border.emphasized" borderStyle="dashed" rounded="md" py="6" px="4" textAlign="center">
+            <Text color="fg.muted" fontSize="sm">{label}</Text>
+        </Box>
+    )
+
     return (
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
-                <VStack align="stretch" gap="4">
-                    <HStack justify="space-between" wrap="wrap" gap="2">
-                        <Heading size="md">{t.pages.publicProfilePage.career.heading}</Heading>
-                        {career.topTeamName && (
-                            <Badge variant="subtle" colorPalette="pitch" fontSize="xs">
-                                {career.topTeamName}
-                            </Badge>
-                        )}
-                    </HStack>
+                <Tabs.Root
+                    value={tab}
+                    onValueChange={(d) => setTab(d.value as "ekipe" | "turniri")}
+                    variant="line"
+                >
+                    <Tabs.List>
+                        <Tabs.Trigger value="ekipe">{tt.teamsTabLabel}</Tabs.Trigger>
+                        <Tabs.Trigger value="turniri">{tt.heading}</Tabs.Trigger>
+                    </Tabs.List>
 
-                    {/* Headline stats - 4-up grid that wraps to 2-up on
-                        narrow screens. Bricolage / mono digits set them
-                        apart from prose. */}
-                    <Box
-                        display="grid"
-                        gridTemplateColumns={{ base: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }}
-                        gap={{ base: "3", md: "4" }}
-                    >
-                        <CareerStat label={t.pages.publicProfilePage.career.tournaments} value={career.tournamentsPlayed} sub={career.tournamentsWon > 0 ? t.pages.publicProfilePage.career.tournamentsWon(career.tournamentsWon) : null} />
-                        <CareerStat label={t.pages.publicProfilePage.career.matches} value={career.matchesPlayed} sub={career.matchesPlayed > 0 ? t.pages.publicProfilePage.career.winRate(winRate) : null} />
-                        <CareerStat label={t.pages.publicProfilePage.career.goals} value={career.goalsFor} sub={t.pages.publicProfilePage.career.goalsAgainst(career.goalsAgainst)} />
-                        <CareerStat
-                            label={t.pages.publicProfilePage.career.goalDiff}
-                            value={goalDiff > 0 ? `+${goalDiff}` : `${goalDiff}`}
-                            valueColor={goalDiff > 0 ? "pitch.600" : goalDiff < 0 ? "accent.red" : "fg"}
-                            sub={null}
-                        />
-                    </Box>
-
-                    {/* W/D/L breakdown bar. Width proportional to count.
-                        Skip when nothing finished yet to keep things tidy. */}
-                    {career.matchesPlayed > 0 && (
-                        <VStack align="stretch" gap="1.5">
-                            <Box
-                                h="8px"
-                                rounded="full"
-                                overflow="hidden"
-                                bg="bg.subtle"
-                                display="flex"
-                            >
-                                <Box
-                                    flex={career.matchesWon}
-                                    bg="pitch.500"
-                                />
-                                <Box
-                                    flex={career.matchesDrawn}
-                                    bg="border.emphasized"
-                                />
-                                <Box
-                                    flex={career.matchesLost}
-                                    bg="accent.red"
-                                    opacity={0.7}
-                                />
-                            </Box>
-                            <HStack
-                                gap="3"
-                                fontFamily="mono"
-                                fontSize="11px"
-                                fontWeight={700}
-                                color="fg.muted"
-                                letterSpacing="0.1em"
-                            >
-                                <HStack gap="1">
-                                    <Box w="8px" h="8px" rounded="full" bg="pitch.500" />
-                                    <Text>{t.pages.publicProfilePage.career.wonAbbrev(career.matchesWon)}</Text>
-                                </HStack>
-                                <HStack gap="1">
-                                    <Box w="8px" h="8px" rounded="full" bg="border.emphasized" />
-                                    <Text>{t.pages.publicProfilePage.career.drawnAbbrev(career.matchesDrawn)}</Text>
-                                </HStack>
-                                <HStack gap="1">
-                                    <Box w="8px" h="8px" rounded="full" bg="accent.red" opacity={0.7} />
-                                    <Text>{t.pages.publicProfilePage.career.lostAbbrev(career.matchesLost)}</Text>
-                                </HStack>
-                            </HStack>
-                        </VStack>
-                    )}
-
-                    {/* Recent tournaments - quick scrollable strip. */}
-                    {career.recent.length > 0 && (
-                        <VStack align="stretch" gap="2">
-                            <Text
-                                fontFamily="mono"
-                                fontSize="11px"
-                                fontWeight={800}
-                                letterSpacing="0.15em"
-                                color="fg.muted"
-                            >
-                                {t.pages.publicProfilePage.career.recentTournamentsLabel}
-                            </Text>
-                            <VStack align="stretch" gap="1.5">
-                                {career.recent.map((r, i) => (
-                                    <HStack
-                                        key={`${r.tournamentSlug ?? i}-${i}`}
-                                        justify="space-between"
-                                        px="3"
-                                        py="2"
-                                        rounded="md"
-                                        bg="bg.subtle"
-                                        borderLeftWidth="3px"
-                                        borderColor={
-                                            r.result === "Pobjeda"
-                                                ? "pitch.500"
-                                                : r.result === "Eliminacija"
-                                                  ? "accent.red"
-                                                  : "border.emphasized"
-                                        }
-                                    >
-                                        <VStack align="start" gap="0" flex="1" minW="0">
-                                            <Text
-                                                fontSize="sm"
-                                                fontWeight={600}
-                                                truncate
-                                            >
-                                                {r.tournamentName ?? "-"}
-                                            </Text>
-                                            <Text fontSize="xs" color="fg.muted" truncate>
-                                                {r.teamName ?? "-"}
-                                            </Text>
-                                        </VStack>
-                                        <Badge
-                                            variant="subtle"
-                                            colorPalette={
-                                                r.result === "Pobjeda"
-                                                    ? "pitch"
-                                                    : r.result === "Eliminacija"
-                                                      ? "red"
-                                                      : "gray"
-                                            }
-                                            fontSize="10px"
-                                        >
-                                            {r.result}
-                                        </Badge>
-                                    </HStack>
+                    <Tabs.Content value="ekipe">
+                        <VStack align="stretch" gap="2.5" pt="1">
+                            {profile.teams.length === 0
+                                ? emptyBox(tt.emptyNoTournaments)
+                                : profile.teams.map((team) => (
+                                    <TeamAccordionRow
+                                        key={team.name}
+                                        slug={profile.slug}
+                                        team={team}
+                                        tournaments={profile.tournaments.filter(
+                                            (tp) => teamKey(tp.teamName) === teamKey(team.name),
+                                        )}
+                                    />
                                 ))}
-                            </VStack>
                         </VStack>
-                    )}
-                </VStack>
+                    </Tabs.Content>
+
+                    <Tabs.Content value="turniri">
+                        <VStack align="stretch" gap="3" pt="1">
+                            <HStack justify="space-between" wrap="wrap" gap="2">
+                                <Input
+                                    size="sm"
+                                    flex="1"
+                                    minW="200px"
+                                    placeholder={tt.searchPlaceholder}
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                                <Badge variant="subtle" colorPalette="pitch">
+                                    {tt.countBadge(searchedTournaments.length)}
+                                </Badge>
+                            </HStack>
+
+                            {profile.tournaments.length === 0 ? (
+                                emptyBox(tt.emptyNoTournaments)
+                            ) : searchedTournaments.length === 0 ? (
+                                emptyBox(tt.noResults)
+                            ) : (
+                                <VStack align="stretch" gap="2.5">
+                                    {searchedTournaments.map((row) => (
+                                        <TournamentRow
+                                            key={`${row.tournamentUuid}-${row.teamId}`}
+                                            slug={profile.slug}
+                                            row={row}
+                                        />
+                                    ))}
+                                </VStack>
+                            )}
+                        </VStack>
+                    </Tabs.Content>
+                </Tabs.Root>
             </Card.Body>
         </Card.Root>
     )
 }
 
-function CareerStat({
-    label,
-    value,
-    sub,
-    valueColor,
-}: {
-    label: string
-    value: number | string
-    sub: string | null
-    valueColor?: string
-}) {
-    return (
-        <VStack align="start" gap="0.5">
-            <Text
-                fontFamily="mono"
-                fontSize="10px"
-                fontWeight={800}
-                letterSpacing="0.15em"
-                color="fg.muted"
-            >
-                {label.toUpperCase()}
-            </Text>
-            <Text
-                fontSize={{ base: "22px", md: "28px" }}
-                fontWeight={800}
-                color={valueColor ?? "fg"}
-                lineHeight={1}
-                letterSpacing="-0.02em"
-            >
-                {value}
-            </Text>
-            {sub && (
-                <Text fontSize="xs" color="fg.muted">
-                    {sub}
-                </Text>
-            )}
-        </VStack>
-    )
-}
-
-function TeamChip({
+/** One team in the "Ekipe" tab: a header row that expands to the tournaments
+ *  this profile played with that team (each of those still expands further
+ *  into its own match history, via TournamentRow). */
+function TeamAccordionRow({
+    slug,
     team,
-    active,
-    onClick,
+    tournaments,
 }: {
+    slug: string
     team: TeamSummary
-    active: boolean
-    onClick: () => void
+    tournaments: MyTournamentParticipation[]
 }) {
     const t = useTranslation()
+    const tt = t.pages.publicProfilePage.tournamentsTab
+    const [open, setOpen] = useState(false)
+
     return (
-        <Button
-            size="sm"
-            variant={active ? "solid" : "outline"}
-            colorPalette={active ? "blue" : "gray"}
-            onClick={onClick}
-            rounded="full"
-            px="3.5"
-        >
-            <HStack gap="1.5">
-                <Text fontWeight="medium">{team.name}</Text>
-                <Text fontSize="xs" opacity={0.85}>
-                    · {team.tournamentCount}
-                </Text>
-                {team.wins > 0 && (
-                    <HStack gap="0.5" color={active ? "yellow.200" : "yellow.fg"}>
-                        <FaTrophy size={10} />
-                        <Text fontSize="xs">{team.wins}</Text>
+        <Box borderWidth="1px" borderColor="border.emphasized" rounded="md" shadow="sm" overflow="hidden">
+            <Box
+                as="button"
+                onClick={() => setOpen((v) => !v)}
+                w="100%"
+                p="3"
+                textAlign="left"
+                _hover={{ bg: "bg.subtle" }}
+                transition="background 0.1s"
+            >
+                <HStack justify="space-between" gap="3">
+                    <HStack gap="2" flex="1" minW="0">
+                        {open ? <FiChevronDown /> : <FiChevronRight />}
+                        <Text fontWeight="semibold" lineHeight="short" truncate>{team.name}</Text>
+                        {team.partnerSlug && (
+                            <Box color="blue.fg" title={tt.partnerSharedTitle} flexShrink={0}>
+                                <FiShare2 size={11} />
+                            </Box>
+                        )}
                     </HStack>
-                )}
-                {team.partnerSlug && (
-                    // Tiny "shared" indicator - the actual partner link
-                    // renders below the chip strip so it stays accessible
-                    // (no nested clickable inside the button).
-                    <Box color={active ? "blue.100" : "blue.fg"} title={t.pages.publicProfilePage.tournamentsTab.partnerSharedTitle}>
-                        <FiShare2 size={11} />
-                    </Box>
-                )}
-            </HStack>
-        </Button>
+                    <HStack gap="2" flexShrink={0}>
+                        {team.wins > 0 && (
+                            <HStack gap="1" color="yellow.fg">
+                                <FaTrophy size={11} />
+                                <Text fontSize="xs" fontWeight={700}>{team.wins}</Text>
+                            </HStack>
+                        )}
+                        <Badge variant="subtle" colorPalette="pitch" size="sm">
+                            {tt.countBadge(team.tournamentCount)}
+                        </Badge>
+                    </HStack>
+                </HStack>
+            </Box>
+
+            {open && (
+                <Box borderTopWidth="1px" borderColor="border.emphasized" bg="bg.subtle" p="3">
+                    <VStack align="stretch" gap="2.5">
+                        {/* Partner link - a separate element rather than part of
+                            the header button (button-in-button is invalid HTML). */}
+                        {team.partnerSlug && (
+                            <HStack gap="2" fontSize="sm" color="fg.muted">
+                                <FiShare2 size={14} />
+                                <Text>
+                                    {tt.coOwnerLabel}{" "}
+                                    <RouterLink
+                                        to={`/profil/${team.partnerSlug}`}
+                                        style={{ color: "var(--chakra-colors-blue-fg)", fontWeight: 500 }}
+                                    >
+                                        {team.partnerName || team.partnerSlug}
+                                    </RouterLink>
+                                </Text>
+                            </HStack>
+                        )}
+
+                        {tournaments.length === 0 ? (
+                            <Text fontSize="sm" color="fg.muted">{tt.emptyNoTournaments}</Text>
+                        ) : (
+                            tournaments.map((row) => (
+                                <TournamentRow
+                                    key={`${row.tournamentUuid}-${row.teamId}`}
+                                    slug={slug}
+                                    row={row}
+                                />
+                            ))
+                        )}
+                    </VStack>
+                </Box>
+            )}
+        </Box>
     )
 }
 
@@ -1955,7 +2132,7 @@ function TournamentRow({
                     {row.tournamentLocation && (
                         <HStack gap="1"><FiMapPin /><Text>{row.tournamentLocation}</Text></HStack>
                     )}
-                    {!row.pendingApproval && (
+                    {!row.pendingApproval && row.wins != null && row.losses != null && (
                         <Badge variant="subtle" colorPalette="gray" size="sm">{t.pages.publicProfilePage.tournamentRow.record(row.wins, row.losses)}</Badge>
                     )}
                     {row.extraLife && <Badge variant="subtle" colorPalette="red" size="sm">{t.pages.publicProfilePage.tournamentRow.extraLife}</Badge>}
@@ -1973,7 +2150,11 @@ function TournamentRow({
                     ) : (
                         <VStack align="stretch" gap="1.5">
                             {history.matches.map((m, i) => (
-                                <MatchRow key={`${m.roundNumber ?? "?"}-${i}`} m={m} />
+                                <MatchRow
+                                    key={`${m.matchId ?? m.roundNumber ?? "?"}-${i}`}
+                                    m={m}
+                                    tournamentRef={row.tournamentSlug ?? row.tournamentUuid}
+                                />
                             ))}
                             <HStack pt="2" justify="flex-end">
                                 <Button size="xs" variant="ghost" asChild>
@@ -1990,17 +2171,31 @@ function TournamentRow({
     )
 }
 
-function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
+function MatchRow({
+    m,
+    tournamentRef,
+}: {
+    m: TeamMatchHistory["matches"][number]
+    /** Slug (preferred) or uuid of the tournament the match belongs to. */
+    tournamentRef: string | null
+}) {
     const t = useTranslation()
+    const mr = t.pages.publicProfilePage.matchRow
     const finished = m.status === "FINISHED" || m.status === "COMPLETED"
     const wonLabel = m.isBye
-        ? t.pages.publicProfilePage.matchRow.bye
-        : m.won === true ? t.pages.publicProfilePage.matchRow.win
-        : m.won === false ? t.pages.publicProfilePage.matchRow.loss
-        : finished ? t.pages.publicProfilePage.matchRow.resolved : t.pages.publicProfilePage.matchRow.inProgress
+        ? mr.bye
+        : m.won === true ? mr.win
+        : m.won === false ? mr.loss
+        : finished ? mr.resolved : mr.inProgress
     const wonColor = m.won === true ? "green" : m.won === false ? "red" : "gray"
 
-    return (
+    // A bye has no match page worth opening, and a row from an older payload
+    // may not carry a matchId - both stay non-clickable.
+    const to = !m.isBye && m.matchId != null && tournamentRef
+        ? `/turniri/${tournamentRef}/utakmica/${m.matchId}`
+        : null
+
+    const body = (
         <HStack
             gap="2.5"
             wrap="wrap"
@@ -2011,16 +2206,25 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
             px="2.5"
             py="1.5"
             fontSize="sm"
+            w="100%"
+            textAlign="left"
+            transition="background 0.1s"
+            _hover={to ? { bg: "bg.subtle", borderColor: "pitch.500" } : undefined}
         >
             <Badge variant="outline" colorPalette="pitch" size="sm">
-                {t.pages.publicProfilePage.matchRow.round(m.roundNumber ?? "?")}
+                {mr.round(m.roundNumber ?? "?")}
             </Badge>
             {m.tableNo != null && (
-                <Text color="fg.muted" fontSize="xs">{t.pages.publicProfilePage.matchRow.table(m.tableNo)}</Text>
+                <Text color="fg.muted" fontSize="xs">{mr.table(m.tableNo)}</Text>
             )}
             <Text flex="1" minW="0" lineClamp={1}>
-                {t.pages.publicProfilePage.matchRow.vs} <chakra.b>{m.opponentName ?? (m.isBye ? "-" : "?")}</chakra.b>
+                {mr.vs} <chakra.b>{m.opponentName ?? (m.isBye ? "-" : "?")}</chakra.b>
             </Text>
+
+            {/* This person's own contribution in the match - goals first, then
+                cards. Hidden entirely when there's nothing to show. */}
+            <PlayerMatchMarks m={m} />
+
             {(m.ourScore != null || m.opponentScore != null) && (
                 <Text fontFamily="mono" fontWeight="semibold">
                     {m.ourScore ?? 0} : {m.opponentScore ?? 0}
@@ -2029,6 +2233,53 @@ function MatchRow({ m }: { m: TeamMatchHistory["matches"][number] }) {
             <Badge variant="solid" colorPalette={wonColor as any} size="sm">
                 {wonLabel}
             </Badge>
+        </HStack>
+    )
+
+    if (!to) return body
+    return (
+        <RouterLink to={to} style={{ display: "block", width: "100%" }} title={mr.openMatch}>
+            {body}
+        </RouterLink>
+    )
+}
+
+/** The little "⚽×2 · 🟨" strip: what the profile's player did in one match. */
+function PlayerMatchMarks({ m }: { m: TeamMatchHistory["matches"][number] }) {
+    const t = useTranslation()
+    const mr = t.pages.publicProfilePage.matchRow
+    const goals = m.goals ?? 0
+    const ownGoals = m.ownGoals ?? 0
+    const yellow = m.yellowCards ?? 0
+    const red = m.redCards ?? 0
+    if (goals + ownGoals + yellow + red === 0) return null
+
+    return (
+        <HStack gap="1.5" flexShrink={0}>
+            {goals > 0 && (
+                <HStack gap="0.5" title={mr.goalsTitle(goals)}>
+                    <Text as="span" fontSize="sm" lineHeight="1">⚽</Text>
+                    {goals > 1 && <Text fontSize="xs" fontWeight={800} color="fg.muted">×{goals}</Text>}
+                </HStack>
+            )}
+            {ownGoals > 0 && (
+                <HStack gap="0.5" title={mr.ownGoalsTitle(ownGoals)}>
+                    <Text as="span" fontSize="sm" lineHeight="1" opacity={0.6}>⚽</Text>
+                    <Text fontSize="xs" fontWeight={800} color="accent.red">AG{ownGoals > 1 ? `×${ownGoals}` : ""}</Text>
+                </HStack>
+            )}
+            {yellow > 0 && (
+                <HStack gap="0.5" title={mr.yellowCardsTitle(yellow)}>
+                    <Box w="9px" h="12px" rounded="1px" bg="#f5c842" flexShrink={0} />
+                    {yellow > 1 && <Text fontSize="xs" fontWeight={800} color="fg.muted">×{yellow}</Text>}
+                </HStack>
+            )}
+            {red > 0 && (
+                <HStack gap="0.5" title={mr.redCardsTitle(red)}>
+                    <Box w="9px" h="12px" rounded="1px" bg="accent.red" flexShrink={0} />
+                    {red > 1 && <Text fontSize="xs" fontWeight={800} color="fg.muted">×{red}</Text>}
+                </HStack>
+            )}
         </HStack>
     )
 }
@@ -2098,4 +2349,26 @@ function SettingsCard() {
             </Card.Body>
         </Card.Root>
     )
+}
+
+/* ─── "Jesi li ti ovaj igrač?" - the profile's read-only half ────────────
+   The claiming itself lives app-level in PlayerClaimFirstRun (mounted in
+   App.tsx), so it can also fire on the very first page after registering.
+   All the profile needs to know is whether an exact-name match still exists
+   for this account: when it doesn't, and nothing is linked yet, we offer the
+   manual admin-approved request instead. Read-only - this probe never
+   mutates anything. */
+function usePlayerSuggestionProbe(uid: string | undefined, ready: boolean) {
+    const [hasSuggestions, setHasSuggestions] = useState<boolean | null>(null)
+
+    useEffect(() => {
+        if (!uid || !ready) { setHasSuggestions(null); return }
+        let cancelled = false
+        getPlayerSuggestions()
+            .then((rows) => { if (!cancelled) setHasSuggestions(rows.length > 0) })
+            .catch(() => { if (!cancelled) setHasSuggestions(null) })
+        return () => { cancelled = true }
+    }, [uid, ready])
+
+    return hasSuggestions
 }

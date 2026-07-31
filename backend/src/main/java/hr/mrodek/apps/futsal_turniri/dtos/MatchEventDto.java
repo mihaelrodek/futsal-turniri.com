@@ -22,6 +22,9 @@ public record MatchEventDto(
         /** Echoes the client idempotency key so the frontend can reconcile an
          *  optimistic (offline) event with its persisted server row. */
         String clientEventId,
+        /** True only for a GOAL scored from an in-game penalty - the timeline
+         *  renders a "(pen.)" tag; the goal otherwise behaves like any goal. */
+        boolean penalty,
         /** Wall-clock moment the event was recorded (server time). Public
          *  viewers use it to hold an event back until the broadcast catches
          *  up: the stream runs a few seconds behind, so revealing a goal the

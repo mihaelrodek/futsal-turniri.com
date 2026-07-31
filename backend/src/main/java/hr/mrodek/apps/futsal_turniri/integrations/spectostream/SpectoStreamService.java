@@ -3,11 +3,14 @@ package hr.mrodek.apps.futsal_turniri.integrations.spectostream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
+import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.model.Player;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
+import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -24,8 +27,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -122,6 +127,9 @@ public class SpectoStreamService {
     @Inject
     AppSettingsRepository settings;
 
+    @Inject
+    MatchesRepository matchesRepo;
+
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
@@ -148,6 +156,18 @@ public class SpectoStreamService {
     /** Pending automatic period end, per match id. At most one - a match has
      *  exactly one clock, so arming a new period replaces the old timer. */
     private final ConcurrentMap<Long, ScheduledFuture<?>> periodEndTimers = new ConcurrentHashMap<>();
+
+    /** Pending automatic post-tournament podium push, per tournament id. */
+    private final ConcurrentMap<Long, ScheduledFuture<?>> podiumTimers = new ConcurrentHashMap<>();
+
+    /** Overlay title of the podium popup. The overlay is Croatian-facing, so
+     *  this is a fixed string rather than a request-locale message. */
+    public static final String FINAL_STANDINGS_TITLE = "Konačni poredak";
+
+    /** How long after the tournament's last match finishes before the
+     *  automatic top-3 podium popup fires - long enough that it lands after
+     *  the match's own final score has visibly landed on the overlay. */
+    private static final int PODIUM_AUTO_DELAY_SECONDS = 15;
 
     @PreDestroy
     void shutdown() {
@@ -649,6 +669,197 @@ public class SpectoStreamService {
         payload.put("team", team);
         enqueue(streamId, "goal_cancelled", "evt" + eventId + "-goal_cancelled",
                 Instant.now().toString(), payload);
+    }
+
+    /**
+     * IN-GAME penalty for {@code team} ("home"|"away"). {@code scored=true}
+     * bumps the overlay score by one and renders like a goal; {@code false}
+     * shows a red × chip with no score change. {@code playerName} optional -
+     * omitted, the overlay shows just the ball/× chip.
+     */
+    public void penalty(Tournaments t, long eventId, String team, String playerName, boolean scored) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        payload.put("team", team);
+        payload.put("scored", scored);
+        if (playerName != null && !playerName.isBlank()) {
+            payload.put("player_name", playerName.trim());
+        }
+        enqueue(streamId, "penalty", "evt" + eventId + "-penalty",
+                Instant.now().toString(), payload);
+    }
+
+    /**
+     * 2-minute suspension ("isključenje") for {@code team} ("home"|"away").
+     * The platform expires the chip automatically 2 min after
+     * {@code occurred_at}, so it is stamped at submit time - which is exactly
+     * when the organizer recorded the suspension. {@code playerName} optional.
+     */
+    public void exclusion(Tournaments t, long eventId, String team, String playerName) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        ObjectNode payload = json.createObjectNode();
+        payload.put("team", team);
+        if (playerName != null && !playerName.isBlank()) {
+            payload.put("player_name", playerName.trim());
+        }
+        enqueue(streamId, "exclusion", "evt" + eventId + "-exclusion",
+                Instant.now().toString(), payload);
+    }
+
+    /** One row of the overlay's standings/podium popup, pre-resolved to plain
+     *  values ON THE REQUEST THREAD (JPA off-thread rule) - the dispatch
+     *  thread only ever sees these strings. Colours may be null/invalid; they
+     *  are dropped rather than sent (the API rejects non-#RRGGBB). */
+    public record StandingRow(String name, int rank, String jersey, String shorts) {}
+
+    /**
+     * Show the standings/podium popup on the overlay (~30 s; ranks 1-3 get
+     * medals). {@code title} optional, clamped to the API's 40 chars; rows are
+     * capped at the API's 12 and rows without a usable name are skipped.
+     * Random idempotency key - every send is a genuinely new popup.
+     */
+    public void standings(Tournaments t, String title, List<StandingRow> rows) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+        ObjectNode payload = buildStandingsPayload(title, rows);
+        if (payload == null) return;
+
+        enqueue(streamId, "standings", UUID.randomUUID().toString(),
+                Instant.now().toString(), payload);
+    }
+
+    /** Builds the "standings" event body, or {@code null} when there's
+     *  nothing usable to send (no rows, or every row lacks a name). */
+    private ObjectNode buildStandingsPayload(String title, List<StandingRow> rows) {
+        if (rows == null || rows.isEmpty()) return null;
+        ObjectNode payload = json.createObjectNode();
+        if (title != null && !title.isBlank()) {
+            String tt = title.trim();
+            payload.put("title", tt.length() > 40 ? tt.substring(0, 40) : tt);
+        }
+        var arr = payload.putArray("teams");
+        int n = 0;
+        for (StandingRow r : rows) {
+            if (r == null || r.name() == null || r.name().isBlank()) continue;
+            if (n++ >= 12) break; // API cap
+            ObjectNode row = arr.addObject();
+            row.put("name", fullName(r.name()));
+            row.put("short", shortCode(r.name()));
+            if (r.rank() >= 1 && r.rank() <= 99) row.put("rank", r.rank());
+            putColour(row, "jersey", r.jersey());
+            putColour(row, "shorts", r.shorts());
+        }
+        if (arr.isEmpty()) return null; // nothing usable - don't spend an event
+        return payload;
+    }
+
+    /**
+     * The tournament's final placement as overlay standings rows, ranks 1-3.
+     * Winner + runner-up come from the FINISHED FINAL match (kit colours from
+     * the team entities, the same source match_start uses); third place from
+     * the FINISHED THIRD_PLACE match. Each falls back to the podium names the
+     * organizer stored on the tournament (no colours there). Empty when no
+     * winner can be determined - i.e. the final isn't decided. Must run on a
+     * thread with a live persistence context (the request thread); only
+     * plain strings leave this method.
+     */
+    public List<StandingRow> podiumRows(Tournaments t) {
+        Matches fin = matchesRepo.find(
+                "tournament = ?1 and stage = ?2", t, MatchStage.FINAL).firstResult();
+        Teams winner = null;
+        Teams second = null;
+        if (fin != null && fin.getStatus() == MatchStatus.FINISHED && fin.getWinnerTeam() != null) {
+            winner = fin.getWinnerTeam();
+            second = Objects.equals(winner.getId(),
+                    fin.getTeam1() != null ? fin.getTeam1().getId() : null)
+                    ? fin.getTeam2() : fin.getTeam1();
+        }
+        String winnerName = winner != null ? winner.getName() : t.getWinnerName();
+        if (winnerName == null || winnerName.isBlank()) return List.of();
+
+        List<StandingRow> rows = new ArrayList<>(3);
+        rows.add(standingRow(winnerName, 1, winner));
+
+        String secondName = second != null ? second.getName() : t.getSecondPlaceName();
+        if (secondName != null && !secondName.isBlank()) {
+            rows.add(standingRow(secondName, 2, second));
+        }
+
+        Matches third = matchesRepo.find(
+                "tournament = ?1 and stage = ?2", t, MatchStage.THIRD_PLACE).firstResult();
+        Teams thirdTeam = third != null && third.getStatus() == MatchStatus.FINISHED
+                ? third.getWinnerTeam() : null;
+        String thirdName = thirdTeam != null ? thirdTeam.getName() : t.getThirdPlaceName();
+        if (thirdName != null && !thirdName.isBlank()) {
+            rows.add(standingRow(thirdName, 3, thirdTeam));
+        }
+        return rows;
+    }
+
+    /** One podium row; kit colours only when the team entity is known. */
+    private static StandingRow standingRow(String name, int rank, Teams team) {
+        return new StandingRow(
+                name, rank,
+                team != null ? team.getJerseyColor() : null,
+                team != null ? team.getShortsColor() : null);
+    }
+
+    /**
+     * Called right after a match transitions to FINISHED, from ANY stage
+     * (group or knockout) - if no other match in the tournament is still
+     * scheduled/live AND a podium is now decided, arms the automatic top-3
+     * popup {@value #PODIUM_AUTO_DELAY_SECONDS}s out. A no-op otherwise
+     * (mid-tournament, or the final wasn't decisive enough to name a winner).
+     * Must run on the request thread - reads {@code matchesRepo} and
+     * {@link #podiumRows}, both needing a live persistence context.
+     */
+    public void maybeSchedulePodiumAfterLastMatch(Tournaments t) {
+        if (!isConfigured() || t == null) return;
+        long remaining = matchesRepo.count(
+                "tournament = ?1 and status <> ?2", t, MatchStatus.FINISHED);
+        if (remaining > 0) return;
+        List<StandingRow> podium = podiumRows(t);
+        if (podium.isEmpty()) return;
+        schedulePodiumStandings(t, podium, FINAL_STANDINGS_TITLE, PODIUM_AUTO_DELAY_SECONDS);
+    }
+
+    /**
+     * Schedules the top-3 podium popup {@code delaySeconds} from now. Reads
+     * the stream id AND the connection settings on the CALLER's thread (JPA
+     * off-thread rule) - the clock thread only ever sees strings and the
+     * already-resolved {@code rows}. Replaces any podium timer already
+     * pending for this tournament (a match can only finish once, but this
+     * keeps the method safe to call more than once defensively).
+     */
+    public void schedulePodiumStandings(Tournaments t, List<StandingRow> rows, String title, long delaySeconds) {
+        if (!isConfigured()) return;
+        String streamId = t.getSpectoStreamId();
+        if (streamId == null) return;
+        ObjectNode payload = buildStandingsPayload(title, rows);
+        if (payload == null) return;
+
+        Long tournamentId = t.getId();
+        ScheduledFuture<?> prev = podiumTimers.remove(tournamentId);
+        if (prev != null) prev.cancel(false);
+
+        final String apiBase = base();
+        final String apiKeyNow = key();
+        try {
+            ScheduledFuture<?> f = clockTimers.schedule(
+                    () -> enqueueResolved(apiBase, apiKeyNow, streamId, "standings",
+                            UUID.randomUUID().toString(), Instant.now().toString(), payload),
+                    delaySeconds, TimeUnit.SECONDS);
+            podiumTimers.put(tournamentId, f);
+        } catch (RejectedExecutionException ree) {
+            LOG.debugf("SpectoStream: odgođeni poredak odbijen za turnir %d", tournamentId);
+        }
     }
 
     /** Card for {@code team} ("home"|"away"), {@code color} "yellow"|"red". */

@@ -14,9 +14,12 @@ export type MyTournamentParticipation = {
     teamName: string
     pendingApproval: boolean
     eliminated: boolean
-    extraLife: boolean
-    wins: number
-    losses: number
+    /** Not emitted by the backend DTO (legacy bela-era fields) - treat as
+     *  absent and hide the corresponding badges rather than rendering
+     *  "undefinedW – undefinedL". */
+    extraLife?: boolean
+    wins?: number
+    losses?: number
     isWinner: boolean
 }
 
@@ -47,6 +50,50 @@ export async function listMyTeams(): Promise<MyTeamDto[]> {
     const { data } = await http.get<MyTeamDto[]>("/user/me/teams", {
         silent: true,
     } as any)
+    return data
+}
+
+/**
+ * "Je li ovo ti?" suggestion - a roster player whose name matches the
+ * signed-in user's registered first+last name and whose team nobody has
+ * claimed yet. Returned by GET /user/me/player-suggestions.
+ */
+export type PlayerClaimSuggestion = {
+    playerId: number
+    playerName: string
+    teamName: string
+    tournamentName: string
+    tournamentRef: string | null
+    tournamentStartAt: string | null
+}
+
+export type PlayerSuggestionClaimResult = {
+    claimed: boolean
+    teamId: number
+    teamName: string | null
+}
+
+/** Silent - the suggestion card simply doesn't render when this fails. */
+export async function getPlayerSuggestions(): Promise<PlayerClaimSuggestion[]> {
+    const { data } = await http.get<PlayerClaimSuggestion[]>(
+        "/user/me/player-suggestions",
+        { silent: true } as any,
+    )
+    return data
+}
+
+/**
+ * "To sam ja" - self-claim the suggested player's team. The backend
+ * re-checks the name match server-side and refuses (409) when the team
+ * got claimed by someone else in the meantime. Silent - the suggestion
+ * card owns both the success toast and the 409 copy (localized).
+ */
+export async function claimPlayerSuggestion(playerId: number): Promise<PlayerSuggestionClaimResult> {
+    const { data } = await http.post<PlayerSuggestionClaimResult>(
+        `/user/me/player-suggestions/${playerId}/claim`,
+        null,
+        { silent: true } as any,
+    )
     return data
 }
 

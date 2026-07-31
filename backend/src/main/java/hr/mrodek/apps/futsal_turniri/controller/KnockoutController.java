@@ -228,6 +228,10 @@ public class KnockoutController {
                 specto.matchEnd(t, matchId, matchesRepo.findNextScheduled(t.getId(), matchId));
             }
         });
+        // The FINAL (or a THIRD_PLACE played after it) is usually the
+        // tournament's actual last match - if nothing else remains, arm the
+        // automatic top-3 podium popup a few seconds out.
+        specto.maybeSchedulePodiumAfterLastMatch(t);
         return knockoutService.bracket(t.getId());
     }
 }

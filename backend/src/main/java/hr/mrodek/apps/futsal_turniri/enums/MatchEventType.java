@@ -18,6 +18,17 @@ package hr.mrodek.apps.futsal_turniri.enums;
  * NOT goals - the score recompute and the scorer stats both filter on
  * goal types, so penalty kicks never affect either. The shootout result
  * itself lives in {@code matches.penalties1/2}.
+ *
+ * <p>An IN-GAME penalty (a penalty awarded during regulation play, not a
+ * shootout kick) is modelled differently on purpose: a SCORED one is a plain
+ * {@code GOAL} event with the {@code penalty} flag set on the row - so it
+ * counts in the score recompute and the scorer stats exactly like any other
+ * goal - while a MISSED one is {@code PENALTY_MISSED_LIVE}, a timeline-only
+ * record (no score, no stats).
+ *
+ * <p>{@code EXCLUSION} is a futsal 2-minute suspension ("isključenje 2 min").
+ * Timeline-only: it never affects the score, and - unlike a red card - it does
+ * NOT lock the player out of further events (he returns after 2 minutes).
  */
 public enum MatchEventType {
     GOAL,
@@ -25,5 +36,7 @@ public enum MatchEventType {
     YELLOW_CARD,
     RED_CARD,
     PENALTY_GOAL,
-    PENALTY_MISSED
+    PENALTY_MISSED,
+    PENALTY_MISSED_LIVE,
+    EXCLUSION
 }

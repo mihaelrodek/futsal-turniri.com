@@ -1410,13 +1410,25 @@ export default function BracketTab({
     // matches (NOT the tournament status). A bye match is auto-FINISHED on
     // generation (one team, no game) - it must NOT count as "played", otherwise
     // a freshly-drawn bracket with byes would hide the reset button.
-    const started =
-        [...bracket.rounds.flatMap((r) => r.matches), ...(bracket.thirdPlace ? [bracket.thirdPlace] : [])]
-            .some(
-                (m) =>
-                    m.status === "LIVE" ||
-                    (m.status === "FINISHED" && m.team1Id != null && m.team2Id != null),
-            )
+    const allBracketMatches = [
+        ...bracket.rounds.flatMap((r) => r.matches),
+        ...(bracket.thirdPlace ? [bracket.thirdPlace] : []),
+    ]
+    const started = allBracketMatches.some(
+        (m) =>
+            m.status === "LIVE" ||
+            (m.status === "FINISHED" && m.team1Id != null && m.team2Id != null),
+    )
+
+    // KNOCKOUT_ONLY tournament, draw just generated, but nobody has run
+    // "Generiraj raspored" yet - every match still has no kickoff time. A
+    // match CAN technically be started live without one (no backend guard),
+    // but that's never what the organizer wants, so nudge them to Raspored
+    // first, mirroring GroupsTab's post-draw hint.
+    const needsSchedule =
+        format === "KNOCKOUT_ONLY" &&
+        allBracketMatches.length > 0 &&
+        allBracketMatches.every((m) => !m.kickoffAt)
 
     // `matchById` is computed above (before the early returns); the penalty
     // dialog below resolves the match being edited through it.
@@ -1626,6 +1638,36 @@ export default function BracketTab({
                         </Button>
                     </Flex>
                 ) : null
+            )}
+
+            {/* KNOCKOUT_ONLY: draw is done but no match has a scheduled kickoff
+                yet - nudge the organizer to Raspored before they try to start
+                a match. Disappears once any match is scheduled or started. */}
+            {needsSchedule && !started && canEdit && !finishedLocked && (
+                <Flex
+                    align="center"
+                    justify="space-between"
+                    gap="3"
+                    wrap="wrap"
+                    bg="brand.subtle"
+                    borderWidth="1px"
+                    borderColor="brand.emphasized"
+                    rounded="xl"
+                    px="4"
+                    py="3"
+                >
+                    <HStack gap="2" minW="0">
+                        <Box color="brand.fg" flexShrink={0} display="inline-flex">
+                            <FiClock size={16} />
+                        </Box>
+                        <Text fontSize="sm" color="fg.ink" fontWeight={500}>
+                            {t.components.bracketTab.draw.noScheduleHint}
+                        </Text>
+                    </HStack>
+                    <Button colorPalette="brand" onClick={() => onGoToSchedule?.(true)}>
+                        <FiClock /> {t.components.bracketTab.draw.goToScheduleButton}
+                    </Button>
+                </Flex>
             )}
 
             {/* Confirm popup for resetting (wiping) the elimination bracket. */}

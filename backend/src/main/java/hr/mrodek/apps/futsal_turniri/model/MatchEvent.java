@@ -76,4 +76,15 @@ public class MatchEvent {
      */
     @Column(name = "client_event_id", length = 64)
     private String clientEventId;
+
+    /**
+     * True when a {@code GOAL} was scored from an IN-GAME penalty (not a
+     * shootout kick). Display/stream-only marker: the goal still counts in the
+     * score recompute and scorer stats like any other goal, but the timeline
+     * shows a "(pen.)" tag and the SpectoStream overlay receives a
+     * {@code penalty} event instead of a plain {@code goal}. Always false for
+     * every other event type.
+     */
+    @Column(name = "penalty", nullable = false)
+    private boolean penalty;
 }

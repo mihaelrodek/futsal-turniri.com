@@ -278,7 +278,7 @@ export default function NavBar() {
                         <Box px="3" py="2" onClick={(e) => e.stopPropagation()}>
                             <HStack justify="space-between">
                                 <MonoLabel>{t.nav.themeLabel}</MonoLabel>
-                                <ThemeSwitch />
+                                <ThemeSwitch size="lg" />
                             </HStack>
                         </Box>
                         <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
@@ -339,17 +339,11 @@ export default function NavBar() {
                 </Menu.Trigger>
                 <Menu.Positioner>
                     <Menu.Content minW="220px">
-                        <Box px="3" py="2" borderBottomWidth="1px" borderColor="border">
-                            <MonoLabel>{t.nav.loggedInAs}</MonoLabel>
-                            <Text fontSize="sm" fontWeight={600} truncate mt="0.5">
-                                {user.email ?? user.displayName ?? t.nav.anonymous}
-                            </Text>
-                        </Box>
+                        {/* No "Prijavljen kao <e-mail>" header - the trigger
+                            pill already shows who's signed in, and the raw
+                            address added nothing but a PII line on screen. */}
                         <Menu.Item value="profile" onSelect={() => navigate("/profil")}>
                             <FiUser /> {t.nav.profile}
-                        </Menu.Item>
-                        <Menu.Item value="logout" onSelect={onSignOut}>
-                            <FiLogOut /> {t.nav.logout}
                         </Menu.Item>
                         {/* Theme + language rows - plain content, NOT
                             Menu.Item, so flipping the switch / picking a
@@ -367,7 +361,7 @@ export default function NavBar() {
                         >
                             <HStack justify="space-between">
                                 <MonoLabel>{t.nav.themeLabel}</MonoLabel>
-                                <ThemeSwitch />
+                                <ThemeSwitch size="lg" />
                             </HStack>
                         </Box>
                         <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
@@ -376,6 +370,12 @@ export default function NavBar() {
                                 <LanguagePicker variant="inline" />
                             </Box>
                         </Box>
+                        {/* Sign out sits LAST on purpose - it's the one
+                            destructive-ish action in here, so it shouldn't be
+                            adjacent to "Profil" where a mis-tap costs a login. */}
+                        <Menu.Item value="logout" onSelect={onSignOut} mt="1" borderTopWidth="1px" borderColor="border">
+                            <FiLogOut /> {t.nav.logout}
+                        </Menu.Item>
                     </Menu.Content>
                 </Menu.Positioner>
             </Menu.Root>
@@ -523,9 +523,6 @@ export default function NavBar() {
                                             <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo("/profil")}>
                                                 <FiUser /> {t.nav.profile}
                                             </Button>
-                                            <Button variant="ghost" justifyContent="flex-start" colorPalette="red" onClick={onSignOut}>
-                                                <FiLogOut /> {t.nav.logout}
-                                            </Button>
                                         </VStack>
                                     )}
                                     {!loading && !user && (
@@ -537,7 +534,7 @@ export default function NavBar() {
                                     <VStack align="stretch" gap="3" pt="2" borderTopWidth="1px" borderColor="border">
                                         <HStack justify="space-between">
                                             <Text fontSize="sm" fontWeight={600}>{t.nav.themeLabel}</Text>
-                                            <ThemeSwitch />
+                                            <ThemeSwitch size="lg" />
                                         </HStack>
                                         <HStack justify="space-between">
                                             <Text fontSize="sm" fontWeight={600}>{t.nav.languageLabel}</Text>
@@ -549,6 +546,20 @@ export default function NavBar() {
                                         </HStack>
                                         <InstallAppButton size="sm" variant="labeled" />
                                     </VStack>
+
+                                    {/* Sign out last, below the settings block -
+                                        same ordering as the desktop menu. */}
+                                    {!loading && user && (
+                                        <Button
+                                            variant="ghost"
+                                            justifyContent="flex-start"
+                                            colorPalette="red"
+                                            pt="2"
+                                            onClick={onSignOut}
+                                        >
+                                            <FiLogOut /> {t.nav.logout}
+                                        </Button>
+                                    )}
                                 </VStack>
                             </Drawer.Body>
                         </Drawer.Content>

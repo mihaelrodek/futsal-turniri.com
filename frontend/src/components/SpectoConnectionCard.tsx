@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Box, Button, HStack, Input, NativeSelect, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiCheck, FiClock, FiEdit2, FiEye, FiEyeOff, FiLink, FiPause, FiPlay, FiPlus, FiRadio, FiSlash, FiSquare, FiUsers, FiX } from "react-icons/fi"
+import { FiAward, FiCheck, FiClock, FiEdit2, FiEye, FiEyeOff, FiLink, FiPause, FiPlay, FiPlus, FiRadio, FiSlash, FiSquare, FiUsers, FiX } from "react-icons/fi"
 
 import {
     fetchSpectoBroadcast,
@@ -10,6 +10,7 @@ import {
     linkSpectoStream,
     saveSpectoConnection,
     sendSpectoLineup,
+    sendSpectoStandings,
     showSpectoBroadcast,
     startSpectoBroadcast,
     startSpectoTimer,
@@ -272,6 +273,19 @@ export default function SpectoConnectionCard() {
         setBusy(true)
         try {
             await sendSpectoLineup(tournamentUuid)
+        } catch {
+            /* interceptor toasts */
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    /** Send the tournament's final top-3 podium (400 until the final is decided). */
+    async function pushStandings() {
+        if (!tournamentUuid) return
+        setBusy(true)
+        try {
+            await sendSpectoStandings(tournamentUuid)
         } catch {
             /* interceptor toasts */
         } finally {
@@ -647,6 +661,15 @@ export default function SpectoConnectionCard() {
                                 </Text>
                                 <Button size="sm" variant="outline" colorPalette="pitch" onClick={pushLineup} loading={busy}>
                                     <FiUsers /> {t.components.spectoConnectionCard.sendLineup}
+                                </Button>
+                            </HStack>
+
+                            <HStack justify="space-between" gap="3" wrap="wrap">
+                                <Text fontSize="sm" color="fg.muted">
+                                    {t.components.spectoConnectionCard.standingsHint}
+                                </Text>
+                                <Button size="sm" variant="outline" colorPalette="pitch" onClick={pushStandings} loading={busy}>
+                                    <FiAward /> {t.components.spectoConnectionCard.sendStandings}
                                 </Button>
                             </HStack>
 

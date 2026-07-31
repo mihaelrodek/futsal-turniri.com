@@ -1,0 +1,162 @@
+package hr.mrodek.apps.futsal_turniri.controller;
+
+import hr.mrodek.apps.futsal_turniri.dtos.PlayerClaimRequestDto;
+import hr.mrodek.apps.futsal_turniri.dtos.PlayerClaimSuggestionDto;
+import hr.mrodek.apps.futsal_turniri.enums.PlayerClaimRequestStatus;
+import hr.mrodek.apps.futsal_turniri.model.Player;
+import hr.mrodek.apps.futsal_turniri.model.PlayerClaimRequest;
+import hr.mrodek.apps.futsal_turniri.model.Teams;
+import hr.mrodek.apps.futsal_turniri.model.Tournaments;
+import hr.mrodek.apps.futsal_turniri.repository.PlayerClaimRequestRepository;
+import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
+import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
+import io.quarkus.security.Authenticated;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.ws.rs.ClientErrorException;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.ForbiddenException;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.jwt.JsonWebToken;
+
+import java.util.List;
+
+/**
+ * The MANUAL half of "which roster player am I": search the rosters, ask for
+ * one, wait for an admin to approve it.
+ *
+ * <p>The automatic half lives in {@link UserMeController}
+ * ({@code /player-suggestions} + {@code .../claim}) and needs no approval,
+ * because it only ever links a roster row whose name folds to exactly the
+ * caller's own registered name on a team nobody has claimed. Everything else
+ * - a nickname on the roster, a different spelling, a team already registered
+ * by a teammate - lands here, where a human decides. A wrong link would hand
+ * over someone else's tournament history and team edit rights, so there is
+ * deliberately no self-service path.
+ *
+ * Routes (all require a signed-in user):
+ *   GET    /user/me/player-claim-requests            - my requests, freshest first
+ *   POST   /user/me/player-claim-requests            - ask for one (comment mandatory)
+ *   DELETE /user/me/player-claim-requests/{id}       - withdraw my own pending request
+ *   GET    /user/me/claimable-players?q=             - roster search for the dialog
+ */
+@Path("/user/me")
+@Authenticated
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class PlayerClaimRequestController {
+
+    /** The dialog is a picker, not a browse page - keep the list short. */
+    private static final int SEARCH_LIMIT = 20;
+
+    /** Stops one account from queueing an unbounded pile for the admin. */
+    private static final int MAX_OPEN_REQUESTS = 5;
+
+    @Inject PlayerClaimRequestRepository requestRepo;
+    @Inject PlayersRepository playersRepo;
+    @Inject PlayerClaimRequestMapper mapper;
+    @Inject JsonWebToken jwt;
+
+    @GET
+    @Path("/player-claim-requests")
+    @Transactional
+    public List<PlayerClaimRequestDto> myRequests() {
+        return requestRepo.findByUserUid(jwt.getSubject()).stream()
+                .map(r -> mapper.toDto(r, false))
+                .toList();
+    }
+
+    @GET
+    @Path("/claimable-players")
+    @Transactional
+    public List<PlayerClaimSuggestionDto> searchClaimable(@QueryParam("q") String q) {
+        if (q == null || q.trim().length() < 2) return List.of();
+        return playersRepo.searchClaimableByName(q, SEARCH_LIMIT).stream()
+                .map(mapper::toSuggestionDto)
+                .toList();
+    }
+
+    /**
+     * Ask to be linked to a roster player.
+     *
+     * Conflict states:
+     *   - blank comment                          → 400 (bean validation)
+     *   - already queued for this player         → 409 ALREADY_REQUESTED
+     *   - too many of my requests still open     → 409 TOO_MANY_OPEN
+     *   - team's co-owner slot taken meanwhile   → 409 ALREADY_CLAIMED
+     */
+    @POST
+    @Path("/player-claim-requests")
+    @Transactional
+    public PlayerClaimRequestDto create(@Valid CreateRequest body) {
+        String uid = jwt.getSubject();
+
+        Player player = playersRepo.findByIdOptional(body.playerId()).orElse(null);
+        if (player == null || player.isDemo()) throw new NotFoundException("Igrač nije pronađen.");
+
+        Teams team = player.getTeam();
+        Tournaments tournament = team == null ? null : team.getTournament();
+        if (team == null || team.isDemo() || team.isPendingApproval()
+                || (tournament != null && tournament.isHidden())) {
+            throw new NotFoundException("Igrač nije pronađen.");
+        }
+        if (uid.equals(team.getSubmittedByUid()) || uid.equals(team.getCoSubmittedByUid())) {
+            throw new ClientErrorException("ALREADY_CLAIMED", 409);
+        }
+        if (team.getCoSubmittedByUid() != null) {
+            throw new ClientErrorException("ALREADY_CLAIMED", 409);
+        }
+        if (requestRepo.existsPending(uid, player.getId())) {
+            throw new ClientErrorException("ALREADY_REQUESTED", 409);
+        }
+        long open = requestRepo.findByUserUid(uid).stream()
+                .filter(r -> r.getStatus() == PlayerClaimRequestStatus.PENDING)
+                .count();
+        if (open >= MAX_OPEN_REQUESTS) throw new ClientErrorException("TOO_MANY_OPEN", 409);
+
+        var req = new PlayerClaimRequest();
+        req.setUserUid(uid);
+        req.setPlayer(player);
+        req.setPlayerName(player.getName());
+        req.setTeamName(team.getName());
+        req.setTournamentName(tournament == null ? null : tournament.getName());
+        req.setComment(body.comment().trim());
+        req.setStatus(PlayerClaimRequestStatus.PENDING);
+        requestRepo.persist(req);
+
+        return mapper.toDto(req, false);
+    }
+
+    /** Withdraw a request that hasn't been decided yet. */
+    @DELETE
+    @Path("/player-claim-requests/{id}")
+    @Transactional
+    public PlayerClaimRequestDto cancel(@PathParam("id") Long id) {
+        var req = requestRepo.findByIdOptional(id)
+                .orElseThrow(() -> new NotFoundException("Zahtjev nije pronađen."));
+        if (!req.getUserUid().equals(jwt.getSubject())) {
+            throw new ForbiddenException("Nije tvoj zahtjev.");
+        }
+        if (req.getStatus() == PlayerClaimRequestStatus.PENDING) {
+            req.setStatus(PlayerClaimRequestStatus.CANCELLED);
+            requestRepo.persist(req);
+        }
+        return mapper.toDto(req, false);
+    }
+
+    public record CreateRequest(
+            @NotNull Long playerId,
+            @NotBlank String comment
+    ) {}
+}

@@ -169,13 +169,18 @@ public class SpectoAdminController {
     }
 
     /** STOP broadcasting: camera off on the overlay + take the home-page banner
-     *  out of STREAMING (the url is kept so it can be started again). */
+     *  out of STREAMING (the url is kept so it can be started again). When the
+     *  tournament's final is already decided, the top-3 podium is pushed first
+     *  (dispatch is a single FIFO thread, so it reaches the overlay before the
+     *  camera-off event). */
     @POST
     @Path("/broadcast/stop")
     @Transactional
     public Response stopBroadcast(BroadcastRequest req) {
         Tournaments t = resolve(req);
         if (t == null) return notFound();
+        List<SpectoStreamService.StandingRow> podium = specto.podiumRows(t);
+        if (!podium.isEmpty()) specto.standings(t, SpectoStreamService.FINAL_STANDINGS_TITLE, podium);
         specto.streamEnd(t);
         settings.put(KEY_BANNER_STATE, StreamState.OFF.name());
         settings.put(KEY_BANNER_LIVE, "false");
@@ -253,6 +258,36 @@ public class SpectoAdminController {
         Tournaments t = req == null ? null : resolveUuid(req.tournamentUuid());
         if (t == null) return notFound();
         specto.timerStop(t);
+        return Response.status(Response.Status.ACCEPTED).build();
+    }
+
+    /* ── Final standings (top-3 podium) ─────────────────────────────────── */
+
+    /** Body for pushing the final top-3 standings. */
+    public record StandingsRequest(String tournamentUuid) {}
+
+    /**
+     * Push the tournament's FINAL top-3 (gold/silver/bronze) onto the overlay
+     * as a standings popup. 400 when the final isn't decided yet. Also fired
+     * automatically by {@link #stopBroadcast}, and shortly after the
+     * tournament's actual last match finishes - see
+     * {@link SpectoStreamService#maybeSchedulePodiumAfterLastMatch}.
+     */
+    @POST
+    @Path("/standings")
+    public Response standings(StandingsRequest req) {
+        Tournaments t = req == null ? null : resolveUuid(req.tournamentUuid());
+        if (t == null) return notFound();
+        if (t.getSpectoStreamId() == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(messages.t("specto.error.tournamentNotLinked")).build();
+        }
+        List<SpectoStreamService.StandingRow> podium = specto.podiumRows(t);
+        if (podium.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(messages.t("specto.error.podiumUndecided")).build();
+        }
+        specto.standings(t, SpectoStreamService.FINAL_STANDINGS_TITLE, podium);
         return Response.status(Response.Status.ACCEPTED).build();
     }
 

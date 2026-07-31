@@ -14,6 +14,7 @@ public record TeamMatchHistoryDto(
         List<Row> matches
 ) {
     public record Row(
+            Long matchId,         // lets the profile link straight into the match page
             Integer roundNumber,
             Integer tableNo,
             String opponentName,
@@ -21,6 +22,14 @@ public record TeamMatchHistoryDto(
             Integer opponentScore,
             String status,        // SCHEDULED | IN_PROGRESS | COMPLETED | …
             Boolean won,          // null when not yet completed
-            Boolean isBye         // true when there was no opponent (auto-advance)
+            Boolean isBye,        // true when there was no opponent (auto-advance)
+
+            // What THIS profile's own roster player did in this match, matched
+            // by folded "ime prezime" (PersonNameFolder) - 0 when the person
+            // isn't on the roster or did nothing of note.
+            int goals,
+            int ownGoals,
+            int yellowCards,
+            int redCards
     ) {}
 }

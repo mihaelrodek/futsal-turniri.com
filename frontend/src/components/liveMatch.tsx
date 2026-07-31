@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Text, VStack } from "@chakra-ui/react"
+import { Box, Button, chakra, Dialog, Flex, Grid, HStack, IconButton, Input, Menu, NativeSelect, Popover, Portal, Text, VStack } from "@chakra-ui/react"
 import { FiClock, FiEdit2, FiMinus, FiPause, FiPlay, FiPlus, FiRotateCcw, FiTrash2, FiVideo } from "react-icons/fi"
 import { GiSoccerBall } from "react-icons/gi"
 import { addMatchEvent, deleteMatchEvent, fetchMatchEvents } from "../api/matchEvents"
@@ -18,6 +18,169 @@ import { useTranslation, type Dictionary } from "../i18n"
  *  the same helper in FullscreenTournamentPage.tsx. */
 function capitalize(s: string): string {
     return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ActionButton - the rounded icon+label tile used to pick an event kind
+   (Gol/Auto-gol/Žuti/Crveni/Isključenje in LiveMatchPanel's normal event
+   grid, and PENALTY_GOAL/PENALTY_MISSED in PenaltyShootout below). Lives
+   here (not in LiveMatchPanel.tsx) so both can share one component without
+   a circular import - LiveMatchPanel already imports several things from
+   this module.
+   ────────────────────────────────────────────────────────────────────────── */
+const ACTION_GOAL_GREEN = "#16A34A"
+const ACTION_HOME = "#3A5A7A"
+const ACTION_AWAY = "#0E8A81"
+const ACTION_CARD_YELLOW = "#e8a01f"
+const ACTION_CARD_RED = "#c0392b"
+/** A translucent tint of a colour - works on any (light/dark) surface. */
+const actionTint = (hex: string, pct: number) => `color-mix(in srgb, ${hex} ${pct}%, transparent)`
+
+export function ActionButton({
+    type,
+    penalty,
+    label,
+    selected,
+    disabled,
+    onClick,
+    w,
+}: {
+    type: MatchEventType
+    /** True for the in-game "Penal - gol" action (a GOAL with the flag). */
+    penalty?: boolean
+    label: string
+    selected: boolean
+    disabled?: boolean
+    onClick: () => void
+    /** Explicit width - the normal event grid sizes tiles via its own CSS
+     *  grid columns, but a plain HStack row (e.g. the shootout's two tiles)
+     *  needs this so differently-long labels don't produce mismatched
+     *  tile widths. */
+    w?: string
+}) {
+    // PENALTY_GOAL/PENALTY_MISSED (the shootout kinds) read exactly like the
+    // in-game penalty tile used to - green ball+P for a make, red ✗ for a miss.
+    const isPenaltyGoal = (type === "GOAL" && penalty) || type === "PENALTY_GOAL"
+    const isPenaltyMiss = type === "PENALTY_MISSED_LIVE" || type === "PENALTY_MISSED"
+    const accent =
+        type === "GOAL" || type === "PENALTY_GOAL" ? ACTION_GOAL_GREEN
+            : type === "OWN_GOAL" ? ACTION_HOME
+                : type === "YELLOW_CARD" ? ACTION_CARD_YELLOW
+                    : type === "EXCLUSION" ? ACTION_AWAY
+                        : ACTION_CARD_RED
+    const icon =
+        isPenaltyGoal ? (
+            // Penalty goal: the ball plus a small "P" so it reads apart
+            // from the plain goal at a glance.
+            <Box as="span" display="inline-flex" alignItems="center" gap="0.5" lineHeight="1">
+                <Text as="span" fontSize="xl" lineHeight="1">⚽</Text>
+                <Text as="span" fontSize="2xs" fontWeight={800} color={ACTION_GOAL_GREEN}>P</Text>
+            </Box>
+        ) : type === "GOAL" ? (
+            <Text as="span" fontSize="xl" lineHeight="1">⚽</Text>
+        ) : type === "OWN_GOAL" ? (
+            // Same ball as the timeline's autogol icon, in red.
+            <Box as="span" display="inline-flex" lineHeight="1" color="red.solid"><GiSoccerBall size={22} /></Box>
+        ) : isPenaltyMiss ? (
+            <Text as="span" fontSize="lg" fontWeight={800} lineHeight="1" color={ACTION_CARD_RED}>✗</Text>
+        ) : type === "EXCLUSION" ? (
+            <Text as="span" fontSize="lg" lineHeight="1">🕑</Text>
+        ) : (
+            <Box as="span" w="15px" h="19px" rounded="sm" bg={type === "YELLOW_CARD" ? ACTION_CARD_YELLOW : ACTION_CARD_RED} />
+        )
+    return (
+        <chakra.button
+            type="button"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            gap="1"
+            rounded="xl"
+            px="1.5"
+            py="3"
+            w={w}
+            borderWidth={selected ? "2px" : "1px"}
+            borderColor={selected ? accent : "border"}
+            bg={selected ? actionTint(accent, 12) : "bg.panel"}
+            opacity={disabled ? 0.4 : 1}
+            cursor={disabled ? "not-allowed" : "pointer"}
+            _hover={disabled ? undefined : { borderColor: accent }}
+            transition="border-color 0.12s, background 0.12s"
+            disabled={disabled}
+            onClick={disabled ? undefined : onClick}
+        >
+            <Box display="flex" alignItems="center" justifyContent="center" minH="20px">{icon}</Box>
+            <Text fontSize="xs" fontWeight={800} color="fg.ink">{label}</Text>
+        </chakra.button>
+    )
+}
+
+/** One tappable player row (roster picker) - a badge (shirt number or "?"),
+ *  the name, an optional trailing marker (card emoji), and a checkmark when
+ *  selected. Used by LiveMatchPanel's pairing-entry roster columns and by
+ *  ShootoutTeamColumn below. */
+export function PlayerButton({
+    selected,
+    color,
+    badge,
+    name,
+    marker,
+    muted,
+    disabled,
+    onClick,
+}: {
+    selected: boolean
+    color: string
+    badge: string
+    name: string
+    marker?: string
+    muted?: boolean
+    disabled?: boolean
+    onClick: () => void
+}) {
+    return (
+        <chakra.button
+            type="button"
+            display="flex"
+            alignItems="center"
+            gap="2.5"
+            w="full"
+            textAlign="left"
+            rounded="lg"
+            px="2.5"
+            py="2"
+            borderWidth={selected ? "2px" : "1px"}
+            borderColor={selected ? ACTION_GOAL_GREEN : "border"}
+            bg={selected ? actionTint(ACTION_GOAL_GREEN, 12) : "bg.panel"}
+            opacity={disabled ? 0.5 : 1}
+            cursor={disabled ? "not-allowed" : "pointer"}
+            _hover={disabled ? undefined : { borderColor: selected ? ACTION_GOAL_GREEN : "border.emphasized" }}
+            transition="border-color 0.12s, background 0.12s"
+            onClick={disabled ? undefined : onClick}
+        >
+            <Box
+                as="span"
+                w="24px"
+                h="24px"
+                rounded="md"
+                flexShrink={0}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                fontSize="2xs"
+                fontWeight={800}
+                css={{ background: actionTint(color, 14), color }}
+            >
+                {badge}
+            </Box>
+            <Text fontSize="sm" fontWeight={700} color={muted ? "fg.muted" : "fg.ink"} flex="1" truncate>
+                {name}
+            </Text>
+            {marker && <Text as="span" fontSize="xs">{marker}</Text>}
+            {selected && <Text as="span" color={ACTION_GOAL_GREEN} fontWeight={800}>✓</Text>}
+        </chakra.button>
+    )
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -711,11 +874,12 @@ export function LiveEventRow({
         ev.type === "GOAL" ? "⚽"
             : ev.type === "YELLOW_CARD" ? "🟨"
                 : ev.type === "RED_CARD" ? "🟥"
-                    : ev.type === "PENALTY_GOAL" ? "✓"
-                        : "✗"
+                    : ev.type === "EXCLUSION" ? "🕑"
+                        : ev.type === "PENALTY_GOAL" ? "✓"
+                            : "✗"
     const iconColor =
         ev.type === "PENALTY_GOAL" ? "pitch.500"
-            : ev.type === "PENALTY_MISSED" ? "accent.red"
+            : ev.type === "PENALTY_MISSED" || ev.type === "PENALTY_MISSED_LIVE" ? "accent.red"
                 : undefined
     const label = isPenalty ? er.penAbbrev : `${ev.minute}'`
     // No-name events: a goal without a named scorer shows the "unknown scorer"
@@ -726,14 +890,24 @@ export function LiveEventRow({
             ? ev.playerName != null
                 ? `${ev.playerName} (ag)`
                 : capitalize(t.matchLive.ownGoal)
-            : ev.playerName ??
-              (ev.type === "GOAL"
-                  ? capitalize(t.matchLive.unknownScorer)
-                  : ev.type === "YELLOW_CARD" || ev.type === "RED_CARD"
-                      ? er.unknownPlayerFallback
-                      : ev.type === "PENALTY_MISSED"
-                          ? er.missedPenaltyFallback
-                          : er.scoredPenaltyFallback)
+            : ev.type === "GOAL" && ev.penalty
+                ? er.penSuffix(ev.playerName ?? capitalize(t.matchLive.unknownScorer))
+                : ev.type === "PENALTY_MISSED_LIVE"
+                    ? ev.playerName != null
+                        ? er.penSuffix(ev.playerName)
+                        : er.missedPenaltyLive
+                    : ev.type === "EXCLUSION"
+                        ? ev.playerName != null
+                            ? er.exclusionSuffix(ev.playerName)
+                            : er.exclusionLabel
+                        : ev.playerName ??
+                          (ev.type === "GOAL"
+                              ? capitalize(t.matchLive.unknownScorer)
+                              : ev.type === "YELLOW_CARD" || ev.type === "RED_CARD"
+                                  ? er.unknownPlayerFallback
+                                  : ev.type === "PENALTY_MISSED"
+                                      ? er.missedPenaltyFallback
+                                      : er.scoredPenaltyFallback)
 
     const minuteEl = (
         <Text
@@ -1065,10 +1239,14 @@ export function GoalscorersPanel({
         // event with no timestamp) = no hold, i.e. the original behaviour.
         const events = withinBroadcast(state.events, broadcastDelayMs, tickNow)
 
-        // Regulation events (goals/cards) sit on the minute-sorted timeline;
-        // penalty-shootout kicks get their own marked "Penali" section below.
+        // Regulation events (goals/cards/in-game penalties/2-min suspensions)
+        // sit on the minute-sorted timeline; penalty-SHOOTOUT kicks get their
+        // own marked "Penali" section below.
         const regulation = events
-            .filter((e) => e.type === "GOAL" || e.type === "OWN_GOAL" || e.type === "YELLOW_CARD" || e.type === "RED_CARD")
+            .filter((e) =>
+                e.type === "GOAL" || e.type === "OWN_GOAL"
+                || e.type === "YELLOW_CARD" || e.type === "RED_CARD"
+                || e.type === "PENALTY_MISSED_LIVE" || e.type === "EXCLUSION")
             .sort((a, b) => a.minute - b.minute)
         const penalties = events.filter(
             (e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED",
@@ -1241,16 +1419,19 @@ export function TimelineEventLine({
     const isPenalty = isPenGoal || isPenMiss
     const isOwnGoal = evt.type === "OWN_GOAL"
 
-    // Icon nearest the line: ⚽ for a (penalty) goal, ❌ for a missed penalty,
-    // 🟨 / 🟥 for cards. An own goal gets its OWN red-ball icon (rendered
-    // below), so it's not part of this emoji map.
-    const icon = isPenMiss
+    // Icon nearest the line: ⚽ for a (penalty) goal, ❌ for a missed penalty
+    // (shootout or in-game), 🕑 for a 2-min suspension, 🟨 / 🟥 for cards. An
+    // own goal gets its OWN red-ball icon (rendered below), so it's not part
+    // of this emoji map.
+    const icon = isPenMiss || evt.type === "PENALTY_MISSED_LIVE"
         ? "❌"
-        : isPenGoal
-            ? "⚽"
-            : EVENT_ICON[evt.type]
-                ? String.fromCodePoint(parseInt(EVENT_ICON[evt.type], 16))
-                : "•"
+        : evt.type === "EXCLUSION"
+            ? "🕑"
+            : isPenGoal
+                ? "⚽"
+                : EVENT_ICON[evt.type]
+                    ? String.fromCodePoint(parseInt(EVENT_ICON[evt.type], 16))
+                    : "•"
 
     // Central markers on the timeline line are a uniform ink (black) dot; the
     // event's colour comes from its icon instead (⚽ goal / red-ball own goal /
@@ -1260,18 +1441,29 @@ export function TimelineEventLine({
     // Penalty kicks carry no meaningful match minute; regulation events do.
     const showMinute = !isPenalty
     const noName = evt.playerName == null
+    const er = t.components.liveMatch.eventRow
     const name = isOwnGoal
         ? evt.playerName != null
             ? `${evt.playerName} (ag)`
             : capitalize(t.matchLive.ownGoal)
-        : evt.playerName ??
-          (evt.type === "GOAL" || isPenGoal
-              ? capitalize(t.matchLive.unknownScorer)
-              : evt.type === "YELLOW_CARD" || evt.type === "RED_CARD"
-                  ? t.components.liveMatch.eventRow.unknownPlayerFallback
-                  : isPenMiss
-                      ? t.components.liveMatch.eventRow.missedPenaltyFallback
-                      : "")
+        : evt.type === "GOAL" && evt.penalty
+            ? er.penSuffix(evt.playerName ?? capitalize(t.matchLive.unknownScorer))
+            : evt.type === "PENALTY_MISSED_LIVE"
+                ? evt.playerName != null
+                    ? er.penSuffix(evt.playerName)
+                    : er.missedPenaltyLive
+                : evt.type === "EXCLUSION"
+                    ? evt.playerName != null
+                        ? er.exclusionSuffix(evt.playerName)
+                        : er.exclusionLabel
+                    : evt.playerName ??
+                      (evt.type === "GOAL" || isPenGoal
+                          ? capitalize(t.matchLive.unknownScorer)
+                          : evt.type === "YELLOW_CARD" || evt.type === "RED_CARD"
+                              ? er.unknownPlayerFallback
+                              : isPenMiss
+                                  ? er.missedPenaltyFallback
+                                  : "")
 
     const minuteEl = showMinute ? (
         <Text fontSize="xs" fontWeight="bold" color="fg" whiteSpace="nowrap" flexShrink={0}>
@@ -1449,6 +1641,24 @@ export function liveMatchMinute(args: {
  */
 const ANON_GOAL_ENABLED = true
 
+/**
+ * What the entry toggle can record. "PENALTY_SCORED" is UI-only sugar: it maps
+ * to a GOAL event with `penalty: true` (an in-game penalty goal counts as a
+ * regular goal in the score + scorer stats); every other kind IS the event
+ * type it records.
+ */
+type GoalEntryKind = MatchEventType | "PENALTY_SCORED"
+
+/** The MatchEventType a kind records. */
+function kindEventType(kind: GoalEntryKind): MatchEventType {
+    return kind === "PENALTY_SCORED" ? "GOAL" : kind
+}
+
+/** Whether a kind carries the in-game penalty flag. */
+function kindIsPenaltyGoal(kind: GoalEntryKind): boolean {
+    return kind === "PENALTY_SCORED"
+}
+
 export function LiveGoalEntry({
     uuid,
     matchId,
@@ -1505,7 +1715,7 @@ export function LiveGoalEntry({
     const ge = t.components.liveMatch.goalEntry
     const isTimer = liveMode === "TIMER"
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
-    const [kind, setKind] = useState<MatchEventType>("GOAL")
+    const [kind, setKind] = useState<GoalEntryKind>("GOAL")
     const [minute, setMinute] = useState<string>("0")
     /** While true (TIMER) the "Min" field auto-follows the running clock; a
      *  manual edit turns it off, "Sada" turns it back on. */
@@ -1569,30 +1779,35 @@ export function LiveGoalEntry({
         return team1Id ?? team2Id
     }
 
-    // Gol / Auto-gol are the regulation goal kinds; blocked while a penalty
-    // shootout is being recorded so they can't leak into the scorer stats.
-    const goalKindBlocked = penaltyInProgress && (kind === "GOAL" || kind === "OWN_GOAL")
+    // Gol / Auto-gol / in-game penalties are the regulation goal-ish kinds;
+    // blocked while a penalty SHOOTOUT is being recorded so they can't leak
+    // into the scorer stats (or be confused with shootout kicks).
+    const shootoutBlockedKind = (k: GoalEntryKind) =>
+        k === "GOAL" || k === "OWN_GOAL" || k === "PENALTY_SCORED" || k === "PENALTY_MISSED_LIVE"
+    const goalKindBlocked = penaltyInProgress && shootoutBlockedKind(kind)
 
     async function pick(p: PlayerDto) {
         if (!minuteValid || addingId != null) return
         if (goalKindBlocked) return // penali su u tijeku
         if (sentOffPlayerIds?.has(p.id)) return // sent off - can't affect play
         const payload: CreateMatchEventRequest = {
-            type: kind,
+            type: kindEventType(kind),
             playerId: p.id,
             minute: minuteNum,
             assistPlayerId: null,
+            penalty: kindIsPenaltyGoal(kind) || undefined,
         }
         // Offline-aware path: record optimistically, queue if disconnected.
         if (onAddEvent) {
             const side = sideFor(teamOfPlayer(p))
             if (side == null) return
             onAddEvent(payload, {
-                type: kind,
+                type: kindEventType(kind),
                 playerId: p.id,
                 playerName: p.name,
                 teamId: side,
                 minute: minuteNum,
+                penalty: kindIsPenaltyGoal(kind),
             })
             return
         }
@@ -1615,21 +1830,23 @@ export function LiveGoalEntry({
         if (!minuteValid || addingId != null || addingAnon != null) return
         if (goalKindBlocked) return // penali su u tijeku
         const payload: CreateMatchEventRequest = {
-            type: kind,
+            type: kindEventType(kind),
             playerId: null,
             teamId,
             minute: minuteNum,
             assistPlayerId: null,
+            penalty: kindIsPenaltyGoal(kind) || undefined,
         }
         if (onAddEvent) {
             const side = sideFor(teamId)
             if (side == null) return
             onAddEvent(payload, {
-                type: kind,
+                type: kindEventType(kind),
                 playerId: null,
                 playerName: null,
                 teamId: side,
                 minute: minuteNum,
+                penalty: kindIsPenaltyGoal(kind),
             })
             return
         }
@@ -1644,7 +1861,7 @@ export function LiveGoalEntry({
         }
     }
 
-    const TYPES: { value: MatchEventType; label: React.ReactNode; title: string }[] = [
+    const TYPES: { value: GoalEntryKind; label: React.ReactNode; title: string }[] = [
         { value: "GOAL", label: `⚽ ${t.matchLive.goalAria}`, title: t.matchLive.goalAria },
         {
             value: "OWN_GOAL",
@@ -1662,13 +1879,31 @@ export function LiveGoalEntry({
         { value: "YELLOW_CARD", label: "🟨", title: t.matchLive.yellowCardAria },
         { value: "RED_CARD", label: "🟥", title: t.matchLive.redCardAria },
     ]
+    // Second toggle row: in-game penalty (scored / missed) + 2-min suspension.
+    const TYPES2: { value: GoalEntryKind; label: React.ReactNode; title: string }[] = [
+        { value: "PENALTY_SCORED", label: `⚽ ${ge.penScoredAbbrev}`, title: ge.penScoredTitle },
+        {
+            value: "PENALTY_MISSED_LIVE",
+            label: (
+                <>
+                    <Box as="span" color="accent.red" fontWeight={800} mr="1">✗</Box>
+                    {ge.penMissedAbbrev}
+                </>
+            ),
+            title: ge.penMissedTitle,
+        },
+        { value: "EXCLUSION", label: `🕑 ${ge.exclusionAbbrev}`, title: ge.exclusionTitle },
+    ]
 
     // The label of the per-team "unknown player" button follows the kind.
     const anonLabel =
         kind === "GOAL" ? ge.anonGoal
             : kind === "OWN_GOAL" ? ge.anonOwnGoal
                 : kind === "YELLOW_CARD" ? ge.anonYellow
-                    : ge.anonRed
+                    : kind === "RED_CARD" ? ge.anonRed
+                        : kind === "PENALTY_SCORED" ? ge.anonPenScored
+                            : kind === "PENALTY_MISSED_LIVE" ? ge.anonPenMissed
+                                : ge.anonExclusion
 
     return (
         <Box>
@@ -1676,28 +1911,31 @@ export function LiveGoalEntry({
                 minute field sits on its own row below so nothing wraps on
                 mobile and the four card types always stay on a single line. */}
             <VStack gap="2" align="stretch" mb="2">
-                <HStack gap="1" w="full">
-                    {TYPES.map((ty) => {
-                        // Gol / Auto-gol are locked while penalties are being recorded.
-                        const blocked = penaltyInProgress && (ty.value === "GOAL" || ty.value === "OWN_GOAL")
-                        return (
-                            <Button
-                                key={ty.value}
-                                flex="1"
-                                minW="0"
-                                px="1"
-                                size={{ base: "xs", md: "sm" }}
-                                variant={kind === ty.value ? "solid" : "outline"}
-                                colorPalette={kind === ty.value ? "brand" : "gray"}
-                                disabled={blocked}
-                                onClick={() => setKind(ty.value)}
-                                title={blocked ? ge.penaltiesBlockedTitle : ty.title}
-                            >
-                                {ty.label}
-                            </Button>
-                        )
-                    })}
-                </HStack>
+                {[TYPES, TYPES2].map((row, rowIdx) => (
+                    <HStack key={rowIdx} gap="1" w="full">
+                        {row.map((ty) => {
+                            // Goal-ish kinds are locked while shootout penalties
+                            // are being recorded.
+                            const blocked = penaltyInProgress && shootoutBlockedKind(ty.value)
+                            return (
+                                <Button
+                                    key={ty.value}
+                                    flex="1"
+                                    minW="0"
+                                    px="1"
+                                    size={{ base: "xs", md: "sm" }}
+                                    variant={kind === ty.value ? "solid" : "outline"}
+                                    colorPalette={kind === ty.value ? "brand" : "gray"}
+                                    disabled={blocked}
+                                    onClick={() => setKind(ty.value)}
+                                    title={blocked ? ge.penaltiesBlockedTitle : ty.title}
+                                >
+                                    {ty.label}
+                                </Button>
+                            )
+                        })}
+                    </HStack>
+                ))}
                 <HStack gap="2">
                     <Text fontSize="xs" color="fg.muted" fontWeight="medium">
                         {ge.minuteLabel}
@@ -1895,6 +2133,10 @@ type PenaltyKick = {
     scored: boolean
     playerId?: number
     playerName?: string
+    /** The persisted MatchEvent id - every kick in `kicks` state is already
+     *  saved server-side the moment it's added (see `shoot`/`editKick`
+     *  below), so this is always set once the kick exists locally. */
+    eventId: number
 }
 
 function shootoutState(kicks: PenaltyKick[], firstTeam: 1 | 2 | null) {
@@ -1927,6 +2169,76 @@ function shootoutState(kicks: PenaltyKick[], firstTeam: 1 | 2 | null) {
     return { s1, s2, a, b, decided, winner, nextTeam, inSudden, round }
 }
 
+/** One team's roster picker for the current kick - a column of PlayerButton
+ *  rows (plus "Nepoznati igrač"), matching the same left/right-team-column
+ *  layout as LiveMatchPanel's normal event entry. Only the team actually up
+ *  to shoot is tappable; the other side is dimmed/disabled - the shootout's
+ *  turn order isn't a free choice. */
+function ShootoutTeamColumn({
+    teamName,
+    color,
+    players,
+    active,
+    pendingPlayerId,
+    onSelect,
+}: {
+    teamName: string | null
+    color: string
+    players: PlayerDto[]
+    active: boolean
+    /** The shooter picked on THIS column - undefined when nothing is picked
+     *  here (either nothing picked at all, or the pick belongs to the other
+     *  column). */
+    pendingPlayerId: number | null | undefined
+    onSelect: (playerId: number | null, playerName: string | null) => void
+}) {
+    const t = useTranslation()
+    const isPending = (playerId: number | null) => active && pendingPlayerId !== undefined && pendingPlayerId === playerId
+    return (
+        <VStack
+            align="stretch"
+            justify="center"
+            gap="2"
+            minW="0"
+            borderWidth="1px"
+            borderColor="border"
+            borderTopWidth="4px"
+            borderTopColor={color}
+            rounded="xl"
+            p="3"
+            bg="bg.panel"
+            opacity={active ? 1 : 0.55}
+        >
+            <Text fontSize="md" fontWeight={800} color="fg.ink" textAlign="center" truncate minW="0">{teamName ?? "-"}</Text>
+            <VStack align="stretch" gap="1.5" maxH="240px" overflowY="auto">
+                <PlayerButton
+                    selected={isPending(null)}
+                    color={color}
+                    badge="?"
+                    name={t.components.liveMatch.eventRow.unknownPlayerFallback}
+                    muted
+                    disabled={!active}
+                    onClick={() => onSelect(null, null)}
+                />
+                {players.map((p) => (
+                    <PlayerButton
+                        key={p.id}
+                        selected={isPending(p.id)}
+                        color={color}
+                        badge={p.number != null ? String(p.number) : "–"}
+                        name={p.name}
+                        disabled={!active}
+                        onClick={() => onSelect(p.id, p.name)}
+                    />
+                ))}
+                {players.length === 0 && (
+                    <Text fontSize="xs" color="fg.subtle">{t.components.liveMatch.playerPick.noPlayers}</Text>
+                )}
+            </VStack>
+        </VStack>
+    )
+}
+
 export function PenaltyShootout({
     uuid,
     matchId,
@@ -1953,12 +2265,14 @@ export function PenaltyShootout({
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
     const [kicks, setKicks] = useState<PenaltyKick[]>([])
     const [firstTeam, setFirstTeam] = useState<1 | 2 | null>(null)
-    /** Ids of penalty events that already existed when this shootout was opened
-     *  (re-editing a finished match). Cleared and re-recorded on confirm so the
-     *  prior history is preserved/edited rather than duplicated. */
-    const [loadedEventIds, setLoadedEventIds] = useState<number[]>([])
-    /** Player selected for the upcoming kick (optional - "tko je pucao"). */
-    const [shooterId, setShooterId] = useState<string>("")
+    /** Player selected for the upcoming kick (optional - "tko je pucao") -
+     *  tapped from one of the two team columns below, not a dropdown. Also
+     *  DOUBLES as the "who shoots first" pick: while `firstTeam` is still
+     *  null, tapping a player in either column both picks the shooter AND
+     *  confirms that column's team as the one that shoots first - there's
+     *  no separate "prva puca" step. `null` = nothing picked yet;
+     *  `{playerId: null}` = explicit anonymous. */
+    const [pendingShooter, setPendingShooter] = useState<{ team: 1 | 2; playerId: number | null; playerName: string | null } | null>(null)
     const [persisting, setPersisting] = useState(false)
 
     const st = shootoutState(kicks, firstTeam)
@@ -2002,12 +2316,12 @@ export function PenaltyShootout({
                     scored: e.type === "PENALTY_GOAL",
                     playerId: e.playerId ?? undefined,
                     playerName: e.playerName ?? undefined,
+                    eventId: e.id,
                 }))
                 setKicks(
                     loadedKicks,
                 )
                 setFirstTeam(loadedKicks[0]?.team ?? null)
-                setLoadedEventIds(pens.map((e) => e.id))
             } catch {
                 /* error toast surfaced by the http interceptor */
             }
@@ -2016,69 +2330,84 @@ export function PenaltyShootout({
         return () => { cancelled = true }
     }, [uuid, matchId, team1Id])
 
-    const currentTeamId = st.nextTeam == null ? null : st.nextTeam === 1 ? team1Id : team2Id
-    const currentRoster = currentTeamId != null ? rosters[currentTeamId] ?? [] : []
+    const team1Roster = team1Id != null ? rosters[team1Id] ?? [] : []
+    const team2Roster = team2Id != null ? rosters[team2Id] ?? [] : []
 
-    function shoot(scored: boolean) {
-        if (st.decided || st.nextTeam == null) return
-        const team = st.nextTeam
-        const p = currentRoster.find((x) => String(x.id) === shooterId)
-        setKicks((prev) => [
-            ...prev,
-            { team, scored, playerId: p?.id, playerName: p?.name },
-        ])
-        setShooterId("")
+    // Persisted the moment it's taken - same as a regular goal during normal
+    // play (LiveGoalEntry's `pick`/`pickAnon` below), not batched until
+    // confirm. This is also what lets SpectoStream mirror it live (backend
+    // dispatches a `penalty` overlay event from the SAME create call).
+    async function shoot(scored: boolean) {
+        if (st.decided || busy) return
+        // Before the first kick, `st.nextTeam` is null - whichever column the
+        // shooter was tapped from IS the team that shoots first. After that,
+        // the turn order is fixed and free choice is gone.
+        const team = firstTeam == null ? pendingShooter?.team : st.nextTeam
+        if (team == null) return
+        const p = pendingShooter
+        setPendingShooter(null)
+        if (firstTeam == null) setFirstTeam(team)
+        setPersisting(true)
+        try {
+            const created = await addMatchEvent(uuid, matchId, {
+                type: scored ? "PENALTY_GOAL" : "PENALTY_MISSED",
+                playerId: p?.playerId ?? null,
+                teamId: team === 1 ? team1Id : team2Id,
+                minute: 0,
+                assistPlayerId: null,
+            })
+            setKicks((prev) => [
+                ...prev,
+                { team, scored, playerId: p?.playerId ?? undefined, playerName: p?.playerName ?? undefined, eventId: created.id },
+            ])
+        } catch {
+            /* error toast surfaced by the http interceptor - kick wasn't
+               saved, so it's simply not added locally; the organizer retaps. */
+        } finally {
+            setPersisting(false)
+        }
     }
 
     // Edit a recorded kick in place (scored ✓/✗ and/or its shooter) by tapping
-    // it - no need to undo back to it.
-    function editKick(idx: number, patch: Partial<PenaltyKick>) {
+    // it. There's no partial-update endpoint for a match event, so an edit is
+    // a delete-then-recreate against the server, same as any other kick.
+    async function editKick(idx: number, patch: Partial<PenaltyKick>) {
         if (busy) return
-        setKicks((prev) => prev.map((k, i) => (i === idx ? { ...k, ...patch } : k)))
+        const current = kicks[idx]
+        if (!current) return
+        const next = { ...current, ...patch }
+        if (next.scored === current.scored && next.playerId === current.playerId) return
+        setPersisting(true)
+        try {
+            try {
+                await deleteMatchEvent(uuid, matchId, current.eventId, { silent: true })
+            } catch {
+                /* best effort - recreate below anyway so the edit still lands */
+            }
+            const created = await addMatchEvent(uuid, matchId, {
+                type: next.scored ? "PENALTY_GOAL" : "PENALTY_MISSED",
+                playerId: next.playerId ?? null,
+                teamId: next.team === 1 ? team1Id : team2Id,
+                minute: 0,
+                assistPlayerId: null,
+            })
+            setKicks((prev) => prev.map((k, i) => (i === idx ? { ...next, eventId: created.id } : k)))
+        } catch {
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setPersisting(false)
+        }
     }
 
     // Per-team kicks carrying their global index so a tap can flip the right one.
     const team1Kicks = kicks.map((k, i) => ({ k, i })).filter((x) => x.k.team === 1)
     const team2Kicks = kicks.map((k, i) => ({ k, i })).filter((x) => x.k.team === 2)
 
-    async function handleConfirm() {
-        // Persist every kick as a penalty event (silent so we don't stack a
-        // toast per kick), then hand the made-count totals to the parent which
-        // records the result. A kick with no named taker is still recorded -
-        // its side comes from teamId and the timeline shows "(gol)"/"(promašaj)".
-        setPersisting(true)
-        try {
-            // Clear the previously recorded kicks first so re-editing replaces
-            // the old history rather than stacking duplicates.
-            for (const id of loadedEventIds) {
-                try {
-                    await deleteMatchEvent(uuid, matchId, id, { silent: true })
-                } catch {
-                    /* best-effort - the totals below remain authoritative */
-                }
-            }
-            for (const k of kicks) {
-                try {
-                    await addMatchEvent(
-                        uuid,
-                        matchId,
-                        {
-                            type: k.scored ? "PENALTY_GOAL" : "PENALTY_MISSED",
-                            playerId: k.playerId ?? null,
-                            teamId: k.team === 1 ? team1Id : team2Id,
-                            minute: 0,
-                            assistPlayerId: null,
-                        },
-                        { silent: true },
-                    )
-                } catch {
-                    /* attribution is best-effort; the totals below are authoritative */
-                }
-            }
-            onConfirm(st.s1, st.s2)
-        } finally {
-            setPersisting(false)
-        }
+    // Every kick is already persisted by the time the shootout is decided -
+    // just hand the made-count totals to the parent, which records the
+    // knockout result.
+    function handleConfirm() {
+        onConfirm(st.s1, st.s2)
     }
 
     return (
@@ -2090,67 +2419,17 @@ export function PenaltyShootout({
                 </Text>
             </Flex>
 
-            {kicks.length === 0 && (
-                <Box borderWidth="1px" borderColor="border" rounded="lg" p="2.5" mb="3">
-                    <Text
-                        fontSize="2xs"
-                        fontWeight={800}
-                        letterSpacing="wider"
-                        textTransform="uppercase"
-                        color="fg.muted"
-                        mb="2"
-                        textAlign="center"
-                    >
-                        {ps.firstToShootLabel}
-                    </Text>
-                    <HStack gap="2" justify="center" wrap="wrap">
-                        <Button
-                            size="sm"
-                            variant={firstTeam === 1 ? "solid" : "outline"}
-                            colorPalette="brand"
-                            onClick={() => setFirstTeam(1)}
-                            disabled={busy}
-                        >
-                            {t1}
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant={firstTeam === 2 ? "solid" : "outline"}
-                            colorPalette="brand"
-                            onClick={() => setFirstTeam(2)}
-                            disabled={busy}
-                        >
-                            {t2}
-                        </Button>
-                    </HStack>
-                </Box>
-            )}
-
-            {/* Per-team kick lists (team1 top, team2 bottom - same order as the
-                header). Tap a kick to edit its result and shooter. */}
-            <Box borderWidth="1px" borderColor="border" rounded="lg" overflow="hidden" mb="3">
-                <TeamKickRow
-                    kicks={team1Kicks}
-                    roster={team1Id != null ? rosters[team1Id] ?? [] : []}
-                    active={!st.decided && st.nextTeam === 1}
-                    onEdit={editKick}
-                    disabled={busy}
-                />
-                <Box borderTopWidth="1px" borderColor="border" />
-                <TeamKickRow
-                    kicks={team2Kicks}
-                    roster={team2Id != null ? rosters[team2Id] ?? [] : []}
-                    active={!st.decided && st.nextTeam === 2}
-                    onEdit={editKick}
-                    disabled={busy}
-                />
-            </Box>
-
             {st.decided ? (
-                <VStack gap="2">
+                <VStack gap="3">
                     <Text fontSize="sm" fontWeight={600} color="pitch.500" textAlign="center">
                         {ps.winnerAnnouncement(st.winner === 1 ? t1 : t2, st.s1, st.s2)}
                     </Text>
+                    {kicks.length > 0 && (
+                        <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap="2.5" w="full">
+                            <TeamKickList kicks={team1Kicks} roster={team1Roster} onEdit={editKick} disabled={busy} side={1} />
+                            <TeamKickList kicks={team2Kicks} roster={team2Roster} onEdit={editKick} disabled={busy} side={2} />
+                        </Grid>
+                    )}
                     <HStack gap="2" justify="center">
                         {onCancel && (
                             <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
@@ -2163,7 +2442,7 @@ export function PenaltyShootout({
                     </HStack>
                 </VStack>
             ) : (
-                <VStack gap="2">
+                <VStack gap="3">
                     <Text fontSize="xs" color="fg.muted" textAlign="center">
                         {firstTeam == null ? ps.pickFirstTeamNote : (
                             <>
@@ -2175,33 +2454,64 @@ export function PenaltyShootout({
                         </Box>
                     </Text>
 
-                    {/* Optional shooter for this kick. */}
-                    {st.nextTeam != null && currentRoster.length > 0 && (
-                        <NativeSelect.Root size="sm">
-                            <NativeSelect.Field
-                                value={shooterId}
-                                onChange={(e) => setShooterId(e.target.value)}
-                            >
-                                <option value="">{ps.shooterPlaceholder}</option>
-                                {currentRoster.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.number != null ? `${p.number}. ` : ""}
-                                        {p.name}
-                                    </option>
-                                ))}
-                            </NativeSelect.Field>
-                            <NativeSelect.Indicator />
-                        </NativeSelect.Root>
+                    {/* Step 1: who's taking this kick - tapped from a team
+                        column below, NOT a dropdown. Before the first kick
+                        BOTH columns are active - tapping one also confirms
+                        that team shoots first (no separate "prva puca" step).
+                        Picked BEFORE the gol/promašaj tiles, since tapping one
+                        commits immediately. */}
+                    <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap="2.5">
+                        <ShootoutTeamColumn
+                            teamName={t1}
+                            color={ACTION_HOME}
+                            players={team1Roster}
+                            active={firstTeam == null || st.nextTeam === 1}
+                            pendingPlayerId={pendingShooter?.team === 1 ? pendingShooter.playerId : undefined}
+                            onSelect={(playerId, playerName) => setPendingShooter({ team: 1, playerId, playerName })}
+                        />
+                        <ShootoutTeamColumn
+                            teamName={t2}
+                            color={ACTION_AWAY}
+                            players={team2Roster}
+                            active={firstTeam == null || st.nextTeam === 2}
+                            pendingPlayerId={pendingShooter?.team === 2 ? pendingShooter.playerId : undefined}
+                            onSelect={(playerId, playerName) => setPendingShooter({ team: 2, playerId, playerName })}
+                        />
+                    </Grid>
+
+                    {/* Step 2: gol / promašaj - same rounded icon tile as the
+                        normal live-match event grid (ActionButton). Disabled
+                        on the very first kick until a column tap has decided
+                        who shoots first; after that an anonymous kick (no
+                        column tap) is still fine, same as before. */}
+                    <HStack gap="2" justify="center" wrap="wrap">
+                        <ActionButton
+                            type="PENALTY_GOAL"
+                            label={t.components.liveMatchPanel.actions.penaltyGoal}
+                            selected={false}
+                            disabled={busy || (firstTeam == null ? pendingShooter == null : st.nextTeam == null)}
+                            onClick={() => shoot(true)}
+                            w="130px"
+                        />
+                        <ActionButton
+                            type="PENALTY_MISSED"
+                            label={t.components.liveMatchPanel.actions.penaltyMissed}
+                            selected={false}
+                            disabled={busy || (firstTeam == null ? pendingShooter == null : st.nextTeam == null)}
+                            onClick={() => shoot(false)}
+                            w="130px"
+                        />
+                    </HStack>
+
+                    {/* Recorded kicks so far - one vertical list per team,
+                        under its own side, between the tiles and Odustani. */}
+                    {kicks.length > 0 && (
+                        <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap="2.5" w="full">
+                            <TeamKickList kicks={team1Kicks} roster={team1Roster} onEdit={editKick} disabled={busy} side={1} />
+                            <TeamKickList kicks={team2Kicks} roster={team2Roster} onEdit={editKick} disabled={busy} side={2} />
+                        </Grid>
                     )}
 
-                    <HStack gap="2" justify="center" wrap="wrap">
-                        <Button size="sm" colorPalette="brand" onClick={() => shoot(true)} disabled={busy || st.nextTeam == null}>
-                            {ps.goalButton}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => shoot(false)} disabled={busy || st.nextTeam == null}>
-                            {ps.missButton}
-                        </Button>
-                    </HStack>
                     {onCancel && (
                         <Button size="xs" variant="ghost" color="fg.muted" onClick={onCancel} disabled={busy}>
                             {ps.cancelShootoutButton}
@@ -2213,48 +2523,64 @@ export function PenaltyShootout({
     )
 }
 
-/** One team's row of kicks (✓/✗ + optional shooter). Tinted while it's this
- *  team's turn. Tap a kick to edit its result (✓/✗) and shooter in a popover. */
-function TeamKickRow({
+/** One team's VERTICAL list of recorded kicks (⚽/✗ + optional shooter), under
+ *  that team's own column. Tap a kick to edit its result and shooter.
+ *
+ *  Mirrored around the centre line, the way the public "tijek utakmice"
+ *  timeline reads: the home column hugs the axis from the left (chip, then
+ *  its round number nearest the middle), the away column from the right
+ *  (number first, then chip). Both lists therefore start at the same
+ *  vertical line no matter how wide the shooter names are. */
+function TeamKickList({
     kicks,
     roster,
-    active,
     onEdit,
     disabled,
+    side,
 }: {
     kicks: { k: PenaltyKick; i: number }[]
     roster: PlayerDto[]
-    active: boolean
     onEdit: (i: number, patch: Partial<PenaltyKick>) => void
     disabled: boolean
+    /** 1 = left of the axis (right-aligned), 2 = right of it (left-aligned). */
+    side: 1 | 2
 }) {
+    if (kicks.length === 0) return <Box />
+    const left = side === 1
     return (
-        <Flex
-            align="center"
-            gap="2"
-            px="3"
-            py="2"
-            minH="9"
-            bg={active ? "bg.surfaceTint" : undefined}
-        >
-            <HStack gap="1.5" flex="1" minW="0" wrap="wrap" justify="center">
-                {kicks.length === 0 ? (
-                    <Text fontSize="2xs" color="fg.subtle">
-                        -
+        <VStack align="stretch" gap="1.5" px="1">
+            {kicks.map(({ k, i }, idx) => {
+                {/* Round number within THIS team's own series - 1st, 2nd,
+                    3rd kick; sudden-death kicks keep counting up. */}
+                const number = (
+                    <Text fontSize="2xs" fontWeight={800} color="fg.subtle" minW="14px" flexShrink={0} textAlign={left ? "left" : "right"}>
+                        {idx + 1}.
                     </Text>
-                ) : (
-                    kicks.map(({ k, i }) => (
-                        <KickChip
-                            key={i}
-                            kick={k}
-                            roster={roster}
-                            onEdit={(patch) => onEdit(i, patch)}
-                            disabled={disabled}
-                        />
-                    ))
-                )}
-            </HStack>
-        </Flex>
+                )
+                const chip = (
+                    <KickChip
+                        kick={k}
+                        roster={roster}
+                        onEdit={(patch) => onEdit(i, patch)}
+                        disabled={disabled}
+                    />
+                )
+                // Below `sm` the columns stack, so there's no axis to mirror
+                // around: row-reverse puts the left column back into the plain
+                // "1. [chip]" reading order, and flex-end packs it against the
+                // left edge (the main axis is reversed too).
+                return (
+                    <HStack
+                        key={i}
+                        gap="1.5"
+                        flexDirection={left ? { base: "row-reverse", sm: "row" } : "row"}
+                        justify={left ? "flex-end" : "flex-start"}
+                    >
+                        {left ? <>{chip}{number}</> : <>{number}{chip}</>}
+                    </HStack>
+                )
+            })}
+        </VStack>
     )
 }
 
@@ -2273,12 +2599,17 @@ function KickChip({
 }) {
     const t = useTranslation()
     const ps = t.components.liveMatch.penaltyShootout
+    const sf = t.components.liveMatchPanel.scorerFallback
+    // Always shows a label - a bare icon with no name reads as broken, and
+    // it's what makes the chip an obvious tap target for "uredi u drugog
+    // igrača" (fix a wrongly-attributed/anonymous kick to the real shooter).
+    const label = kick.playerName ?? (kick.scored ? sf.unknownScorer : sf.missed)
     const chip = (
         <HStack
             role="button"
-            gap="1"
-            px="1.5"
-            py="0.5"
+            gap="1.5"
+            px="2"
+            py="1"
             rounded="full"
             borderWidth="1px"
             borderColor={kick.scored ? "#16A34A" : "border.emphasized"}
@@ -2286,19 +2617,22 @@ function KickChip({
             cursor={disabled ? "default" : "pointer"}
             _hover={disabled ? undefined : { borderColor: "accent.amber" }}
         >
-            <Box
-                as="span"
-                color={kick.scored ? "#16A34A" : "fg.muted"}
-                fontWeight={800}
-                fontSize="10px"
-            >
-                {kick.scored ? "✓" : "✗"}
-            </Box>
-            {kick.playerName && (
-                <Text fontSize="2xs" color="fg.muted" maxW="80px" truncate>
-                    {kick.playerName}
-                </Text>
+            {kick.scored ? (
+                // Same green ball as a regular goal on "tijek utakmice",
+                // instead of a plain checkmark.
+                <Text as="span" fontSize="sm" lineHeight="1" flexShrink={0}>⚽</Text>
+            ) : (
+                <Box as="span" color="fg.muted" fontWeight={800} fontSize="10px" flexShrink={0}>✗</Box>
             )}
+            <Text
+                fontSize="2xs"
+                color="fg.muted"
+                fontStyle={kick.playerName ? undefined : "italic"}
+                maxW="120px"
+                truncate
+            >
+                {label}
+            </Text>
         </HStack>
     )
 

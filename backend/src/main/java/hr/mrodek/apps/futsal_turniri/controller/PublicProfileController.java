@@ -4,13 +4,17 @@ import hr.mrodek.apps.futsal_turniri.dtos.CareerStatsDto;
 import hr.mrodek.apps.futsal_turniri.dtos.MyTournamentParticipationDto;
 import hr.mrodek.apps.futsal_turniri.dtos.TeamMatchHistoryDto;
 import hr.mrodek.apps.futsal_turniri.dtos.PublicProfileDto;
+import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
 import hr.mrodek.apps.futsal_turniri.model.UserTeamPreset;
+import hr.mrodek.apps.futsal_turniri.repository.MatchEventRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
+import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
+import hr.mrodek.apps.futsal_turniri.services.PersonNameFolder;
 import hr.mrodek.apps.futsal_turniri.repository.UserTeamPresetRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -56,6 +60,8 @@ public class PublicProfileController {
     @Inject UserTeamPresetRepository presetRepo;
     @Inject TeamsRepository teamRepo;
     @Inject MatchesRepository matchRepo;
+    @Inject MatchEventRepository matchEventRepo;
+    @Inject PlayersRepository playersRepo;
     @Inject SecurityIdentity identity;
     @Inject JsonWebToken jwt;
 
@@ -224,10 +230,13 @@ public class PublicProfileController {
                 .orElseThrow(() -> new NotFoundException("Par nije pronađen: " + teamId));
 
         // Make sure this team actually belongs to that profile - either by uid
-        // or by preset-name fallback. Prevents anyone from drilling into other
+        // (submitter OR co-owner, matching findMyParticipations) or by the
+        // preset-name fallback. Prevents anyone from drilling into other
         // people's teams by guessing teamId via someone else's slug.
-        boolean ownsByUid = team.getSubmittedByUid() != null
-                && team.getSubmittedByUid().equals(profile.getUserUid());
+        boolean ownsByUid = (team.getSubmittedByUid() != null
+                && team.getSubmittedByUid().equals(profile.getUserUid()))
+                || (team.getCoSubmittedByUid() != null
+                && team.getCoSubmittedByUid().equals(profile.getUserUid()));
         boolean ownsByPreset = false;
         if (!ownsByUid && team.getSubmittedByUid() == null) {
             String teamName = team.getName() == null ? "" : team.getName().trim().toLowerCase(Locale.ROOT);
@@ -242,6 +251,21 @@ public class PublicProfileController {
         }
 
         Tournaments t = team.getTournament();
+
+        // What this specific person did in each of the team's matches, so a
+        // history row can read "2 gola, žuti". Resolved with ONE grouped query
+        // up front rather than per match.
+        Map<Long, Map<MatchEventType, Integer>> eventsByMatch = new HashMap<>();
+        String playerNeedle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+        if (playerNeedle != null) {
+            for (Object[] r : matchEventRepo.findEventCountsByMatchForTeamAndFoldedName(team.getId(), playerNeedle)) {
+                Long matchId = (Long) r[0];
+                MatchEventType type = (MatchEventType) r[1];
+                int count = ((Number) r[2]).intValue();
+                eventsByMatch.computeIfAbsent(matchId, k -> new HashMap<>()).put(type, count);
+            }
+        }
+
         var rows = new ArrayList<TeamMatchHistoryDto.Row>();
         for (Matches m : matchRepo.findByTeamId(team.getId())) {
             boolean isTeam1 = m.getTeam1() != null && m.getTeam1().getId().equals(team.getId());
@@ -254,7 +278,10 @@ public class PublicProfileController {
             }
             boolean isBye = opponent == null;
 
+            Map<MatchEventType, Integer> mine = eventsByMatch.getOrDefault(m.getId(), Map.of());
+
             rows.add(new TeamMatchHistoryDto.Row(
+                    m.getId(),
                     m.getRound() == null ? null : m.getRound().getNumber(),
                     m.getTableNo(),
                     opponent == null ? null : opponent.getName(),
@@ -262,7 +289,11 @@ public class PublicProfileController {
                     oppScore,
                     m.getStatus() == null ? null : m.getStatus().name(),
                     won,
-                    isBye
+                    isBye,
+                    mine.getOrDefault(MatchEventType.GOAL, 0),
+                    mine.getOrDefault(MatchEventType.OWN_GOAL, 0),
+                    mine.getOrDefault(MatchEventType.YELLOW_CARD, 0),
+                    mine.getOrDefault(MatchEventType.RED_CARD, 0)
             ));
         }
 
@@ -312,14 +343,23 @@ public class PublicProfileController {
                 })
                 .toList();
 
+        // The profile's own folded "ime prezime" - lets us attribute goals
+        // (and, in principle, any future per-player stat) to the specific
+        // roster row that's this person, not just "the team". Same folding
+        // as the player-claim-suggestion flow (PersonNameFolder).
+        String playerNeedle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+
         int tournamentsPlayed = 0;
         int tournamentsWon = 0;
+        int tournamentsSecond = 0;
+        int tournamentsThird = 0;
         int matchesPlayed = 0;
         int matchesWon = 0;
         int matchesDrawn = 0;
         int matchesLost = 0;
         int goalsFor = 0;
         int goalsAgainst = 0;
+        int playerGoals = 0;
 
         // Top-team aggregation - by normalized name.
         Map<String, int[]> teamPlays = new HashMap<>();
@@ -342,11 +382,25 @@ public class PublicProfileController {
                 cur[0]++;
             }
 
-            // Did this team win the tournament?
+            // Did this team win the tournament, or finish 2nd/3rd?
             if (tour.getWinnerName() != null
                     && t.getName() != null
                     && tour.getWinnerName().trim().equalsIgnoreCase(t.getName().trim())) {
                 tournamentsWon++;
+            } else if (tour.getSecondPlaceName() != null
+                    && t.getName() != null
+                    && tour.getSecondPlaceName().trim().equalsIgnoreCase(t.getName().trim())) {
+                tournamentsSecond++;
+            } else if (tour.getThirdPlaceName() != null
+                    && t.getName() != null
+                    && tour.getThirdPlaceName().trim().equalsIgnoreCase(t.getName().trim())) {
+                tournamentsThird++;
+            }
+
+            // Goals personally scored by the roster player matching this
+            // profile's name, on this specific team.
+            if (playerNeedle != null) {
+                playerGoals += (int) playersRepo.countGoalsForTeamAndFoldedName(t.getId(), playerNeedle);
             }
 
             recents.add(new Recent(t, tour));
@@ -373,6 +427,17 @@ public class PublicProfileController {
                 }
             }
         }
+
+        // Best-ever podium finish - 1/2/3, or null if never on the podium.
+        // NOT a nested ternary: mixing int literals with a null branch makes
+        // javac promote the whole chain to primitive int (JLS 15.25 binary
+        // numeric promotion) and unbox the null branch, throwing NPE exactly
+        // when nobody has ever been on the podium.
+        Integer bestPlacement;
+        if (tournamentsWon > 0) bestPlacement = 1;
+        else if (tournamentsSecond > 0) bestPlacement = 2;
+        else if (tournamentsThird > 0) bestPlacement = 3;
+        else bestPlacement = null;
 
         // Top team (by tournaments played).
         String topTeamName = null;
@@ -416,12 +481,16 @@ public class PublicProfileController {
         return new CareerStatsDto(
                 tournamentsPlayed,
                 tournamentsWon,
+                tournamentsSecond,
+                tournamentsThird,
+                bestPlacement,
                 matchesPlayed,
                 matchesWon,
                 matchesDrawn,
                 matchesLost,
                 goalsFor,
                 goalsAgainst,
+                playerGoals,
                 topTeamName,
                 recentDtos
         );

@@ -31,6 +31,8 @@ export type OptimisticDisplay = {
     minute: number
     assistPlayerId?: number | null
     assistPlayerName?: string | null
+    /** True for a GOAL scored from an in-game penalty ("(pen.)" tag). */
+    penalty?: boolean
 }
 
 type AddOp = {
@@ -76,6 +78,7 @@ function optimisticDto(op: AddOp): MatchEventDto {
         minute: op.display.minute,
         assistPlayerId: op.display.assistPlayerId ?? null,
         assistPlayerName: op.display.assistPlayerName ?? null,
+        penalty: op.display.penalty ?? false,
         clientEventId: op.clientEventId,
     }
 }
