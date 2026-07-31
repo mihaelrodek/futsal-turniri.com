@@ -42,6 +42,14 @@ public class PlayerProfileLinker {
     @Inject PlayersRepository playersRepo;
     @Inject UserProfileRepository profileRepo;
 
+    /**
+     * Self-injection so {@link #backfillAll()} can call the transactional
+     * methods below THROUGH the CDI proxy - a plain this.foo() call would
+     * bypass the interceptor and run the whole pass in (or outside) one
+     * transaction, which is exactly what this design avoids.
+     */
+    @Inject PlayerProfileLinker self;
+
     /** What a linking pass did - surfaced by the admin backfill endpoint. */
     public record LinkResult(int scanned, int linked, int ambiguous) {}
 
@@ -113,29 +121,55 @@ public class PlayerProfileLinker {
     }
 
     /**
-     * One pass over every unlinked roster row. Cheap enough to run at boot
-     * (grassroots-sized data) and idempotent, so it's the mechanism that
-     * back-fills historical tournaments after this feature ships.
+     * One pass over every unlinked roster row - the mechanism that back-fills
+     * historical tournaments after this feature ships. Idempotent.
+     *
+     * <p>Deliberately NOT one big transaction: a full-table pass can outlive
+     * the default 60s transaction timeout, and the pass that repairs history
+     * is the last thing that should fail on a fresh deploy. Ids are collected
+     * once, then each row is linked in its own short transaction - a row that
+     * fails costs that row, not the whole run.
      */
-    @Transactional
     public LinkResult backfillAll() {
-        List<Player> candidates = playersRepo.findAllUnlinked();
+        List<Long> ids = self.unlinkedPlayerIds();
         int linked = 0;
         int ambiguous = 0;
-        for (Player p : candidates) {
-            if (!isLinkable(p)) continue;
-            String needle = PersonNameFolder.fold(p.getName());
-            if (needle.isBlank() || !needle.contains(" ")) continue;
-            List<UserProfile> matches = profileRepo.findByFoldedFullName(needle);
-            if (matches.isEmpty()) continue;
-            if (matches.size() > 1) { ambiguous++; continue; }
-            p.setClaimedByUid(matches.get(0).getUserUid());
-            playersRepo.persist(p);
-            linked++;
+        for (Long id : ids) {
+            try {
+                switch (self.linkPlayerById(id)) {
+                    case LINKED -> linked++;
+                    case AMBIGUOUS -> ambiguous++;
+                    case SKIPPED -> { }
+                }
+            } catch (RuntimeException e) {
+                LOG.debugf(e, "Backfill skipped player %d", id);
+            }
         }
         LOG.infof("Player-profile backfill: scanned=%d linked=%d ambiguous=%d",
-                candidates.size(), linked, ambiguous);
-        return new LinkResult(candidates.size(), linked, ambiguous);
+                ids.size(), linked, ambiguous);
+        return new LinkResult(ids.size(), linked, ambiguous);
+    }
+
+    /** Outcome of a single row - counted by {@link #backfillAll()}. */
+    public enum Outcome { LINKED, AMBIGUOUS, SKIPPED }
+
+    @Transactional
+    public List<Long> unlinkedPlayerIds() {
+        return playersRepo.findAllUnlinkedIds();
+    }
+
+    @Transactional
+    public Outcome linkPlayerById(Long id) {
+        Player p = playersRepo.findByIdOptional(id).orElse(null);
+        if (p == null || !isLinkable(p)) return Outcome.SKIPPED;
+        String needle = PersonNameFolder.fold(p.getName());
+        if (needle.isBlank() || !needle.contains(" ")) return Outcome.SKIPPED;
+        List<UserProfile> matches = profileRepo.findByFoldedFullName(needle);
+        if (matches.isEmpty()) return Outcome.SKIPPED;
+        if (matches.size() > 1) return Outcome.AMBIGUOUS;
+        p.setClaimedByUid(matches.get(0).getUserUid());
+        playersRepo.persist(p);
+        return Outcome.LINKED;
     }
 
     /** Demo/showcase rows and hidden tournaments never take part. */

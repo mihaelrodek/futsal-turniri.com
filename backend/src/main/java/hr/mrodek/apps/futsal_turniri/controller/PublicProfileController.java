@@ -237,14 +237,21 @@ public class PublicProfileController {
                 && team.getSubmittedByUid().equals(profile.getUserUid()))
                 || (team.getCoSubmittedByUid() != null
                 && team.getCoSubmittedByUid().equals(profile.getUserUid()));
+        // The identity link counts as ownership here: a teammate may have
+        // registered the team, but this person IS one of its roster rows, so
+        // the tournament shows on their profile - and the match history behind
+        // it has to open, not 404.
+        boolean ownsByPlayerLink = !ownsByUid
+                && playersRepo.isClaimedInTeam(team.getId(), profile.getUserUid());
+
         boolean ownsByPreset = false;
-        if (!ownsByUid && team.getSubmittedByUid() == null) {
+        if (!ownsByUid && !ownsByPlayerLink && team.getSubmittedByUid() == null) {
             String teamName = team.getName() == null ? "" : team.getName().trim().toLowerCase(Locale.ROOT);
             ownsByPreset = presetRepo.findByUserUid(profile.getUserUid()).stream()
                     .map(UserTeamPreset::getName)
                     .anyMatch(n -> n != null && n.trim().toLowerCase(Locale.ROOT).equals(teamName));
         }
-        if (!ownsByUid && !ownsByPreset) {
+        if (!ownsByUid && !ownsByPlayerLink && !ownsByPreset) {
             // Treat as missing - same shape as a wrong slug so we don't leak
             // existence-by-id.
             throw new NotFoundException("Par nije pronađen za ovaj profil.");

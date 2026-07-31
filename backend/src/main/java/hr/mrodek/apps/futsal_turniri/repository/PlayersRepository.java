@@ -163,15 +163,30 @@ public class PlayersRepository implements AppRepository<Player, Long> {
                 .getResultList();
     }
 
-    /** Every roster row nobody is linked to yet - the backfill's input set. */
-    public List<Player> findAllUnlinked() {
+    /**
+     * Is this user linked to a roster row of that team? The identity link
+     * (claimed_by_uid) is what puts a tournament on someone's profile even
+     * when a teammate registered the team, so the endpoints that drill into
+     * that tournament have to accept it as ownership too.
+     */
+    public boolean isClaimedInTeam(Long teamId, String uid) {
+        if (teamId == null || uid == null || uid.isBlank()) return false;
+        return count("team.id = ?1 and claimedByUid = ?2", teamId, uid) > 0;
+    }
+
+    /**
+     * Ids of every roster row nobody is linked to yet - the backfill's input
+     * set. Ids rather than entities so the pass can hold one short
+     * transaction per row instead of one long one over the whole table (a
+     * single big transaction risks the default 60s timeout, and on a fresh
+     * deploy that would fail the very pass that back-fills history).
+     */
+    public List<Long> findAllUnlinkedIds() {
         return em.createQuery("""
-                        select p from Player p
-                        join fetch p.team t
-                        join fetch t.tournament tr
+                        select p.id from Player p
                         where p.claimedByUid is null
                           and p.demo = false
-                        """, Player.class)
+                        """, Long.class)
                 .getResultList();
     }
 

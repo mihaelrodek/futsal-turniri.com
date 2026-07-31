@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
 import io.quarkus.runtime.StartupEvent;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
@@ -25,7 +26,29 @@ public class PlayerProfileLinkerStartup {
 
     @Inject PlayerProfileLinker linker;
 
+    /**
+     * Kill switch. The pass is idempotent and runs off-thread, but a boot-time
+     * job that touches every roster row deserves a way to be turned off from
+     * config alone - no redeploy - if it ever misbehaves on a big database.
+     */
+    @ConfigProperty(name = "futsal.player-link.backfill-at-start", defaultValue = "true")
+    boolean backfillAtStart;
+
     void onStart(@Observes StartupEvent ev) {
+        if (!backfillAtStart) {
+            LOG.info("Player-profile backfill at startup disabled by config");
+            return;
+        }
+        // OFF the startup thread on purpose: Quarkus only opens the HTTP port
+        // once every StartupEvent observer has returned, so doing the whole
+        // pass inline would make the app answer 502 through the reverse proxy
+        // for as long as it takes. Nothing depends on it having finished.
+        Thread worker = new Thread(this::runQuietly, "player-profile-backfill");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void runQuietly() {
         try {
             linker.backfillAll();
         } catch (RuntimeException e) {
