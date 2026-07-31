@@ -61,7 +61,6 @@ import {
 import type { MyTournamentParticipation } from "../api/userMe"
 import {
     deleteAvatar,
-    getPlayerSuggestions,
     getProfile,
     syncProfile,
     updateLanguage,
@@ -86,7 +85,9 @@ import { MyPlayerClaimRequests, PlayerClaimRequestDialog } from "../components/P
 import { PLAYER_CLAIMS_CHANGED_EVENT } from "../components/PlayerClaimFirstRun"
 import {
     getMyPlayerClaimRequests,
+    getPlayerClaimState,
     type PlayerClaimRequest as PlayerClaimRequestRow,
+    type PlayerClaimState as PlayerClaimStateRow,
 } from "../api/playerClaims"
 import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
 import AdminCameraInquiriesTab from "../components/AdminCameraInquiriesTab"
@@ -379,11 +380,12 @@ export default function PublicProfilePage() {
     // we compare slugs. mySlug is populated after /user/me/sync runs.
     const isOwner = !!profile && !!user?.uid && !!mySlug && mySlug === profile.slug
 
-    // Does an exact name match still exist for this account? The automatic
-    // linking itself happens app-level (PlayerClaimFirstRun, so it also fires
-    // right after registration) - here we only need to know whether to offer
-    // the manual, admin-approved request instead.
-    const hasSuggestions = usePlayerSuggestionProbe(isOwner ? user?.uid : undefined, !!profile)
+    // Does an exact name match still exist for this account, and did the
+    // person answer "nisam igrač"? The automatic linking itself happens
+    // app-level (PlayerClaimFirstRun, so it also fires right after
+    // registration) - here this only decides whether to volunteer the manual,
+    // admin-approved request dialog.
+    const claimState = usePlayerClaimState(isOwner ? user?.uid : undefined, !!profile)
 
     // App-level auto-claim just linked something - refetch so the new team
     // shows up without a reload. `refreshProfile` is a hoisted function
@@ -414,18 +416,24 @@ export default function PublicProfilePage() {
     const hasOpenOrGrantedRequest = claimRequests.some(
         (r) => r.status === "PENDING" || r.status === "APPROVED",
     )
+    // Nothing matched, nothing linked, nothing queued - this person's history
+    // is invisible unless they ask for it manually.
     const needsManualClaim =
         isOwner
-        && hasSuggestions === false
+        && claimState != null
+        && claimState.suggestions.length === 0
         && (profile?.teams.length ?? 0) === 0
         && !hasOpenOrGrantedRequest
 
     useEffect(() => {
         if (!needsManualClaim || profileTab !== "turniri") return
+        // Someone who said "nisam igrač" gets no unsolicited dialog - but the
+        // button below stays, so they can still start one themselves.
+        if (claimState?.optedOut) return
         if (requestDialogAutoOpened.current) return
         requestDialogAutoOpened.current = true
         setRequestDialogOpen(true)
-    }, [needsManualClaim, profileTab])
+    }, [needsManualClaim, profileTab, claimState?.optedOut])
 
     if (loading) {
         return (
@@ -550,28 +558,29 @@ export default function PublicProfilePage() {
             {/* === Manual player claim - the owner's own requests plus the
                   "ask to be linked" CTA. Only for the owner, on Turniri:
                   a visitor has nothing to claim here. === */}
-            {isOwner && profileTab === "turniri" && (claimRequests.length > 0 || needsManualClaim) && (
+            {isOwner && profileTab === "turniri" && (
                 <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                     <Card.Body p={{ base: "4", md: "5" }}>
                         <VStack align="stretch" gap="3">
                             {needsManualClaim && (
-                                <>
-                                    <Text fontSize="sm" color="fg.muted">
-                                        {t.components.playerClaim.myRequests.noMatchHint}
-                                    </Text>
-                                    <HStack>
-                                        <Button
-                                            size="sm"
-                                            variant="solid"
-                                            colorPalette="pitch"
-                                            onClick={() => setRequestDialogOpen(true)}
-                                        >
-                                            <FiUserCheck />
-                                            {t.components.playerClaim.myRequests.openDialogButton}
-                                        </Button>
-                                    </HStack>
-                                </>
+                                <Text fontSize="sm" color="fg.muted">
+                                    {t.components.playerClaim.myRequests.noMatchHint}
+                                </Text>
                             )}
+                            {/* Always available to the owner - including after
+                                "nisam igrač", which only silences the
+                                automatic prompt, never this button. */}
+                            <HStack>
+                                <Button
+                                    size="sm"
+                                    variant={needsManualClaim ? "solid" : "outline"}
+                                    colorPalette="pitch"
+                                    onClick={() => setRequestDialogOpen(true)}
+                                >
+                                    <FiUserCheck />
+                                    {t.components.playerClaim.myRequests.openDialogButton}
+                                </Button>
+                            </HStack>
                             <MyPlayerClaimRequests
                                 requests={claimRequests}
                                 onChanged={() => setClaimRequestsVersion((v) => v + 1)}
@@ -2355,20 +2364,20 @@ function SettingsCard() {
    The claiming itself lives app-level in PlayerClaimFirstRun (mounted in
    App.tsx), so it can also fire on the very first page after registering.
    All the profile needs to know is whether an exact-name match still exists
-   for this account: when it doesn't, and nothing is linked yet, we offer the
-   manual admin-approved request instead. Read-only - this probe never
-   mutates anything. */
-function usePlayerSuggestionProbe(uid: string | undefined, ready: boolean) {
-    const [hasSuggestions, setHasSuggestions] = useState<boolean | null>(null)
+   for this account, and whether they answered "nisam igrač": when nothing
+   matches and nothing is linked, the manual admin-approved request is
+   offered instead. Read-only - this probe never mutates anything. */
+function usePlayerClaimState(uid: string | undefined, ready: boolean) {
+    const [state, setState] = useState<PlayerClaimStateRow | null>(null)
 
     useEffect(() => {
-        if (!uid || !ready) { setHasSuggestions(null); return }
+        if (!uid || !ready) { setState(null); return }
         let cancelled = false
-        getPlayerSuggestions()
-            .then((rows) => { if (!cancelled) setHasSuggestions(rows.length > 0) })
-            .catch(() => { if (!cancelled) setHasSuggestions(null) })
+        getPlayerClaimState()
+            .then((s) => { if (!cancelled) setState(s) })
+            .catch(() => { if (!cancelled) setState(null) })
         return () => { cancelled = true }
     }, [uid, ready])
 
-    return hasSuggestions
+    return state
 }

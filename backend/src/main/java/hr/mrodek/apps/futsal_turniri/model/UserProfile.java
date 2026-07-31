@@ -80,6 +80,17 @@ public class UserProfile {
     private String language;
 
     @UpdateTimestamp
+    /**
+     * "Nisam igrač" - the person said they don't play, so the automatic
+     * "is this you?" prompt stops being offered. Stored here rather than in
+     * localStorage because the answer has to hold on every device, and a
+     * namesake appearing on some roster years later must not resurrect the
+     * prompt. Silences suggestions only: the manual, admin-approved request
+     * flow stays available, and clearing this re-enables everything.
+     */
+    @Column(name = "player_claim_opt_out", nullable = false)
+    private boolean playerClaimOptOut = false;
+
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 }

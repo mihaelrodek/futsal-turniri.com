@@ -7,8 +7,10 @@ import hr.mrodek.apps.futsal_turniri.model.Player;
 import hr.mrodek.apps.futsal_turniri.model.PlayerClaimRequest;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.Tournaments;
+import hr.mrodek.apps.futsal_turniri.model.UserProfile;
 import hr.mrodek.apps.futsal_turniri.repository.PlayerClaimRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
+import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
 import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
@@ -63,9 +65,13 @@ public class PlayerClaimRequestController {
     /** Stops one account from queueing an unbounded pile for the admin. */
     private static final int MAX_OPEN_REQUESTS = 5;
 
+    /** Same short cap the "je li ovo ti?" prompt has always used. */
+    private static final int SUGGESTION_LIMIT = 5;
+
     @Inject PlayerClaimRequestRepository requestRepo;
     @Inject PlayersRepository playersRepo;
     @Inject PlayerClaimRequestMapper mapper;
+    @Inject UserProfileRepository profileRepo;
     @Inject JsonWebToken jwt;
 
     @GET
@@ -76,6 +82,62 @@ public class PlayerClaimRequestController {
                 .map(r -> mapper.toDto(r, false))
                 .toList();
     }
+
+    /**
+     * Everything the SPA needs to decide what to offer: the exact-name
+     * matches (empty when there are none, or when the person opted out) plus
+     * the opt-out flag itself. One call, because both the app-level first-run
+     * prompt and the profile page ask exactly this question.
+     */
+    @GET
+    @Path("/player-claim-state")
+    @Transactional
+    public PlayerClaimStateDto claimState() {
+        var profile = profileRepo.findByUid(jwt.getSubject()).orElse(null);
+        boolean optedOut = profile != null && profile.isPlayerClaimOptOut();
+        List<PlayerClaimSuggestionDto> suggestions = optedOut
+                ? List.of()
+                : suggestions(profile);
+        return new PlayerClaimStateDto(optedOut, suggestions);
+    }
+
+    /**
+     * "Nisam igrač" - stop offering the automatic prompt, for good and on
+     * every device. Deliberately does NOT close the manual path: the user can
+     * still open the request dialog themselves at any time, and DELETE here
+     * puts them back in the automatic flow.
+     */
+    @POST
+    @Path("/player-claim-opt-out")
+    @Transactional
+    public PlayerClaimStateDto optOut() {
+        return setOptOut(true);
+    }
+
+    @DELETE
+    @Path("/player-claim-opt-out")
+    @Transactional
+    public PlayerClaimStateDto cancelOptOut() {
+        return setOptOut(false);
+    }
+
+    private PlayerClaimStateDto setOptOut(boolean value) {
+        var profile = profileRepo.findByUid(jwt.getSubject())
+                .orElseThrow(() -> new NotFoundException("Profil nije pronađen."));
+        profile.setPlayerClaimOptOut(value);
+        profileRepo.persist(profile);
+        return new PlayerClaimStateDto(value, value ? List.of() : suggestions(profile));
+    }
+
+    private List<PlayerClaimSuggestionDto> suggestions(UserProfile profile) {
+        String needle = UserMeController.suggestionNeedle(profile);
+        if (needle == null) return List.of();
+        return playersRepo.findUnclaimedByFoldedName(needle, SUGGESTION_LIMIT).stream()
+                .map(mapper::toSuggestionDto)
+                .toList();
+    }
+
+    public record PlayerClaimStateDto(boolean optedOut, List<PlayerClaimSuggestionDto> suggestions) {}
 
     @GET
     @Path("/claimable-players")

@@ -2080,6 +2080,7 @@ export const hr = {
                 intro: "Pronašli smo igrača s tvojim imenom na popisu ekipa. Ako si to ti, povezat ćemo nastup s tvojim profilom.",
                 confirmButton: "Da, to sam ja",
                 declineButton: "Nisam",
+                notAPlayerButton: "Nisam igrač",
             },
             requestDialog: {
                 title: "Zatraži povezivanje s igračem",
@@ -2132,6 +2133,10 @@ export const hr = {
             errorPlayerGone: "Igrač više ne postoji.",
             errorAlreadyClaimed: "Ekipa je u međuvremenu povezana s drugim korisnikom.",
             errorGeneric: "Pokušaj ponovno.",
+            backfillButton: "Poveži po imenima",
+            backfillDoneTitle: "Povezivanje gotovo",
+            backfillDoneDescription: (linked: number, ambiguous: number) =>
+                `Povezano: ${linked}. Preskočeno zbog istog imena: ${ambiguous}.`,
         },
         adminTeamDatabaseTab: {
             title: "Baza ekipa",

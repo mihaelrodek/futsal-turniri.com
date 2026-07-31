@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Which registered user IS this roster row. Set automatically when a
+        name unambiguously matches exactly one profile (PlayerProfileLinker),
+        or by an admin approving a manual claim request.
+
+        Deliberately NOT the same thing as team ownership: teams.submitted_by_uid
+        / co_submitted_by_uid grant edit rights and only have two slots, so a
+        five-player roster of registered users could never be represented there.
+        This column is identity only - it makes appearances show on a profile,
+        and grants nothing.
+    -->
+    <changeSet id="2026-07-31-03-players-claimed-by-uid" author="mrodek">
+        <addColumn tableName="players">
+            <column name="claimed_by_uid" type="varchar(64)"/>
+        </addColumn>
+        <createIndex tableName="players" indexName="idx_players_claimed_by_uid">
+            <column name="claimed_by_uid"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

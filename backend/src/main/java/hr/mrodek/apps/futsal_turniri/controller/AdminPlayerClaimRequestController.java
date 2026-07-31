@@ -6,6 +6,7 @@ import hr.mrodek.apps.futsal_turniri.model.Player;
 import hr.mrodek.apps.futsal_turniri.model.PlayerClaimRequest;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.repository.PlayerClaimRequestRepository;
+import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
 import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
 import jakarta.annotation.security.RolesAllowed;
@@ -47,6 +48,7 @@ public class AdminPlayerClaimRequestController {
 
     @Inject PlayerClaimRequestRepository requestRepo;
     @Inject TeamsRepository teamRepo;
+    @Inject PlayersRepository playersRepo;
     @Inject PlayerClaimRequestMapper mapper;
     @Inject JsonWebToken jwt;
 
@@ -79,9 +81,18 @@ public class AdminPlayerClaimRequestController {
         if (team == null) throw new ClientErrorException("PLAYER_GONE", 409);
 
         String uid = req.getUserUid();
+
+        // The identity link is the part that actually makes the appearance
+        // show on the profile - it works per roster row, so a whole team of
+        // registered players can each be linked.
+        player.setClaimedByUid(uid);
+        playersRepo.persist(player);
+
+        // The co-owner slot (edit rights) is a bonus, and only when it's free -
+        // a taken slot must never be stolen, and it isn't needed for the
+        // appearance to show up.
         boolean alreadyMine = uid.equals(team.getSubmittedByUid()) || uid.equals(team.getCoSubmittedByUid());
-        if (!alreadyMine) {
-            if (team.getCoSubmittedByUid() != null) throw new ClientErrorException("ALREADY_CLAIMED", 409);
+        if (!alreadyMine && team.getCoSubmittedByUid() == null) {
             team.setCoSubmittedByUid(uid);
             teamRepo.persist(team);
         }

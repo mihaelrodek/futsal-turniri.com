@@ -11,10 +11,11 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FiCheck, FiMail, FiX } from "react-icons/fi"
+import { FiCheck, FiMail, FiRefreshCw, FiX } from "react-icons/fi"
 import { Link as RouterLink } from "react-router-dom"
 import {
     adminApprovePlayerClaimRequest,
+    adminBackfillPlayerLinks,
     adminListPlayerClaimRequests,
     adminRejectPlayerClaimRequest,
     type PlayerClaimRequest,
@@ -68,6 +69,21 @@ export default function AdminPlayerClaimRequestsTab() {
         onSettled: () => setBusyId(null),
     })
 
+    const [backfilling, setBackfilling] = useState(false)
+
+    async function runBackfill() {
+        setBackfilling(true)
+        try {
+            const res = await adminBackfillPlayerLinks()
+            showSuccess(s.backfillDoneTitle, s.backfillDoneDescription(res.linked, res.ambiguous))
+            qc.invalidateQueries({ queryKey: ["adminPlayerClaimRequests"] })
+        } catch {
+            showError(s.errorTitle, s.errorGeneric)
+        } finally {
+            setBackfilling(false)
+        }
+    }
+
     const rows: PlayerClaimRequest[] = data ?? []
     const pending = rows.filter((r) => r.status === "PENDING")
 
@@ -77,7 +93,14 @@ export default function AdminPlayerClaimRequestsTab() {
                 <VStack align="stretch" gap="4">
                     <HStack justify="space-between" wrap="wrap" gap="2">
                         <Heading size="md">{s.heading}</Heading>
-                        <Text fontSize="sm" color="fg.muted">{s.pendingCount(pending.length)}</Text>
+                        <HStack gap="3">
+                            <Text fontSize="sm" color="fg.muted">{s.pendingCount(pending.length)}</Text>
+                            {/* Manual re-run of the automatic matcher - useful
+                                right after fixing a misspelled roster name. */}
+                            <Button size="xs" variant="outline" loading={backfilling} onClick={runBackfill}>
+                                <FiRefreshCw /> {s.backfillButton}
+                            </Button>
+                        </HStack>
                     </HStack>
                     <Text fontSize="sm" color="fg.muted">{s.description}</Text>
 

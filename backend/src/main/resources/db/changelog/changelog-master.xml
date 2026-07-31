@@ -78,4 +78,6 @@
     <include file="db/changelog/2026-07-30-03-tournament-delete-requests.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-31-01-match-events-penalty.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-31-02-player-claim-requests.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-31-03-players-claimed-by-uid.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-07-31-04-user-profiles-claim-opt-out.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

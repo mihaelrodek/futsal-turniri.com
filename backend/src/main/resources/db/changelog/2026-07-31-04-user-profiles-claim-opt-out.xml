@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        "Nisam igrač" - the user said they don't play, so stop offering to
+        link them to roster rows. Server-side (not localStorage) on purpose:
+        the answer has to hold on every device, and the prompt can otherwise
+        reappear years later when a namesake shows up on some roster.
+
+        It only silences the automatic prompt; the manual "request a link"
+        dialog stays available, and clearing the flag re-enables suggestions.
+    -->
+    <changeSet id="2026-07-31-04-user-profiles-claim-opt-out" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="player_claim_opt_out" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

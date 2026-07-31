@@ -3,9 +3,9 @@ import { useAuth } from "../auth/AuthContext"
 import {
     claimPlayerSuggestion,
     listMyTeams,
-    getPlayerSuggestions,
     type PlayerClaimSuggestion,
 } from "../api/userMe"
+import { getPlayerClaimState, setPlayerClaimOptOut } from "../api/playerClaims"
 import { PlayerClaimConfirmDialog } from "./PlayerClaimDialogs"
 import { useTranslation } from "../i18n"
 import { showSuccess } from "../toaster"
@@ -53,7 +53,11 @@ export default function PlayerClaimFirstRun() {
         ;(async () => {
             let rows: PlayerClaimSuggestion[]
             try {
-                rows = await getPlayerSuggestions()
+                const state = await getPlayerClaimState()
+                // "Nisam igrač" answered earlier (on any device) - the server
+                // already returns no suggestions, this is just explicit.
+                if (state.optedOut) return
+                rows = state.suggestions
             } catch {
                 return
             }
@@ -115,8 +119,26 @@ export default function PlayerClaimFirstRun() {
     }
 
     function decline() {
+        // "Nisam" = not this person. Remembered on this device only, because
+        // a different roster row might genuinely be them next season.
         if (uid) localStorage.setItem(promptKey(uid), "1")
         setOpen(false)
+    }
+
+    /** "Nisam igrač" - stop asking for good, on every device. The manual
+     *  request dialog on the profile stays available regardless. */
+    async function notAPlayer() {
+        setBusy(true)
+        try {
+            await setPlayerClaimOptOut(true)
+        } catch {
+            // Best-effort: fall back to the per-device flag so at least this
+            // browser stops asking.
+            if (uid) localStorage.setItem(promptKey(uid), "1")
+        } finally {
+            setBusy(false)
+            setOpen(false)
+        }
     }
 
     if (!open) return null
@@ -127,6 +149,7 @@ export default function PlayerClaimFirstRun() {
             busy={busy}
             onConfirm={accept}
             onDecline={decline}
+            onNotAPlayer={notAPlayer}
         />
     )
 }

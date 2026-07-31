@@ -46,12 +46,16 @@ export function PlayerClaimConfirmDialog({
     busy,
     onConfirm,
     onDecline,
+    onNotAPlayer,
 }: {
     open: boolean
     suggestions: PlayerClaimSuggestion[]
     busy: boolean
     onConfirm: () => void
+    /** "Nisam" - not this particular person; may be asked again later. */
     onDecline: () => void
+    /** "Nisam igrač" - never ask again, on any device. */
+    onNotAPlayer: () => void
 }) {
     const t = useTranslation()
     const s = t.components.playerClaim.confirmDialog
@@ -93,7 +97,13 @@ export function PlayerClaimConfirmDialog({
                                 </VStack>
                             </VStack>
                         </Dialog.Body>
-                        <Dialog.Footer>
+                        <Dialog.Footer flexWrap="wrap" gap="2">
+                            {/* Three answers, not two: "not me" is about THIS
+                                suggestion, "nisam igrač" is about the whole
+                                feature and is remembered server-side. */}
+                            <Button variant="ghost" size="sm" onClick={onNotAPlayer} disabled={busy}>
+                                {s.notAPlayerButton}
+                            </Button>
                             <Button variant="ghost" onClick={onDecline} disabled={busy}>
                                 {s.declineButton}
                             </Button>

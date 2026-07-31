@@ -55,6 +55,20 @@ public class Player {
     @Column(name = "is_demo", nullable = false)
     private boolean demo = false;
 
+    /**
+     * Firebase UID of the registered user this roster row IS, or null when
+     * nobody is linked. Set automatically when the name unambiguously matches
+     * exactly one profile (see {@code PlayerProfileLinker}), or by an admin
+     * approving a manual claim request.
+     *
+     * <p>Identity only: it makes the appearance show up on that person's
+     * profile and grants NO rights. Editing a team still requires one of the
+     * submitter slots on {@link Teams}, which is also why this can't live
+     * there - a team has two such slots, a roster has eleven names.
+     */
+    @Column(name = "claimed_by_uid", length = 64)
+    private String claimedByUid;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

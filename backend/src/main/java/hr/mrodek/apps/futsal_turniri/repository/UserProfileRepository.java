@@ -35,6 +35,26 @@ public class UserProfileRepository implements PanacheRepositoryBase<UserProfile,
                 .collect(Collectors.toMap(UserProfile::getUserUid, p -> p));
     }
 
+    /**
+     * Profiles whose name folds to {@code needle} - the mirror image of
+     * {@code PlayersRepository.findUnclaimedByFoldedName}, looked at from the
+     * other side: from a roster name to the registered people who could be it.
+     *
+     * <p>Matches either the separate first+last fields or the single display
+     * name (social logins never fill the former). Returns ALL matches on
+     * purpose - the caller links only when there is exactly one, because two
+     * people sharing a name must never be auto-resolved to whichever row the
+     * database happened to return first.
+     */
+    public List<UserProfile> findByFoldedFullName(String needle) {
+        if (needle == null || needle.isBlank()) return List.of();
+        return find("""
+                        function('translate', lower(trim(concat(coalesce(firstName, ''), ' ', coalesce(lastName, '')))), 'šđčćž', 'sdccz') = ?1
+                     or function('translate', lower(trim(coalesce(displayName, ''))), 'šđčćž', 'sdccz') = ?1
+                        """, needle)
+                .list();
+    }
+
     /** True when some other user already owns this slug. */
     public boolean slugTaken(String slug) {
         if (slug == null || slug.isBlank()) return false;

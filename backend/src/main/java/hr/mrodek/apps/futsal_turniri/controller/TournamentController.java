@@ -73,6 +73,7 @@ public class TournamentController {
     @Inject TournamentsRepository tournamentsRepo;
     @Inject TeamsRepository teamRepo;
     @Inject PlayersRepository playerRepo;
+    @Inject PlayerProfileLinker profileLinker;
     @Inject RoundsRepository roundsRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject MatchEventRepository matchEventRepo;
@@ -1858,6 +1859,11 @@ public class TournamentController {
 
         playerRepo.persist(player);
 
+        // Attach the roster row to a registered profile right away when the
+        // name resolves to exactly one - that's what makes an appearance show
+        // on someone's profile without waiting for them to sign in and look.
+        profileLinker.linkPlayer(player);
+
         return Response.status(Response.Status.CREATED)
                 .entity(playerMapper.toDto(player))
                 .build();
@@ -1916,6 +1922,11 @@ public class TournamentController {
                 player.setCaptain(false);
             }
         }
+
+        // A rename can make the row match a profile it didn't before. An
+        // existing link is left alone - only an admin (or the person
+        // themselves, via the claim flow) should be able to break one.
+        profileLinker.linkPlayer(player);
 
         return Response.ok(playerMapper.toDto(player)).build();
     }

@@ -97,11 +97,18 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
         // a complete query, named params via Parameters builder.
         // Co-owned teams (claimed via the share link) also count - they
         // show on the claimer's profile just like their own self-registrations.
+        // The third arm is the identity link (players.claimed_by_uid): a roster
+        // row that IS this person, set automatically on a unique name match or
+        // by an admin approving a claim request. It grants no rights - it only
+        // makes the appearance show up here, which is what lets a whole roster
+        // of registered players each see the tournament even though a team has
+        // only two submitter slots.
         StringBuilder jpql = new StringBuilder("""
                 from Teams p
                 join fetch p.tournament t
                 where p.submittedByUid = :uid
                    or p.coSubmittedByUid = :uid
+                   or exists (select 1 from Player pl where pl.team = p and pl.claimedByUid = :uid)
                 """);
         Parameters params = Parameters.with("uid", uid);
         if (!lowered.isEmpty()) {

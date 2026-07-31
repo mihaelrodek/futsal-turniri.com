@@ -18,6 +18,7 @@ import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
 import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PersonNameFolder;
 import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
+import hr.mrodek.apps.futsal_turniri.services.PlayerProfileLinker;
 import hr.mrodek.apps.futsal_turniri.services.SlugService;
 import hr.mrodek.apps.futsal_turniri.services.StorageService;
 import io.quarkus.security.Authenticated;
@@ -62,6 +63,7 @@ public class UserMeController {
     @Inject StorageService storageService;
     @Inject MessageService messages;
     @Inject PlayerClaimRequestMapper claimMapper;
+    @Inject PlayerProfileLinker profileLinker;
     @Inject JsonWebToken jwt;
 
     @GET
@@ -154,6 +156,9 @@ public class UserMeController {
     @Transactional
     public List<PlayerClaimSuggestionDto> playerSuggestions() {
         var profile = profileRepo.findByUid(jwt.getSubject()).orElse(null);
+        // "Nisam igrač" - the person told us they don't play, so nothing is
+        // suggested anywhere, on any device, until they undo it.
+        if (profile != null && profile.isPlayerClaimOptOut()) return List.of();
         String needle = suggestionNeedle(profile);
         if (needle == null) return List.of();
         return playersRepo.findUnclaimedByFoldedName(needle, PLAYER_SUGGESTION_LIMIT).stream()
@@ -210,6 +215,10 @@ public class UserMeController {
 
         team.setCoSubmittedByUid(uid);
         teamRepo.persist(team);
+        // Same identity link the server-side matcher writes - so the roster
+        // row itself knows who it is, not just the team.
+        player.setClaimedByUid(uid);
+        playersRepo.persist(player);
         return new PlayerSuggestionClaimResultDto(true, team.getId(), team.getName());
     }
 
@@ -320,6 +329,12 @@ public class UserMeController {
             String email = blank(emailClaim.toString());
             if (email != null) profile.setEmail(email);
         }
+        // Attach any roster rows that unambiguously carry this person's name.
+        // Runs on every login, so a tournament added since last time shows up
+        // straight away - and, unlike the client-side flow, it also fills in
+        // for accounts whose owner never opens their own profile page.
+        profileLinker.linkForProfile(profile);
+
         // ensureProfile returns the persisted entity with the slug guaranteed.
         return toDto(profile);
     }
@@ -362,6 +377,11 @@ public class UserMeController {
             if (email != null) profile.setEmail(email);
         }
         profileRepo.persist(profile);
+
+        // The name is only known NOW, at the end of registration - so this is
+        // the moment old tournaments can be attached to the new account.
+        profileLinker.linkForProfile(profile);
+
         return toDto(profile);
     }
 

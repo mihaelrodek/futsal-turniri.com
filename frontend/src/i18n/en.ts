@@ -2033,6 +2033,7 @@ export const en: Dictionary = {
                 intro: "We found a roster player with your name. If it's you, we'll link that appearance to your profile.",
                 confirmButton: "Yes, that's me",
                 declineButton: "Not me",
+                notAPlayerButton: "I'm not a player",
             },
             requestDialog: {
                 title: "Request a player link",
@@ -2085,6 +2086,10 @@ export const en: Dictionary = {
             errorPlayerGone: "That player no longer exists.",
             errorAlreadyClaimed: "The team was linked to another user in the meantime.",
             errorGeneric: "Please try again.",
+            backfillButton: "Match by name",
+            backfillDoneTitle: "Matching finished",
+            backfillDoneDescription: (linked: number, ambiguous: number) =>
+                `Linked: ${linked}. Skipped as ambiguous: ${ambiguous}.`,
         },
         adminTeamDatabaseTab: {
             title: "Team database",

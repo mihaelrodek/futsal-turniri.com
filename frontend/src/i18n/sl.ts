@@ -2034,6 +2034,7 @@ export const sl: Dictionary = {
                 intro: "Našli smo igralca s tvojim imenom na seznamih ekip. Če si to ti, bomo nastop povezali s tvojim profilom.",
                 confirmButton: "Da, to sem jaz",
                 declineButton: "Nisem",
+                notAPlayerButton: "Nisem igralec",
             },
             requestDialog: {
                 title: "Zahtevaj povezavo z igralcem",
@@ -2086,6 +2087,10 @@ export const sl: Dictionary = {
             errorPlayerGone: "Igralec ne obstaja več.",
             errorAlreadyClaimed: "Ekipa je bila medtem povezana z drugim uporabnikom.",
             errorGeneric: "Poskusi znova.",
+            backfillButton: "Poveži po imenih",
+            backfillDoneTitle: "Povezovanje končano",
+            backfillDoneDescription: (linked: number, ambiguous: number) =>
+                `Povezano: ${linked}. Preskočeno zaradi enakega imena: ${ambiguous}.`,
         },
         adminTeamDatabaseTab: {
             title: "Baza ekip",

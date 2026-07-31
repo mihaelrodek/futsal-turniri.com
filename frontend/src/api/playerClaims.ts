@@ -30,6 +30,36 @@ export type PlayerClaimRequest = {
     requesterSlug: string | null
 }
 
+/**
+ * What the SPA needs to decide what to offer: the exact-name matches (empty
+ * when there are none, or when the person answered "nisam igrač") plus the
+ * opt-out flag. One call for both the first-run prompt and the profile page.
+ */
+export type PlayerClaimState = {
+    optedOut: boolean
+    suggestions: PlayerClaimSuggestion[]
+}
+
+/** Silent - callers degrade to "offer nothing" when it fails. */
+export async function getPlayerClaimState(): Promise<PlayerClaimState> {
+    const { data } = await http.get<PlayerClaimState>("/user/me/player-claim-state", {
+        silent: true,
+    } as any)
+    return data
+}
+
+/**
+ * "Nisam igrač" (true) / undo (false). Server-side so the answer holds on
+ * every device - and it only silences the automatic prompt: the manual
+ * request dialog stays reachable either way.
+ */
+export async function setPlayerClaimOptOut(optedOut: boolean): Promise<PlayerClaimState> {
+    const { data } = optedOut
+        ? await http.post<PlayerClaimState>("/user/me/player-claim-opt-out", null, { silent: true } as any)
+        : await http.delete<PlayerClaimState>("/user/me/player-claim-opt-out", { silent: true } as any)
+    return data
+}
+
 /** Roster search for the request dialog. Silent - the dialog owns its errors. */
 export async function searchClaimablePlayers(q: string): Promise<PlayerClaimSuggestion[]> {
     const { data } = await http.get<PlayerClaimSuggestion[]>("/user/me/claimable-players", {
@@ -67,6 +97,18 @@ export async function cancelPlayerClaimRequest(id: number): Promise<PlayerClaimR
 
 export async function adminListPlayerClaimRequests(): Promise<PlayerClaimRequest[]> {
     const { data } = await http.get<PlayerClaimRequest[]>("/admin/player-claim-requests")
+    return data
+}
+
+/**
+ * Re-run the roster ⇄ profile matcher over every unlinked roster row. The
+ * same pass runs at boot and on every roster/profile write, so this is for
+ * "I just fixed a typo, update the profiles now". Idempotent.
+ */
+export type PlayerLinkBackfillResult = { scanned: number; linked: number; ambiguous: number }
+
+export async function adminBackfillPlayerLinks(): Promise<PlayerLinkBackfillResult> {
+    const { data } = await http.post<PlayerLinkBackfillResult>("/admin/player-links/backfill")
     return data
 }
 

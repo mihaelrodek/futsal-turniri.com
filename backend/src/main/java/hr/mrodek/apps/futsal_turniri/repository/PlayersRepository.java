@@ -115,23 +115,63 @@ public class PlayersRepository implements AppRepository<Player, Long> {
      * the team must not make its players unrequestable. Only the co-owner
      * slot has to be free, since that's what an approval fills.
      */
+    @SuppressWarnings("unchecked")
     public List<Player> searchClaimableByName(String q, int limit) {
         if (q == null || q.isBlank()) return List.of();
         String needle = "%" + PersonNameFolder.fold(q) + "%";
+        // NATIVE on purpose. The equality variants above can compare
+        // function('translate', …) with `=`, but HQL types that legacy
+        // function call as Object, and Hibernate 6 rejects an Object operand
+        // on the left of LIKE - which surfaced as an IllegalArgumentException
+        // and, through our mapper, a 400 on every search. Postgres has no
+        // such qualms, and translate() is a Postgres function anyway.
+        return em.createNativeQuery("""
+                        select p.* from players p
+                        join teams t on t.id = p.team_id
+                        join tournaments tr on tr.id = t.tournament_id
+                        where p.is_demo = false
+                          and t.is_demo = false
+                          and t.pending_approval = false
+                          and t.co_submitted_by_uid is null
+                          and tr.is_hidden = false
+                          and translate(lower(trim(p.name)), 'šđčćž', 'sdccz') like :needle
+                        order by tr.start_at desc nulls last, p.id desc
+                        """, Player.class)
+                .setParameter("needle", needle)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+
+    /**
+     * Unlinked roster rows whose folded name equals {@code foldedNeedle} -
+     * what {@code PlayerProfileLinker} walks when a profile is created or
+     * renamed, so old tournaments attach to the new account immediately.
+     * Team + tournament are join-fetched; the linker checks their demo/hidden
+     * flags itself.
+     */
+    public List<Player> findUnlinkedByFoldedName(String foldedNeedle) {
+        if (foldedNeedle == null || foldedNeedle.isBlank()) return List.of();
         return em.createQuery("""
                         select p from Player p
                         join fetch p.team t
                         join fetch t.tournament tr
-                        where p.demo = false
-                          and t.demo = false
-                          and t.pendingApproval = false
-                          and t.coSubmittedByUid is null
-                          and tr.hidden = false
-                          and function('translate', lower(trim(p.name)), 'šđčćž', 'sdccz') like :needle
-                        order by tr.startAt desc nulls last, p.id desc
+                        where p.claimedByUid is null
+                          and p.demo = false
+                          and function('translate', lower(trim(p.name)), 'šđčćž', 'sdccz') = :needle
                         """, Player.class)
-                .setParameter("needle", needle)
-                .setMaxResults(limit)
+                .setParameter("needle", foldedNeedle)
+                .getResultList();
+    }
+
+    /** Every roster row nobody is linked to yet - the backfill's input set. */
+    public List<Player> findAllUnlinked() {
+        return em.createQuery("""
+                        select p from Player p
+                        join fetch p.team t
+                        join fetch t.tournament tr
+                        where p.claimedByUid is null
+                          and p.demo = false
+                        """, Player.class)
                 .getResultList();
     }
 
