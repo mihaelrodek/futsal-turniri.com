@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode, Ref } from "react"
+import type { CSSProperties, ReactNode, Ref } from "react"
 import { Box, Button, Dialog, Flex, IconButton, Portal, Text } from "@chakra-ui/react"
 import { FiDownload, FiX } from "react-icons/fi"
 import { toJpeg, toPng } from "html-to-image"
@@ -353,7 +353,10 @@ function PosterPage({
     nodeRef?: Ref<HTMLDivElement>
     /** Page orientation - portrait (groups / schedule) or landscape (bracket). */
     orientation?: Orientation
-    /** Bracket exports use explicit label rows; other posters keep the compact line. */
+    /** Groups / schedule / bracket use explicit Organizator/Datum/Lokacija
+     *  rows; the scorer and match posters keep the compact one-line variant.
+     *  Any page-1 pixel budget must be computed for the mode actually passed
+     *  here - see `headerExcessPx`. */
     headerMetaMode?: "inline" | "labels"
     /** 0-based page index (0 → full header) and total page count. */
     pageIndex: number
@@ -387,7 +390,20 @@ function PosterPage({
                 flexDirection: "column",
                 overflow: "hidden",
                 boxSizing: "border-box",
-            }}
+                // The poster is a fixed A4 canvas, so its type must never be
+                // resized by the DEVICE doing the export. Mobile browsers
+                // (iOS Safari above all) auto-inflate text on pages laid out
+                // wider than the viewport - and html-to-image re-lays the
+                // clone out inside an SVG <foreignObject>, where that
+                // inflation applies while the copied line-heights stay pinned
+                // in px. Result on a phone: type grows, short names like
+                // "Tovari" break mid-word, and the header's values overrun
+                // their fixed line boxes into the row below. Opting out here
+                // keeps every download identical to the desktop A4.
+                WebkitTextSizeAdjust: "100%",
+                textSizeAdjust: "100%",
+                flexShrink: 0,
+            } as CSSProperties}
         >
             {/* Watermark - huge, low-opacity, upright, centred. */}
             <div
@@ -1542,7 +1558,7 @@ function GroupsWithBestPlacedPage({
  *  stacks below. Measured against the REAL page-1 body budget (1123 − 56 top −
  *  ~185 QR header/rule − ~86 footer ≈ 750, held a bit under). When unsure it
  *  returns false and the table keeps its own page - never clips. */
-function fitsBestPlacedInline(groups: Group[], table: ThirdPlacedTable): boolean {
+function fitsBestPlacedInline(groups: Group[], table: ThirdPlacedTable, meta: ExportMeta): boolean {
     // Only a single grid page can host the table (chunks of 4 → >4 groups paginate).
     if (groups.length === 0 || groups.length > 4) return false
     const maxTeams = Math.max(1, ...groups.map((g) => (g.standings ?? []).length))
@@ -1551,7 +1567,11 @@ function fitsBestPlacedInline(groups: Group[], table: ThirdPlacedTable): boolean
     const denseCardH = 88 + maxTeams * 42
     // Compact best-placed card: chrome (header + subtitle + table head) + rows.
     const tableH = 90 + table.rows.length * 46
-    const PAGE1_BODY = 740
+    // The 740 assumed the QR lockup set the header height. The groups poster
+    // renders the taller "labels" header, so a long title/location can push
+    // past the lockup - charge that overflow to the body, or the table's last
+    // row clips against the footer.
+    const PAGE1_BODY = 740 - headerExcessPx(meta, "labels")
     if (groups.length % 2 === 1) {
         // Table rides in the empty cell: page height = sum of grid row heights,
         // where the last row is the taller of (group card, table card).
@@ -1661,6 +1681,23 @@ const SCHED_REST_SAFE_PX = SCHED_REST_PX - SCHED_SAFETY_PX
  * header shorter than the one actually rendered and a row can clip again.
  */
 function scheduleFirstPx(meta: ExportMeta, mode: "inline" | "labels" = "inline"): number {
+    return SCHED_FIRST_PX - headerExcessPx(meta, mode) - SCHED_SAFETY_PX
+}
+
+/**
+ * How much TALLER page 1's header is than the QR lockup it was calibrated
+ * against (~167px). Zero for a short title - the QR column dominates and the
+ * header costs the same no matter what the left column says; positive once
+ * the title/meta block outgrows it, and every one of those pixels comes
+ * straight out of the body budget.
+ *
+ * Shared so that every page-1 budget stays honest about the header its poster
+ * ACTUALLY renders (see `headerMetaMode` on PosterPage): "labels" stacks three
+ * separately-wrapped Organizator/Datum/Lokacija rows (~40 chars/line) and runs
+ * ~30px taller than "inline"'s organizer row + one date•location line
+ * (~60 chars/line).
+ */
+function headerExcessPx(meta: ExportMeta, mode: "inline" | "labels"): number {
     const titleLines = Math.min(4, Math.max(1, Math.ceil(meta.tournamentName.length / 22)))
     let metaPx: number
     if (mode === "labels") {
@@ -1680,8 +1717,7 @@ function scheduleFirstPx(meta: ExportMeta, mode: "inline" | "labels" = "inline")
         metaPx = (meta.organizerName ? 30 : 0) + metaLines * 20
     }
     const leftPx = titleLines * 44 + metaPx + 6
-    const excess = Math.max(0, leftPx - 167)
-    return SCHED_FIRST_PX - excess - SCHED_SAFETY_PX
+    return Math.max(0, leftPx - 167)
 }
 
 /** Conservative wrapped-line estimate for a team name in a poster row's name
@@ -3139,6 +3175,29 @@ async function ensureFonts() {
     }
 }
 
+/** Pin the snapshot to the node's REAL A4 box and re-assert the text-size
+ *  opt-out on the clone's root.
+ *
+ *  html-to-image renders its clone inside an SVG <foreignObject>, i.e. a fresh
+ *  layout pass that does not inherit the host page's viewport assumptions.
+ *  Left to infer its own size it can pick up the mobile viewport instead of
+ *  the poster's 794px, and mobile text inflation re-enters through the clone
+ *  root. Both are what made the same export wrap differently on a phone. */
+function captureSize(node: HTMLElement) {
+    const width = node.offsetWidth
+    const height = node.offsetHeight
+    return {
+        width,
+        height,
+        style: {
+            width: `${width}px`,
+            height: `${height}px`,
+            WebkitTextSizeAdjust: "100%",
+            textSizeAdjust: "100%",
+        } as CSSProperties as Record<string, string>,
+    }
+}
+
 function triggerDownload(dataUrl: string, filename: string) {
     const a = document.createElement("a")
     a.href = dataUrl
@@ -3669,7 +3728,7 @@ export function ExportDialog({
             // groups and the estimate clears the page budget) the table rides
             // UNDER the grid on the same page; otherwise it trails on its own
             // page. Either way the extra content rides the "-grupe" filename.
-            if (!single && fitsBestPlacedInline(shown, thirdTable)) {
+            if (!single && fitsBestPlacedInline(shown, thirdTable, meta)) {
                 const showStandings = shown.some((g) =>
                     (g.matches ?? []).some((m) => m.status === "LIVE" || m.status === "FINISHED"),
                 )
@@ -3731,6 +3790,7 @@ export function ExportDialog({
                         quality: 0.96,
                         backgroundColor: C.surface,
                         cacheBust: true,
+                        ...captureSize(nodes[i]),
                     })
                     const name = nodes.length === 1 ? `${baseName}.jpg` : `${baseName}-${i + 1}.jpg`
                     triggerDownload(url, name)
@@ -3751,6 +3811,7 @@ export function ExportDialog({
                         pixelRatio: 2,
                         backgroundColor: C.surface,
                         cacheBust: true,
+                        ...captureSize(node),
                     })
                     const imgHmm = pageWmm * (node.offsetHeight / node.offsetWidth)
                     pdf.addImage(url, "PNG", 0, 0, pageWmm, imgHmm, undefined, "FAST")
@@ -3951,7 +4012,7 @@ export function ExportDialog({
                                                     pageRefs.current[i] = el
                                                 }}
                                                 orientation={orientation}
-                                                headerMetaMode={kind === "bracket" || kind === "schedule" ? "labels" : "inline"}
+                                                headerMetaMode={kind === "scorers" || kind === "match" ? "inline" : "labels"}
                                                 pageIndex={i}
                                                 pageCount={pageCount}
                                                 headerExtra={(() => {
