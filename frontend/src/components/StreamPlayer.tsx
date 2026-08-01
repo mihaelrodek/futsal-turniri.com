@@ -253,7 +253,14 @@ export default function StreamPlayer({
 
     // Track fullscreen so the button flips maximize ↔ minimize.
     useEffect(() => {
-        const onChange = () => setIsFs(document.fullscreenElement === wrapRef.current)
+        const onChange = () =>
+            // The null check matters: in the SpectoStream branch this component
+            // returns before `wrapRef` is ever attached, so `wrapRef.current`
+            // stays null. Leaving the plain identity test, exiting the specto
+            // player's own fullscreen compared null === null and latched
+            // `isFs` ON - which drops `rounded` off the embed and leaves the
+            // player square-cornered until a remount.
+            setIsFs(!!wrapRef.current && document.fullscreenElement === wrapRef.current)
         document.addEventListener("fullscreenchange", onChange)
         return () => document.removeEventListener("fullscreenchange", onChange)
     }, [])
