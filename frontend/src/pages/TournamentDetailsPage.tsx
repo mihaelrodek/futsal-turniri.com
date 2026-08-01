@@ -29,11 +29,12 @@ import {
     FiInfo,
     FiMaximize2,
     FiMoreHorizontal,
+    FiPlayCircle,
     FiShare2,
     FiTrash2,
     FiUsers,
 } from "react-icons/fi"
-import { PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
+import { HINT_RING_SHADOW, PillTabBar, StatusChip, type StatusKind } from "../ui/pitch"
 import { ConfirmDialog } from "../ui/primitives"
 import TournamentNotificationBell from "../components/TournamentNotificationBell"
 import TournamentResults from "../components/TournamentResults"
@@ -84,6 +85,7 @@ import type { EditForm, SectionKey } from "../tournament/parts"
 import OverviewSection from "../tournament/OverviewSection"
 import { POSTER_ACCEPT, POSTER_MAX_MB } from "../tournament/OverviewSection"
 import TeamsSection from "../tournament/TeamsSection"
+import DemoSection from "../tournament/DemoSection"
 import LiveControlTab from "../components/LiveControlTab"
 import StatsSection from "../tournament/StatsSection"
 import {
@@ -117,6 +119,7 @@ type DrawSubKey = "grupe" | "eliminacija"
 
 /** Icon per section for the desktop sidebar nav. */
 const SECTION_ICONS: Record<SectionKey, React.ReactNode> = {
+    demo: <FiPlayCircle size={15} />,
     details: <FiInfo size={15} />,
     live: <FiClipboard size={15} />,
     teams: <FiUsers size={15} />,
@@ -131,17 +134,22 @@ function SidebarNavItem({
     icon,
     label,
     active,
+    hint,
     onClick,
 }: {
     icon?: React.ReactNode
     label: string
     active: boolean
+    /** Pulsing highlight ring around the whole row - the demo walkthrough
+     *  uses it to point at the real tab matching the current demo step. */
+    hint?: boolean
     onClick: () => void
 }) {
     return (
         <chakra.button
             type="button"
             onClick={onClick}
+            position="relative"
             display="flex"
             alignItems="center"
             gap="2.5"
@@ -161,6 +169,18 @@ function SidebarNavItem({
         >
             {icon}
             {label}
+            {hint && (
+                <Box
+                    position="absolute"
+                    inset="0"
+                    rounded="lg"
+                    pointerEvents="none"
+                    css={{
+                        boxShadow: HINT_RING_SHADOW,
+                        animation: "pitchPulse 1.2s ease-in-out infinite",
+                    }}
+                />
+            )}
         </chakra.button>
     )
 }
@@ -226,7 +246,7 @@ export default function TournamentDetailsPage() {
      * stack history entries - clicking tabs feels like a panel switch,
      * not a navigation. */
     const [searchParams, setSearchParams] = useSearchParams()
-    const SECTION_KEYS: SectionKey[] = ["details", "live", "teams", "bracket", "raspored", "stats"]
+    const SECTION_KEYS: SectionKey[] = ["demo", "details", "live", "teams", "bracket", "raspored", "stats"]
     const DRAW_SUB_KEYS: DrawSubKey[] = ["grupe", "eliminacija"]
     const initialSection = ((): SectionKey => {
         const t = searchParams.get("tab")
@@ -414,6 +434,27 @@ export default function TournamentDetailsPage() {
     // Section the user tried to switch to while the edit form was dirty -
     // set instead of navigating, and resolved by the confirm dialog below.
     const [pendingSectionLeave, setPendingSectionLeave] = useState<SectionKey | null>(null)
+
+    /* ---------- Demo walkthrough state ---------- */
+    // Reported up by DemoSection: `active` means a demo run is in progress
+    // (guards tab switches behind a confirm, like the dirty-edit guard),
+    // `highlightTab` is the real tab matching the current demo step - both
+    // navs pulse a dot on that item.
+    const [demoState, setDemoState] = useState<{ active: boolean; highlightTab: SectionKey | null }>({
+        active: false,
+        highlightTab: null,
+    })
+    // Section the user tried to switch to while the demo was running -
+    // set instead of navigating, and resolved by its own confirm dialog.
+    const [pendingDemoLeave, setPendingDemoLeave] = useState<SectionKey | null>(null)
+    // Leaving the demo tab (confirmed leave, deep link, back button) must
+    // drop the demo state, or a stale `active` guard / highlight would
+    // survive until the tab is next opened.
+    useEffect(() => {
+        if (section !== "demo") {
+            setDemoState({ active: false, highlightTab: null })
+        }
+    }, [section])
 
     // Tournament SETTINGS (format, name, location, ...) have no realtime push
     // of their own - only live-match events do (see useLiveSocket above). An
@@ -779,6 +820,13 @@ export default function TournamentDetailsPage() {
      *  background" (it used to just disable the Uredi button forever). */
     function requestSectionChange(key: SectionKey) {
         if (key === section) return
+        // A running demo is the demo tab's "unsaved state": leaving it
+        // mid-run needs the same kind of confirmation as a dirty edit.
+        // (key === section already returned, so key !== "demo" here.)
+        if (section === "demo" && demoState.active) {
+            setPendingDemoLeave(key)
+            return
+        }
         if (editingDetails) {
             if (isDetailsEditDirty()) {
                 setPendingSectionLeave(key)
@@ -1070,6 +1118,8 @@ export default function TournamentDetailsPage() {
        ────────────────────────────────────────────────────────────────────── */
     // Top-level section nav.
     const sections: Array<{ key: SectionKey; label: string }> = [
+        // "Demo" - organizer/admin only.
+        ...(canEdit ? [{ key: "demo" as SectionKey, label: t18n.pages.tournamentDetailsPage.sections.demo }] : []),
         { key: "details", label: t18n.pages.tournamentDetailsPage.sections.details },
         // "Zapisnik" - organizer/admin only: run whatever match is on now.
         ...(canEdit ? [{ key: "live" as SectionKey, label: t18n.pages.tournamentDetailsPage.sections.live }] : []),
@@ -1381,6 +1431,11 @@ export default function TournamentDetailsPage() {
                         const next = sections.find((s) => s.label === label)
                         if (next) requestSectionChange(next.key)
                     }}
+                    hint={
+                        section === "demo" && demoState.highlightTab
+                            ? sections.find((x) => x.key === demoState.highlightTab)?.label
+                            : undefined
+                    }
                     padding="4px"
                     mb="0"
                 />
@@ -1509,6 +1564,7 @@ export default function TournamentDetailsPage() {
                                 icon={SECTION_ICONS[s.key]}
                                 label={s.label}
                                 active={section === s.key}
+                                hint={section === "demo" && demoState.highlightTab === s.key}
                                 onClick={() => requestSectionChange(s.key)}
                             />
                         ))}
@@ -1672,6 +1728,10 @@ export default function TournamentDetailsPage() {
 
             {/* ===== ACTIVE SECTION ===== */}
             <Box>
+                {section === "demo" && canEdit && (
+                    <DemoSection format={t.format ?? null} tournamentId={t.uuid} onStateChange={setDemoState} />
+                )}
+
                 {section === "details" && (
                     <OverviewSection
                         t={t}
@@ -1742,6 +1802,9 @@ export default function TournamentDetailsPage() {
                                 ps.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)),
                             )
                         }
+                        // Only organizers see the Demo tab, so only they can be
+                        // sent there.
+                        onTryDemo={canEdit ? () => requestSectionChange("demo") : undefined}
                     />
                 )}
 
@@ -1902,6 +1965,31 @@ export default function TournamentDetailsPage() {
                     setPendingSectionLeave(null)
                     if (!next) return
                     cancelDetailsEdit()
+                    if (next === "bracket" && section !== "bracket" && hasGroupStage) {
+                        resolveDrawSub()
+                    }
+                    setSection(next)
+                }}
+            />
+
+            {/* Leaving the demo tab mid-run - same pattern as the dirty-edit
+                guard above. The run really is lost: DemoSection unmounts
+                with the section switch and deliberately keeps no run state,
+                so the demo starts over next time (only the "already
+                completed this" marker is durable). */}
+            <ConfirmDialog
+                open={pendingDemoLeave != null}
+                title={t18n.pages.tournamentDetailsPage.demoTab.leaveConfirm.title}
+                description={t18n.pages.tournamentDetailsPage.demoTab.leaveConfirm.description}
+                confirmLabel={t18n.pages.tournamentDetailsPage.demoTab.leaveConfirm.confirmButton}
+                cancelLabel={t18n.pages.tournamentDetailsPage.demoTab.leaveConfirm.cancelButton}
+                danger
+                onClose={() => setPendingDemoLeave(null)}
+                onConfirm={() => {
+                    const next = pendingDemoLeave
+                    setPendingDemoLeave(null)
+                    if (!next) return
+                    setDemoState({ active: false, highlightTab: null })
                     if (next === "bracket" && section !== "bracket" && hasGroupStage) {
                         resolveDrawSub()
                     }

@@ -47,7 +47,8 @@ import {
 } from "../api/players"
 import PlayerNameAutocomplete from "../components/PlayerNameAutocomplete"
 import { BulkImportDialog } from "../components/BulkImportDialog"
-import { EmptyState, Panel } from "../ui/primitives"
+import { ConfirmDialog, EmptyState, Panel } from "../ui/primitives"
+import { markDemoOffered, shouldOfferDemo } from "../utils/demoStorage"
 import { showError, showSuccess } from "../toaster"
 import { TeamAvatar } from "./parts"
 import { t, useTranslation } from "../i18n"
@@ -285,6 +286,9 @@ type TeamsSectionProps = {
     /** Merge a single refreshed team (e.g. after a jersey-colour change)
      *  into the page-level teams state. */
     onTeamUpdated: (updated: TeamShort) => void
+    /** Switches the page to the Demo tab. When present, adding the very first
+     *  team offers the walkthrough once (see `shouldOfferDemo`). */
+    onTryDemo?: () => void
 }
 
 export default function TeamsSection(props: TeamsSectionProps) {
@@ -313,9 +317,32 @@ export default function TeamsSection(props: TeamsSectionProps) {
         openTeamInfo,
         onSelfRegisterClick,
         onTeamUpdated,
+        onTryDemo,
     } = props
 
     const [bulkTeamsOpen, setBulkTeamsOpen] = useState(false)
+
+    /* First-team demo offer ────────────────────────────────────────────────
+       An organizer with an empty tournament reaching for "Dodaj ekipu" is the
+       one moment we know they're about to start from scratch - so that's
+       where the walkthrough is worth offering. Shown once per tournament
+       (and never after they've already done the demo); whichever button they
+       pick, the offer is spent, and declining runs the action they actually
+       asked for. */
+    const [pendingFirstAction, setPendingFirstAction] = useState<null | (() => void)>(null)
+    const offerDemoBeforeFirstTeam = (run: () => void) => {
+        if (!onTryDemo || !canEdit || teams.length > 0 || !uuid || !shouldOfferDemo(uuid)) {
+            run()
+            return
+        }
+        // Stored in a thunk-returning setter - React would otherwise CALL a
+        // bare function passed to setState as an updater.
+        setPendingFirstAction(() => run)
+    }
+    const closeFirstOffer = () => {
+        if (uuid) markDemoOffered(uuid)
+        setPendingFirstAction(null)
+    }
 
     const tournamentLocked = t?.status === "FINISHED"
     const activeTeams = teams.filter((p) => !p.isEliminated)
@@ -693,7 +720,9 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                     size="sm"
                                     variant="outline"
                                     colorPalette="brand"
-                                    onClick={() => setBulkTeamsOpen(true)}
+                                    onClick={() =>
+                                        offerDemoBeforeFirstTeam(() => setBulkTeamsOpen(true))
+                                    }
                                     disabled={atCapacity}
                                     title={tr.teams.importManyTeamsTitle}
                                 >
@@ -703,7 +732,7 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                     size="sm"
                                     variant="solid"
                                     colorPalette="brand"
-                                    onClick={handleAddTeam}
+                                    onClick={() => offerDemoBeforeFirstTeam(handleAddTeam)}
                                     disabled={atCapacity}
                                     title={
                                         atCapacity
@@ -783,6 +812,29 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 placeholder={tr.teams.importTeamsPlaceholder}
                 submitLabel={tr.teams.importTeamsSubmit}
                 onSubmit={async (lines) => { await onBulkAddTeams(lines) }}
+            />
+
+            {/* One-shot walkthrough offer on the way to the first team. */}
+            <ConfirmDialog
+                open={pendingFirstAction != null}
+                title={tr.pages.tournamentDetailsPage.demoTab.firstTimeOffer.title}
+                description={tr.pages.tournamentDetailsPage.demoTab.firstTimeOffer.description}
+                confirmLabel={tr.pages.tournamentDetailsPage.demoTab.firstTimeOffer.confirmButton}
+                cancelLabel={tr.pages.tournamentDetailsPage.demoTab.firstTimeOffer.cancelButton}
+                onClose={() => {
+                    // Declining still spends the offer, and runs what they
+                    // originally clicked. Escape / backdrop land here too, on
+                    // purpose: this dialog interrupts an action the organizer
+                    // already asked for, so dismissing the interruption means
+                    // "get on with it", not "cancel my click".
+                    const run = pendingFirstAction
+                    closeFirstOffer()
+                    run?.()
+                }}
+                onConfirm={() => {
+                    closeFirstOffer()
+                    onTryDemo?.()
+                }}
             />
 
             {!tournamentAlready && openRequests.length > 0 && (

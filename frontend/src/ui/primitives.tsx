@@ -25,6 +25,7 @@ export function ConfirmDialog({
     title,
     description,
     confirmLabel,
+    cancelLabel,
     danger = false,
     busy = false,
     onClose,
@@ -34,6 +35,7 @@ export function ConfirmDialog({
     title: string
     description: ReactNode
     confirmLabel: string
+    cancelLabel?: string
     danger?: boolean
     busy?: boolean
     onClose: () => void
@@ -52,7 +54,7 @@ export function ConfirmDialog({
                         </Dialog.Body>
                         <Dialog.Footer>
                             <Button variant="ghost" onClick={onClose} disabled={busy}>
-                                {t.common.cancel}
+                                {cancelLabel ?? t.common.cancel}
                             </Button>
                             <Button
                                 variant="solid"

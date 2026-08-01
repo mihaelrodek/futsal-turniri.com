@@ -470,6 +470,15 @@ export function FilterChip({
     )
 }
 
+/** Demo-walkthrough highlight ring: 2px brand-teal line plus a soft
+ *  translucent halo, applied as box-shadow so it never shifts layout.
+ *  Same visual language as the pulsing click-target ring inside the demo
+ *  (`DemoSection`'s HL wrapper). Pulse comes from the global `pitchPulse`
+ *  keyframe in index.html - Chakra v3 cannot take raw @keyframes props.
+ *  The color-mix over CSS variables keeps it correct in light and dark. */
+export const HINT_RING_SHADOW =
+    "0 0 0 2px var(--chakra-colors-pitch-500), 0 0 0 6px color-mix(in srgb, var(--chakra-colors-pitch-400) 35%, transparent)"
+
 /** Pill-style tab bar used on the tournament detail screens (`Detalji`,
  *  `Ekipe`, `Ždrijeb`, `Raspored`, `Statistika`). Active tab fills with
  *  brand cyan (navy text - white fails contrast on cyan); the rest sit on
@@ -479,6 +488,7 @@ export function PillTabBar<T extends string>({
     active,
     onChange,
     size = "md",
+    hint,
     ...rest
 }: {
     tabs: T[]
@@ -488,6 +498,10 @@ export function PillTabBar<T extends string>({
      *  pages where the tabs are secondary navigation rather than the main
      *  control (e.g. /statistika). */
     size?: "sm" | "md"
+    /** Tab that gets a pulsing highlight ring around its pill - used by the
+     *  demo walkthrough to point at the real tab matching the current step.
+     *  No ring on the active tab (you're already there). */
+    hint?: T
 } & Omit<FlexProps, "onChange" | "size">) {
     const compact = size === "sm"
     return (
@@ -509,6 +523,7 @@ export function PillTabBar<T extends string>({
                         type="button"
                         key={t}
                         onClick={() => onChange(t)}
+                        position="relative"
                         flex="1"
                         minW="fit-content"
                         px={compact ? "3" : "4"}
@@ -525,6 +540,18 @@ export function PillTabBar<T extends string>({
                         _hover={!isActive ? { bg: "bg.surfaceTint" } : undefined}
                     >
                         {t}
+                        {hint === t && !isActive && (
+                            <Box
+                                position="absolute"
+                                inset="0"
+                                rounded="full"
+                                pointerEvents="none"
+                                css={{
+                                    boxShadow: HINT_RING_SHADOW,
+                                    animation: "pitchPulse 1.2s ease-in-out infinite",
+                                }}
+                            />
+                        )}
                     </chakra.button>
                 )
             })}

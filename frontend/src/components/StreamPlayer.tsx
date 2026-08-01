@@ -423,6 +423,11 @@ export default function StreamPlayer({
                 streamId={spectoStreamId}
                 rounded={isFs ? undefined : "2xl"}
                 h="full"
+                // This slot is height-constrained by the hero row; without
+                // `fill` the injected player sizes itself 16:9 off the column
+                // width and its bottom strip (mute + viewers chip) lands
+                // outside our clip.
+                fill
                 css={{ aspectRatio: "16 / 9" }}
             />
         )
