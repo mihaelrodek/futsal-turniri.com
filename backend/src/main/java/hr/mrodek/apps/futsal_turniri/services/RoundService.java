@@ -6,6 +6,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.MatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.RoundDto;
 import hr.mrodek.apps.futsal_turniri.dtos.UpdateMatchRequest;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.enums.RoundStatus;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.RoundMatchMapper;
@@ -193,7 +194,8 @@ public class RoundService {
                                 title, body, matchUrl,
                                 "/futsal-turniri-symbol.png",
                                 tag + p1.getId() + "-" + uid
-                        )
+                        ),
+                        NotificationKind.SCHEDULE, m.getId(), t.getId()
                 );
             }
             for (String uid : teamUids(p2)) {
@@ -203,7 +205,8 @@ public class RoundService {
                                 title, body, matchUrl,
                                 "/futsal-turniri-symbol.png",
                                 tag + p2.getId() + "-" + uid
-                        )
+                        ),
+                        NotificationKind.SCHEDULE, m.getId(), t.getId()
                 );
             }
         }
@@ -346,13 +349,15 @@ public class RoundService {
             String tag = "round-" + round.getId() + "-team-";
             for (String uid : teamUids(p1)) {
                 pushService.sendToUser(uid, new PushService.PushPayload(
-                        title, body, matchUrl, "/futsal-turniri-symbol.png",
-                        tag + p1.getId() + "-" + uid));
+                                title, body, matchUrl, "/futsal-turniri-symbol.png",
+                                tag + p1.getId() + "-" + uid),
+                        NotificationKind.SCHEDULE, m.getId(), t.getId());
             }
             for (String uid : teamUids(p2)) {
                 pushService.sendToUser(uid, new PushService.PushPayload(
-                        title, body, matchUrl, "/futsal-turniri-symbol.png",
-                        tag + p2.getId() + "-" + uid));
+                                title, body, matchUrl, "/futsal-turniri-symbol.png",
+                                tag + p2.getId() + "-" + uid),
+                        NotificationKind.SCHEDULE, m.getId(), t.getId());
             }
         }
     }
@@ -414,7 +419,8 @@ public class RoundService {
                             "/turniri/" + tournamentRef,
                             "/futsal-turniri-symbol.png",
                             tag + "-" + uid
-                    )
+                    ),
+                    NotificationKind.ELIMINATED, m.getId(), t.getId()
             );
         }
     }

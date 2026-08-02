@@ -411,8 +411,15 @@ public class SpectoStreamService {
      * Start of a match — resets the scoreboard, so it MUST precede its period.
      * Carries each side's kit colours when the organizer set them on the Ekipe
      * tab, so the overlay draws the real jerseys instead of its defaults.
+     *
+     * <p>{@code bibTeam} (1, 2 or null) is the match's training-bib flag,
+     * passed in as a PLAIN Integer rather than the {@link Matches} entity: the
+     * whole payload is built here, on the request thread, and the dispatch
+     * thread must never touch a managed entity (see the JPA off-thread rule in
+     * the class docs). It only changes which jersey colour is sent — see
+     * {@link #effectiveJersey}.
      */
-    public void matchStart(Tournaments t, long matchId, Teams home, Teams away) {
+    public void matchStart(Tournaments t, long matchId, Teams home, Teams away, Integer bibTeam) {
         if (!isConfigured()) return;
         String streamId = t.getSpectoStreamId();
         if (streamId == null) return;
@@ -424,9 +431,11 @@ public class SpectoStreamService {
         payload.put("home_short", shortCode(homeName));
         payload.put("away_name", fullName(awayName));
         payload.put("away_short", shortCode(awayName));
-        putColour(payload, "home_jersey", home != null ? home.getJerseyColor() : null);
+        putColour(payload, "home_jersey", effectiveJersey(
+                home != null ? home.getJerseyColor() : null, wearsBib(bibTeam, 1)));
         putColour(payload, "home_shorts", home != null ? home.getShortsColor() : null);
-        putColour(payload, "away_jersey", away != null ? away.getJerseyColor() : null);
+        putColour(payload, "away_jersey", effectiveJersey(
+                away != null ? away.getJerseyColor() : null, wearsBib(bibTeam, 2)));
         putColour(payload, "away_shorts", away != null ? away.getShortsColor() : null);
         enqueue(streamId, "match_start", "m" + matchId + "-match_start",
                 Instant.now().toString(), payload);
@@ -438,25 +447,165 @@ public class SpectoStreamService {
      * {@code stream_start}, where every {@code next_*} field is optional - an
      * unknown side (a knockout slot still to be decided) is simply omitted and
      * the platform falls back to showing nothing.
+     *
+     * <p>Runs on the REQUEST thread only (its callers build the payload before
+     * {@link #enqueue}), which is what makes reading the entity here legal —
+     * the entity itself never travels to the dispatch thread.
      */
     private void putNextMatch(ObjectNode payload, Matches next) {
         if (next == null) return;
         Teams h = next.getTeam1();
         Teams a = next.getTeam2();
+        Integer bibTeam = next.getBibTeam();
         if (h != null) {
             payload.put("next_home_name", fullName(h.getName()));
             payload.put("next_home_short", shortCode(h.getName()));
-            putColour(payload, "next_home_jersey", h.getJerseyColor());
+            putColour(payload, "next_home_jersey",
+                    effectiveJersey(h.getJerseyColor(), wearsBib(bibTeam, 1)));
             putColour(payload, "next_home_shorts", h.getShortsColor());
         }
         if (a != null) {
             payload.put("next_away_name", fullName(a.getName()));
             payload.put("next_away_short", shortCode(a.getName()));
-            putColour(payload, "next_away_jersey", a.getJerseyColor());
+            putColour(payload, "next_away_jersey",
+                    effectiveJersey(a.getJerseyColor(), wearsBib(bibTeam, 2)));
             putColour(payload, "next_away_shorts", a.getShortsColor());
         }
         if (next.getKickoffAt() != null) {
             payload.put("next_kickoff_at", next.getKickoffAt().toInstant().toString());
+        }
+    }
+
+    /**
+     * Fluorescent training-bib ("markirka") yellow. When two teams turn up in
+     * similar kit one side pulls on bibs, and THAT is the colour the camera
+     * sees for the rest of the match.
+     *
+     * <p>MUST stay a 6-digit {@code #RRGGBB} hex: {@link #putColour} silently
+     * drops anything else, and a dropped colour would leave the old kit on air.
+     */
+    private static final String BIB_YELLOW = "#D9F225";
+
+    /**
+     * The jersey colour actually seen on the pitch: bib yellow when this side
+     * wears training bibs this match, otherwise the team's own kit.
+     *
+     * <p>Single point of truth - every outbound jersey colour ({@code
+     * match_start}, {@code match_end}/{@code stream_start} next-fixture,
+     * the future kit update) routes through it, so no path can send a stale
+     * colour. Returns bib yellow even when the team has no saved kit: the bibs
+     * are on the players regardless of what the organizer typed in.
+     */
+    private static String effectiveJersey(String teamJersey, boolean wearsBib) {
+        return wearsBib ? BIB_YELLOW : teamJersey;
+    }
+
+    /** True when {@code bibTeam} (1, 2 or null) names this side. Null-safe, so
+     *  callers never unbox a null. */
+    private static boolean wearsBib(Integer bibTeam, int side) {
+        return bibTeam != null && bibTeam == side;
+    }
+
+    /**
+     * Push the CURRENT kit colours to the overlay mid-stream:
+     * {@code PUT /v1/streams/{id}/kits}. Called whenever the markirka flag
+     * flips on a live match, so the picture follows without restarting the
+     * broadcast.
+     *
+     * <p>Always sends the full set of four colours rather than a delta. That is
+     * what makes removing the bibs work with no separate "restore" path: with
+     * {@code bibTeam == null} the effective jersey is the team's own kit again,
+     * so the same call puts the original colours back.
+     *
+     * <p>Everything arrives as plain strings/Integer, resolved by the caller on
+     * the REQUEST thread (the JPA off-thread rule): no {@link Matches} or
+     * {@link Teams} entity crosses into the dispatch thread.
+     */
+    public void kitUpdate(Tournaments t, long matchId,
+                          String homeJersey, String homeShorts,
+                          String awayJersey, String awayShorts,
+                          Integer bibTeam) {
+        if (!isConfigured()) return;
+        String streamId = t == null ? null : t.getSpectoStreamId();
+        if (streamId == null) return;
+
+        // Always the FULL set, resolved through effectiveJersey. That is what
+        // makes taking the bibs off work with no special case: bibTeam goes
+        // back to null, effectiveJersey returns the team's own kit again, and
+        // the same call pushes the original colours back to the overlay.
+        ObjectNode body = json.createObjectNode();
+        putColour(body, "home_jersey", effectiveJersey(homeJersey, wearsBib(bibTeam, 1)));
+        putColour(body, "home_shorts", homeShorts);
+        putColour(body, "away_jersey", effectiveJersey(awayJersey, wearsBib(bibTeam, 2)));
+        putColour(body, "away_shorts", awayShorts);
+        // The API rejects an empty body with 400. Nothing usable to send means
+        // no team has a valid kit colour on file - there is nothing to update.
+        if (body.isEmpty()) {
+            LOG.debugf("SpectoStream: preskačem /kits za meč %d - nijedna boja nije #RRGGBB", matchId);
+            return;
+        }
+        // Optional per the contract, but sendKits retries once on IOException/5xx
+        // and a retry must not register as a second change. Fresh per user
+        // action (millis), so a later toggle is never mistaken for a duplicate
+        // of an earlier one. Stamped HERE, on the request thread.
+        body.put("idempotency_key", "kits-" + matchId + "-" + System.currentTimeMillis());
+
+        // base()/key() read the database - request thread only, exactly like
+        // enqueue() does for events.
+        final String apiBase = base();
+        final String apiKeyNow = key();
+        try {
+            dispatch.execute(() -> sendKits(apiBase, apiKeyNow, streamId, body));
+        } catch (RejectedExecutionException ree) {
+            LOG.debugf("SpectoStream: dispatch odbijen za /kits (stream %s)", streamId);
+        }
+    }
+
+    /** PUT the kit colours. Unlike every other call here this is NOT an event -
+     *  it targets {@code /v1/streams/{id}/kits} directly - so it can't go
+     *  through {@link #sendWithRetry}. Same retry policy though: one retry on
+     *  IOException/5xx, give up on 4xx (a rejected colour won't fix itself).
+     *  Runs on the dispatch thread, so it takes the resolved settings and never
+     *  touches the database. */
+    private void sendKits(String apiBase, String apiKeyNow, String streamId, ObjectNode body) {
+        String bodyJson;
+        try {
+            bodyJson = json.writeValueAsString(body);
+        } catch (Exception e) {
+            LOG.warnf(e, "SpectoStream: serijalizacija /kits nije uspjela");
+            return;
+        }
+        URI uri = URI.create(apiBase + "/v1/streams/" + streamId + "/kits");
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                HttpRequest req = HttpRequest.newBuilder(uri)
+                        .timeout(Duration.ofSeconds(5))
+                        .header("Authorization", "Bearer " + apiKeyNow)
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8))
+                        .build();
+                HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                int code = res.statusCode();
+                if (code >= 200 && code < 300) return;
+                if (code >= 500 && attempt == 1) {
+                    sleep(1000);
+                    continue;
+                }
+                LOG.warnf("SpectoStream: /kits za stream %s vratio HTTP %d (pokušaj %d): %s",
+                        streamId, code, attempt, res.body());
+                return;
+            } catch (IOException ioe) {
+                if (attempt == 1) {
+                    sleep(1000);
+                    continue;
+                }
+                LOG.warnf(ioe, "SpectoStream: /kits za stream %s nije poslan (pokušaj %d)", streamId, attempt);
+                return;
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 

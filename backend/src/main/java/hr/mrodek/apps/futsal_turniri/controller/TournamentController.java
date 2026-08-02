@@ -7,6 +7,7 @@ import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
 import hr.mrodek.apps.futsal_turniri.enums.MatchLiveMode;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.enums.ScorerScope;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentStatus;
@@ -1428,6 +1429,8 @@ public class TournamentController {
         // tournament identity, so a later tournament can pre-fill it from the
         // autocomplete. Never deletes a previously-saved different combo (1:N).
         teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
+        // Mid-match kit edit → the overlay follows immediately.
+        pushKitsIfTeamIsLive(team);
         return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
     }
 
@@ -1456,6 +1459,8 @@ public class TournamentController {
         team.setShortsColor(color == null ? null : color.toLowerCase(Locale.ROOT));
         // See setTeamJerseyColor - same "remember the full kit" upsert.
         teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
+        // Mid-match kit edit → the overlay follows immediately.
+        pushKitsIfTeamIsLive(team);
         return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
     }
 
@@ -1731,7 +1736,10 @@ public class TournamentController {
                                 messages.t("tournament.push.teamApproved.title"),
                                 messages.t("tournament.push.teamApproved.body", team.getName(), t.getName()),
                                 "/turniri/" + tournamentRef
-                        )
+                        ),
+                        NotificationKind.TEAM_APPROVED,
+                        null,
+                        t.getId()
                 );
             }
         }
@@ -2253,7 +2261,9 @@ public class TournamentController {
                         match.getId(),
                         messages.t("tournament.push.matchStart.title", t.getName()),
                         matchVersusLine(match),
-                        matchUrl(t, match.getId()));
+                        matchUrl(t, match.getId()),
+                        NotificationKind.MATCH_START,
+                        t.getId());
             } catch (Exception ignored) {
                 // swallowed - the match is already LIVE; push is best-effort.
             }
@@ -2265,7 +2275,9 @@ public class TournamentController {
         // isn't tracked); async fire-and-forget. Names mirror the live DTO.
         if (t != null && spectoDrives(match)) {
             // Teams (not just names) so the overlay gets each side's kit colours.
-            specto.matchStart(t, matchId, match.getTeam1(), match.getTeam2());
+            // The bib flag travels as a plain Integer (never the Matches entity):
+            // the dispatch thread has no persistence context.
+            specto.matchStart(t, matchId, match.getTeam1(), match.getTeam2(), match.getBibTeam());
             // Squads right after the scoreboard reset. Dispatch is a single FIFO
             // thread, so this can't overtake match_start; the platform keeps the
             // lineups until match_end wipes them.
@@ -2333,7 +2345,8 @@ public class TournamentController {
                     t.getId(),
                     messages.t("tournament.push.matchEnd.title", t.getName()),
                     matchScoreLine(match),
-                    matchUrl(t, match.getId())
+                    matchUrl(t, match.getId()),
+                    NotificationKind.MATCH_END
             );
         }
 
@@ -2404,6 +2417,63 @@ public class TournamentController {
             // The reset match is scheduled again, so announce it as the next
             // fixture rather than leaving the old live score on the overlay.
             specto.matchEnd(tournament, matchId, match);
+        }
+        return Response.ok(roundMatchMapper.toMatchDto(match)).build();
+    }
+
+    /**
+     * Set (or clear) which side wears fluorescent training bibs ("markirke")
+     * for THIS MATCH ONLY. Organizer-or-admin only. Body:
+     * {@code {"team": 1 | 2 | null}} - 1 = team1, 2 = team2, null = neither;
+     * anything else is a 400. Returns the updated match.
+     *
+     * <p>Used when both teams turn up in similar kit: one side pulls on bibs
+     * and from that moment its <i>effective</i> jersey colour is bib yellow -
+     * in the app and on the stream overlay - while the team's own saved kit is
+     * left alone for every other match.
+     *
+     * <p>Setting one side automatically clears the other. Nothing extra is
+     * needed for that: {@code bibTeam} is a SINGLE column holding the bibbed
+     * side, so writing 2 structurally un-sets 1. There is no second field that
+     * could disagree.
+     */
+    @PUT
+    @Path("/{uuid}/matches/{matchId}/bib")
+    @Authenticated
+    @Transactional
+    public Response setMatchBib(
+            @PathParam("uuid") String uuid,
+            @PathParam("matchId") Long matchId,
+            MatchBibRequest body
+    ) {
+        Matches match = resolveMatchInTournament(uuid, matchId);
+        assertCanEdit(match.getTournament());
+        assertMatchesMutable(match.getTournament());
+
+        Integer team = body == null ? null : body.team();
+        if (team != null && team != 1 && team != 2) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("BIB_TEAM_INVALID").build();
+        }
+        match.setBibTeam(team);
+
+        notifyLive(match);
+        // SpectoStream: a kit that changes mid-match has to reach the overlay
+        // without restarting the match, so this PUTs /v1/streams/{id}/kits.
+        // Everything is resolved to plain values HERE, on the request thread -
+        // the dispatch thread has no persistence context, so no entity may
+        // cross into it. `team` is passed as-is, including null: kitUpdate
+        // always sends the full set, so clearing the bibs pushes the teams'
+        // own colours back with no separate restore path.
+        Tournaments t = match.getTournament();
+        if (t != null && match.getStatus() == MatchStatus.LIVE && spectoDrives(match)) {
+            Teams home = match.getTeam1();
+            Teams away = match.getTeam2();
+            specto.kitUpdate(t, matchId,
+                    home != null ? home.getJerseyColor() : null,
+                    home != null ? home.getShortsColor() : null,
+                    away != null ? away.getJerseyColor() : null,
+                    away != null ? away.getShortsColor() : null,
+                    team);
         }
         return Response.ok(roundMatchMapper.toMatchDto(match)).build();
     }
@@ -2559,9 +2629,11 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
+                    match.getId(),
                     messages.t("tournament.push.halfTime.title", t.getName()),
                     matchVersusLine(match),
-                    matchUrl(t, match.getId())
+                    matchUrl(t, match.getId()),
+                    NotificationKind.HALF_TIME
             );
         }
 
@@ -2623,9 +2695,11 @@ public class TournamentController {
         if (t != null) {
             firePushSafe(
                     t.getId(),
+                    match.getId(),
                     messages.t("tournament.push.secondHalf.title", t.getName()),
                     matchVersusLine(match),
-                    matchUrl(t, match.getId())
+                    matchUrl(t, match.getId()),
+                    NotificationKind.SECOND_HALF
             );
         }
 
@@ -2974,7 +3048,8 @@ public class TournamentController {
                         t.getId(),
                         messages.t("tournament.push.goal.title", t.getName()),
                         matchScoreLine(match),
-                        matchUrl(t, match.getId())
+                        matchUrl(t, match.getId()),
+                        NotificationKind.GOAL
                 );
             }
         }
@@ -3119,6 +3194,43 @@ public class TournamentController {
     }
 
     /**
+     * A team's kit colour just changed - if that team is playing RIGHT NOW,
+     * push the new colours to the overlay. Same {@code PUT /v1/streams/{id}/kits}
+     * the markirka toggle uses, so the common case works: the match kicks off
+     * with no kit on file, someone fills the colours in from the Ekipe screen,
+     * and the overlay follows without restarting the broadcast.
+     *
+     * <p>The full set of four colours goes every time (see
+     * {@code SpectoStreamService#kitUpdate}), so clearing a colour is not a
+     * special case, and the match's current {@code bibTeam} is carried along -
+     * otherwise editing a kit mid-match would silently take the bibs off the
+     * overlay.
+     *
+     * <p>A team plays at most one LIVE match at a time; if that somehow isn't
+     * true, the first one is the one on air. Everything is read here, on the
+     * REQUEST thread - the dispatch thread has no persistence context.
+     */
+    private void pushKitsIfTeamIsLive(Teams team) {
+        if (team == null) return;
+        Tournaments t = team.getTournament();
+        if (t == null || t.getSpectoStreamId() == null) return;
+
+        Matches live = matchesRepo.find(
+                "tournament = ?1 and status = ?2 and (team1 = ?3 or team2 = ?4)",
+                t, MatchStatus.LIVE, team, team).firstResult();
+        if (live == null || !spectoDrives(live)) return;
+
+        Teams home = live.getTeam1();
+        Teams away = live.getTeam2();
+        specto.kitUpdate(t, live.getId(),
+                home != null ? home.getJerseyColor() : null,
+                home != null ? home.getShortsColor() : null,
+                away != null ? away.getJerseyColor() : null,
+                away != null ? away.getShortsColor() : null,
+                live.getBibTeam());
+    }
+
+    /**
      * Length of ONE half of this match in seconds (knockout override honoured),
      * or 0 when the tournament has no half length configured.
      *
@@ -3207,9 +3319,13 @@ public class TournamentController {
      * write - the user-facing 201/200 response is what matters; the push
      * is a best-effort side-effect.
      */
-    private void firePushSafe(Long tournamentId, String title, String body, String url) {
+    private void firePushSafe(Long tournamentId, Long matchId, String title, String body, String url,
+                              NotificationKind kind) {
         try {
-            pushService.sendToTournamentSubscribers(tournamentId, title, body, url);
+            // matchId is history-only: the fan-out still goes to the
+            // TOURNAMENT's bell subscribers, but the stored notification
+            // groups under the match it is about.
+            pushService.sendToTournamentSubscribers(tournamentId, title, body, url, kind, matchId);
         } catch (Exception e) {
             // Intentionally swallowed: the goal/half/finish has already
             // been written. We log via the service's own logger; nothing
@@ -3219,9 +3335,10 @@ public class TournamentController {
 
     /** Like {@link #firePushSafe} but also notifies this match's bell
      *  subscribers (deduped against the tournament subscribers). */
-    private void firePushMatchSafe(Long matchId, Long tournamentId, String title, String body, String url) {
+    private void firePushMatchSafe(Long matchId, Long tournamentId, String title, String body, String url,
+                                   NotificationKind kind) {
         try {
-            pushService.sendToMatchAndTournamentSubscribers(matchId, tournamentId, title, body, url);
+            pushService.sendToMatchAndTournamentSubscribers(matchId, tournamentId, title, body, url, kind);
         } catch (Exception e) {
             // Swallowed - the event is already persisted; push is best-effort.
         }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Box, Button, HStack, Input, NativeSelect, Spinner, Text, VStack } from "@chakra-ui/react"
-import { FiAward, FiCheck, FiClock, FiEdit2, FiEye, FiEyeOff, FiLink, FiPause, FiPlay, FiPlus, FiRadio, FiSlash, FiSquare, FiUsers, FiX } from "react-icons/fi"
+import { FiAward, FiCheck, FiClock, FiEdit2, FiEye, FiEyeOff, FiLink, FiPause, FiPlay, FiPlus, FiSlash, FiSquare, FiUsers, FiX } from "react-icons/fi"
 
 import {
     fetchSpectoBroadcast,
@@ -407,7 +407,7 @@ export default function SpectoConnectionCard() {
 
     if (loading) {
         return (
-            <SectionCard icon={FiRadio} title={t.components.spectoConnectionCard.title}>
+            <SectionCard>
                 <HStack gap="2" color="fg.muted"><Spinner size="sm" /><Text fontSize="sm">{t.components.spectoConnectionCard.loading}</Text></HStack>
             </SectionCard>
         )
@@ -418,21 +418,18 @@ export default function SpectoConnectionCard() {
         : t.components.spectoConnectionCard.keyNotSet
 
     return (
-        <SectionCard
-            icon={FiRadio}
-            title={t.components.spectoConnectionCard.title}
-            action={
-                <StatusChip
-                    status={conn?.apiKeySet ? "active" : "draft"}
-                    label={conn?.apiKeySet ? t.components.spectoConnectionCard.keyStatusSet : t.components.spectoConnectionCard.keyStatusUnset}
-                    size="sm"
-                />
-            }
-        >
+        // No card header: /admin/stream already names the module and shows the
+        // icon. The key status is the only thing the header carried that the
+        // page chrome can't, so it moves to the top of the body.
+        <SectionCard>
             <VStack align="stretch" gap="4">
-                <Text fontSize="sm" color="fg.muted">
-                    {t.components.spectoConnectionCard.intro}
-                </Text>
+                <HStack>
+                    <StatusChip
+                        status={conn?.apiKeySet ? "active" : "draft"}
+                        label={conn?.apiKeySet ? t.components.spectoConnectionCard.keyStatusSet : t.components.spectoConnectionCard.keyStatusUnset}
+                        size="sm"
+                    />
+                </HStack>
 
                 <Box>
                     <HStack justify="space-between" align="center" gap="3" mb="2" wrap="wrap">

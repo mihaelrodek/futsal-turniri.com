@@ -38,7 +38,9 @@ export const queryClient = new QueryClient({
  * cached payload's SHAPE changes in a breaking way (backend DTO change, key
  * restructure) so old persisted snapshots are discarded instead of rendered.
  */
-export const CACHE_BUSTER = "v2"
+// v3: AdminPendingCounts gained `poruke` - a persisted v2 snapshot would render
+// the new badge as absent until the next refetch.
+export const CACHE_BUSTER = "v3"
 
 /** localStorage key the persister writes to (main.tsx). Cleared on logout. */
 export const PERSIST_KEY = "futsal-rq-cache"
@@ -65,4 +67,7 @@ export const qk = {
     adminTeamIdentities: ["admin", "teamIdentities"] as const,
     adminTeamDuplicates: ["admin", "teamDuplicates"] as const,
     adminCameraInquiries: ["admin", "cameraInquiries"] as const,
+    // "Obavijesti" inbox of the signed-in user (grouped push-notification
+    // history). One entry - the page always reads the whole inbox.
+    notifications: ["notifications", "inbox"] as const,
 }

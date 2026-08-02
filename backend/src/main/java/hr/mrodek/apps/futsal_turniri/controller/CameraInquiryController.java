@@ -1,8 +1,10 @@
 package hr.mrodek.apps.futsal_turniri.controller;
 
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.model.CameraPackageInquiry;
 import hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.CameraPackageInquiryRepository;
+import hr.mrodek.apps.futsal_turniri.services.AdminNotifier;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
 import hr.mrodek.apps.futsal_turniri.services.MailTemplates;
 import hr.mrodek.apps.futsal_turniri.services.MessageService;
@@ -12,12 +14,15 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +41,9 @@ import java.util.regex.Pattern;
  *   POST /camera-inquiries - create (fully public, no auth)
  *   GET  /camera-inquiries - list, newest first (admin) - shown in the
  *                            admin dashboard's "Zahtjevi za ponudu" tab
+ *   POST /camera-inquiries/{id}/handled - set/clear handledAt (admin);
+ *                            unhandled leads are what the admin console's
+ *                            "ponude" badge counts
  */
 @Path("/camera-inquiries")
 @Produces(MediaType.APPLICATION_JSON)
@@ -55,16 +63,21 @@ public class CameraInquiryController {
     @Inject AppSettingsRepository settings;
     @Inject EmailService emailService;
     @Inject MessageService messages;
+    @Inject AdminNotifier adminNotifier;
 
     public record CreateCameraInquiryBody(
             String name, String contactEmail, String contactPhone,
             String tournamentName, String message
     ) {}
 
+    /** {@code handledAt} is null while the lead is still in the admin queue. */
     public record CameraInquiryDto(
             Long id, String name, String contactEmail, String contactPhone,
-            String tournamentName, String message, String createdAt
+            String tournamentName, String message, String createdAt, String handledAt
     ) {}
+
+    /** Body of POST /camera-inquiries/{id}/handled - true marks, false clears. */
+    public record SetHandledBody(Boolean handled) {}
 
     @GET
     @RolesAllowed("admin")
@@ -72,11 +85,30 @@ public class CameraInquiryController {
         return repo.findAllOrderByCreatedDesc().stream().map(this::toDto).toList();
     }
 
+    /**
+     * Marks a lead as followed-up (or puts it back in the queue). Only this
+     * flag drives the {@code ponude} badge on the admin console, so clearing
+     * it makes the lead count again.
+     */
+    @POST
+    @Path("/{id}/handled")
+    @RolesAllowed("admin")
+    @Transactional
+    public CameraInquiryDto setHandled(@PathParam("id") Long id, SetHandledBody body) {
+        var inquiry = repo.findByIdOptional(id)
+                .orElseThrow(() -> new NotFoundException("Upit nije pronađen."));
+        boolean handled = body != null && Boolean.TRUE.equals(body.handled());
+        inquiry.setHandledAt(handled ? OffsetDateTime.now() : null);
+        repo.save(inquiry);
+        return toDto(inquiry);
+    }
+
     private CameraInquiryDto toDto(CameraPackageInquiry i) {
         return new CameraInquiryDto(
                 i.getId(), i.getName(), i.getContactEmail(), i.getContactPhone(),
                 i.getTournamentName(), i.getMessage(),
-                i.getCreatedAt() == null ? null : i.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+                i.getCreatedAt() == null ? null : i.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                i.getHandledAt() == null ? null : i.getHandledAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
     }
 
     @POST
@@ -123,9 +155,26 @@ public class CameraInquiryController {
         repo.save(inquiry);
 
         notifyAdmin(inquiry);
+        notifyAdminInbox(inquiry);
         notifyRequester(inquiry);
 
         return Response.status(Response.Status.CREATED).build();
+    }
+
+    /**
+     * In-app twin of {@link #notifyAdmin} - the same lead, delivered to every
+     * admin's "Obavijesti" inbox instead of only to the single
+     * {@code recording_notify_email} mailbox. Fires from the same spot so the
+     * two channels can never drift apart. NOT html-escaped: this text goes into
+     * a notification body the SPA renders as plain text, never as markup.
+     */
+    private void notifyAdminInbox(CameraPackageInquiry inquiry) {
+        adminNotifier.notifyAdmins(
+                NotificationKind.ADMIN_REQUEST,
+                messages.t("notifications.admin.cameraInquiry.title"),
+                messages.t("notifications.admin.cameraInquiry.body",
+                        inquiry.getName(), inquiry.getTournamentName()),
+                "/admin/ponude");
     }
 
     private void notifyAdmin(CameraPackageInquiry inquiry) {

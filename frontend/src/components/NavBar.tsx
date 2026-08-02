@@ -11,6 +11,7 @@ import {
     Container,
     Menu,
     Portal,
+    Switch,
     Text,
     VStack,
     chakra,
@@ -18,8 +19,9 @@ import {
 } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath, useNavigate } from "react-router-dom"
 import { queryClient, PERSIST_KEY } from "../queryClient"
-import { FiLogOut, FiMenu, FiShoppingCart, FiUser } from "react-icons/fi"
+import { FiBell, FiGrid, FiLogOut, FiMenu, FiShoppingCart, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
+import { useAdminView } from "../admin/AdminViewContext"
 import { getProfile } from "../api/userMe"
 import { InstallAppButton } from "./InstallAppButton"
 import { LiveNavItem } from "./LiveNavItem"
@@ -201,6 +203,7 @@ function truncateName(name: string, max = 20): string {
 export default function NavBar() {
     const t = useTranslation()
     const { user, signOut, loading } = useAuth()
+    const { isAdmin, mode: adminViewMode, setMode: setAdminViewMode } = useAdminView()
     const navigate = useNavigate()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -208,6 +211,33 @@ export default function NavBar() {
         setMobileMenuOpen(false)
         navigate(path)
     }
+
+    /* Admin view: a persisted preference, shaped exactly like the theme row
+       next to it. Deliberately does NOT navigate - flipping it retargets
+       "Profil" (see profileHref) and the user goes there when they mean to,
+       instead of the app yanking them somewhere on a toggle. */
+    const adminViewSwitch = (
+        <Switch.Root
+            checked={adminViewMode === "admin"}
+            onCheckedChange={(e) => setAdminViewMode(e.checked ? "admin" : "user")}
+            colorPalette="pitch"
+            size="lg"
+        >
+            <Switch.HiddenInput aria-label={t.pages.adminConsole.viewSwitch.label} />
+            <Switch.Control>
+                <Switch.Thumb>
+                    <Switch.ThumbIndicator fallback={<FiUser size={13} />}>
+                        <FiGrid size={13} />
+                    </Switch.ThumbIndicator>
+                </Switch.Thumb>
+            </Switch.Control>
+        </Switch.Root>
+    )
+
+    /** Where "Profil" goes. An admin who left the view switch ON wants the
+     *  console, not their own player profile - the choice lives in profile
+     *  settings and persists, so this just follows it. */
+    const profileHref = isAdmin && adminViewMode === "admin" ? "/admin" : "/profil"
 
     // Tour-aware breakpoint flag - see comment block in the previous NavBar
     // for the full reasoning. Short version: the guided tour needs
@@ -281,6 +311,14 @@ export default function NavBar() {
                                 <ThemeSwitch size="lg" />
                             </HStack>
                         </Box>
+                        {isAdmin && (
+                            <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
+                                <HStack justify="space-between">
+                                    <MonoLabel>{t.pages.adminConsole.viewSwitch.label}</MonoLabel>
+                                    {adminViewSwitch}
+                                </HStack>
+                            </Box>
+                        )}
                         <Box px="3" py="2" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
                             <MonoLabel>{t.nav.languageLabel}</MonoLabel>
                             <Box mt="1.5">
@@ -342,8 +380,11 @@ export default function NavBar() {
                         {/* No "Prijavljen kao <e-mail>" header - the trigger
                             pill already shows who's signed in, and the raw
                             address added nothing but a PII line on screen. */}
-                        <Menu.Item value="profile" onSelect={() => navigate("/profil")}>
+                        <Menu.Item value="profile" onSelect={() => navigate(profileHref)}>
                             <FiUser /> {t.nav.profile}
+                        </Menu.Item>
+                        <Menu.Item value="notifications" onSelect={() => navigate("/obavijesti")}>
+                            <FiBell /> {t.nav.notifications}
                         </Menu.Item>
                         {/* Theme + language rows - plain content, NOT
                             Menu.Item, so flipping the switch / picking a
@@ -520,8 +561,11 @@ export default function NavBar() {
                                                     </Text>
                                                 </Box>
                                             </chakra.button>
-                                            <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo("/profil")}>
+                                            <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo(profileHref)}>
                                                 <FiUser /> {t.nav.profile}
+                                            </Button>
+                                            <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo("/obavijesti")}>
+                                                <FiBell /> {t.nav.notifications}
                                             </Button>
                                         </VStack>
                                     )}
@@ -536,6 +580,14 @@ export default function NavBar() {
                                             <Text fontSize="sm" fontWeight={600}>{t.nav.themeLabel}</Text>
                                             <ThemeSwitch size="lg" />
                                         </HStack>
+                                        {isAdmin && (
+                                            <HStack justify="space-between">
+                                                <Text fontSize="sm" fontWeight={600}>
+                                                    {t.pages.adminConsole.viewSwitch.label}
+                                                </Text>
+                                                {adminViewSwitch}
+                                            </HStack>
+                                        )}
                                         <HStack justify="space-between">
                                             <Text fontSize="sm" fontWeight={600}>{t.nav.languageLabel}</Text>
                                             {/* Inline variant - a Menu-based

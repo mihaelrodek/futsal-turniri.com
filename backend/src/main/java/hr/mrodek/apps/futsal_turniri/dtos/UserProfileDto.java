@@ -46,18 +46,33 @@ public record UserProfileDto(
          * frontend falls back to its own browser-detected/localStorage default.
          */
         @Size(max = 2, message = "language must be at most 2 characters")
-        String language
+        String language,
+
+        /**
+         * Account-wide opt-in for promotional / general-announcement e-mail.
+         * Read-only on this DTO - {@code PUT /user/me/profile} ignores it;
+         * it is written by {@code PUT /user/me/notification-prefs}.
+         *
+         * <p>Independent of the notification bells: this never affects the
+         * tournament / match subscriptions a user opted into individually.
+         * Defaults to {@code true} for accounts with no profile row yet, which
+         * mirrors the entity's default.
+         */
+        boolean promoEmail,
+
+        /** Push counterpart of {@code promoEmail}. Same read-only + independence rules. */
+        boolean promoPush
 ) {
     /** Two-arg convenience for callers that only manage phone fields. */
     public UserProfileDto(String phoneCountry, String phone) {
-        this(phoneCountry, phone, null, null, null, null, null, null, null);
+        this(phoneCountry, phone, null, null, null, null, null, null, null, true, true);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug) {
-        this(phoneCountry, phone, displayName, slug, null, null, null, null, null);
+        this(phoneCountry, phone, displayName, slug, null, null, null, null, null, true, true);
     }
 
     public UserProfileDto(String phoneCountry, String phone, String displayName, String slug, String avatarUrl) {
-        this(phoneCountry, phone, displayName, slug, avatarUrl, null, null, null, null);
+        this(phoneCountry, phone, displayName, slug, avatarUrl, null, null, null, null, true, true);
     }
 }

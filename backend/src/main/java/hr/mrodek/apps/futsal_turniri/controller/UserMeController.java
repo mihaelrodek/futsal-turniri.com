@@ -22,6 +22,7 @@ import hr.mrodek.apps.futsal_turniri.services.PlayerProfileLinker;
 import hr.mrodek.apps.futsal_turniri.services.SlugService;
 import hr.mrodek.apps.futsal_turniri.services.StorageService;
 import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -65,6 +66,9 @@ public class UserMeController {
     @Inject PlayerClaimRequestMapper claimMapper;
     @Inject PlayerProfileLinker profileLinker;
     @Inject JsonWebToken jwt;
+    /** Only used to mirror the "admin" role onto the profile in {@link #syncProfile}
+     *  as an address-book entry - see the security note there. */
+    @Inject SecurityIdentity identity;
 
     @GET
     @Path("/tournaments")
@@ -229,7 +233,9 @@ public class UserMeController {
     @Transactional   // touch the lazy avatar relation
     public UserProfileDto getProfile() {
         var p = profileRepo.findByUid(jwt.getSubject()).orElse(null);
-        if (p == null) return new UserProfileDto(null, null, null, null, null, null, null, null, null);
+        // No profile row yet → the entity defaults apply, i.e. opted IN to
+        // promo e-mail and push (see UserProfile#promoEmail).
+        if (p == null) return new UserProfileDto(null, null, null, null, null, null, null, null, null, true, true);
         return toDto(p);
     }
 
@@ -306,6 +312,50 @@ public class UserMeController {
     }
 
     /**
+     * Account-wide marketing / announcement preferences: promo e-mail and
+     * promo push. Same shape as the {@code colorMode} / {@code language}
+     * standalone saves above - authenticated by the class-level
+     * {@code @Authenticated} + the UID off the verified JWT, transactional,
+     * and returns the full refreshed {@link UserProfileDto} so the SPA can
+     * drop the response straight into its profile cache.
+     *
+     * <p><b>These switches are NOT the notification bells.</b> Per-tournament
+     * and per-match follows are stored separately and are untouched here:
+     * turning promo off must never silence a goal, half-time, final-whistle,
+     * schedule, elimination or team-approval notification for something the
+     * user explicitly followed. Only broadcast-style promo / general
+     * announcements are governed by these two flags.
+     *
+     * <p>Partial bodies are honoured: a {@code null} field means "leave
+     * unchanged", so a UI that owns only one of the two switches can send only
+     * that one without wiping the other.
+     */
+    @PUT
+    @Path("/notification-prefs")
+    @Transactional
+    public UserProfileDto updateNotificationPrefs(NotificationPrefsRequest body) {
+        String uid = jwt.getSubject();
+        var existing = profileRepo.findByUid(uid).orElse(null);
+        if (existing == null) {
+            existing = new UserProfile();
+            existing.setUserUid(uid);
+        }
+        if (body != null) {
+            if (body.promoEmail() != null) existing.setPromoEmail(body.promoEmail());
+            if (body.promoPush() != null) existing.setPromoPush(body.promoPush());
+        }
+        profileRepo.persist(existing);
+        return toDto(existing);
+    }
+
+    /**
+     * Body of {@link #updateNotificationPrefs}. Boxed booleans on purpose -
+     * {@code null} means "not sent, leave as-is", which a primitive could not
+     * express (it would silently arrive as {@code false}).
+     */
+    public record NotificationPrefsRequest(Boolean promoEmail, Boolean promoPush) {}
+
+    /**
      * Called by the frontend on every login. Persists the Firebase displayName
      * we just got from the SDK and ensures a unique slug exists for the public
      * /profile/{slug} URL.
@@ -329,6 +379,25 @@ public class UserMeController {
             String email = blank(emailClaim.toString());
             if (email != null) profile.setEmail(email);
         }
+        // Mirror the Firebase "role" custom claim onto the profile. Read via
+        // SecurityIdentity because that IS the mapping of that claim
+        // (quarkus.oidc.roles.role-claim-path=role) - the same value
+        // @RolesAllowed("admin") is evaluated against, already typed as a role
+        // instead of a raw JSON claim value.
+        //
+        // SECURITY: this is an ADDRESS BOOK entry, never an authorization
+        // source. Nothing reads user_profiles.admin to decide what a caller may
+        // do - every endpoint keeps enforcing @RolesAllowed("admin") against
+        // the verified JWT. The column exists only so an admin-facing
+        // notification can be addressed to the right UIDs, since admins are
+        // otherwise not listed in the database at all. A stale row (role
+        // revoked since the last login) or a hand-edited one can therefore
+        // misroute a notification and nothing more; it can never grant access.
+        //
+        // Written unconditionally (not only when the role is present) so the
+        // flag self-heals in BOTH directions: granting the role sets it on the
+        // next login, revoking it clears it.
+        profile.setAdmin(identity != null && identity.hasRole("admin"));
         // Attach any roster rows that unambiguously carry this person's name.
         // Runs on every login, so a tournament added since last time shows up
         // straight away - and, unlike the client-side flow, it also fills in
@@ -474,7 +543,9 @@ public class UserMeController {
                 p.getColorMode(),
                 p.getFirstName(),
                 p.getLastName(),
-                p.getLanguage());
+                p.getLanguage(),
+                p.isPromoEmail(),
+                p.isPromoPush());
     }
 
     private MyTournamentParticipationDto toDto(Teams p) {

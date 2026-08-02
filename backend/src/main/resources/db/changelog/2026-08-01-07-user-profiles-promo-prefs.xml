@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Global marketing / announcement preferences - "želim primati obavijesti
+        i novosti" by e-mail and by push. ONE switch per channel for the whole
+        account, deliberately separate from the per-tournament and per-match
+        bells (tournament_subscriptions / match_subscriptions): turning promo
+        off must never silence a match a user explicitly followed.
+
+        Default TRUE on both, so existing accounts keep receiving exactly what
+        they receive today and the columns can be NOT NULL without a backfill
+        step.
+    -->
+    <changeSet id="2026-08-01-07-user-profiles-promo-prefs" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="promo_email" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="promo_push" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

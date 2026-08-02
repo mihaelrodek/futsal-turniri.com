@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Address book, not access control.
+
+        `admin` mirrors the Firebase custom claim "role" onto the profile row on
+        every /user/me/sync, purely so a fan-out can answer "which UIDs should
+        receive an admin-facing notification" in ONE query - admins are
+        otherwise invisible to the database, the role existing only inside the
+        Firebase ID token.
+
+        SECURITY: this column is NEVER an authorization source. Every endpoint
+        keeps enforcing @RolesAllowed("admin") against the verified JWT. A stale
+        row (role revoked since the user last logged in) or a hand-edited one
+        must not grant access to anything - at worst it misroutes a
+        notification.
+
+        Default FALSE so the column can be NOT NULL without a backfill: existing
+        rows become admins again the first time their owner logs in.
+    -->
+    <changeSet id="2026-08-01-08-user-profiles-admin-flag" author="mrodek">
+        <addColumn tableName="user_profiles">
+            <column name="admin" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

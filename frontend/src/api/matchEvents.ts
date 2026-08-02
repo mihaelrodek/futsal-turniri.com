@@ -145,6 +145,26 @@ export async function setClockVisibility(
     )
 }
 
+/**
+ * Set which side wears the fluorescent training bibs ("markirka") FOR THIS
+ * MATCH ONLY - used when both teams turn up in a similar kit. Exactly one side
+ * can wear them, so the backend stores a single column: sending `2` while team
+ * 1 has them simply moves them. `null` clears them.
+ *
+ * Silent (no toast) - the effect is immediately visible on the kit swatches.
+ */
+export async function setMatchBib(
+    tournamentUuid: string,
+    matchId: number,
+    team: 1 | 2 | null,
+): Promise<void> {
+    await http.put(
+        `/tournaments/${tournamentUuid}/matches/${matchId}/bib`,
+        { team },
+        { silent: true },
+    )
+}
+
 /** List every event recorded for a match, in backend (chronological) order. */
 export async function fetchMatchEvents(
     tournamentUuid: string,

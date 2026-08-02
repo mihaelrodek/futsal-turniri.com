@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        The "Obavijesti" inbox: one row per RECIPIENT per push event, written
+        by PushService at send time. Until now a push was fire-and-forget, so
+        a user who missed the lock-screen banner could never see it again.
+
+        match_id / tournament_id are deliberately PLAIN ID COLUMNS, no FK:
+        a notification must survive its match (or the whole tournament) being
+        deleted, and the write path must never touch a lazy association. The
+        inbox resolves the labels at read time and falls back to the stored
+        title when the row is gone.
+
+        user_uid is a plain Firebase UID string (no FK), same as everywhere
+        else. Anonymous (endpoint-only) push followers have no identity to
+        show an inbox to, so they get no rows.
+    -->
+
+    <changeSet id="2026-08-01-05-user-notifications-seq" author="mrodek">
+        <createSequence sequenceName="seq_user_notifications_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-08-01-05-user-notifications" author="mrodek">
+        <createTable tableName="user_notifications">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_uid" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="kind" type="varchar(32)" defaultValue="GENERIC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="title" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="body" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="url" type="varchar(512)"/>
+
+            <!-- grouping keys; no FK on purpose (see comment above) -->
+            <column name="match_id" type="bigint"/>
+            <column name="tournament_id" type="bigint"/>
+
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="read_at" type="timestamptz"/>
+        </createTable>
+
+        <!-- the inbox query: one user's newest N rows -->
+        <createIndex tableName="user_notifications" indexName="idx_user_notifications_uid_created">
+            <column name="user_uid"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

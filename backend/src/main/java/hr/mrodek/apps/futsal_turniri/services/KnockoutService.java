@@ -12,6 +12,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.ThirdPlacedTableDto;
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.enums.TournamentFormat;
 import hr.mrodek.apps.futsal_turniri.model.Matches;
 import hr.mrodek.apps.futsal_turniri.model.Rounds;
@@ -1580,7 +1581,8 @@ public class KnockoutService {
             try {
                 pushService.sendToMatchAndTournamentSubscribers(
                         m.getId(), tour.getId(),
-                        "🏁 Kraj utakmice - " + tour.getName(), body, url);
+                        "🏁 Kraj utakmice - " + tour.getName(), body, url,
+                        NotificationKind.MATCH_END);
             } catch (Exception ignored) {
                 // best-effort - the result is already saved.
             }
@@ -1667,7 +1669,8 @@ public class KnockoutService {
                 sl != null ? sl.slot1Label() : null,
                 sl != null ? sl.slot2Label() : null,
                 sl != null ? sl.slot1PredictedName() : null,
-                sl != null ? sl.slot2PredictedName() : null);
+                sl != null ? sl.slot2PredictedName() : null,
+                m.getBibTeam());
     }
 
     /* ─────────────────────── predicted-pairing labels ─────────────────── */

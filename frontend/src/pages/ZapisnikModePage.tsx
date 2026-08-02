@@ -5,7 +5,7 @@ import { FiArrowLeft } from "react-icons/fi"
 import { useQueryClient } from "@tanstack/react-query"
 
 import { qk } from "../queryClient"
-import { fetchTournamentDetails, fetchTournamentAccess } from "../api/tournaments"
+import { fetchTournamentDetails, fetchTournamentAccess, finishTournament } from "../api/tournaments"
 import type { TournamentDetails } from "../types/tournaments"
 import { fetchLiveMatches, type LiveMatch } from "../api/live"
 import { useAuth } from "../auth/AuthContext"
@@ -15,6 +15,7 @@ import { Loader } from "../ui/primitives"
 import { LiveClock } from "../components/liveMatch"
 import { PulseDot } from "../ui/pitch"
 import LiveControlTab from "../components/LiveControlTab"
+import TournamentResults from "../components/TournamentResults"
 import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -79,6 +80,52 @@ export default function ZapisnikModePage() {
             .finally(() => { if (!cancelled) setDetailsLoading(false) })
         return () => { cancelled = true }
     }, [uuid, queryClient])
+
+    /** Re-pull the tournament after a result was entered. Cheap and rare (only
+     *  when the finished-match count moves), and it's the only way the console
+     *  learns that the final produced a champion - `winnerName` / `status` are
+     *  set backend-side when the last knockout match is closed. */
+    const refreshDetails = useCallback(() => {
+        if (!uuid) return
+        fetchTournamentDetails(uuid)
+            .then((d) => {
+                setDetails(d)
+                queryClient.setQueryData(qk.tournamentDetails(uuid), d)
+            })
+            .catch(() => { /* keep the last known tournament - not fatal here */ })
+    }, [uuid, queryClient])
+
+    /** The final has been recorded (reported by the console, which owns the
+     *  fixtures). NOT derivable from `details`: the backend writes `winnerName`
+     *  only on FINISH, which is exactly the step organizers forget - so the
+     *  prompt has to key off the match, not off the tournament row. */
+    const [finalDecided, setFinalDecided] = useState(false)
+    const onFixturesSettled = useCallback(
+        ({ finalDecided: decided, initial }: { finalDecided: boolean; initial: boolean }) => {
+            setFinalDecided(decided)
+            // A result moved - the tournament row may have changed with it
+            // (e.g. finished from another device). The load call reports what
+            // we already fetched, so it needs no re-pull.
+            if (!initial) refreshDetails()
+        },
+        [refreshDetails],
+    )
+
+    /** Mark the tournament FINISHED straight from the console. */
+    const [finishing, setFinishing] = useState(false)
+    async function runFinishTournament() {
+        if (!uuid) return
+        try {
+            setFinishing(true)
+            const updated = await finishTournament(uuid)
+            setDetails(updated)
+            queryClient.setQueryData(qk.tournamentDetails(uuid), updated)
+        } catch {
+            /* error toasted by the http interceptor */
+        } finally {
+            setFinishing(false)
+        }
+    }
 
     useEffect(() => {
         if (!uuid || !user?.uid) { setCanManageAccess(false); return }
@@ -245,7 +292,48 @@ export default function ZapisnikModePage() {
                 px={{ base: "3", md: "6" }}
                 py={{ base: "3", md: "5" }}
             >
-                <LiveControlTab uuid={uuid} onClockArgs={setClockArgs} />
+                {/* Tournament decided (the final set a champion) but not yet
+                    marked finished - organizers regularly walk away here, not
+                    realising the awards are still unassigned and the tournament
+                    is formally still running. The same compact results card the
+                    tournament page shows in its sidebar, hoisted ABOVE the
+                    console so it's the first thing seen after the final result
+                    goes in. Independent of HOW the result was entered (timer or
+                    score-only): it keys off the tournament, not the match.
+                    Centred, because the console below is a full-width
+                    workspace and a 420px card pinned left read as a leftover -
+                    the card's own rows stay left-aligned. */}
+                {(finalDecided || !!details.winnerName || details.status === "FINISHED") && (
+                    <Box maxW={{ base: "full", md: "420px" }} mx="auto" mb={{ base: "3", md: "5" }}>
+                        {details.status !== "FINISHED" && (
+                            <Box mb="2" textAlign="center">
+                                <Text fontSize="sm" fontWeight={800} color="fg.ink">
+                                    {t.pages.zapisnikModePage.tournamentOverTitle}
+                                </Text>
+                                <Text fontSize="xs" color="fg.muted">
+                                    {t.pages.zapisnikModePage.tournamentOverHint}
+                                </Text>
+                            </Box>
+                        )}
+                        <TournamentResults
+                            t={details}
+                            canEdit={canEdit}
+                            onSaved={(updated) => {
+                                setDetails(updated)
+                                queryClient.setQueryData(qk.tournamentDetails(uuid), updated)
+                            }}
+                            onFinish={details.status !== "FINISHED" ? runFinishTournament : undefined}
+                            finishing={finishing}
+                            compact
+                        />
+                    </Box>
+                )}
+
+                <LiveControlTab
+                    uuid={uuid}
+                    onClockArgs={setClockArgs}
+                    onFixturesSettled={onFixturesSettled}
+                />
             </Box>
         </>
     )

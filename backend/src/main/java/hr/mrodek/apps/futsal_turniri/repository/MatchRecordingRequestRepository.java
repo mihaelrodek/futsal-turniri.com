@@ -29,6 +29,15 @@ public class MatchRecordingRequestRepository implements AppRepository<MatchRecor
         return list("status = ?1", Sort.by("createdAt").descending(), status);
     }
 
+    /**
+     * Requests still waiting for an admin decision - the "zahtjevi snimke"
+     * badge on /admin. REQUESTED is the only status where the ball is in the
+     * admin's court; APPROVED already has a decision behind it.
+     */
+    public long countRequested() {
+        return count("status", RecordingRequestStatus.REQUESTED);
+    }
+
     /** Requests currently delivered via this library recording - used when re-mapping it to a different match. */
     public List<MatchRecordingRequest> findByRecordingId(Long recordingId) {
         return list("recording.id = ?1", recordingId);

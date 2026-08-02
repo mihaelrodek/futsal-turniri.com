@@ -83,7 +83,11 @@ export default function RecordingRequestDialog({
     // status page (anonymous callers have no profile to check instead).
     const [createdUuid, setCreatedUuid] = useState<string | null>(null)
 
-    const emailRequired = !user
+    // Mandatory for everyone, signed in or not: every step after this dialog -
+    // approval, the payment link, the download link - is delivered by e-mail,
+    // so a request without one is a request that can never be fulfilled. A
+    // signed-in user gets theirs prefilled, so it costs them nothing.
+    const emailRequired = true
 
     const isGoal = kind === "GOAL"
 
@@ -340,10 +344,28 @@ export default function RecordingRequestDialog({
                                     />
                                 </Field.Root>
 
+                                {/* Signed-in: the request lands in "Moje snimke".
+                                    Anonymous: say plainly that signing in is what
+                                    puts it there - the old copy promised a profile
+                                    tab to people who have no profile. The link
+                                    returns to this exact page after login. */}
                                 <Text fontSize="xs" color="fg.muted">
-                                    {user
-                                        ? t.recordingRequest.dialog.footerHintUser
-                                        : t.recordingRequest.dialog.footerHintAnonymous}
+                                    {user ? (
+                                        t.recordingRequest.dialog.footerHintUser
+                                    ) : (
+                                        <>
+                                            {t.recordingRequest.dialog.footerHintAnonymous}{" "}
+                                            <ChakraLink asChild color="pitch.600" fontWeight={700}>
+                                                <RouterLink
+                                                    to={`/prijava?next=${encodeURIComponent(
+                                                        window.location.pathname + window.location.search,
+                                                    )}`}
+                                                >
+                                                    {t.recordingRequest.dialog.signInToTrack}
+                                                </RouterLink>
+                                            </ChakraLink>
+                                        </>
+                                    )}
                                 </Text>
                             </VStack>
                         </Dialog.Body>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        `bib_team` was added as SMALLINT, but the entity maps it as a Java
+        Integer - Hibernate's schema validation expects INTEGER and fails the
+        post-boot check ("found [int2], but expecting [integer]").
+
+        Widened here in a NEW changeset instead of editing 2026-08-01-06:
+        that one has already run, so changing it would only produce a checksum
+        error on top of the type error. int2 -> int4 is a cheap in-place widen
+        in Postgres (no table rewrite, no data to convert), and the column
+        holds only 1, 2 or NULL either way.
+    -->
+    <changeSet id="2026-08-02-03-matches-bib-team-integer" author="mrodek">
+        <modifyDataType tableName="matches" columnName="bib_team" newDataType="integer"/>
+    </changeSet>
+</databaseChangeLog>

@@ -16,6 +16,12 @@ public record TeamMatchHistoryDto(
     public record Row(
             Long matchId,         // lets the profile link straight into the match page
             Integer roundNumber,
+            /**
+             * GROUP | ROUND_OF_32 | … | FINAL. Lets the profile label a row by
+             * its knockout stage ("Četvrtfinale") instead of a round number,
+             * which for a bracket match is meaningless.
+             */
+            String stage,
             Integer tableNo,
             String opponentName,
             Integer ourScore,

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        "Riješeno" flag for the "zatraži ponudu" leads. Deliberately a single
+        nullable timestamp rather than a status enum: the follow-up happens
+        entirely off-platform (mail/phone), so the only thing the app needs to
+        know is whether an admin is still supposed to look at it.
+
+        Null = still in the queue, which is exactly what the /admin console's
+        "ponude" badge counts (GET /admin/pending-counts). Existing rows stay
+        null, i.e. unhandled, which is the correct default for a lead nobody
+        has explicitly ticked off yet.
+    -->
+    <changeSet id="2026-08-01-01-camera-package-inquiries-handled-at" author="mrodek">
+        <addColumn tableName="camera_package_inquiries">
+            <column name="handled_at" type="timestamptz"/>
+        </addColumn>
+        <createIndex tableName="camera_package_inquiries" indexName="idx_camera_package_inquiries_handled_at">
+            <column name="handled_at"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

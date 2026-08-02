@@ -16,13 +16,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Transactional-email sender (Brevo SMTP via quarkus-mailer).
+ * Transactional-email sender (Resend SMTP via quarkus-mailer).
  *
  * <p>Every send is <em>fire-and-forget</em> and swallows failures - exactly
  * like {@link PushService}: a flaky mail server must never break the request
  * that triggered the notification. When SMTP credentials aren't configured
  * ({@code MAIL_SMTP_LOGIN} empty) {@link #isReady()} is false and every send is
- * a silent no-op, so the app runs fine locally / before Brevo is wired up.
+ * a silent no-op, so the app runs fine locally / before Resend is wired up.
  */
 @ApplicationScoped
 public class EmailService {
@@ -74,6 +74,16 @@ public class EmailService {
      * Fan-out an HTML email to every user who follows a tournament (the same
      * opt-in table push uses). Resolves subscriber UIDs → profile emails,
      * de-duped case-insensitively. No-op when not configured.
+     *
+     * <p><b>Deliberately NOT gated on {@code UserProfile.promoEmail}.</b> The
+     * recipients here are exactly the people who tapped the bell on this
+     * tournament, and the only current caller is the "turnir je završio,
+     * pobjednik je X" mail - a subscription event, not marketing. The
+     * account-wide promo switch governs broadcast-style promo / general
+     * announcements only, and must never silence something a user explicitly
+     * followed. A future promo blast should filter its recipients through
+     * {@code UserProfileRepository.filterPromoEmailAllowed(uids)} (one query,
+     * never per-recipient).
      */
     @Transactional
     public void sendToTournamentSubscribers(Long tournamentId, String subject, String html) {

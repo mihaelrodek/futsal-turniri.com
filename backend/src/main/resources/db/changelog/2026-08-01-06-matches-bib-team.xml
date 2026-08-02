@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        "Markirke" - fluorescent training bibs. When two teams turn up in
+        similar kit one side pulls on bibs, and for THAT MATCH ONLY its
+        effective jersey colour becomes bib yellow (app chips + SpectoStream
+        overlay). The teams' own saved kits are never touched, so every other
+        match still shows the real colours.
+
+        1 = team1, 2 = team2, NULL = neither (the default for every existing
+        row). Deliberately ONE nullable column rather than two booleans: the
+        "exactly one side can wear bibs" rule is then structural - there is no
+        state in which both sides claim the bibs.
+    -->
+    <changeSet id="2026-08-01-06-matches-bib-team" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="bib_team" type="smallint"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

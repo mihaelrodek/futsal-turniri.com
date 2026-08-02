@@ -46,6 +46,19 @@ public class Matches {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "team2_id")
     private Teams team2;
 
+    /**
+     * Which side wears fluorescent training bibs ("markirke") for THIS MATCH
+     * ONLY: 1 = team1, 2 = team2, null = neither. Set when both teams turn up
+     * in similar kit - from then on that side's <i>effective</i> jersey colour
+     * is bib yellow everywhere the kit is drawn (app chips, stream overlay),
+     * while the team's own saved kit stays untouched for every other match.
+     *
+     * <p>A single column, not two booleans, so "exactly one side can wear
+     * bibs" is structural - two booleans could both be true.
+     */
+    @Column(name = "bib_team")
+    private Integer bibTeam;
+
     private Integer score1;
     private Integer score2;
 

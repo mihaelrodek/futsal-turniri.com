@@ -19,10 +19,11 @@ import java.time.OffsetDateTime;
  * on request, so this just captures the inquiry for an admin to follow up
  * manually. Name, contact email + phone, tournament name and a description
  * are all mandatory (see CameraInquiryController for validation) so an admin
- * always has enough to act on. No lifecycle, status, or payment - just a
- * record + an admin notification + a "received" confirmation to the
- * requester. Submitting doesn't require an account, though the email may
- * happen to belong to one.
+ * always has enough to act on. No status enum or payment - just a record +
+ * an admin notification + a "received" confirmation to the requester, plus a
+ * single {@code handledAt} flag an admin toggles once they've followed up.
+ * Submitting doesn't require an account, though the email may happen to
+ * belong to one.
  */
 @Entity
 @Table(name = "camera_package_inquiries")
@@ -53,4 +54,13 @@ public class CameraPackageInquiry {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * When an admin marked this lead as dealt with. {@code null} = still in
+     * the admin's queue, which is what the /admin pending-count badge counts.
+     * It's a manual flag, not a lifecycle: there is still no status enum here,
+     * and clearing it puts the lead straight back in the queue.
+     */
+    @Column(name = "handled_at")
+    private OffsetDateTime handledAt;
 }

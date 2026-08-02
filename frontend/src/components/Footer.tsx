@@ -37,7 +37,7 @@ export default function Footer() {
         >
             <Container maxW="6xl" py={{ base: "2.5", md: "3" }}>
                 {/* Everything centred on one row (wraps on very narrow
-                    screens): logo · Privatnost · © line. */}
+                    screens): logo · Kontakt · Privatnost · © line. */}
                 <Flex
                     align="center"
                     justify="center"
@@ -45,6 +45,17 @@ export default function Footer() {
                     wrap="wrap"
                 >
                     <Logo size={24} variant="dark" showDomain={false} to="/turniri" />
+                    <Box
+                        asChild
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.7)"
+                        css={{ "&:hover": { color: "#fff" } }}
+                    >
+                        <RouterLink to="/kontakt">{t.components.footer.contactLink}</RouterLink>
+                    </Box>
                     <Box
                         asChild
                         fontFamily="mono"

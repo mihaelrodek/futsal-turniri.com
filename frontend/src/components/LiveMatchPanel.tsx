@@ -11,6 +11,7 @@ import {
     resetMatch,
     resumeMatch,
     setClockVisibility,
+    setMatchBib,
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
@@ -66,8 +67,25 @@ const CARD_YELLOW = "#e8a01f"
 const CARD_RED = "#c0392b"
 /** SPECTO brand cyan - drives the active-half foul tint. */
 const PITCH = "#2AD4C8"
+/** Fluorescent training-bib ("markirka") yellow. A real-world kit colour, not a
+ *  theme token - same hex as the backend so app, stream overlay and exports all
+ *  show the identical shade. */
+const BIB_YELLOW = "#D9F225"
+/** Readable ink on the bib yellow (it's far too bright for white text). */
+const BIB_INK = "#25300A"
 /** A translucent tint of a colour - works on any (light/dark) surface. */
 const tint = (hex: string, pct: number) => `color-mix(in srgb, ${hex} ${pct}%, transparent)`
+
+/** THE one place the bib override is applied: for the side wearing the bibs the
+ *  effective dres colour is bib yellow for this match only (shorts unchanged);
+ *  every other side keeps its own kit colour. */
+function effectiveJersey(
+    jersey: string | null | undefined,
+    side: 1 | 2,
+    bibTeam: 1 | 2 | null,
+): string | null {
+    return bibTeam === side ? BIB_YELLOW : jersey ?? null
+}
 
 export type PanelMatch = {
     matchId: number
@@ -90,6 +108,10 @@ export type PanelMatch = {
     fouls2Second?: number | null
     penalties1?: number | null
     penalties2?: number | null
+    /** Which side wears the fluorescent training bibs ("markirka") in THIS
+     *  match; null = neither. Backend stores one column, so it is structurally
+     *  impossible for both sides to have them. */
+    bibTeam?: 1 | 2 | null
 }
 
 function scoreFromEvents(list: MatchEventDto[], t1: number | null, t2: number | null) {
@@ -157,6 +179,16 @@ export default function LiveMatchPanel({
     const jerseyC2 = teamColor(teamColors, match.team2Id)
     const shortsC1 = teamShorts(teamColors, match.team1Id)
     const shortsC2 = teamShorts(teamColors, match.team2Id)
+
+    // Markirka (training bibs) - which side wears them in THIS match. Kept in
+    // local state so the toggle flips instantly (same optimistic pattern as the
+    // live instants below); the parent refetch then confirms it.
+    const [bibTeam, setBibTeam] = useState<1 | 2 | null>(match.bibTeam ?? null)
+    const [bibBusy, setBibBusy] = useState(false)
+    useEffect(() => setBibTeam(match.bibTeam ?? null), [match.bibTeam])
+    // Effective dres colours - derived ONCE here, used by every kit swatch.
+    const effJerseyC1 = effectiveJersey(jerseyC1, 1, bibTeam)
+    const effJerseyC2 = effectiveJersey(jerseyC2, 2, bibTeam)
 
     // Offline-first live events: optimistic add/delete, queued while offline,
     // replayed on reconnect (idempotent via a client key). Score derives from
@@ -416,6 +448,26 @@ export default function LiveMatchPanel({
         }
     }
 
+    /** Move / clear the markirka. Exactly one side can wear it, so tapping the
+     *  other side just sends that side (the backend's single column does the
+     *  mutual exclusion); tapping the side that already has it clears to null.
+     *  Deliberately NOT queued offline - it's cosmetic, not a scoring event. */
+    async function handleBib(side: 1 | 2) {
+        const prev = bibTeam
+        const next = prev === side ? null : side
+        setBibBusy(true)
+        setBibTeam(next)
+        try {
+            await setMatchBib(uuid, matchId, next)
+            await onChanged()
+        } catch {
+            setBibTeam(prev)
+            /* error toast surfaced by the http interceptor */
+        } finally {
+            setBibBusy(false)
+        }
+    }
+
     async function toggleStreamClockVisibility() {
         const next = !clockVisibleOnStream
         setClockVisibilityBusy(true)
@@ -596,6 +648,9 @@ export default function LiveMatchPanel({
             team1Name={match.team1Name ?? null}
             team2Id={match.team2Id ?? null}
             team2Name={match.team2Name ?? null}
+            bibTeam={bibTeam}
+            onBib={handleBib}
+            bibBusy={bibBusy}
             isTimer={isLive && isTimer}
             clockArgs={clockArgs}
             half={currentHalf}
@@ -653,7 +708,16 @@ export default function LiveMatchPanel({
                             <HStack gap="2" justify="flex-end" minW="0">
                                 {/* Identity-colour fallback keeps both sides showing a
                                     jersey even when a team has no kit colours. */}
-                                <KitSwatch jersey={jerseyC1 ?? shortsC1 ?? HOME} shorts={shortsC1} size={13} />
+                                {!isFinished && (
+                                    <BibToggle
+                                        compact
+                                        teamName={match.team1Name}
+                                        active={bibTeam === 1}
+                                        disabled={bibBusy || match.team1Id == null}
+                                        onClick={() => handleBib(1)}
+                                    />
+                                )}
+                                <KitSwatch jersey={effJerseyC1 ?? shortsC1 ?? HOME} shorts={shortsC1} size={13} />
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={HOME} textAlign="right" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team1Name ?? "-"}
                                 </Text>
@@ -687,9 +751,19 @@ export default function LiveMatchPanel({
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={AWAY} textAlign="left" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team2Name ?? "-"}
                                 </Text>
-                                <KitSwatch jersey={jerseyC2 ?? shortsC2 ?? AWAY} shorts={shortsC2} size={13} />
+                                <KitSwatch jersey={effJerseyC2 ?? shortsC2 ?? AWAY} shorts={shortsC2} size={13} />
+                                {!isFinished && (
+                                    <BibToggle
+                                        compact
+                                        teamName={match.team2Name}
+                                        active={bibTeam === 2}
+                                        disabled={bibBusy || match.team2Id == null}
+                                        onClick={() => handleBib(2)}
+                                    />
+                                )}
                             </HStack>
                         </Box>
+
                         {/* Status line only for a FINISHED match - the scheduled
                             "još nije pokrenuta" note was redundant next to the
                             start buttons right below. */}
@@ -1048,6 +1122,52 @@ export default function LiveMatchPanel({
     )
 }
 
+/* ── One side's markirka toggle. Active = filled with the real bib yellow (a
+   kit colour, so a raw hex like the other kit hexes here) with dark ink on it;
+   inactive stays a neutral outline built from semantic tokens, so both states
+   read correctly in light and dark mode. `minH` keeps a real pitchside touch
+   target on a phone even at the compact `xs` size. ─────────────────────────── */
+function BibToggle({
+    teamName,
+    active,
+    disabled,
+    compact = false,
+    onClick,
+}: {
+    teamName: string | null
+    active: boolean
+    disabled?: boolean
+    /** Inside a team's own header the team name is right next to it, so the
+     *  button says „Markirka" instead of repeating the name. */
+    compact?: boolean
+    onClick: () => void
+}) {
+    const t = useTranslation()
+    const label = compact ? t.components.liveMatchPanel.bib.label : (teamName ?? "-")
+    const aria = t.components.liveMatchPanel.bib.aria(teamName ?? "-")
+    return (
+        <Button
+            size="xs"
+            minH="32px"
+            px="2.5"
+            variant={active ? "solid" : "outline"}
+            colorPalette="gray"
+            fontWeight={700}
+            aria-pressed={active}
+            aria-label={aria}
+            title={aria}
+            disabled={disabled}
+            bg={active ? BIB_YELLOW : undefined}
+            color={active ? BIB_INK : "fg.muted"}
+            borderColor={active ? BIB_YELLOW : "border"}
+            _hover={active ? { bg: BIB_YELLOW, opacity: 0.9 } : undefined}
+            onClick={onClick}
+        >
+            <Box as="span" maxW="120px" truncate>{label}</Box>
+        </Button>
+    )
+}
+
 /* ── Pre-match score badge (maroon/green tinted). ─────────────────────────── */
 function ScoreBadge({ value, color }: { value: number; color: string }) {
     return (
@@ -1173,6 +1293,9 @@ function PairingEntry({
     team1Name,
     team2Id,
     team2Name,
+    bibTeam,
+    onBib,
+    bibBusy,
     isTimer,
     clockArgs,
     half,
@@ -1188,6 +1311,11 @@ function PairingEntry({
     team1Name: string | null
     team2Id: number | null
     team2Name: string | null
+    /** Which side wears the markirka (see `effectiveJersey`); null = neither. */
+    bibTeam: 1 | 2 | null
+    /** Flips the markirka to `side`, or clears it when it's already there. */
+    onBib: (side: 1 | 2) => void
+    bibBusy: boolean
     isTimer: boolean
     clockArgs: ClockArgs
     half: 1 | 2
@@ -1336,7 +1464,7 @@ function PairingEntry({
                     teamName={team1Name}
                     teamId={team1Id}
                     color={HOME}
-                    jerseyColor={teamColor(rosterColors, team1Id)}
+                    jerseyColor={effectiveJersey(teamColor(rosterColors, team1Id), 1, bibTeam)}
                     shortsColor={teamShorts(rosterColors, team1Id)}
                     players={team1Id != null ? rosters[team1Id] ?? [] : []}
                     foulsCount={foulsHome}
@@ -1349,12 +1477,21 @@ function PairingEntry({
                     onSelect={selectPlayer}
                     sentOffPlayerIds={sentOffPlayerIds}
                     yellowCardedPlayerIds={yellowCardedPlayerIds}
+                    bibControl={
+                        <BibToggle
+                            compact
+                            teamName={team1Name}
+                            active={bibTeam === 1}
+                            disabled={bibBusy || team1Id == null}
+                            onClick={() => onBib(1)}
+                        />
+                    }
                 />
                 <RosterColumn
                     teamName={team2Name}
                     teamId={team2Id}
                     color={AWAY}
-                    jerseyColor={teamColor(rosterColors, team2Id)}
+                    jerseyColor={effectiveJersey(teamColor(rosterColors, team2Id), 2, bibTeam)}
                     shortsColor={teamShorts(rosterColors, team2Id)}
                     players={team2Id != null ? rosters[team2Id] ?? [] : []}
                     foulsCount={foulsAway}
@@ -1367,6 +1504,15 @@ function PairingEntry({
                     onSelect={selectPlayer}
                     sentOffPlayerIds={sentOffPlayerIds}
                     yellowCardedPlayerIds={yellowCardedPlayerIds}
+                    bibControl={
+                        <BibToggle
+                            compact
+                            teamName={team2Name}
+                            active={bibTeam === 2}
+                            disabled={bibBusy || team2Id == null}
+                            onClick={() => onBib(2)}
+                        />
+                    }
                 />
             </Box>
 
@@ -1518,7 +1664,11 @@ function RosterColumn({
     onSelect,
     sentOffPlayerIds,
     yellowCardedPlayerIds,
+    bibControl,
 }: {
+    /** Markirka toggle for THIS team, docked right in the header row next to
+     *  the kit + name it actually describes. */
+    bibControl?: React.ReactNode
     teamName: string | null
     teamId: number | null
     color: string
@@ -1545,6 +1695,10 @@ function RosterColumn({
     const isPending = (playerId: number | null) =>
         pendingPlayer != null && pendingPlayer.team === teamId && pendingPlayer.playerId === playerId
     const deveterci = Math.max(0, foulsCount - 4)
+    // Rows of the two-column roster grid: the "?" entry plus the roster, split
+    // in half with the remainder in the FIRST column (11 → 6 + 5). Never 0 -
+    // `repeat(0, auto)` is invalid and would collapse the grid.
+    const rosterRows = Math.max(1, Math.ceil(((teamId != null ? 1 : 0) + players.length) / 2))
 
     return (
         <VStack
@@ -1572,7 +1726,16 @@ function RosterColumn({
             {/* Fouls block (cyan). While a TIMER match is live the accumulated
                 fouls split by half: the current half is editable (+/-), the other
                 is read-only/muted. Otherwise one combined counter that writes to
-                the current half. The ≥5 warning colour is preserved either way. */}
+                the current half. The ≥5 warning colour is preserved either way.
+
+                The markirka toggle rides in the SAME row, right of the fouls -
+                both are per-match, per-team switches, so they read as one strip
+                and the team header goes back to being just kit + name. */}
+            <Flex gap="2" align="stretch" wrap="wrap">
+            {/* `1 1 180px`: the pair shares one row whenever the column is wide
+                enough, and the toggle drops to its own line on a narrow phone
+                rather than crushing the +/- targets. */}
+            <Box flex="1 1 180px" minW="0">
             {splitByHalf ? (
                 <VStack align="stretch" gap="1.5" rounded="lg" px="3" py="2" bg="pitch.subtle">
                     <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg" textAlign="center">{t.components.liveMatch.foulControls.label.toUpperCase()}</Text>
@@ -1603,9 +1766,29 @@ function RosterColumn({
                     </HStack>
                 </Flex>
             )}
+            </Box>
+            {bibControl && (
+                <Flex align="center" flexShrink={0}>
+                    {bibControl}
+                </Flex>
+            )}
+            </Flex>
 
-            {/* Player list - "Nepoznati igrač" first, then the roster. */}
-            <VStack align="stretch" gap="1.5">
+            {/* Player list - "Nepoznati igrač" first, then the roster - in TWO
+                columns, filled top-down: 11 entries land 6 + 5. Column-first
+                flow (`grid-auto-flow: column` over a fixed row count) does the
+                split in CSS, so the roster array is never sliced and the
+                reading order stays "down the first column, then the second".
+                Halves the vertical space, which is what matters on a phone
+                held pitchside. */}
+            <Box
+                display="grid"
+                gridTemplateColumns="1fr 1fr"
+                gridAutoFlow="column"
+                gridTemplateRows={`repeat(${rosterRows}, auto)`}
+                gap="1.5"
+                alignContent="start"
+            >
                 {teamId != null && (
                     <PlayerButton
                         selected={isPending(null)}
@@ -1632,10 +1815,10 @@ function RosterColumn({
                         />
                     )
                 })}
-                {teamId != null && players.length === 0 && (
-                    <Text fontSize="xs" color="fg.subtle">{t.components.liveMatch.playerPick.noPlayers}</Text>
-                )}
-            </VStack>
+            </Box>
+            {teamId != null && players.length === 0 && (
+                <Text fontSize="xs" color="fg.subtle">{t.components.liveMatch.playerPick.noPlayers}</Text>
+            )}
         </VStack>
     )
 }

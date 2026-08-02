@@ -62,6 +62,7 @@ export const hr = {
         pricing: "Cjenik",
         login: "Prijava",
         profile: "Profil",
+        notifications: "Obavijesti",
         logout: "Odjavi se",
         loggedInAs: "Prijavljen kao",
         anonymous: "Anonimno",
@@ -111,6 +112,8 @@ export const hr = {
             notePlaceholderMatch: "Npr. treba mi samo drugo poluvrijeme…",
             footerHintUser: "Sve svoje zahtjeve pratiš na profilu, u kartici „Moje snimke“.",
             footerHintAnonymous: "Poveznicu za praćenje statusa dobivaš odmah nakon slanja zahtjeva.",
+            /** Anonymous only - the link that turns "no profile" into "Moje snimke". */
+            signInToTrack: "Prijavi se da ti zahtjev ostane spremljen na profilu.",
             submit: "Pošalji zahtjev",
             toastSuccessMatch: "Zahtjev za snimku je poslan.",
             toastSuccessGoal: "Zahtjev za snimku gola je poslan.",
@@ -134,6 +137,10 @@ export const hr = {
             paymentCancelled: "Plaćanje je prekinuto — možeš pokušati ponovno.",
             requestLabel: "ZAHTJEV ZA SNIMKU",
             paidBadge: "Plaćeno",
+            /** Escape hatch at the bottom of the status page - this is often the
+             *  only page an anonymous buyer has. */
+            contactHint: "Nešto ne radi kako treba?",
+            contactButton: "Kontaktiraj nas",
             awaitingApproval: "Zahtjev čeka odobrenje. Obavijest stiže na email.",
             rejected: "Zahtjev je odbijen.",
             cancelled: "Zahtjev je otkazan.",
@@ -192,8 +199,6 @@ export const hr = {
 
         adminRequests: {
             allFilter: "Svi",
-            title: "Zahtjevi za snimke",
-            description: "Upravljanje zahtjevima za snimke utakmica (20 €) i pojedinih golova (5 €) - odobri ili odbij zahtjev, označi uplatu i isporuči snimku povezivanjem s bazom snimki.",
             noneForFilter: "Nema zahtjeva za odabrani status.",
             goalBadge: "Gol",
             matchBadge: "Utakmica",
@@ -228,8 +233,6 @@ export const hr = {
         },
 
         adminLibrary: {
-            title: "Baza snimki",
-            description: 'Uploadaj snimku jednom po utakmici, zatim je poveži s jednim ili više zahtjeva iz kartice „Zahtjevi za snimke".',
             newRecording: "Nova snimka",
             pickTournament: "Odaberi turnir…",
             loadingMatches: "Učitavanje utakmica…",
@@ -377,6 +380,10 @@ export const hr = {
         tournamentFallback: "Turnir",
         shareDefaultTitle: "Utakmica uživo",
         requestRecordingAria: "Zatraži snimku",
+        /** Label of the amber recording pill in the match header - the price is
+         *  part of the pitch, so it must stay in sync with
+         *  `recordingRequest.dialog.priceMatch`. */
+        recordingCta: "Snimka",
         watchLiveStream: "Gledaj live stream",
         finished: "Završeno",
         notStarted: "Nije počelo",
@@ -545,8 +552,9 @@ export const hr = {
             },
             loadMore: (n: number) => `Učitaj više (${n})`,
         },
-        /** PublicProfilePage.tsx - the public /profil/{slug} page, plus the
-         *  owner-only edit form and the admin dashboard shell embedded in it. */
+        /** PublicProfilePage.tsx - the public /profil/{slug} page plus the
+         *  owner-only edit form. The admin screens that used to be tabs here
+         *  now live in their own console (see `adminConsole`). */
         publicProfilePage: {
             errors: {
                 notFound: "Profil nije pronađen.",
@@ -556,20 +564,10 @@ export const hr = {
             toTournamentsButton: "Na turnire",
             unnamedPlayer: "Bezimeni igrač",
             avatarAlt: "Profilna slika",
-            adminPillLabel: "Administracija",
-            adminSectionCaption: "ADMINISTRACIJA",
             tabs: {
                 profile: "Profil",
                 tournaments: "Turniri",
                 myRecordings: "Moje snimke",
-                dashboard: "Dashboard",
-                playersList: "Popis igrača",
-                teamDatabase: "Baza ekipa",
-                liveStream: "Live stream",
-                recordingRequests: "Zahtjevi za snimke",
-                recordingsLibrary: "Baza snimki",
-                cameraInquiries: "Zahtjevi za ponudu",
-                playerClaimRequests: "Zahtjevi za igrače",
             },
             tournamentsTab: {
                 heading: "Turniri",
@@ -696,10 +694,78 @@ export const hr = {
             noMatchesPlayed: "Nema odigranih mečeva.",
             settings: {
                 heading: "Postavke",
-                description: "Personalizirane postavke aplikacije i tvog profila.",
                 themeLabel: "Tema",
                 languageLabel: "Jezik",
                 languageSyncNote: "Sprema se na tvoj profil i sinkronizira se na svim uređajima na kojima si prijavljen/na.",
+                notificationsLabel: "Obavijesti",
+                promoEmailLabel: "Promotivne poruke i novosti na e-mail",
+                promoPushLabel: "Promotivne poruke i novosti kao push obavijest",
+                promoNote: "Odnosi se samo na promotivne poruke i novosti. Obavijesti o turnirima i utakmicama koje pratiš stižu neovisno o ovome.",
+            },
+        },
+        /** AdminHomePage.tsx / AdminModulePage.tsx - the admin console shell. */
+        adminConsole: {
+            noResults: "Nijedan modul ne odgovara pretrazi",
+            backToDashboard: "Natrag na administraciju",
+            openModule: "Otvori",
+            userProfileLink: "Korisnički profil",
+            openConsole: "Otvori administraciju",
+            notFound: "Traženi modul ne postoji",
+            /** The admin-mode toggle in the profile menu - a state switch
+             *  sitting next to the theme one, not a navigation row. */
+            viewSwitch: {
+                label: "Admin prikaz",
+            },
+            /** Dashboard section headings (see ADMIN_MODULE_GROUPS). */
+            groups: {
+                upravljanje: "Upravljanje natjecanjem",
+                prijenos: "Prijenos uživo",
+                snimke: "Snimke i ponude",
+                komunikacija: "Komunikacija",
+            },
+            /** Badge on a card whose module has items awaiting the admin. */
+            pendingBadge: (n: number) => `${n} ${n === 1 ? "novi zahtjev" : n < 5 ? "nova zahtjeva" : "novih zahtjeva"}`,
+            modules: {
+                turniri: {
+                    title: "Upravljanje turnirima",
+                    description: "Odaberi turnir i upravljaj pravima, statusom, isticanjem, exportom i brisanjem",
+                },
+                igraci: {
+                    title: "Popis igrača",
+                    description: "Svi registrirani korisnici s brzim otvaranjem njihovog profila",
+                },
+                ekipe: {
+                    title: "Baza ekipa",
+                    description: "Sakrij test ekipe i spoji iste ekipe upisane pod različitim nazivima",
+                },
+                stream: {
+                    title: "Live stream",
+                    description: "Poveži postojeći SpectoStream prijenos s turnirom i provjeri player",
+                },
+                zahtjeviSnimke: {
+                    title: "Zahtjevi za snimke",
+                    description: "Odobri, naplati i isporuči plaćene zahtjeve za snimke utakmica",
+                },
+                bazaSnimki: {
+                    title: "Baza snimki",
+                    description: "Uploadaj i organiziraj snimke utakmica koje se povezuju na zahtjeve",
+                },
+                ponude: {
+                    title: "Zahtjevi za ponudu",
+                    description: "Upiti za kamera paket poslani preko Cjenika - javi se kontaktu izravno",
+                },
+                poruke: {
+                    title: "Poruke",
+                    description: "Primljene poruke s kontakt obrasca - označi riješeno kad odgovoriš",
+                },
+                mailer: {
+                    title: "Pošalji mail",
+                    description: "Ručno pošalji obavijest ili link za plaćanje kad automatski mail nije stigao",
+                },
+                zahtjeviIgraci: {
+                    title: "Zahtjevi za pridruživanje",
+                    description: "Ručni zahtjevi korisnika za povezivanje s igračem iz sastava ekipe",
+                },
             },
         },
         /** LivePage.tsx - global "/uzivo" live-now + upcoming matches page. */
@@ -1172,6 +1238,51 @@ export const hr = {
                 submitButton: "Pošalji upit",
             },
         },
+        contactPage: {
+            documentTitle: "Kontakt · Futsal Turniri",
+            documentDescription:
+                "Pošalji nam poruku - pitanja o turnirima, snimkama, prijenosu uživo ili suradnji.",
+            kicker: "Kontakt",
+            title: "Kontaktiraj nas",
+            subtitle:
+                "Pitanje o turniru, snimkama, prijenosu uživo ili suradnji? Piši nam i javljamo se u najkraćem roku.",
+            nameLabel: "Ime i prezime",
+            namePlaceholder: "npr. Marko Horvat",
+            nameInvalid: "Ime i prezime mora imati između 3 i 120 znakova.",
+            emailLabel: "Email",
+            emailPlaceholder: "ime@email.com",
+            emailInvalid: "Email adresa nije ispravna.",
+            /** Fixed reason keys (see CONTACT_REASONS / ContactController.REASONS). */
+            reasonLabel: "Razlog",
+            reasonHelper: "Odaberi temu da poruka odmah dođe pravoj osobi.",
+            reasons: {
+                PLACANJE: "Problem s plaćanjem",
+                SNIMKA: "Problem sa snimkom",
+                TURNIR: "Pomoć oko turnira",
+                SURADNJA: "Poslovna suradnja",
+                INFORMACIJE: "Informacije o stranici",
+                GRESKA: "Prijava greške",
+                OSTALO: "Ostalo",
+            },
+            /** Appended to the message when the visitor arrived from a page
+             *  that knows what they are writing about (?ref=). */
+            referenceLine: (ref: string) => `Referenca: ${ref}`,
+            subjectLabel: "Naslov",
+            subjectPlaceholder: "npr. Prijenos uživo za turnir",
+            subjectHelper: "Nije obavezno, ali pomaže da brže odgovorimo.",
+            messageLabel: "Poruka",
+            messagePlaceholder: "Opiši što te zanima - što više detalja, to brži odgovor.",
+            messageInvalid: "Poruka mora imati između 10 i 4000 znakova.",
+            messageCounter: (n: number, max: number) => `${n} / ${max} znakova`,
+            privacyNote: "Podatke koristimo isključivo za odgovor na tvoju poruku.",
+            submitButton: "Pošalji poruku",
+            missingDataTitle: "Nedostaju podaci",
+            missingDataDesc: "Ime i prezime, ispravan email i poruka su obavezni.",
+            sentTitle: "Poruka je zaprimljena.",
+            sentDesc: "Hvala što si nam se javio/la - javljamo se u najkraćem roku.",
+            sentMailNote: "Potvrda o zaprimanju poslana je na tvoju email adresu.",
+            directEmailPrefix: "Ili nam piši direktno na",
+        },
         loginPage: {
             heading: "Prijava",
             continueWithGoogle: "Nastavi s Googleom",
@@ -1268,10 +1379,46 @@ export const hr = {
         profileRedirect: {
             openingProfile: "Otvaram tvoj profil…",
         },
+        notificationsPage: {
+            title: "Obavijesti",
+            subtitle: "Sve push obavijesti koje si primio, grupirane po utakmici ili turniru.",
+            empty: {
+                title: "Nema obavijesti",
+                description: "Kad zapratiš turnir ili utakmicu, obavijesti o golovima i rezultatima stižu ovdje.",
+            },
+            markAllRead: "Označi sve kao pročitano",
+            unreadBadge: (n: number) => `${n} novo`,
+            itemCount: (n: number) => (n === 1 ? "1 obavijest" : `${n} obavijesti`),
+            otherGroup: "Ostalo",
+            justNow: "upravo sada",
+            minutesAgo: (n: number) => `prije ${n} min`,
+            hoursAgo: (n: number) => (n === 1 ? "prije 1 sat" : n < 5 ? `prije ${n} sata` : `prije ${n} sati`),
+            daysAgo: (n: number) => (n === 1 ? "prije 1 dan" : `prije ${n} dana`),
+            expandAria: "Prikaži obavijesti",
+            collapseAria: "Sakrij obavijesti",
+            kinds: {
+                MATCH_START: "Početak utakmice",
+                MATCH_END: "Kraj utakmice",
+                HALF_TIME: "Poluvrijeme",
+                SECOND_HALF: "Drugo poluvrijeme",
+                GOAL: "Gol",
+                TEAM_APPROVED: "Ekipa odobrena",
+                SCHEDULE: "Raspored",
+                BRACKET: "Ždrijeb",
+                ELIMINATED: "Ispadanje",
+                RECORDING: "Snimka",
+                GENERIC: "Obavijest",
+                ADMIN_REQUEST: "Zahtjev za administratora",
+            } as Record<string, string>,
+        },
         zapisnikModePage: {
             backToTournamentAria: "Natrag na turnir",
             zapisnikLabel: "ZAPISNIK",
             liveLabel: "UŽIVO",
+            /** Prompt above the awards card once the final has been recorded -
+             *  organizers routinely miss that the tournament is over. */
+            tournamentOverTitle: "Turnir je odigran",
+            tournamentOverHint: "Finale je upisano. Dodijeli nagrade i završi turnir.",
         },
         tournamentDetailsPage: {
             notFound: {
@@ -2021,11 +2168,9 @@ export const hr = {
             copyAriaFallback: (label: string) => `Kopiraj - ${label}`,
         },
         spectoConnectionCard: {
-            title: "Live stream - povezivanje",
             loading: "Učitavam…",
             keyStatusSet: "Ključ postavljen",
             keyStatusUnset: "Bez ključa",
-            intro: "Spaja se na postojeći stream s platforme - ovdje se ništa ne kreira. URL i ključ vrijede za cijelu aplikaciju i primjenjuju se odmah, bez restarta; Stream ID se pridružuje odabranom turniru.",
             activeStreamsLabel: "AKTIVNI STREAMOVI NA TURNIRIMA",
             addNew: "Dodaj novi",
             loadingStreams: "Učitavam streamove…",
@@ -2145,8 +2290,6 @@ export const hr = {
             image: "Slika",
         },
         adminPlayersListTab: {
-            title: "Popis igrača",
-            description: "Svi registrirani igrači - klikni „Otvori profil\" za navigaciju na korisničku stranicu.",
             searchPlaceholder: "Pretraži po imenu i prezimenu ili slug-u…",
             loadError: "Nije moguće učitati popis igrača.",
             noResults: "Nema rezultata.",
@@ -2199,8 +2342,6 @@ export const hr = {
             },
         },
         adminPlayerClaimRequestsTab: {
-            heading: "Zahtjevi za igrače",
-            description: "Ručni zahtjevi „taj igrač sam ja“. Odobrenje povezuje korisnika s ekipom tog igrača - provjeri komentar prije odobrenja.",
             pendingCount: (n: number) => `${n} na čekanju`,
             empty: "Nema zahtjeva.",
             requesterLabel: "Traži:",
@@ -2222,8 +2363,6 @@ export const hr = {
                 `Povezano: ${linked}. Preskočeno zbog istog imena: ${ambiguous}.`,
         },
         adminTeamDatabaseTab: {
-            title: "Baza ekipa",
-            description: "Identitet ekipe je vezan uz naziv - ovdje sakrivaš test ekipe iz baze i spajaš iste ekipe upisane pod različitim nazivima.",
             tabList: "Popis ekipa",
             tabDuplicates: "Slični nazivi",
             list: {
@@ -2238,7 +2377,7 @@ export const hr = {
                 hide: "Sakrij",
             },
             duplicates: {
-                intro: "Grupe naziva koji su vjerojatno ista ekipa - „identičan\" znači isti naziv zanemarujući velika/mala slova i razmake, „sličan\" znači vjerojatna tipfelerska greška (mala razlika u slovima).",
+                intro: "Nazivi koji su vjerojatno ista ekipa.",
                 noResults: "Nema pronađenih dupliciranih naziva.",
                 badgeExact: "identičan naziv",
                 badgeSimilar: "sličan naziv",
@@ -2261,8 +2400,6 @@ export const hr = {
             },
         },
         adminDashboardTab: {
-            heading: "Upravljanje turnirima",
-            description: "Odaberi turnir da bi dodijelio pravo upravljanja drugoj osobi ili izvršio administratorske akcije nad turnirom (status, reset, isticanje, vidljivost, export, brisanje).",
             tournamentLabel: "Turnir",
             searchPlaceholder: "Pretraži turnire po imenu, lokaciji ili slug-u…",
             noResults: "Nema rezultata.",
@@ -2271,7 +2408,7 @@ export const hr = {
             ownerLegacy: "- (legacy)",
             rights: {
                 heading: "Prava na turnir",
-                description: "Dodijeli pravo upravljanja turnirom (detalji, ekipe, raspored, Zapisnik…) jednoj ili više osoba - bez prijenosa vlasništva. Vlasnik ostaje isti.",
+                description: "Bez prijenosa vlasništva - vlasnik ostaje isti.",
                 ownerLabel: "VLASNIK",
                 ownerLegacyNoOwner: "- (legacy / nema vlasnika)",
                 editorsCount: (count: number) => `OSOBE S PRAVIMA (${count})`,
@@ -2293,7 +2430,7 @@ export const hr = {
             },
             actions: {
                 heading: "Akcije turnira",
-                description: "Administratorske operacije nad turnirom - koristi pažljivo. Promjene zaobilaze uobičajene provjere (vlasništvo, broj ekipa, redoslijed kola).",
+                description: "Zaobilazi uobičajene provjere - koristi pažljivo.",
                 currentStatus: "TRENUTNI STATUS",
                 forceStatusLabel: "PROMIJENI STATUS (force)",
                 reset: "Resetiraj",
@@ -2329,7 +2466,7 @@ export const hr = {
             },
             importCard: {
                 heading: "Uvoz iz JSON-a",
-                description: `Učitaj .json datoteku napravljenu opcijom „Export u JSON". Stvara se NOVI turnir (novi UUID i slug) sa svim ekipama, igračima, rasporedom i događajima; administrator postaje vlasnik. Plakat se ne prenosi.`,
+                description: "Stvara NOVI turnir; administrator postaje vlasnik, plakat se ne prenosi.",
                 button: "Odaberi .json datoteku",
                 invalidFile: "Datoteka nije ispravan JSON.",
                 successTitle: (name: string) => `Turnir „${name}" je uvezen.`,
@@ -2475,6 +2612,7 @@ export const hr = {
         },
         footer: {
             privacyLink: "Privatnost",
+            contactLink: "Kontakt",
         },
         jersey: {
             jerseyColorTitle: "Boja dresa",
@@ -2513,9 +2651,86 @@ export const hr = {
             openMatchCta: "NA UTAKMICU →",
         },
         adminCameraInquiriesTab: {
-            title: "Zahtjevi za ponudu",
-            description: "Upiti za kamera paket poslani preko Cjenika - prati kontakt izravno.",
             empty: "Još nema zahtjeva.",
+            /** An inquiry has no other lifecycle, so this flag is what lets
+             *  the dashboard's pending badge for this module ever clear. */
+            markHandled: "Označi riješeno",
+            markOpen: "Vrati u otvorene",
+            handledBadge: "Riješeno",
+            openBadge: "Otvoreno",
+        },
+        adminMailerTab: {
+            /** Manual escape hatch for transactional mail (api/adminMail.ts):
+             *  every automatic mail is fire-and-forget, so a dropped message
+             *  leaves no trace and no retry - this screen is the retry. */
+            intro: "Ručno slanje e-pošte korisniku. Predlošci šalju isti tekst kao automatske poruke, samo na adresu koju ovdje upišeš.",
+            templateLabel: "Predložak",
+            templateLoading: "Učitavam predloške…",
+            recipientLabel: "Primatelj",
+            recipientPlaceholder: "ime@primjer.com",
+            recipientInvalid: "Upiši ispravnu email adresu.",
+            requestLabel: "Zahtjev za snimku",
+            requestSearchPlaceholder: "Traži po ekipi, turniru ili emailu…",
+            requestPickPlaceholder: "Odaberi zahtjev…",
+            requestLoading: "Učitavam zahtjeve…",
+            requestEmpty: "Nema zahtjeva koji odgovara pretrazi.",
+            requestRequired: "Odaberi zahtjev za snimku.",
+            requestPaid: "plaćeno",
+            requestUnpaid: "neplaćeno",
+            subjectLabel: "Naslov",
+            subjectPlaceholder: "Naslov poruke",
+            bodyLabel: "Poruka",
+            bodyPlaceholder: "Tekst poruke. Prazan red započinje novi odlomak.",
+            previewTitle: "Pregled",
+            previewTo: "Prima",
+            previewSubject: "Naslov",
+            previewContent: "Sadržaj",
+            previewAuto: "Iz predloška, na jeziku primatelja.",
+            sendAction: "Pošalji",
+            confirmAction: "Potvrdi slanje",
+            cancelAction: "Odustani",
+            confirmHint: (email: string) => `Poruka ide na ${email}. Potvrdi za slanje.`,
+            sentToast: "Poruka je poslana.",
+            logTitle: "Poslano s ovog ekrana",
+            logEmpty: "Još ništa nije poslano odavde.",
+            logOk: "Poslano",
+            logFailed: "Nije poslano",
+            /** Shown in the preview instead of the rendered HTML - the body is
+             *  built on the backend, in the recipient's language. */
+            templateDescriptions: {
+                FREEFORM: "Naslov i tekst koje upišeš, u standardnom okviru Futsal Turniri.",
+                RECORDING_RECEIVED: "Potvrda da je zahtjev zaprimljen - ista koja se šalje automatski nakon slanja zahtjeva.",
+                RECORDING_APPROVED: "Obavijest da je zahtjev odobren, s cijenom i poveznicom na stranicu zahtjeva.",
+                RECORDING_PAYMENT_LINK: "Podsjetnik za plaćanje s poveznicom na stranicu zahtjeva - ista poveznica koju šalje i automatska obavijest o odobrenju.",
+                RECORDING_DELIVERED: "Obavijest da je snimka spremna za preuzimanje, s poveznicom na stranicu zahtjeva.",
+            },
+            /** 409 codes from POST /admin/mail/send. */
+            errors: {
+                REQUEST_NOT_FOUND: "Zahtjev nije pronađen.",
+                NOT_APPROVED: "Zahtjev nije odobren pa se ova poruka ne može poslati.",
+                ALREADY_PAID: "Zahtjev je već plaćen.",
+                STRIPE_NOT_CONFIGURED: "Stripe nije konfiguriran pa plaćanje nije moguće.",
+                NOT_DELIVERED: "Snimka još nije isporučena.",
+                NOT_PAID: "Zahtjev još nije plaćen.",
+                MAIL_NOT_CONFIGURED: "Slanje e-pošte nije konfigurirano na poslužitelju.",
+                generic: "Slanje nije uspjelo.",
+            },
+        },
+        adminContactMessagesTab: {
+            empty: "Još nema poruka.",
+            /** A message has no other lifecycle, so this flag is what lets
+             *  the dashboard's „poruke" badge ever clear. */
+            markHandled: "Riješeno",
+            markOpen: "Vrati u otvorene",
+            handledBadge: "Riješeno",
+            openBadge: "Otvoreno",
+            noSubject: "Bez naslova",
+            /** Shown when the sender happened to be signed in - informational
+             *  only, the form itself is public. */
+            registeredBadge: "Prijavljen korisnik",
+            reply: "Odgovori",
+            /** Prefix of the pre-filled mailto: subject line. */
+            replySubjectPrefix: "Odgovor: ",
         },
         bracketBoard: {
             zoomOutAria: "Odzumiraj",
@@ -2649,6 +2864,12 @@ export const hr = {
             streamClock: {
                 hideAction: "Sakrij sat na streamu",
                 showAction: "Prikaži sat na streamu",
+            },
+            /** Fluorescent training bibs: when both ekipe dođu u sličnim
+             *  dresovima, jedna nosi markirke - samo za tu utakmicu. */
+            bib: {
+                label: "Markirka",
+                aria: (team: string) => `Markirka - ${team}`,
             },
             finishedNotice: "Utakmica je završena.",
             streamActiveNote: "Prijenos je aktivan za ovaj turnir - utakmica se može pokrenuti samo uživo s mjeračem vremena.",

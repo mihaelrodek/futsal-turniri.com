@@ -263,7 +263,7 @@ public class PublicProfileController {
         // history row can read "2 gola, žuti". Resolved with ONE grouped query
         // up front rather than per match.
         Map<Long, Map<MatchEventType, Integer>> eventsByMatch = new HashMap<>();
-        String playerNeedle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+        String playerNeedle = profileNeedle(profile);
         if (playerNeedle != null) {
             for (Object[] r : matchEventRepo.findEventCountsByMatchForTeamAndFoldedName(team.getId(), playerNeedle)) {
                 Long matchId = (Long) r[0];
@@ -290,6 +290,7 @@ public class PublicProfileController {
             rows.add(new TeamMatchHistoryDto.Row(
                     m.getId(),
                     m.getRound() == null ? null : m.getRound().getNumber(),
+                    m.getStage() == null ? null : m.getStage().name(),
                     m.getTableNo(),
                     opponent == null ? null : opponent.getName(),
                     ourScore,
@@ -354,7 +355,7 @@ public class PublicProfileController {
         // (and, in principle, any future per-player stat) to the specific
         // roster row that's this person, not just "the team". Same folding
         // as the player-claim-suggestion flow (PersonNameFolder).
-        String playerNeedle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+        String playerNeedle = profileNeedle(profile);
 
         int tournamentsPlayed = 0;
         int tournamentsWon = 0;
@@ -501,6 +502,25 @@ public class PublicProfileController {
                 topTeamName,
                 recentDtos
         );
+    }
+
+    /**
+     * The folded "ime prezime" needle used to attribute goals/cards to the
+     * roster row that IS this person.
+     *
+     * <p>Prefers the separate first/last fields and falls back to the display
+     * name for social-login accounts that never filled them in - the same
+     * two-step used by {@code UserMeController.suggestionNeedle} and
+     * {@code PlayerProfileLinker}. Without the fallback every such profile
+     * produced a null needle, and so reported zero goals in both the career
+     * header and the per-match rows even though the match timeline named them
+     * as the scorer.
+     */
+    private static String profileNeedle(hr.mrodek.apps.futsal_turniri.model.UserProfile profile) {
+        if (profile == null) return null;
+        String needle = PersonNameFolder.needle(profile.getFirstName(), profile.getLastName());
+        if (needle != null) return needle;
+        return PersonNameFolder.needleFromDisplayName(profile.getDisplayName());
     }
 
     private static MyTournamentParticipationDto toParticipationDto(Teams p) {

@@ -206,13 +206,7 @@ export default function AdminDashboardTab() {
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
-                        <Box>
-                            <Text fontSize="lg" fontWeight="semibold">{t.components.adminDashboardTab.heading}</Text>
-                            <Text fontSize="sm" color="fg.muted">
-                                {t.components.adminDashboardTab.description}
-                            </Text>
-                        </Box>
-
+                        {/* No card title: /admin/{slug} already names the module. */}
                         {/* Tournament picker. Plain Input search + scrollable
                             list of matches - works for tens-to-hundreds of
                             tournaments without needing a heavier combobox. */}
@@ -633,10 +627,8 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="3">
-                    <Box>
-                        <Text fontSize="md" fontWeight="semibold">{dr.heading}</Text>
-                        <Text fontSize="sm" color="fg.muted">{dr.description}</Text>
-                    </Box>
+                    {/* Heading only - the list below says what it is. */}
+                    <Text fontSize="md" fontWeight="semibold">{dr.heading}</Text>
                     {rows === null ? (
                         <HStack py="2" justify="center"><Spinner size="sm" /></HStack>
                     ) : rows.length === 0 ? (

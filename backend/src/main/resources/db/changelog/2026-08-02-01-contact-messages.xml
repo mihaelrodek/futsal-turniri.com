@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Messages from the public "Kontaktiraj nas" form (/kontakt) - the
+        catch-all channel next to the structured ones (recording requests,
+        camera-package quotes, player claims). No FK to anything: the form is
+        fully public, and user_uid is filled only when the sender happened to
+        be signed in, purely so an admin can see who wrote in.
+
+        handled_at follows the camera-inquiry precedent exactly: a single
+        nullable timestamp instead of a status enum, because the reply happens
+        off-platform (email). Null = still in the queue, which is what the
+        /admin console's "poruke" badge counts (GET /admin/pending-counts).
+    -->
+
+    <changeSet id="2026-08-02-01-contact-messages-seq" author="mrodek">
+        <createSequence sequenceName="seq_contact_messages_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-08-02-02-contact-messages" author="mrodek">
+        <createTable tableName="contact_messages">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="email" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject" type="varchar(160)"/>
+            <column name="message" type="varchar(4000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="handled_at" type="timestamptz"/>
+            <column name="user_uid" type="varchar(128)"/>
+        </createTable>
+        <createIndex tableName="contact_messages" indexName="idx_contact_messages_handled_at">
+            <column name="handled_at"/>
+        </createIndex>
+        <createIndex tableName="contact_messages" indexName="idx_contact_messages_created_at">
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

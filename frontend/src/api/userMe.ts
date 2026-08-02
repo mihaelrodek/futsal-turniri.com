@@ -110,6 +110,11 @@ export type UserProfile = {
     lastName?: string | null
     /** "hr"/"en"/"sl"; null until the user explicitly picks one on this account. */
     language?: "hr" | "en" | "sl" | null
+    /** Account-wide opt-in for promo / announcement e-mail. NOT the bell:
+     *  per-tournament and per-match follows are independent of this. */
+    promoEmail?: boolean
+    /** Same, for push. */
+    promoPush?: boolean
 }
 
 /**
@@ -181,6 +186,26 @@ export async function updateLanguage(language: "hr" | "en" | "sl"): Promise<User
     const { data } = await http.put<UserProfile>(
         "/user/me/profile",
         { language },
+        { silent: true } as any,
+    )
+    return data
+}
+
+/**
+ * Persist the account-wide promo / announcement opt-ins. Either field may be
+ * omitted to leave it unchanged. Same silent pattern as
+ * {@link updateColorMode} - the switch already reflects the new state.
+ *
+ * Note the path is `/user/me/...` (singular), matching the rest of this
+ * controller.
+ */
+export async function updateNotificationPrefs(prefs: {
+    promoEmail?: boolean
+    promoPush?: boolean
+}): Promise<UserProfile> {
+    const { data } = await http.put<UserProfile>(
+        "/user/me/notification-prefs",
+        prefs,
         { silent: true } as any,
     )
     return data

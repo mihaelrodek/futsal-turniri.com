@@ -11,7 +11,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiCreditCard, FiDownload, FiVideo } from "react-icons/fi"
+import { FiCreditCard, FiDownload, FiMessageSquare, FiVideo } from "react-icons/fi"
 import {
     createRecordingCheckout,
     fetchPublicRecordingRequest,
@@ -315,6 +315,25 @@ export default function RecordingRequestStatusPage() {
                             )}
                         </VStack>
                     )}
+
+                    {/* Escape hatch. This page is where a purchase goes wrong -
+                        payment refused, download dead, request stuck - and it
+                        is often the ONLY page an anonymous buyer has. The
+                        contact form arrives with the reason preselected and
+                        this request's uuid as the reference, so nobody has to
+                        explain which request they mean. */}
+                    <Box borderTopWidth="1px" borderColor="border" pt="3">
+                        <HStack justify="space-between" gap="2" wrap="wrap">
+                            <Text fontSize="xs" color="fg.muted">
+                                {t.recordingRequest.status.contactHint}
+                            </Text>
+                            <Button size="xs" variant="outline" asChild>
+                                <RouterLink to={`/kontakt?razlog=PLACANJE&ref=${uuid}`}>
+                                    <FiMessageSquare /> {t.recordingRequest.status.contactButton}
+                                </RouterLink>
+                            </Button>
+                        </HStack>
+                    </Box>
                 </VStack>
             </Card.Body>
         </Card.Root>

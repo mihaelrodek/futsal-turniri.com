@@ -89,13 +89,7 @@ export function AdminRecordingRequestsTab() {
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "4", md: "6" }}>
                     <Stack gap="3">
-                        <Box>
-                            <Text fontSize="lg" fontWeight="semibold">{t.recordingRequest.adminRequests.title}</Text>
-                            <Text fontSize="sm" color="fg.muted">
-                                {t.recordingRequest.adminRequests.description}
-                            </Text>
-                        </Box>
-
+                        {/* No card title: /admin/{slug} already names the module. */}
                         {/* Segmented status filter. Plain buttons (solid = active)
                             keep it consistent with the rest of the admin UI. */}
                         <HStack gap="1.5" wrap="wrap">

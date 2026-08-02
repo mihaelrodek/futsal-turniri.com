@@ -52,12 +52,7 @@ export default function AdminTeamDatabaseTab() {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="4">
-                    <Box>
-                        <Text fontSize="lg" fontWeight="semibold">{t.components.adminTeamDatabaseTab.title}</Text>
-                        <Text fontSize="sm" color="fg.muted">
-                            {t.components.adminTeamDatabaseTab.description}
-                        </Text>
-                    </Box>
+                    {/* No card title: /admin/{slug} already names the module. */}
 
                     <Tabs.Root defaultValue="list" variant="line">
                         <Tabs.List>

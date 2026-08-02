@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        "Razlog" on the contact form - one of a fixed set of keys (PLACANJE,
+        SNIMKA, TURNIR, SURADNJA, INFORMACIJE, GRESKA, OSTALO), stored raw so
+        the row carries no language. Nullable: rows written before the field
+        existed have none, and the UI reads that as OSTALO.
+
+        Separate changeset rather than an edit of 2026-08-02-01: that one has
+        already run wherever the app was started since.
+    -->
+    <changeSet id="2026-08-02-04-contact-messages-reason" author="mrodek">
+        <addColumn tableName="contact_messages">
+            <column name="reason" type="varchar(40)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

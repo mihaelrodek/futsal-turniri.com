@@ -64,13 +64,7 @@ export default function AdminPlayersListTab() {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="3">
-                    <Box>
-                        <Text fontSize="lg" fontWeight="semibold">{t.components.adminPlayersListTab.title}</Text>
-                        <Text fontSize="sm" color="fg.muted">
-                            {t.components.adminPlayersListTab.description}
-                        </Text>
-                    </Box>
-
+                    {/* No card title: /admin/{slug} already names the module. */}
                     {/* Client-side filter input. Search hits both displayName
                         and slug so the admin can find a user by either the
                         readable name or the URL fragment they remember. */}

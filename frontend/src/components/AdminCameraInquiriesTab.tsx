@@ -1,35 +1,49 @@
-import { Badge, Card, HStack, Spinner, Text, VStack, chakra } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
-import { FiCalendar, FiMail, FiPhone } from "react-icons/fi"
-import { fetchCameraInquiries } from "../api/cameraInquiry"
+import { Badge, Button, Card, HStack, Spinner, Text, VStack, chakra } from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { FiCalendar, FiCheck, FiMail, FiPhone, FiRotateCcw } from "react-icons/fi"
+import { fetchCameraInquiries, setCameraInquiryHandled } from "../api/cameraInquiry"
+import { ADMIN_PENDING_COUNTS_KEY } from "../api/adminCounts"
 import { qk } from "../queryClient"
 import { useTranslation } from "../i18n"
 
 /**
- * Admin-only read list of "zatraži ponudu" leads for the custom camera
- * package (/cjenik) - newest first. No status/lifecycle, no mutations: an
- * admin follows up directly by email/phone, same as any other lead.
+ * Admin-only list of "zatraži ponudu" leads for the custom camera package
+ * (/cjenik) - newest first. An admin still follows up by email/phone; the
+ * only state a lead carries is `handledAt`, which exists so the admin
+ * dashboard's pending badge for this module can be cleared once the lead has
+ * been dealt with (there is no other lifecycle to derive that from).
  */
 export default function AdminCameraInquiriesTab() {
     const t = useTranslation()
+    const queryClient = useQueryClient()
     const { data: inquiries, isLoading } = useQuery({
         queryKey: qk.adminCameraInquiries,
         queryFn: fetchCameraInquiries,
+    })
+
+    const toggleHandled = useMutation({
+        mutationFn: ({ id, handled }: { id: number; handled: boolean }) =>
+            setCameraInquiryHandled(id, handled),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: qk.adminCameraInquiries })
+            // The dashboard badge counts unhandled leads - refresh it too, or
+            // it keeps showing the old number until its staleTime expires.
+            queryClient.invalidateQueries({ queryKey: ADMIN_PENDING_COUNTS_KEY })
+        },
     })
 
     return (
         <VStack align="stretch" gap="4">
             <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
                 <Card.Body p={{ base: "4", md: "6" }}>
-                    <VStack align="stretch" gap="1" mb="4">
-                        <HStack gap="2">
-                            <Text fontWeight={700} fontSize="lg">{t.components.adminCameraInquiriesTab.title}</Text>
-                            {inquiries && <Badge colorPalette="pitch" variant="subtle">{inquiries.length}</Badge>}
+                    {/* No card title: /admin/{slug} already names the module.
+                        The count is the one thing the header carried that the
+                        page header can't, so it stays - on its own. */}
+                    {inquiries && inquiries.length > 0 && (
+                        <HStack gap="2" mb="3">
+                            <Badge colorPalette="pitch" variant="subtle">{inquiries.length}</Badge>
                         </HStack>
-                        <Text fontSize="sm" color="fg.muted">
-                            {t.components.adminCameraInquiriesTab.description}
-                        </Text>
-                    </VStack>
+                    )}
 
                     {isLoading ? (
                         <HStack justify="center" py="8"><Spinner /></HStack>
@@ -50,9 +64,19 @@ export default function AdminCameraInquiriesTab() {
                                                     <Text>{formatDateTime(inq.createdAt)}</Text>
                                                 </HStack>
                                             </HStack>
-                                            <Badge variant="subtle" colorPalette="pitch" alignSelf="flex-start">
-                                                {inq.tournamentName}
-                                            </Badge>
+                                            <HStack gap="2" wrap="wrap">
+                                                <Badge variant="subtle" colorPalette="pitch">
+                                                    {inq.tournamentName}
+                                                </Badge>
+                                                <Badge
+                                                    variant="subtle"
+                                                    colorPalette={inq.handledAt ? "green" : "orange"}
+                                                >
+                                                    {inq.handledAt
+                                                        ? t.components.adminCameraInquiriesTab.handledBadge
+                                                        : t.components.adminCameraInquiriesTab.openBadge}
+                                                </Badge>
+                                            </HStack>
                                             <HStack gap="4" wrap="wrap" fontSize="sm">
                                                 <HStack gap="1.5">
                                                     <FiMail size={13} />
@@ -70,6 +94,28 @@ export default function AdminCameraInquiriesTab() {
                                             <Text fontSize="sm" color="fg.muted" whiteSpace="pre-wrap">
                                                 {inq.message}
                                             </Text>
+                                            <HStack justify="flex-end">
+                                                <Button
+                                                    size="xs"
+                                                    variant={inq.handledAt ? "ghost" : "outline"}
+                                                    colorPalette={inq.handledAt ? "gray" : "green"}
+                                                    loading={
+                                                        toggleHandled.isPending &&
+                                                        toggleHandled.variables?.id === inq.id
+                                                    }
+                                                    onClick={() =>
+                                                        toggleHandled.mutate({
+                                                            id: inq.id,
+                                                            handled: !inq.handledAt,
+                                                        })
+                                                    }
+                                                >
+                                                    {inq.handledAt ? <FiRotateCcw /> : <FiCheck />}
+                                                    {inq.handledAt
+                                                        ? t.components.adminCameraInquiriesTab.markOpen
+                                                        : t.components.adminCameraInquiriesTab.markHandled}
+                                                </Button>
+                                            </HStack>
                                         </VStack>
                                     </Card.Body>
                                 </Card.Root>

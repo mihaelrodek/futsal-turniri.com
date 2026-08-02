@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Audit log of the admin "Pošalji mail" module: one row per email an
+        admin sent by hand (approval re-send, payment link, delivery notice,
+        or a free-form message).
+
+        recording_request_uuid is a PLAIN UUID COLUMN, no FK: the audit trail
+        has to survive the request it was about being deleted, and the write
+        path must never touch a lazy association.
+
+        sent_by_uid is a plain Firebase UID string (no FK), same as everywhere
+        else in this schema.
+    -->
+
+    <changeSet id="2026-08-02-02-admin-sent-mails-seq" author="mrodek">
+        <createSequence sequenceName="seq_admin_sent_mails_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-08-02-02-admin-sent-mails" author="mrodek">
+        <createTable tableName="admin_sent_mails">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sent_by_uid" type="varchar(64)"/>
+            <column name="to_email" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="template_key" type="varchar(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="body_preview" type="varchar(500)"/>
+
+            <!-- no FK on purpose (see comment above) -->
+            <column name="recording_request_uuid" type="uuid"/>
+
+            <column name="ok" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="error_message" type="varchar(500)"/>
+        </createTable>
+
+        <!-- the only query this table has: newest sends first -->
+        <createIndex tableName="admin_sent_mails" indexName="idx_admin_sent_mails_created">
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

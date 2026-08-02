@@ -25,5 +25,9 @@ public record GroupMatchDto(
         Integer fouls1First,
         Integer fouls1Second,
         Integer fouls2First,
-        Integer fouls2Second
+        Integer fouls2Second,
+        /** Which side wears fluorescent training bibs ("markirka") in THIS
+         *  match: 1, 2 or null. That side's effective jersey colour is bib
+         *  yellow for this match only. */
+        Integer bibTeam
 ) {}

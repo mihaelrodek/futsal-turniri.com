@@ -4,7 +4,6 @@ import {
     Button,
     Card,
     HStack,
-    Heading,
     Input,
     Spinner,
     Text,
@@ -91,18 +90,15 @@ export default function AdminPlayerClaimRequestsTab() {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
-                    <HStack justify="space-between" wrap="wrap" gap="2">
-                        <Heading size="md">{s.heading}</Heading>
-                        <HStack gap="3">
-                            <Text fontSize="sm" color="fg.muted">{s.pendingCount(pending.length)}</Text>
-                            {/* Manual re-run of the automatic matcher - useful
-                                right after fixing a misspelled roster name. */}
-                            <Button size="xs" variant="outline" loading={backfilling} onClick={runBackfill}>
-                                <FiRefreshCw /> {s.backfillButton}
-                            </Button>
-                        </HStack>
+                    {/* No card title: /admin/{slug} already names the module. */}
+                    <HStack justify="flex-end" wrap="wrap" gap="3">
+                        <Text fontSize="sm" color="fg.muted">{s.pendingCount(pending.length)}</Text>
+                        {/* Manual re-run of the automatic matcher - useful
+                            right after fixing a misspelled roster name. */}
+                        <Button size="xs" variant="outline" loading={backfilling} onClick={runBackfill}>
+                            <FiRefreshCw /> {s.backfillButton}
+                        </Button>
                     </HStack>
-                    <Text fontSize="sm" color="fg.muted">{s.description}</Text>
 
                     {isLoading ? (
                         <HStack gap="2" color="fg.muted"><Spinner size="sm" /><Text>{t.common.loading}</Text></HStack>

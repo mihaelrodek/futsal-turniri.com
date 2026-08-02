@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.model.PushSubscription;
 import hr.mrodek.apps.futsal_turniri.repository.PushSubscriptionRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentSubscriptionRepository;
@@ -18,8 +19,11 @@ import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Wraps {@code nl.martijndwars.webpush.PushService} so the rest of the app
@@ -39,6 +43,21 @@ import java.util.Optional;
  *       permanently dropped - that's the spec's way of saying "this
  *       browser uninstalled, stop sending".</li>
  * </ul>
+ *
+ * <h2>Promo preference</h2>
+ * <p>Nothing here is gated on the account-wide {@code UserProfile.promoPush}
+ * switch, and that is deliberate. Every current send is either a bell the user
+ * explicitly tapped (tournament / match subscriptions → goal, half-time, final
+ * whistle, schedule, elimination) or a transactional message addressed to one
+ * named person (team approved, recording approved/delivered, pair-archive
+ * request/confirm/reject). {@link NotificationKind#GENERIC} is the "call site
+ * named no kind" fallback - today it carries the pair-archive flow, which is
+ * transactional - so it is NOT a promo bucket and must not be treated as one.
+ *
+ * <p>When the first genuine promo / announcement blast lands, it should filter
+ * its recipient UIDs through
+ * {@code UserProfileRepository.filterPromoPushAllowed(uids)} - one query for
+ * the whole fan-out, never a lookup inside the loop.
  */
 @ApplicationScoped
 public class PushService {
@@ -49,6 +68,15 @@ public class PushService {
     @Inject TournamentSubscriptionRepository tournamentSubRepo;
     @Inject hr.mrodek.apps.futsal_turniri.repository.MatchSubscriptionRepository matchSubRepo;
     @Inject ObjectMapper objectMapper;
+
+    /**
+     * Durable history for everything sent below - a push is otherwise
+     * fire-and-forget and unreviewable. Writes in its own REQUIRES_NEW
+     * transaction; see {@link UserNotificationService} for why, and
+     * {@link #recordInbox} for the never-throw wrapper every send goes
+     * through.
+     */
+    @Inject UserNotificationService inbox;
 
     // defaultValue="" so SmallRye Config doesn't bail at startup when the
     // VAPID env vars are unset (push is optional - backend boots without it
@@ -96,10 +124,43 @@ public class PushService {
      * for individual subscriptions are logged but never thrown - the
      * approve-team flow that calls this shouldn't fail because of a flaky
      * push service.
+     *
+     * <p>Kept as-is for the call sites whose subject doesn't map onto a
+     * {@link NotificationKind}; files the inbox row as
+     * {@link NotificationKind#GENERIC}.
      */
     @Transactional
     public void sendToUser(String userUid, PushPayload payload) {
+        sendToUser(userUid, payload, NotificationKind.GENERIC, null, null);
+    }
+
+    /** {@link #sendToUser(String, PushPayload)} with a classified kind and no match/tournament context. */
+    @Transactional
+    public void sendToUser(String userUid, PushPayload payload, NotificationKind kind) {
+        sendToUser(userUid, payload, kind, null, null);
+    }
+
+    /**
+     * {@link #sendToUser(String, PushPayload)} with everything the inbox can
+     * store: a kind and the match / tournament the notification is about
+     * ({@code matchId} being the inbox's grouping key).
+     *
+     * <p>The history row is written BEFORE the readiness / no-devices guards
+     * on purpose: this method addresses ONE named user, so the recipient is
+     * known even when VAPID isn't configured or that user has never enabled
+     * push on any device. Those people still get an inbox. (The fan-out
+     * methods can't do the same - there the recipients only exist as
+     * subscription rows.)
+     */
+    @Transactional
+    public void sendToUser(String userUid, PushPayload payload,
+                           NotificationKind kind, Long matchId, Long tournamentId) {
         if (userUid == null || userUid.isBlank()) return;
+        if (payload == null) return;
+
+        recordInbox(List.of(userUid), kind, payload.title(), payload.body(), payload.url(),
+                matchId, tournamentId);
+
         if (!isReady()) return;
         var subs = subRepo.findByUserUid(userUid);
         if (subs.isEmpty()) return;
@@ -123,15 +184,38 @@ public class PushService {
      */
     @Transactional
     public void sendToTournamentSubscribers(Long tournamentId, String title, String body, String url) {
+        sendToTournamentSubscribers(tournamentId, title, body, url, NotificationKind.GENERIC, null);
+    }
+
+    /**
+     * {@link #sendToTournamentSubscribers(Long, String, String, String)} with a
+     * classified kind and, optionally, the match the notification is ABOUT.
+     *
+     * <p>{@code matchId} does not change who gets pushed - the recipients are
+     * still exactly the tournament's bell subscribers. It only stamps the
+     * inbox row, so a half-time whistle announced tournament-wide still groups
+     * under its own match instead of drifting into the tournament bucket.
+     */
+    @Transactional
+    public void sendToTournamentSubscribers(Long tournamentId, String title, String body, String url,
+                                            NotificationKind kind, Long matchId) {
         if (tournamentId == null) return;
         if (!isReady()) return;
         var tournamentSubs = tournamentSubRepo.findByTournamentId(tournamentId);
         if (tournamentSubs.isEmpty()) return;
 
         Map<Long, PushSubscription> targets = new LinkedHashMap<>();
+        // Exactly the same walk that resolves the devices - the logged-in
+        // subscribers of that walk ARE the inbox recipients. Anonymous
+        // followers (endpoint only, no uid) have no inbox to file into.
+        Set<String> uids = new LinkedHashSet<>();
         for (var ts : tournamentSubs) {
+            collectUid(ts.getUserUid(), uids);
             collectDevices(ts.getUserUid(), ts.getPushEndpoint(), targets);
         }
+        // Before the no-devices bail-out: a follower whose only device
+        // subscription has been pruned still opted into this bell.
+        recordInbox(uids, kind, title, body, url, matchId, tournamentId);
         if (targets.isEmpty()) return;
         fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
     }
@@ -143,15 +227,29 @@ public class PushService {
      */
     @Transactional
     public void sendToMatchSubscribers(Long matchId, String title, String body, String url) {
+        sendToMatchSubscribers(matchId, title, body, url, NotificationKind.GENERIC, null);
+    }
+
+    /**
+     * {@link #sendToMatchSubscribers(Long, String, String, String)} with a
+     * classified kind and (optionally) the match's tournament, so the inbox
+     * row carries both ids.
+     */
+    @Transactional
+    public void sendToMatchSubscribers(Long matchId, String title, String body, String url,
+                                       NotificationKind kind, Long tournamentId) {
         if (matchId == null) return;
         if (!isReady()) return;
         var matchSubs = matchSubRepo.findByMatchId(matchId);
         if (matchSubs.isEmpty()) return;
 
         Map<Long, PushSubscription> targets = new LinkedHashMap<>();
+        Set<String> uids = new LinkedHashSet<>();
         for (var ms : matchSubs) {
+            collectUid(ms.getUserUid(), uids);
             collectDevices(ms.getUserUid(), ms.getPushEndpoint(), targets);
         }
+        recordInbox(uids, kind, title, body, url, matchId, tournamentId);
         if (targets.isEmpty()) return;
         fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
     }
@@ -166,18 +264,33 @@ public class PushService {
     @Transactional
     public void sendToMatchAndTournamentSubscribers(
             Long matchId, Long tournamentId, String title, String body, String url) {
+        sendToMatchAndTournamentSubscribers(matchId, tournamentId, title, body, url,
+                NotificationKind.GENERIC);
+    }
+
+    /** {@link #sendToMatchAndTournamentSubscribers(Long, Long, String, String, String)} with a classified kind. */
+    @Transactional
+    public void sendToMatchAndTournamentSubscribers(
+            Long matchId, Long tournamentId, String title, String body, String url,
+            NotificationKind kind) {
         if (!isReady()) return;
         Map<Long, PushSubscription> targets = new LinkedHashMap<>();
+        // Same de-dup as the device map, one level up: a user following both
+        // the match and the tournament gets exactly one inbox row.
+        Set<String> uids = new LinkedHashSet<>();
         if (matchId != null) {
             for (var ms : matchSubRepo.findByMatchId(matchId)) {
+                collectUid(ms.getUserUid(), uids);
                 collectDevices(ms.getUserUid(), ms.getPushEndpoint(), targets);
             }
         }
         if (tournamentId != null) {
             for (var ts : tournamentSubRepo.findByTournamentId(tournamentId)) {
+                collectUid(ts.getUserUid(), uids);
                 collectDevices(ts.getUserUid(), ts.getPushEndpoint(), targets);
             }
         }
+        recordInbox(uids, kind, title, body, url, matchId, tournamentId);
         if (targets.isEmpty()) return;
         fanOut(targets.values(), serialize(new PushPayload(title, body, url)));
     }
@@ -200,6 +313,35 @@ public class PushService {
             for (var d : subRepo.findByUserUid(uid)) out.putIfAbsent(d.getId(), d);
         } else if (endpoint != null && !endpoint.isBlank()) {
             subRepo.findByEndpoint(endpoint).ifPresent(d -> out.putIfAbsent(d.getId(), d));
+        }
+    }
+
+    /**
+     * Inbox counterpart of {@link #collectDevices}: the notification history
+     * is per PERSON, not per device, so an anonymous follow (no uid, endpoint
+     * only) contributes nothing here.
+     */
+    private static void collectUid(String uid, Set<String> out) {
+        if (uid != null && !uid.isBlank()) out.add(uid);
+    }
+
+    /**
+     * File the notification into every recipient's inbox. NEVER throws and
+     * never affects the caller's transaction: {@link UserNotificationService}
+     * runs in its own REQUIRES_NEW transaction, so a failure here rolls back
+     * only itself and is logged at WARN - exactly how a failed push is
+     * treated. History is a side-effect; it must not be able to break, slow
+     * or roll back the delivery it is describing.
+     */
+    private void recordInbox(Collection<String> uids, NotificationKind kind,
+                             String title, String body, String url,
+                             Long matchId, Long tournamentId) {
+        if (uids == null || uids.isEmpty()) return;
+        try {
+            inbox.record(uids, kind, title, body, url, matchId, tournamentId);
+        } catch (Exception e) {
+            LOG.warnf(e, "Push: failed to persist notification history (kind=%s, recipients=%d)",
+                    kind, uids.size());
         }
     }
 

@@ -43,6 +43,9 @@ export type GroupMatch = {
     fouls1Second?: number | null
     fouls2First?: number | null
     fouls2Second?: number | null
+    /** Which side wears the fluorescent training bibs ("markirka") in this
+     *  match; null = neither. One column, so only one side can ever have it. */
+    bibTeam?: 1 | 2 | null
 }
 
 export type Group = {

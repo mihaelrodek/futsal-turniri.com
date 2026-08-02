@@ -1,7 +1,9 @@
-import { lazy, Suspense, useEffect, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { Box, Container, Flex, Text } from '@chakra-ui/react'
 import NavBar from './components/NavBar'
+import { AdminViewProvider } from './admin/AdminViewContext'
+import { useAuth } from './auth/AuthContext'
 import { LogoMark } from './components/Logo'
 // Footer is temporarily hidden (see the commented render below) - the
 // component itself stays in src/components/Footer.tsx.
@@ -70,13 +72,17 @@ const StatsPage = lazyWithReload(() => import('./pages/StatsPage'))
 const PrivacyPage = lazyWithReload(() => import('./pages/PrivacyPage'))
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
 const PricingPage = lazyWithReload(() => import('./pages/PricingPage'))
+const ContactPage = lazyWithReload(() => import('./pages/ContactPage'))
 const CartPage = lazyWithReload(() => import('./pages/CartPage'))
 const ProfileRedirect = lazyWithReload(() => import('./pages/ProfileRedirect'))
+const NotificationsPage = lazyWithReload(() => import('./pages/NotificationsPage'))
 const PublicProfilePage = lazyWithReload(() => import('./pages/PublicProfilePage'))
 const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
 const ClaimNamePage = lazyWithReload(() => import('./pages/ClaimNamePage'))
 const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournamentPage'))
 const RecordingRequestStatusPage = lazyWithReload(() => import('./pages/RecordingRequestStatusPage'))
+const AdminHomePage = lazyWithReload(() => import('./pages/AdminHomePage'))
+const AdminModulePage = lazyWithReload(() => import('./pages/AdminModulePage'))
 
 /** Suspense fallback while a route chunk is being fetched. Sized to
  *  the main content area so the page doesn't jump when the real page
@@ -93,6 +99,20 @@ function RouteLoading() {
             <Text fontSize="sm" color="fg.muted">Učitavanje…</Text>
         </Flex>
     )
+}
+
+/**
+ * Route gate for the /admin console. The `role=admin` custom claim only
+ * becomes readable AFTER Firebase has restored the session and we've parsed
+ * the ID token, so redirecting while `loading` is still true would bounce an
+ * admin who deep-linked (or reloaded) /admin straight back to /turniri. We
+ * hold the same chunk-loading affordance until the probe settles instead.
+ */
+function RequireAdmin({ children }: { children: ReactNode }) {
+    const { isAdmin, loading } = useAuth()
+    if (loading) return <RouteLoading />
+    if (!isAdmin) return <Navigate to="/turniri" replace />
+    return <>{children}</>
 }
 
 /**
@@ -129,7 +149,21 @@ function LegacyClaimNameRedirect() {
     return <Navigate to={`/preuzmi-ime/${token ?? ""}${search}`} replace />
 }
 
+/**
+ * Provider shell. `AdminViewProvider` sits here - the outermost point still
+ * INSIDE `<AuthProvider>` (main.tsx), which it depends on - so every render
+ * path below (embeds, the match-live frame, zapisnik, the normal app) and the
+ * NavBar in each of them share one admin/user view flag.
+ */
 export default function App() {
+    return (
+        <AdminViewProvider>
+            <AppShell />
+        </AdminViewProvider>
+    )
+}
+
+function AppShell() {
     // Embed routes are chrome-less - no nav, no container, no padding.
     // They're meant to be iframed into 3rd-party websites and inherit
     // the host page's background.
@@ -298,6 +332,9 @@ export default function App() {
                     {/* English alias for the stats page. */}
                     <Route path="/stats" element={<Navigate to="/statistika" replace />} />
                     <Route path="/privatnost" element={<PrivacyPage />} />
+                    {/* Public „Kontaktiraj nas" form - reachable without
+                        login, like everything else user-facing. */}
+                    <Route path="/kontakt" element={<ContactPage />} />
                     <Route path="/vodic" element={<GuidePage />} />
                     <Route path="/cjenik" element={<PricingPage />} />
                     {/* English alias for the pricing page. */}
@@ -312,6 +349,17 @@ export default function App() {
                         product decision. */}
                     <Route path="/profil" element={<ProfileRedirect />} />
                     <Route path="/profil/:slug" element={<PublicProfilePage />} />
+                    {/* Persisted push-notification inbox of the signed-in
+                        user - nothing to show an anonymous visitor, so it's
+                        gated like the create-tournament route. */}
+                    <Route
+                        path="/obavijesti"
+                        element={
+                            <RequireAuth>
+                                <NotificationsPage />
+                            </RequireAuth>
+                        }
+                    />
                     {/* Team-sharing claim landing pages - token routes, not
                         SEO-relevant, but translated for consistency. Old
                         share tokens still resolve via the legacy aliases
@@ -323,6 +371,26 @@ export default function App() {
                         way an anonymous requester (no profile) tracks or
                         pays for their request. */}
                     <Route path="/snimke/zahtjev/:uuid" element={<RecordingRequestStatusPage />} />
+
+                    {/* Platform-admin console. These eight screens used to be
+                        tabs on the admin's own profile page; they're now their
+                        own routes, gated on the role claim (see RequireAdmin). */}
+                    <Route
+                        path="/admin"
+                        element={
+                            <RequireAdmin>
+                                <AdminHomePage />
+                            </RequireAdmin>
+                        }
+                    />
+                    <Route
+                        path="/admin/:slug"
+                        element={
+                            <RequireAdmin>
+                                <AdminModulePage />
+                            </RequireAdmin>
+                        }
+                    />
 
                     {/* Legacy English aliases - client-side Navigate for any
                         in-app link or typed URL that slips past Caddy's

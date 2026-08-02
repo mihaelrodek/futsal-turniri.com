@@ -159,8 +159,10 @@ export function IconChip({
 }: {
     icon: ElementType
     tone?: string
-    size?: string
-    iconSize?: string
+    // Responsive values allowed: the admin dashboard shrinks its chips on
+    // mobile, where the cards are compacted to a two-per-row launcher.
+    size?: FlexProps["boxSize"]
+    iconSize?: BoxProps["boxSize"]
 }) {
     return (
         <Flex

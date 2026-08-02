@@ -33,11 +33,25 @@ export type PublicProfile = {
     tournaments: MyTournamentParticipation[]
 }
 
+/** Mirrors the backend `MatchStage` enum. Keyed the same as
+ *  `components.scheduleTab.stageLabels`, so a value indexes straight into it. */
+export type MatchStage =
+    | "GROUP"
+    | "ROUND_OF_32"
+    | "ROUND_OF_16"
+    | "QUARTERFINAL"
+    | "SEMIFINAL"
+    | "FINAL"
+    | "THIRD_PLACE"
+
 /** One row of /public/users/{slug}/teams/{teamId}/matches. */
 export type TeamMatchRow = {
     /** Lets the profile link straight into /turniri/{ref}/utakmica/{matchId}. */
     matchId: number
     roundNumber: number | null
+    /** GROUP | ROUND_OF_32 | … | FINAL - lets a knockout row read
+     *  "Četvrtfinale" instead of a meaningless round number. */
+    stage: MatchStage | null
     tableNo: number | null
     opponentName: string | null
     ourScore: number | null

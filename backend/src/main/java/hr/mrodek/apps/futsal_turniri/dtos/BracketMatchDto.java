@@ -47,5 +47,9 @@ public record BracketMatchDto(
          *  once THAT group has finished all its matches (per-group, not the whole
          *  stage). Null otherwise. */
         String slot1PredictedName,
-        String slot2PredictedName
+        String slot2PredictedName,
+        /** Which side wears fluorescent training bibs ("markirka") in THIS
+         *  match: 1, 2 or null. That side's effective jersey colour is bib
+         *  yellow for this match only. */
+        Integer bibTeam
 ) {}

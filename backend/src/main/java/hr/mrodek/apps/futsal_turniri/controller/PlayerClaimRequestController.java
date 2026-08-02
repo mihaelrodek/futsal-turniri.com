@@ -2,6 +2,7 @@ package hr.mrodek.apps.futsal_turniri.controller;
 
 import hr.mrodek.apps.futsal_turniri.dtos.PlayerClaimRequestDto;
 import hr.mrodek.apps.futsal_turniri.dtos.PlayerClaimSuggestionDto;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.enums.PlayerClaimRequestStatus;
 import hr.mrodek.apps.futsal_turniri.model.Player;
 import hr.mrodek.apps.futsal_turniri.model.PlayerClaimRequest;
@@ -11,6 +12,8 @@ import hr.mrodek.apps.futsal_turniri.model.UserProfile;
 import hr.mrodek.apps.futsal_turniri.repository.PlayerClaimRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.PlayersRepository;
 import hr.mrodek.apps.futsal_turniri.repository.UserProfileRepository;
+import hr.mrodek.apps.futsal_turniri.services.AdminNotifier;
+import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PlayerClaimRequestMapper;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
@@ -72,6 +75,8 @@ public class PlayerClaimRequestController {
     @Inject PlayersRepository playersRepo;
     @Inject PlayerClaimRequestMapper mapper;
     @Inject UserProfileRepository profileRepo;
+    @Inject AdminNotifier adminNotifier;
+    @Inject MessageService messages;
     @Inject JsonWebToken jwt;
 
     @GET
@@ -197,7 +202,42 @@ public class PlayerClaimRequestController {
         req.setStatus(PlayerClaimRequestStatus.PENDING);
         requestRepo.persist(req);
 
+        notifyAdminInbox(uid, player.getName(), team.getName());
+
         return mapper.toDto(req, false);
+    }
+
+    /**
+     * Tell every admin a claim is waiting for a human decision - this queue had
+     * no notification at all, only the badge on the admin console.
+     *
+     * <p>Every label is resolved HERE, on the request thread with the entities
+     * still attached; {@link AdminNotifier} only ever sees plain strings.
+     * Fire-and-forget: it swallows its own failures, so a broken inbox write
+     * can never fail the user's request.
+     */
+    private void notifyAdminInbox(String uid, String playerName, String teamName) {
+        adminNotifier.notifyAdmins(
+                NotificationKind.ADMIN_REQUEST,
+                messages.t("notifications.admin.playerClaim.title"),
+                messages.t("notifications.admin.playerClaim.body",
+                        requesterLabel(uid), playerName, teamName),
+                "/admin/zahtjevi-igraci");
+    }
+
+    /** Best available human label for the requester: their display name, else
+     *  "ime prezime", else the raw UID (never blank - an admin has to be able
+     *  to tell two pending claims apart). */
+    private String requesterLabel(String uid) {
+        var profile = profileRepo.findByUid(uid).orElse(null);
+        if (profile != null) {
+            String display = profile.getDisplayName();
+            if (display != null && !display.isBlank()) return display.trim();
+            String full = ((profile.getFirstName() == null ? "" : profile.getFirstName()) + " "
+                    + (profile.getLastName() == null ? "" : profile.getLastName())).trim();
+            if (!full.isEmpty()) return full;
+        }
+        return uid;
     }
 
     /** Withdraw a request that hasn't been decided yet. */

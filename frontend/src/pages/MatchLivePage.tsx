@@ -479,22 +479,8 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </VStack>
-                    <Flex position="absolute" right="0" top="50%" transform="translateY(-50%)" gap="2" zIndex={2}>
-                        {RECORDING_REQUEST_ENABLED && (
-                            <IconButton
-                                aria-label={t.matchLive.requestRecordingAria}
-                                title={t.recordingRequest.dialog.titleMatch}
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setRecordingOpen(true)}
-                            >
-                                <FiVideo />
-                            </IconButton>
-                        )}
-                        <IconButton aria-label={t.common.share} variant="ghost" size="sm" onClick={share}>
-                            <FiShare2 />
-                        </IconButton>
-                    </Flex>
+                    {/* Recording + share live one row down, next to the status
+                        line - see the action row below the score. */}
                 </Box>
 
                 {/* Live-stream suggestion pill (only while a stream for THIS
@@ -586,12 +572,58 @@ export default function MatchLivePage() {
                     </HStack>
                 </Box>
 
+                {/* Penalty shootout result - directly under the score it
+                    corrects, before the status line, because "1:1" alone is a
+                    wrong reading of the match without it. */}
+                {hasPens && (
+                    <Text fontSize="2xs" fontWeight={700} color="fg.muted" textAlign="center" mt="1" whiteSpace="nowrap">
+                        {t.matchLive.penaltiesResult(scheduled.penalties1!, scheduled.penalties2!)}
+                    </Text>
+                )}
+
                 {/* Status line (centred) BELOW the teams+score row: the running
                     clock + half/pause label while live, else the plain state.
                     It sits here (not above) so the clock reads as a caption of
-                    the scoreline; the live-stream pill stays up top. */}
-                <Box position="relative" minH="8" mt="2">
-                    <Flex justify="center" align="center" minH="8">
+                    the scoreline; the live-stream pill stays up top.
+                    The row also carries the match actions: the two "get the
+                    document" ones (zapisnik, export) on the left, the two
+                    outward ones (buy a recording, share) on the right. */}
+                <Box position="relative" display="flex" alignItems="center" justifyContent="space-between" gap="1" minH="8" mt="2">
+                    <HStack gap="0">
+                        <IconButton
+                            aria-label={t.matchLive.downloadZapisnikAria}
+                            title={t.matchLive.downloadZapisnikTitle}
+                            variant="ghost"
+                            size={{ base: "xs", md: "sm" }}
+                            onClick={() => setZapisnikOpen(true)}
+                        >
+                            <FiFileText />
+                        </IconButton>
+                        <IconButton
+                            aria-label={t.common.download}
+                            variant="ghost"
+                            size={{ base: "xs", md: "sm" }}
+                            onClick={() => setExportOpen(true)}
+                        >
+                            <FiDownload />
+                        </IconButton>
+                    </HStack>
+
+                    {/* Status stays on the page's centre line - under the score,
+                        not between the two action groups, which have different
+                        widths. Absolute + no pointer events so it can't sit in
+                        front of either button. */}
+                    <Flex
+                        justify="center"
+                        align="center"
+                        minH="8"
+                        position="absolute"
+                        left="50%"
+                        top="50%"
+                        transform="translate(-50%, -50%)"
+                        pointerEvents="none"
+                        whiteSpace="nowrap"
+                    >
                         {isLive ? (
                             <HStack gap="2">
                                 {/* The "Uživo" pill is redundant while the pulsing
@@ -631,39 +663,50 @@ export default function MatchLivePage() {
                             </Text>
                         )}
                     </Flex>
-                    <HStack
-                        gap="0"
-                        position="absolute"
-                        right="0"
-                        top="50%"
-                        transform="translateY(-50%)"
-                    >
+                    <HStack gap="1">
+                        {/* Buying a recording is the one commercial action on
+                            this page, and a bare ghost camera icon read as just
+                            another utility. Amber pill + the price: it looks
+                            like an offer, and the price is the whole pitch -
+                            people don't tap an unpriced "request" button. */}
+                        {RECORDING_REQUEST_ENABLED && (
+                            <chakra.button
+                                type="button"
+                                onClick={() => setRecordingOpen(true)}
+                                aria-label={t.matchLive.requestRecordingAria}
+                                title={t.recordingRequest.dialog.titleMatch}
+                                display="inline-flex"
+                                alignItems="center"
+                                gap="1.5"
+                                px={{ base: "2", md: "2.5" }}
+                                py="1"
+                                rounded="full"
+                                borderWidth="1px"
+                                borderColor="accent.amber"
+                                color="accent.amber"
+                                bg="transparent"
+                                fontSize={{ base: "10px", md: "xs" }}
+                                fontWeight={800}
+                                lineHeight="1"
+                                whiteSpace="nowrap"
+                                cursor="pointer"
+                                flexShrink={0}
+                                _hover={{ bg: "accent.amber", color: "white" }}
+                            >
+                                <FiVideo />
+                                {t.matchLive.recordingCta}
+                            </chakra.button>
+                        )}
                         <IconButton
-                            aria-label={t.matchLive.downloadZapisnikAria}
-                            title={t.matchLive.downloadZapisnikTitle}
+                            aria-label={t.common.share}
                             variant="ghost"
-                            size="sm"
-                            onClick={() => setZapisnikOpen(true)}
+                            size={{ base: "xs", md: "sm" }}
+                            onClick={share}
                         >
-                            <FiFileText />
-                        </IconButton>
-                        <IconButton
-                            aria-label={t.common.download}
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setExportOpen(true)}
-                        >
-                            <FiDownload />
+                            <FiShare2 />
                         </IconButton>
                     </HStack>
                 </Box>
-
-                {/* Penalty shootout result under the score (centred). */}
-                {hasPens && (
-                    <Text fontSize="2xs" fontWeight={700} color="fg.muted" textAlign="center" mt="1" whiteSpace="nowrap">
-                        {t.matchLive.penaltiesResult(scheduled.penalties1!, scheduled.penalties2!)}
-                    </Text>
-                )}
             </Box>
 
             {/* SCROLLABLE match info - the ONLY scrolling region on the page. */}

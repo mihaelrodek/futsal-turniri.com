@@ -396,7 +396,8 @@ public class GroupStageService {
                         m.getFouls1First(),
                         m.getFouls1Second(),
                         m.getFouls2First(),
-                        m.getFouls2Second()));
+                        m.getFouls2Second(),
+                        m.getBibTeam()));
             }
             int eff = g.getAdvanceCount() != null ? g.getAdvanceCount() : defAdv;
             out.add(new GroupDto(g.getId(), g.getName(), g.getOrdinal(),

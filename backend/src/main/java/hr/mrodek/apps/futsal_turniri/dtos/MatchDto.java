@@ -10,5 +10,8 @@ public record MatchDto(
         Integer score1,
         Integer score2,
         Long winnerTeamId,
-        String status
+        String status,
+        /** Which side wears training bibs this match: 1, 2 or null. Its
+         *  effective jersey colour is bib yellow for this match only. */
+        Integer bibTeam
 ) {}

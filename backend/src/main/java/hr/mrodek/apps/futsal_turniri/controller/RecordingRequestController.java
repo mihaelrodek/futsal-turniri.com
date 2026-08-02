@@ -3,6 +3,7 @@ package hr.mrodek.apps.futsal_turniri.controller;
 import hr.mrodek.apps.futsal_turniri.dtos.RecordingRequestDto;
 import hr.mrodek.apps.futsal_turniri.enums.MatchEventType;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStatus;
+import hr.mrodek.apps.futsal_turniri.enums.NotificationKind;
 import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestKind;
 import hr.mrodek.apps.futsal_turniri.enums.RecordingRequestStatus;
 import hr.mrodek.apps.futsal_turniri.mappers.RecordingRequestMapper;
@@ -19,6 +20,7 @@ import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchesRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TeamsRepository;
 import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
+import hr.mrodek.apps.futsal_turniri.services.AdminNotifier;
 import hr.mrodek.apps.futsal_turniri.services.EmailService;
 import hr.mrodek.apps.futsal_turniri.services.MessageService;
 import hr.mrodek.apps.futsal_turniri.services.PushService;
@@ -139,6 +141,7 @@ public class RecordingRequestController {
     @Inject PushService pushService;
     @Inject StripeService stripeService;
     @Inject RecordingRequestNotifier notifier;
+    @Inject AdminNotifier adminNotifier;
     @Inject RecordingAutoLinkService autoLink;
     @Inject MessageService messages;
     @Inject JsonWebToken jwt;
@@ -368,6 +371,7 @@ public class RecordingRequestController {
         repo.save(r);
 
         notifier.notifyAdmin(r, match);
+        notifyAdminInbox(r, match);
         notifier.notifyRequestReceived(r, match);
 
         return Response.status(Response.Status.CREATED).entity(toDto(r)).build();
@@ -435,9 +439,30 @@ public class RecordingRequestController {
         repo.save(r);
 
         notifier.notifyAdmin(r, match);
+        notifyAdminInbox(r, match);
         notifier.notifyRequestReceived(r, match);
 
         return Response.status(Response.Status.CREATED).entity(toDto(r)).build();
+    }
+
+    /**
+     * In-app twin of {@link RecordingRequestNotifier#notifyAdmin} - the same
+     * event, delivered to every admin's "Obavijesti" inbox instead of to the
+     * single {@code recording_notify_email} mailbox. Both channels fire from
+     * the same spot so they can never drift apart.
+     *
+     * <p>Both label arguments are resolved HERE, on the request thread, off
+     * entities that are still attached - the notifier itself only ever sees
+     * plain strings.
+     */
+    private void notifyAdminInbox(MatchRecordingRequest r, Matches match) {
+        adminNotifier.notifyAdmins(
+                NotificationKind.ADMIN_REQUEST,
+                messages.t("notifications.admin.recordingRequest.title"),
+                messages.t("notifications.admin.recordingRequest.body",
+                        notifier.kindLabel(r.getKind()),
+                        RecordingRequestNotifier.matchLabel(match)),
+                "/admin/zahtjevi-snimke");
     }
 
     @GET
@@ -719,9 +744,13 @@ public class RecordingRequestController {
         // Resolve the kind wording HERE - the push is dispatched off-thread.
         String what = notifier.kindLabel(r.getKind());
         pushService.sendToUser(r.getCreatedByUid(), new PushService.PushPayload(
-                messages.t(approved ? "recording.push.statusApproved.title" : "recording.push.statusRejected.title"),
-                messages.t(approved ? "recording.push.approved.body" : "recording.push.rejected.body", what),
-                "/profil"));
+                        messages.t(approved ? "recording.push.statusApproved.title" : "recording.push.statusRejected.title"),
+                        messages.t(approved ? "recording.push.approved.body" : "recording.push.rejected.body", what),
+                        "/profil"),
+                // Ids read HERE, on the request thread, for the same reason
+                // `what` above is - they group the stored notification under
+                // the match it is about.
+                NotificationKind.RECORDING, matchId(match), tournamentId(match));
 
         if (approved) {
             notifier.notifyApproved(r, match);
@@ -798,10 +827,24 @@ public class RecordingRequestController {
 
     private void notifyDelivered(MatchRecordingRequest r) {
         boolean goal = r.getKind() == RecordingRequestKind.GOAL;
+        // Resolved on the caller's (transactional) request thread - see the
+        // note in setStatus.
+        Matches match = r.getMatch();
         pushService.sendToUser(r.getCreatedByUid(), new PushService.PushPayload(
-                messages.t(goal ? "recording.push.downloadReady.goal.title" : "recording.push.downloadReady.match.title"),
-                messages.t(goal ? "recording.push.downloadReady.goal.body" : "recording.push.downloadReady.match.body"),
-                "/profil"));
+                        messages.t(goal ? "recording.push.downloadReady.goal.title" : "recording.push.downloadReady.match.title"),
+                        messages.t(goal ? "recording.push.downloadReady.goal.body" : "recording.push.downloadReady.match.body"),
+                        "/profil"),
+                NotificationKind.RECORDING, matchId(match), tournamentId(match));
+    }
+
+    /** Null-safe id readers for the notification history (match may be a lazy proxy; ids are safe). */
+    private static Long matchId(Matches match) {
+        return match == null ? null : match.getId();
+    }
+
+    private static Long tournamentId(Matches match) {
+        if (match == null || match.getTournament() == null) return null;
+        return match.getTournament().getId();
     }
 
     /* ─────────────────────────── delivery download ─────────────────────────── */

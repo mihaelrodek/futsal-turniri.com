@@ -110,7 +110,7 @@
             <artifactId>quarkus-oidc</artifactId>
         </dependency>
 
-        <!-- Email (SMTP via Brevo). Sends tournament notifications; falls back
+        <!-- Email (SMTP via Resend). Sends tournament notifications; falls back
              to no-op when SMTP creds are unset (see EmailService.isReady). -->
         <dependency>
             <groupId>io.quarkus</groupId>

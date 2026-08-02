@@ -14,6 +14,8 @@ import {
     Image,
     Input,
     NativeSelect,
+    SimpleGrid,
+    Switch,
     Skeleton,
     Spinner,
     Tabs,
@@ -31,20 +33,14 @@ import {
     FiChevronRight,
     FiDownload,
     FiEdit2,
-    FiFileText,
-    FiFolder,
     FiGrid,
-    FiInbox,
     FiList,
     FiMapPin,
     FiPhone,
-    FiRadio,
     FiUser,
     FiUserCheck,
     FiShare2,
-    FiShield,
     FiTrash2,
-    FiUsers,
     FiVideo,
 } from "react-icons/fi"
 import { PillTabBar } from "../ui/pitch"
@@ -64,6 +60,7 @@ import {
     getProfile,
     syncProfile,
     updateLanguage,
+    updateNotificationPrefs,
     updateProfile,
     uploadAvatar,
 } from "../api/userMe"
@@ -74,13 +71,8 @@ import PlayerSilhouette from "../components/PlayerSilhouette"
 import { toPng } from "html-to-image"
 import { showError } from "../toaster"
 import { useAuth } from "../auth/AuthContext"
-import AdminDashboardTab from "../components/AdminDashboardTab"
-import SpectoConnectionCard from "../components/SpectoConnectionCard"
-import AdminPlayersListTab from "../components/AdminPlayersListTab"
-import AdminTeamDatabaseTab from "../components/AdminTeamDatabaseTab"
+import { useAdminView } from "../admin/AdminViewContext"
 import MyRecordingsTab from "../components/MyRecordingsTab"
-import AdminRecordingRequestsTab from "../components/AdminRecordingRequestsTab"
-import AdminPlayerClaimRequestsTab from "../components/AdminPlayerClaimRequestsTab"
 import { MyPlayerClaimRequests, PlayerClaimRequestDialog } from "../components/PlayerClaimDialogs"
 import { PLAYER_CLAIMS_CHANGED_EVENT } from "../components/PlayerClaimFirstRun"
 import {
@@ -89,8 +81,6 @@ import {
     type PlayerClaimRequest as PlayerClaimRequestRow,
     type PlayerClaimState as PlayerClaimStateRow,
 } from "../api/playerClaims"
-import AdminRecordingsLibraryTab from "../components/AdminRecordingsLibraryTab"
-import AdminCameraInquiriesTab from "../components/AdminCameraInquiriesTab"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { LOCALE_LABELS, setLocale, useLocale, useTranslation, type Locale } from "../i18n"
 
@@ -133,18 +123,13 @@ function teamKey(name: string): string {
  *  snimki) are untouched. */
 const RECORDING_REQUEST_ENABLED = true
 
+/* The eight platform-admin tabs that used to live here moved out to the
+   /admin console (src/admin/modules.tsx) - this page is now purely the
+   user's own profile again. */
 type ProfileTabKey =
     | "profil"
     | "turniri"
     | "moje-snimke"
-    | "dashboard"
-    | "popis-igraca"
-    | "baza-ekipa"
-    | "live-stream"
-    | "zahtjevi-snimke"
-    | "baza-snimki"
-    | "zahtjevi-ponude"
-    | "zahtjevi-igraci"
 
 /** Icon per tab, shared between the desktop sidebar and (implicitly, via
  *  the same lookup) anywhere else a tab needs one. */
@@ -155,35 +140,23 @@ const PROFILE_TAB_ICONS: Record<ProfileTabKey, React.ReactNode> = {
     profil: <FiUser size={15} />,
     turniri: <FiList size={15} />,
     "moje-snimke": <FiVideo size={15} />,
-    dashboard: <FiGrid size={15} />,
-    "popis-igraca": <FiUsers size={15} />,
-    "baza-ekipa": <FiShield size={15} />,
-    "live-stream": <FiRadio size={15} />,
-    "zahtjevi-snimke": <FiInbox size={15} />,
-    "baza-snimki": <FiFolder size={15} />,
-    "zahtjevi-ponude": <FiFileText size={15} />,
-    "zahtjevi-igraci": <FiUserCheck size={15} />,
 }
 
 /** One desktop-sidebar navigation row - same shape/spacing as
- *  TournamentDetailsPage's SidebarNavItem. `palette` switches the active
- *  fill from pitch-green (user-facing tabs) to purple (admin-only tabs),
- *  mirroring the purple accent the admin tab buttons already used. */
+ *  TournamentDetailsPage's SidebarNavItem. */
 function ProfileNavItem({
     icon,
     label,
     active,
     onClick,
-    palette = "pitch",
 }: {
     icon?: React.ReactNode
     label: string
     active: boolean
     onClick: () => void
-    palette?: "pitch" | "purple"
 }) {
-    const activeBg = palette === "purple" ? "purple.solid" : "pitch.500"
-    const activeColor = palette === "purple" ? "purple.contrast" : "white"
+    const activeBg = "pitch.500"
+    const activeColor = "white"
     return (
         <chakra.button
             type="button"
@@ -215,6 +188,7 @@ export default function PublicProfilePage() {
     const t = useTranslation()
     const { slug } = useParams<{ slug: string }>()
     const { user, mySlug, isAdmin, loading: authLoading } = useAuth()
+    const { mode: adminViewMode } = useAdminView()
     const navigate = useNavigate()
 
     const [profile, setProfile] = useState<PublicProfile | null>(null)
@@ -230,15 +204,11 @@ export default function PublicProfilePage() {
     const [requestDialogOpen, setRequestDialogOpen] = useState(false)
     const requestDialogAutoOpened = useRef(false)
 
-    // Profile page tabs. Postavke (+ admin-only Dashboard / Popis igrača)
-    // only show for the profile owner; visitors viewing someone else's page
-    // see Turniri only. Owner always lands on "profil" (account details +
-    // settings) - the natural landing tab on both mobile and desktop, since
-    // it's the owner's own account-details view.
+    // Profile page tabs. Postavke only shows for the profile owner; visitors
+    // viewing someone else's page see Turniri only. Owner always lands on
+    // "profil" (account details + settings) - the natural landing tab on both
+    // mobile and desktop, since it's the owner's own account-details view.
     const [profileTab, setProfileTab] = useState<ProfileTabKey>("profil")
-    // Mobile-only: whether the "Administracija" pill has expanded the row
-    // of admin tabs beneath the primary tab row.
-    const [mobileAdminOpen, setMobileAdminOpen] = useState(false)
 
     // Per-route SEO. We deliberately do NOT include the user's phone in any
     // meta tag - phone display is a product call on the page itself, but
@@ -473,11 +443,8 @@ export default function PublicProfilePage() {
         } catch { /* ignore */ }
     }
 
-    // Sidebar / mobile tab navigation config - user-facing tabs first,
-    // admin-only tabs grouped separately (rendered below a divider on
-    // desktop, in their own labelled pill row on mobile). Only ever shown
-    // to the profile owner; a visitor has nothing to switch between.
-    const adminPillLabel = t.pages.publicProfilePage.adminPillLabel
+    // Sidebar / mobile tab navigation config. Only ever shown to the profile
+    // owner; a visitor has nothing to switch between.
     const userTabs: Array<{ key: ProfileTabKey; label: string }> = [
         { key: "turniri", label: t.pages.publicProfilePage.tabs.tournaments },
         // Recording requests of THIS user (any signed-in account) - request
@@ -486,37 +453,17 @@ export default function PublicProfilePage() {
             ? [{ key: "moje-snimke" as ProfileTabKey, label: t.pages.publicProfilePage.tabs.myRecordings }]
             : []),
     ]
-    // Admin-only tabs, gated on the Firebase role=admin custom claim.
-    const adminTabs: Array<{ key: ProfileTabKey; label: string }> = isAdmin
-        ? [
-            { key: "dashboard", label: t.pages.publicProfilePage.tabs.dashboard },
-            { key: "popis-igraca", label: t.pages.publicProfilePage.tabs.playersList },
-            { key: "baza-ekipa", label: t.pages.publicProfilePage.tabs.teamDatabase },
-            { key: "live-stream", label: t.pages.publicProfilePage.tabs.liveStream },
-            { key: "zahtjevi-snimke", label: t.pages.publicProfilePage.tabs.recordingRequests },
-            { key: "baza-snimki", label: t.pages.publicProfilePage.tabs.recordingsLibrary },
-            { key: "zahtjevi-ponude", label: t.pages.publicProfilePage.tabs.cameraInquiries },
-            { key: "zahtjevi-igraci", label: t.pages.publicProfilePage.tabs.playerClaimRequests },
-        ]
-        : []
-
-    // Mobile: ONE primary pill row - Profil first, then the user tabs, then
-    // a single "Administracija" pill that expands the admin row below it
-    // on tap (instead of always showing a second crowded row).
+    // Mobile: ONE pill row - Profil first, then the user tabs.
     const mobileTabs: Array<{ key: ProfileTabKey; label: string }> = [
         { key: "profil", label: t.pages.publicProfilePage.tabs.profile },
         ...userTabs,
     ]
-    const isOnAdminTab = adminTabs.some((tab) => tab.key === profileTab)
-    const mobileLabels = [
-        ...mobileTabs.map((tab) => tab.label),
-        ...(adminTabs.length > 0 ? [adminPillLabel] : []),
-    ]
-    const activeMobileLabel = isOnAdminTab || mobileAdminOpen
-        ? adminPillLabel
-        : (mobileTabs.find((tab) => tab.key === profileTab)?.label ?? "")
-    const adminTabLabels = adminTabs.map((tab) => tab.label)
-    const activeAdminLabel = adminTabs.find((tab) => tab.key === profileTab)?.label ?? ""
+    const mobileLabels = mobileTabs.map((tab) => tab.label)
+    const activeMobileLabel = mobileTabs.find((tab) => tab.key === profileTab)?.label ?? ""
+
+    // An admin wearing the admin hat can land here from the navbar's "Profil"
+    // - one modest way back to the console they came from, no banner.
+    const showAdminConsoleLink = isAdmin && adminViewMode === "admin"
 
     /** Everything but the shell: identity card + whichever tab is active.
      *  Shared between the visitor (no nav) and owner (sidebar/pill nav)
@@ -603,52 +550,6 @@ export default function PublicProfilePage() {
             {/* === MOJE SNIMKE tab - owner-only: recording requests === */}
             {RECORDING_REQUEST_ENABLED && isOwner && profileTab === "moje-snimke" && <MyRecordingsTab />}
 
-            {/* === DASHBOARD tab - admin-only, on own profile === */}
-            {isOwner && isAdmin && profileTab === "dashboard" && (
-                <AdminDashboardTab />
-            )}
-
-            {/* === POPIS IGRAČA tab - admin-only, on own profile === */}
-            {isOwner && isAdmin && profileTab === "popis-igraca" && (
-                <AdminPlayersListTab />
-            )}
-
-            {/* === BAZA EKIPA tab - admin-only, on own profile === */}
-            {isOwner && isAdmin && profileTab === "baza-ekipa" && (
-                <AdminTeamDatabaseTab />
-            )}
-
-            {/* === LIVE STREAM tab - admin-only, on own profile === */}
-            {/* "Live stream" tab now hosts the SpectoStream connection card
-                (attach an EXISTING platform stream to a tournament + preview
-                its player). The old home-page banner admin (LiveStreamAdminTab)
-                was replaced per product request - the component file remains. */}
-            {isOwner && isAdmin && profileTab === "live-stream" && (
-                <SpectoConnectionCard />
-            )}
-
-            {/* === ZAHTJEVI ZA SNIMKE tab - admin-only, on own profile === */}
-            {isOwner && isAdmin && profileTab === "zahtjevi-snimke" && (
-                <AdminRecordingRequestsTab />
-            )}
-
-            {/* === BAZA SNIMKI tab - admin-only, on own profile === */}
-            {isOwner && isAdmin && profileTab === "baza-snimki" && (
-                <AdminRecordingsLibraryTab />
-            )}
-
-            {/* === ZAHTJEVI ZA PONUDU tab - admin-only, on own profile ===
-                  "Zatraži ponudu" leads for the custom camera package. === */}
-            {isOwner && isAdmin && profileTab === "zahtjevi-ponude" && (
-                <AdminCameraInquiriesTab />
-            )}
-
-            {/* === ZAHTJEVI ZA IGRAČA tab - admin-only: manual "this roster
-                  player is me" claims waiting for a human decision. === */}
-            {isOwner && isAdmin && profileTab === "zahtjevi-igraci" && (
-                <AdminPlayerClaimRequestsTab />
-            )}
-
             {/* The manual request dialog - owner-only, outside the tab switch
                 so it survives a tab change while it's open. (The automatic
                 "is this you?" confirm is app-level, in PlayerClaimFirstRun.) */}
@@ -733,40 +634,17 @@ export default function PublicProfilePage() {
                     </Text>
                 </HStack>
 
-                {/* One primary row: Profil, user tabs, then a single
-                    "Administracija" pill. Tapping it expands the admin
-                    row below instead of always showing two crowded rows. */}
+                {/* One row: Profil + the user tabs. */}
                 <PillTabBar
                     tabs={mobileLabels}
                     active={activeMobileLabel}
                     onChange={(label) => {
-                        if (label === adminPillLabel) {
-                            setMobileAdminOpen((v) => !v)
-                            return
-                        }
                         const next = mobileTabs.find((tab) => tab.label === label)
-                        if (next) {
-                            setMobileAdminOpen(false)
-                            setProfileTab(next.key)
-                        }
+                        if (next) setProfileTab(next.key)
                     }}
                     padding="4px"
-                    mb={(mobileAdminOpen || isOnAdminTab) && adminTabs.length > 0 ? "2" : "0"}
+                    mb="0"
                 />
-
-                {(mobileAdminOpen || isOnAdminTab) && adminTabs.length > 0 && (
-                    <PillTabBar
-                        tabs={adminTabLabels}
-                        active={activeAdminLabel}
-                        onChange={(label) => {
-                            const next = adminTabs.find((tab) => tab.label === label)
-                            if (next) setProfileTab(next.key)
-                        }}
-                        size="sm"
-                        padding="4px"
-                        mb="0"
-                    />
-                )}
             </Box>
 
             {/* ── Desktop shell (lg+): FIXED sidebar left, content right - same
@@ -833,42 +711,17 @@ export default function PublicProfilePage() {
                                     onClick={() => setProfileTab(tab.key)}
                                 />
                             ))}
-
-                            {/* Admin group - visually separated from the
-                                user-facing tabs above by a divider + small
-                                caption, and by the purple (vs. pitch-green)
-                                active fill on each row. */}
-                            {adminTabs.length > 0 && (
-                                <>
-                                    <Box
-                                        borderTopWidth="1px"
-                                        borderColor="border.emphasized"
-                                        mt="2"
-                                        pt="2.5"
-                                        pb="0.5"
-                                        px="1.5"
-                                    >
-                                        <Text
-                                            fontFamily="mono"
-                                            fontSize="10px"
-                                            fontWeight={800}
-                                            letterSpacing="0.12em"
-                                            color="fg.muted"
-                                        >
-                                            {t.pages.publicProfilePage.adminSectionCaption}
-                                        </Text>
-                                    </Box>
-                                    {adminTabs.map((tab) => (
-                                        <ProfileNavItem
-                                            key={tab.key}
-                                            icon={PROFILE_TAB_ICONS[tab.key]}
-                                            label={tab.label}
-                                            active={profileTab === tab.key}
-                                            onClick={() => setProfileTab(tab.key)}
-                                            palette="purple"
-                                        />
-                                    ))}
-                                </>
+                            {/* Admin console last in the nav rather than a
+                                floating button over the content - it's a
+                                destination like the rows above it, not an
+                                action on the profile. */}
+                            {showAdminConsoleLink && (
+                                <ProfileNavItem
+                                    icon={<FiGrid size={15} />}
+                                    label={t.pages.adminConsole.openConsole}
+                                    active={false}
+                                    onClick={() => navigate("/admin")}
+                                />
                             )}
                         </Flex>
                     </Flex>
@@ -1283,7 +1136,11 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
                             <Skeleton h="14" rounded="lg" />
                         </VStack>
                     ) : (
-                        <VStack align="stretch" gap="0">
+                        // Three short values stacked over three rows wasted a
+                        // lot of vertical space on desktop - side by side from
+                        // md up, still stacked on a phone where they wouldn't
+                        // fit.
+                        <SimpleGrid columns={{ base: 1, md: 3 }} gap={{ base: "0", md: "4" }}>
                             <DetailRow
                                 icon={<FiUser size={15} />}
                                 label={t.pages.publicProfilePage.details.nameLabel}
@@ -1300,7 +1157,7 @@ function ProfileDetailsSection({ onSaved }: { onSaved: () => Promise<void> | voi
                                 value={data.phone ? `${data.phoneCountry ? data.phoneCountry + " " : ""}${data.phone}` : t.pages.publicProfilePage.details.notSet}
                                 isLast
                             />
-                        </VStack>
+                        </SimpleGrid>
                     )}
                 </VStack>
             </Card.Body>
@@ -1332,7 +1189,10 @@ function DetailRow({
         <HStack
             gap="3"
             py="3"
-            borderBottomWidth={isLast ? "0" : "1px"}
+            // The divider only separates STACKED rows; side by side (md+) the
+            // three cells sit in their own columns and a bottom rule would
+            // just underline them.
+            borderBottomWidth={{ base: isLast ? "0" : "1px", md: "0" }}
             borderColor="border.emphasized"
             align="center"
         >
@@ -2220,8 +2080,13 @@ function MatchRow({
             transition="background 0.1s"
             _hover={to ? { bg: "bg.subtle", borderColor: "pitch.500" } : undefined}
         >
+            {/* Knockout matches are named by their stage ("Četvrtfinale") -
+                a round number means nothing in a bracket. Only the group
+                phase (and older rows with no stage) falls back to "Kolo N". */}
             <Badge variant="outline" colorPalette="pitch" size="sm">
-                {mr.round(m.roundNumber ?? "?")}
+                {m.stage && m.stage !== "GROUP"
+                    ? t.components.scheduleTab.stageLabels[m.stage]
+                    : mr.round(m.roundNumber ?? "?")}
             </Badge>
             {m.tableNo != null && (
                 <Text color="fg.muted" fontSize="xs">{mr.table(m.tableNo)}</Text>
@@ -2307,6 +2172,39 @@ function PlayerMatchMarks({ m }: { m: TeamMatchHistory["matches"][number] }) {
 function SettingsCard() {
     const t = useTranslation()
     const activeLocale = useLocale()
+    const { isAdmin, mode: adminViewMode, setMode: setAdminViewMode } = useAdminView()
+
+    // Promo opt-ins. Seeded from the profile, then owned locally so the switch
+    // responds instantly; a failed save rolls the switch back rather than
+    // leaving the UI claiming something the server didn't accept.
+    const [promoEmail, setPromoEmail] = useState(true)
+    const [promoPush, setPromoPush] = useState(true)
+    useEffect(() => {
+        let cancelled = false
+        getProfile()
+            .then((p) => {
+                if (cancelled) return
+                setPromoEmail(p.promoEmail !== false)
+                setPromoPush(p.promoPush !== false)
+            })
+            .catch(() => {
+                /* keep the opted-in default - this card is not worth an error */
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    const savePromo = (patch: { promoEmail?: boolean; promoPush?: boolean }) => {
+        const prevEmail = promoEmail
+        const prevPush = promoPush
+        if (patch.promoEmail !== undefined) setPromoEmail(patch.promoEmail)
+        if (patch.promoPush !== undefined) setPromoPush(patch.promoPush)
+        updateNotificationPrefs(patch).catch(() => {
+            setPromoEmail(prevEmail)
+            setPromoPush(prevPush)
+        })
+    }
 
     // This card only ever renders for the profile owner (isOwner-gated at
     // the call site), so a signed-in user is guaranteed here - unlike the
@@ -2323,17 +2221,41 @@ function SettingsCard() {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "5" }}>
                 <VStack align="stretch" gap="4">
-                    <Box>
-                        <Heading size="sm">{t.pages.publicProfilePage.settings.heading}</Heading>
-                        <Text fontSize="xs" color="fg.muted">
-                            {t.pages.publicProfilePage.settings.description}
-                        </Text>
-                    </Box>
+                    <Heading size="sm">{t.pages.publicProfilePage.settings.heading}</Heading>
 
                     <Box>
                         <Text fontSize="sm" fontWeight="medium" mb="2">{t.pages.publicProfilePage.settings.themeLabel}</Text>
                         <ThemeSwitch size="lg" />
                     </Box>
+
+                    {/* Admin view lives here rather than in the navbar: it is a
+                        persisted preference like the theme, not a navigation
+                        action. While it is on, "Profil" in the navbar goes to
+                        the console instead of this page. */}
+                    {isAdmin && (
+                        <Box>
+                            <Text fontSize="sm" fontWeight="medium" mb="2">
+                                {t.pages.adminConsole.viewSwitch.label}
+                            </Text>
+                            <Switch.Root
+                                checked={adminViewMode === "admin"}
+                                onCheckedChange={(e) => setAdminViewMode(e.checked ? "admin" : "user")}
+                                colorPalette="pitch"
+                                size="lg"
+                            >
+                                <Switch.HiddenInput
+                                    aria-label={t.pages.adminConsole.viewSwitch.label}
+                                />
+                                <Switch.Control>
+                                    <Switch.Thumb>
+                                        <Switch.ThumbIndicator fallback={<FiUser size={13} />}>
+                                            <FiGrid size={13} />
+                                        </Switch.ThumbIndicator>
+                                    </Switch.Thumb>
+                                </Switch.Control>
+                            </Switch.Root>
+                        </Box>
+                    )}
 
                     <Box>
                         <Text fontSize="sm" fontWeight="medium" mb="2">{t.pages.publicProfilePage.settings.languageLabel}</Text>
@@ -2352,6 +2274,46 @@ function SettingsCard() {
                         </HStack>
                         <Text fontSize="xs" color="fg.muted" mt="2">
                             {t.pages.publicProfilePage.settings.languageSyncNote}
+                        </Text>
+                    </Box>
+
+                    <Box>
+                        <Text fontSize="sm" fontWeight="medium" mb="2">
+                            {t.pages.publicProfilePage.settings.notificationsLabel}
+                        </Text>
+                        <VStack align="stretch" gap="2.5">
+                            <Switch.Root
+                                checked={promoEmail}
+                                onCheckedChange={(e) => savePromo({ promoEmail: e.checked })}
+                                colorPalette="pitch"
+                            >
+                                <Switch.HiddenInput />
+                                <Switch.Control>
+                                    <Switch.Thumb />
+                                </Switch.Control>
+                                <Switch.Label fontSize="sm" fontWeight={400}>
+                                    {t.pages.publicProfilePage.settings.promoEmailLabel}
+                                </Switch.Label>
+                            </Switch.Root>
+                            <Switch.Root
+                                checked={promoPush}
+                                onCheckedChange={(e) => savePromo({ promoPush: e.checked })}
+                                colorPalette="pitch"
+                            >
+                                <Switch.HiddenInput />
+                                <Switch.Control>
+                                    <Switch.Thumb />
+                                </Switch.Control>
+                                <Switch.Label fontSize="sm" fontWeight={400}>
+                                    {t.pages.publicProfilePage.settings.promoPushLabel}
+                                </Switch.Label>
+                            </Switch.Root>
+                        </VStack>
+                        {/* The bell subscriptions are a different thing entirely -
+                            say so, or people will switch this off expecting to
+                            keep their goal alerts and quietly wonder later. */}
+                        <Text fontSize="xs" color="fg.muted" mt="2">
+                            {t.pages.publicProfilePage.settings.promoNote}
                         </Text>
                     </Box>
                 </VStack>

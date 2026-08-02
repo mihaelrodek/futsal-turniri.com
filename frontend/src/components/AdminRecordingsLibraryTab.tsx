@@ -4,7 +4,6 @@ import {
     Box,
     Button,
     Card,
-    Heading,
     HStack,
     Input,
     NativeSelect,
@@ -252,13 +251,9 @@ export function AdminRecordingsLibraryTab() {
         <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
             <Card.Body p={{ base: "4", md: "6" }}>
                 <VStack align="stretch" gap="3">
-                    <HStack justify="space-between" wrap="wrap" gap="2">
-                        <Box>
-                            <Heading size="sm">{t.recordingRequest.adminLibrary.title}</Heading>
-                            <Text fontSize="xs" color="fg.muted">
-                                {t.recordingRequest.adminLibrary.description}
-                            </Text>
-                        </Box>
+                    {/* No card title: /admin/{slug} already names the module -
+                        the row is just the action now. */}
+                    <HStack justify="flex-end" wrap="wrap" gap="2">
                         <Button
                             size="xs"
                             variant={pickerOpen ? "outline" : "solid"}

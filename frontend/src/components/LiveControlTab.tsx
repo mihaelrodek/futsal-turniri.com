@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Box, Button, Flex, HStack, Menu, Portal, Text, VStack } from "@chakra-ui/react"
 import { FiCheckCircle, FiChevronDown, FiEyeOff, FiInfo, FiMaximize2, FiPlay } from "react-icons/fi"
@@ -131,6 +131,7 @@ export default function LiveControlTab({
     finishedLocked = false,
     standaloneHref,
     onClockArgs,
+    onFixturesSettled,
 }: {
     uuid: string
     /** Tournament FINISHED + non-admin viewer: render the "locked" notice
@@ -153,6 +154,12 @@ export default function LiveControlTab({
             halfCount: number | null
         } | null,
     ) => void
+    /** Fired once the fixtures have loaded, and again whenever a result is
+     *  entered or corrected - NOT on every goal/card. `finalDecided` says the
+     *  tournament has been played out; the standalone zapisnik uses it to offer
+     *  the awards + "Završi turnir" card right there. `initial` marks the first
+     *  (load) call, which reports state rather than a change. */
+    onFixturesSettled?: (info: { finalDecided: boolean; initial: boolean }) => void
 }) {
     const navigate = useNavigate()
     const t = useTranslation()
@@ -239,6 +246,31 @@ export default function LiveControlTab({
         () => showFinished ? [...manageable, ...finished] : manageable,
         [manageable, finished, showFinished],
     )
+
+    /** The tournament has been played out. Primary signal is the FINAL match
+     *  being FINISHED - both formats have one, and it is what decides the
+     *  champion regardless of how the result was entered (timer or score-only).
+     *  A bracket without a FINAL entry is a legacy/odd shape: fall back to
+     *  "nothing left to record". */
+    const finalDecided = useMemo(() => {
+        const ko = knockout ?? []
+        const fin = ko.find((m) => m.stage === "FINAL")
+        if (fin) return fin.status === "FINISHED"
+        return recordable.length > 0 && manageable.length === 0
+    }, [knockout, recordable.length, manageable.length])
+
+    // Report the fixture state to the host: once on load, then on every change
+    // to the finished count or to `finalDecided`. Deliberately not on every
+    // mutation - goals and cards don't move either value.
+    const settledRef = useRef<string | null>(null)
+    useEffect(() => {
+        if (loading) return
+        const stamp = `${finished.length}|${finalDecided}`
+        const first = settledRef.current === null
+        if (settledRef.current === stamp) return
+        settledRef.current = stamp
+        onFixturesSettled?.({ finalDecided, initial: first })
+    }, [finished.length, finalDecided, loading, onFixturesSettled])
 
     // Generated knockout fixtures whose participants aren't decided yet - e.g. a
     // semifinal/final drawn with a reserved kickoff while the group stage is

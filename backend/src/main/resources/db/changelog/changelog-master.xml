@@ -80,4 +80,13 @@
     <include file="db/changelog/2026-07-31-02-player-claim-requests.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-31-03-players-claimed-by-uid.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-07-31-04-user-profiles-claim-opt-out.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-01-01-camera-package-inquiries-handled-at.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-01-05-user-notifications.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-01-06-matches-bib-team.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-01-07-user-profiles-promo-prefs.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-01-08-user-profiles-admin-flag.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-02-01-contact-messages.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-02-02-admin-sent-mail.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-02-03-matches-bib-team-integer.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-02-04-contact-messages-reason.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

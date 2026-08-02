@@ -79,7 +79,6 @@ public class UserProfile {
     @Column(name = "language", length = 2)
     private String language;
 
-    @UpdateTimestamp
     /**
      * "Nisam igrač" - the person said they don't play, so the automatic
      * "is this you?" prompt stops being offered. Stored here rather than in
@@ -91,6 +90,59 @@ public class UserProfile {
     @Column(name = "player_claim_opt_out", nullable = false)
     private boolean playerClaimOptOut = false;
 
+    /**
+     * "Promotivne poruke i novosti na e-mail" - the account-wide marketing /
+     * announcement opt-in for e-mail.
+     *
+     * <p><b>This is NOT the notification bell.</b> Per-tournament and per-match
+     * follows live in their own tables ({@code tournament_subscriptions},
+     * {@code match_subscriptions}) and are completely independent: switching
+     * this off must never stop a goal, half-time, final-whistle, schedule or
+     * team-approval message for something the user explicitly followed. It
+     * governs only broadcast-style promo / general announcements.
+     *
+     * <p>Defaults to {@code true} (opted in) so existing accounts keep getting
+     * what they get today; the column is NOT NULL with a DB default.
+     */
+    @Column(name = "promo_email", nullable = false)
+    private boolean promoEmail = true;
+
+    /**
+     * Push counterpart of {@link #promoEmail} - the account-wide marketing /
+     * announcement opt-in for web push. Same rule: independent of the
+     * per-tournament / per-match bells, which keep firing regardless.
+     */
+    @Column(name = "promo_push", nullable = false)
+    private boolean promoPush = true;
+
+    /**
+     * Mirror of the Firebase {@code role} custom claim, refreshed on every
+     * {@code /user/me/sync}. Exists for exactly ONE reason: to answer "which
+     * UIDs should receive an admin-facing notification", because admins are not
+     * otherwise listed anywhere in the database (the role lives only in the
+     * Firebase token).
+     *
+     * <p><b>SECURITY - this column is NEVER an authorization source.</b> No
+     * endpoint, filter or service may read it to decide whether a caller is
+     * allowed to do something. Authorization stays exactly where it is today:
+     * {@code @RolesAllowed("admin")} evaluated against the cryptographically
+     * verified JWT, whose {@code role} claim Quarkus OIDC maps into the
+     * SecurityIdentity ({@code quarkus.oidc.roles.role-claim-path=role}). This
+     * row is ordinary, mutable application data: a stale value (role revoked in
+     * Firebase since the user's last login) or a tampered/hand-edited row must
+     * not be able to grant access to anything - the worst it can ever cause is
+     * a notification delivered to the wrong inbox.
+     *
+     * <p>Self-healing: the value is rewritten from the verified claim on every
+     * login, so granting or revoking the role converges on the next sync.
+     */
+    @Column(name = "admin", nullable = false)
+    private boolean admin = false;
+
+    /** Maintained by Hibernate on every flush. The annotation used to sit
+     *  above `playerClaimOptOut` (a boolean), so this column was never
+     *  actually refreshed. */
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 }
