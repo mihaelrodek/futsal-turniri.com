@@ -679,6 +679,15 @@ function PromoMockFollower() {
 const PROMO_VIDEO_SRC = "/promo/zamuda_primavita_highlights.mp4"
 
 /**
+ * How long the carousel holds on the clip's slide. A ceiling, not a wait: the
+ * slide advances as soon as the video reaches its end. This only covers the
+ * case where playback never starts (autoplay blocked, file missing, codec the
+ * browser won't touch) - without it the carousel would park there forever.
+ * Keep it a little above the clip's real length.
+ */
+const VIDEO_SLIDE_MS = 130_000
+
+/**
  * Sample recording on the "buy a recording" slide - a silent, looping clip
  * with a tap to hear it.
  *
@@ -699,10 +708,13 @@ function PromoVideo({
     src,
     active,
     onPlay,
+    onEnded,
 }: {
     src: string
     active: boolean
     onPlay?: () => void
+    /** Fired when the clip reaches its end - the carousel moves on then. */
+    onEnded?: () => void
 }) {
     const tr = useTranslation()
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -748,7 +760,9 @@ function PromoVideo({
                 ref={videoRef}
                 src={src}
                 muted={!withSound}
-                loop
+                // Deliberately NOT looping: the carousel waits for the clip to
+                // finish and then advances, and a looping video never finishes.
+                onEnded={onEnded}
                 playsInline
                 preload="metadata"
                 controls={withSound}
@@ -1236,6 +1250,9 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     const [idx, setIdx] = useState(0)
     const active = idx % count
     const [paused, setPaused] = useState(false)
+    // Which SLIDE carries the sample recording: the third promo, shifted right
+    // by the live slide when one is present. -1 when there is no clip at all.
+    const videoSlideIdx = PROMO_VIDEO_SRC ? 2 + liveCount : -1
 
     // Slide order, live content first so a live hero is never buried behind
     // the promos: the zapisnik-scored live scoreboard (when a match is in
@@ -1263,6 +1280,10 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
                                     // promo one place to the right.
                                     active={active === i + liveCount}
                                     onPlay={() => setPaused(true)}
+                                    // Played out - move on immediately rather
+                                    // than sit on a finished clip until the
+                                    // ceiling above runs out.
+                                    onEnded={() => setIdx((i2) => i2 + 1)}
                                 />
                             )
                             : undefined,
@@ -1274,19 +1295,26 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     const slides = liveSlide ? [liveSlide, ...promos] : promos
     const go = (n: number) => setIdx(((n % count) + count) % count)
 
-    // Autoplay every 5s. With no live content the promos rotate as before. With
-    // the live scoreboard present the carousel never rotates into the promos:
-    // it just pins to that single live slide. Manual swiping to the promos
-    // still works; autoplay simply won't take the viewer there (the guard also
-    // stays defensive - there are always the two promos behind).
+    // Autoplay. Every slide gets 5s EXCEPT the one with the sample recording,
+    // which holds until the clip has played out - showing three seconds of a
+    // two-minute video and sliding away is worse than not showing it. It also
+    // advances the moment the clip ends (see `onEnded` below), so the long
+    // dwell is only the ceiling, not the actual wait.
+    //
+    // With the live scoreboard present the carousel never rotates into the
+    // promos at all: it pins to that single live slide. Manual swiping/dots
+    // still reach them; autoplay simply won't take the viewer there.
     useEffect(() => {
         // How many leading slides autoplay may cycle through: only the live
         // one while it's present, otherwise all (promo) slides.
         const cycleLen = liveCount > 0 ? liveCount : count
         if (cycleLen < 2 || paused) return
-        const id = setInterval(() => setIdx((i) => (i + 1) % cycleLen), 5000)
-        return () => clearInterval(id)
-    }, [count, liveCount, paused])
+        // setTimeout, not setInterval: the dwell differs per slide, so the
+        // timer is re-armed on every change rather than fixed once.
+        const dwell = active === videoSlideIdx ? VIDEO_SLIDE_MS : 5000
+        const id = setTimeout(() => setIdx((i) => (i + 1) % cycleLen), dwell)
+        return () => clearTimeout(id)
+    }, [count, liveCount, paused, active, videoSlideIdx])
 
     // Keep the active slide sensible as the live set changes underneath us (a
     // match starts or ends, promos-only <-> live): snap back to the first
