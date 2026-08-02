@@ -757,6 +757,15 @@ function PromoVideo({
                 w="100%"
                 h="100%"
                 objectFit="cover"
+                // `cover` fills the 16:9 box in the banner, but fullscreen hands
+                // the video the whole SCREEN - and a 16:10 laptop panel is not
+                // 16:9, so cover cropped the sides off (the scoreboard overlay
+                // burned into the clip was the first thing to go). Fullscreen
+                // switches to `contain`: whole frame, letterboxed if needed.
+                css={{
+                    "&:fullscreen": { objectFit: "contain" },
+                    "&:-webkit-full-screen": { objectFit: "contain" },
+                }}
                 aria-label={label}
             />
 
