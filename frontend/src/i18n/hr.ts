@@ -438,6 +438,8 @@ export const hr = {
                 title: "Zanima te snimka utakmice?",
                 body: "Naruči snimku svoje utakmice ili gola i time izravno podržavaš naš rad - snimanje, prijenose uživo i razvoj stranice. Snimke su dostupne za utakmice koje su bile na prijenosu uživo.",
                 button: "Kupi snimku",
+                /** aria-label of the sample-recording play button on the hero slide. */
+                videoPlayAria: "Pusti primjer snimke utakmice",
             },
             documentTitle: "Futsal turniri u Hrvatskoj - futsal-turniri.com",
             documentDescription:

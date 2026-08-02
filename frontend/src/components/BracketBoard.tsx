@@ -305,6 +305,16 @@ export function BracketBoard({
                 <Flex
                     justify="flex-end"
                     mt={thirdPlaceMarginTop != null ? `${thirdPlaceMarginTop}px` : undefined}
+                    // `position: relative` is NOT cosmetic here. The margin above
+                    // is negative (the card is pulled up under the Finale), so
+                    // this row overlaps the rounds row - and that row IS
+                    // positioned, which means it paints above every static
+                    // sibling. The third-place card ended up UNDER it and
+                    // swallowed every click: it was the only match in the
+                    // bracket that could not be opened. Positioning this row too
+                    // puts both in the same stacking pass, where the later
+                    // sibling (this one) wins.
+                    position="relative"
                 >
                     <Box w={`${cardWidth}px`}>{renderThirdPlace(thirdPlace)}</Box>
                 </Flex>

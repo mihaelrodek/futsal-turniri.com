@@ -15,6 +15,7 @@ import {
     Stack,
     Text,
     VStack,
+    chakra,
 } from "@chakra-ui/react"
 import { Link as RouterLink, useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
@@ -38,6 +39,7 @@ import {
     FiPlus,
     FiSearch,
     FiShoppingCart,
+    FiVolume2,
     FiSliders,
     FiVideo,
     FiX,
@@ -662,6 +664,140 @@ function PromoMockFollower() {
     )
 }
 
+/**
+ * Sample match recording shown on the "buy a recording" slide.
+ *
+ * <p>A file YOU host: drop the clip in `frontend/public/promo/` and point this
+ * at it. Self-hosted rather than embedded on purpose - no third-party player
+ * chrome to fight, no cookie banner, no branding, and the clip is whatever you
+ * decide to show. Keep it SHORT and small (a 10-20 s, <5 MB, 720p mp4): it is
+ * on the home page, and it autoplays.
+ *
+ * <p>Set to an empty string and the slide falls back to the faux package
+ * cards, so a missing file degrades to the old look instead of a black box.
+ */
+const PROMO_VIDEO_SRC = "/promo/zamuda_primavita_highlights.mp4"
+
+/**
+ * Sample recording on the "buy a recording" slide - a silent, looping clip
+ * with a tap to hear it.
+ *
+ * <p>Two states:
+ *   - <b>showreel</b> (default): autoplaying, MUTED, looping, no controls.
+ *     Muted is not a preference - every browser blocks autoplay with sound, so
+ *     an unmuted autoplay would simply never start.
+ *   - <b>with sound</b>: one click unmutes and reveals the native controls. A
+ *     user gesture is exactly what makes audio allowed, so nothing has to be
+ *     reloaded - the clip keeps playing from where it is.
+ *
+ * <p>`active` is what plays it: only the visible slide runs, and leaving the
+ * slide pauses (and rewinds) it, so the home page never has a video playing
+ * behind two other banners. `preload="metadata"` keeps the first frame ready
+ * without pulling the whole file for visitors who never reach this slide.
+ */
+function PromoVideo({
+    src,
+    active,
+    onPlay,
+}: {
+    src: string
+    active: boolean
+    onPlay?: () => void
+}) {
+    const tr = useTranslation()
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const [withSound, setWithSound] = useState(false)
+    const label = tr.pages.tournamentsPage.recordingPromo.videoPlayAria
+
+    useEffect(() => {
+        const el = videoRef.current
+        if (!el) return
+        if (active) {
+            // play() rejects when autoplay is blocked - nothing to do about it
+            // here, the poster frame simply stays.
+            void el.play().catch(() => { /* autoplay blocked - leave the frame */ })
+        } else {
+            el.pause()
+            el.currentTime = 0
+        }
+    }, [active])
+
+    function enableSound() {
+        const el = videoRef.current
+        if (!el) return
+        el.muted = false
+        void el.play().catch(() => { /* noop */ })
+        setWithSound(true)
+        onPlay?.()
+    }
+
+    return (
+        <Box
+            position="relative"
+            w={{ base: "100%", md: "420px" }}
+            maxW={{ base: "340px", md: "none" }}
+            css={{ aspectRatio: "16 / 9" }}
+            rounded="xl"
+            overflow="hidden"
+            boxShadow="0 12px 30px rgba(0,0,0,0.34)"
+            borderWidth="1px"
+            borderColor="rgba(255,255,255,0.18)"
+            bg="#000"
+        >
+            <chakra.video
+                ref={videoRef}
+                src={src}
+                muted={!withSound}
+                loop
+                playsInline
+                preload="metadata"
+                controls={withSound}
+                position="absolute"
+                inset="0"
+                w="100%"
+                h="100%"
+                objectFit="cover"
+                aria-label={label}
+            />
+
+            {/* Click target while muted: unmutes, shows the real controls and
+                stops the carousel, so the slide can't rotate away from a video
+                someone just started listening to. */}
+            {!withSound && (
+                <chakra.button
+                    type="button"
+                    aria-label={label}
+                    onClick={enableSound}
+                    position="absolute"
+                    inset="0"
+                    w="100%"
+                    h="100%"
+                    cursor="pointer"
+                    border="0"
+                    p="0"
+                    bg="transparent"
+                >
+                    <Flex position="absolute" inset="0" align="center" justify="center">
+                        <Flex
+                            align="center"
+                            justify="center"
+                            w="46px"
+                            h="46px"
+                            rounded="full"
+                            bg="rgba(0,0,0,0.45)"
+                            color="white"
+                            borderWidth="1px"
+                            borderColor="rgba(255,255,255,0.5)"
+                        >
+                            <FiVolume2 size={20} />
+                        </Flex>
+                    </Flex>
+                </chakra.button>
+            )}
+        </Box>
+    )
+}
+
 /* Buyer: the recording package card + its "spremno za preuzimanje" row - the
    two states of the paid flow, so the slide shows what the money produces. */
 function PromoMockRecording() {
@@ -890,6 +1026,10 @@ type PromoSlide = {
      *  two describe free features, where a button would be noise. */
     ctaLabel?: string
     ctaTo?: string
+    /** Replaces the faux screenshot collage. Used by the "buy a recording"
+     *  slide to show a REAL sample recording - the most convincing thing that
+     *  slide can carry is the product itself. */
+    media?: React.ReactNode
 }
 
 /** Mock collage per slide, in the same order as
@@ -908,8 +1048,13 @@ function PromoHero({ data }: { data: PromoSlide }) {
             position="relative"
             overflow="hidden"
             color="white"
+            // minH only - deliberately NO maxH. The carousel track stretches to
+            // its tallest slide, and the live scoreboard grows past this floor
+            // whenever a team name wraps. A capped promo slide then stopped
+            // short of the track's bottom edge, leaving a transparent strip
+            // inside the rounded viewport - which read as the banner's footer
+            // being cut off. Without the cap it just fills the row.
             minH={HERO_MIN_H}
-            maxH={HERO_MIN_H}
             flex="1 0 auto"
             display="flex"
             flexDirection="column"
@@ -991,6 +1136,10 @@ function PromoHero({ data }: { data: PromoSlide }) {
                         lineHeight={{ base: 1.35, md: 1.45 }}
                         maxW="42ch"
                         mt="1"
+                        // A media slide drops the paragraph on phones: every
+                        // line of it pushes the clip further down, and on that
+                        // slide the clip is the argument, not the copy.
+                        hideBelow={data.media ? "md" : undefined}
                     >
                         {data.subtitle}
                     </Text>
@@ -1006,21 +1155,46 @@ function PromoHero({ data }: { data: PromoSlide }) {
                 {/* Faux app screenshots - the full two-card collage on both
                     breakpoints, just scaled down to fit the tighter fixed height
                     on mobile (the scaled wrapper reserves only its shrunk box). */}
-                <Box display={{ base: "none", md: "flex" }} flexShrink={0} justifyContent="center">
-                    {data.mock}
-                </Box>
-                <Box
-                    display={{ base: "flex", md: "none" }}
-                    w="full"
-                    h="110px"
-                    justifyContent="center"
-                    alignItems="flex-start"
-                    overflow="visible"
-                >
-                    <Box transform="scale(0.6)" transformOrigin="top center" flexShrink={0}>
-                        {data.mock}
-                    </Box>
-                </Box>
+                {data.media ? (
+                    /* Real media (the sample recording). Unlike the faux
+                       collages it is already sized in its own aspect ratio, so
+                       it is NOT scaled down on mobile - a 0.6 scale would make
+                       the play button a hard target on the smallest phones. */
+                    <Flex
+                        flexShrink={0}
+                        justify="center"
+                        w={{ base: "full", md: "auto" }}
+                        alignSelf={{ md: "flex-start" }}
+                        // Nudged up so the clip's lower edge lands on the pitch
+                        // line drawn in the backdrop. A fixed offset, not a
+                        // computed one: PitchBackdrop is an SVG rendered with
+                        // `preserveAspectRatio="slice"`, so where that line
+                        // falls depends on the hero's aspect ratio - there is
+                        // no CSS length that tracks it. Tuned for desktop; the
+                        // phone layout stacks and doesn't use it.
+                        mt={{ md: "-5" }}
+                    >
+                        {data.media}
+                    </Flex>
+                ) : (
+                    <>
+                        <Box display={{ base: "none", md: "flex" }} flexShrink={0} justifyContent="center">
+                            {data.mock}
+                        </Box>
+                        <Box
+                            display={{ base: "flex", md: "none" }}
+                            w="full"
+                            h="110px"
+                            justifyContent="center"
+                            alignItems="flex-start"
+                            overflow="visible"
+                        >
+                            <Box transform="scale(0.6)" transformOrigin="top center" flexShrink={0}>
+                                {data.mock}
+                            </Box>
+                        </Box>
+                    </>
+                )}
             </Flex>
         </Box>
     )
@@ -1043,6 +1217,17 @@ function PromoHero({ data }: { data: PromoSlide }) {
 
 function HomeHero({ match }: { match: LiveMatch | null }) {
     const tr = useTranslation()
+    // Carousel state comes FIRST: the buyer slide needs to know whether it is
+    // the visible one (it only mounts the video player then), and the slides
+    // themselves are built below - so the index cannot be derived from them.
+    // The slide count is the promo count plus the optional live slide, which is
+    // knowable without building anything.
+    const liveCount = match ? 1 : 0
+    const count = tr.pages.tournamentsPage.hero.promoSlides.length + liveCount
+    const [idx, setIdx] = useState(0)
+    const active = idx % count
+    const [paused, setPaused] = useState(false)
+
     // Slide order, live content first so a live hero is never buried behind
     // the promos: the zapisnik-scored live scoreboard (when a match is in
     // progress), then the two always-present promo slides.
@@ -1059,16 +1244,25 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
                     ? {
                         ctaLabel: tr.pages.tournamentsPage.recordingPromo.button,
                         ctaTo: "/kosarica",
+                        // A sample of the actual product, when one is configured.
+                        media: PROMO_VIDEO_SRC
+                            ? (
+                                <PromoVideo
+                                    src={PROMO_VIDEO_SRC}
+                                    // `i` indexes the PROMOS, `active` indexes
+                                    // the SLIDES - and a live slide shifts every
+                                    // promo one place to the right.
+                                    active={active === i + liveCount}
+                                    onPlay={() => setPaused(true)}
+                                />
+                            )
+                            : undefined,
                     }
                     : {}),
             }}
         />
     ))
     const slides = liveSlide ? [liveSlide, ...promos] : promos
-    const liveCount = liveSlide ? 1 : 0
-    const count = slides.length
-    const [idx, setIdx] = useState(0)
-    const active = idx % count
     const go = (n: number) => setIdx(((n % count) + count) % count)
 
     // Autoplay every 5s. With no live content the promos rotate as before. With
@@ -1076,7 +1270,6 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     // it just pins to that single live slide. Manual swiping to the promos
     // still works; autoplay simply won't take the viewer there (the guard also
     // stays defensive - there are always the two promos behind).
-    const [paused, setPaused] = useState(false)
     useEffect(() => {
         // How many leading slides autoplay may cycle through: only the live
         // one while it's present, otherwise all (promo) slides.

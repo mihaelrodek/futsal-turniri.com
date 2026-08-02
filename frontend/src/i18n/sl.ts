@@ -417,6 +417,7 @@ export const sl: Dictionary = {
                 title: "Te zanima posnetek tekme?",
                 body: "Naroči posnetek svoje tekme ali gola in s tem neposredno podpri naše delo - snemanje, prenose v živo in razvoj strani. Posnetki so na voljo za tekme, ki so bile v prenosu v živo.",
                 button: "Kupi posnetek",
+                videoPlayAria: "Predvajaj primer posnetka tekme",
             },
             documentTitle: "Futsal turnirji na Hrvaškem - futsal-turniri.com",
             documentDescription:

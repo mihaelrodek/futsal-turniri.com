@@ -416,6 +416,7 @@ export const en: Dictionary = {
                 title: "Want a recording of your match?",
                 body: "Order the video of your match or goal and you directly support our work - the filming, the live broadcasts and the site itself. Recordings are available for matches that were broadcast live.",
                 button: "Buy a recording",
+                videoPlayAria: "Play a sample match recording",
             },
             documentTitle: "Futsal tournaments in Croatia - futsal-turniri.com",
             documentDescription:
