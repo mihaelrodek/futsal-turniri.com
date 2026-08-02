@@ -67,6 +67,17 @@ export default function Footer() {
                     >
                         <RouterLink to="/privatnost">{t.components.footer.privacyLink}</RouterLink>
                     </Box>
+                    <Box
+                        asChild
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.7)"
+                        css={{ "&:hover": { color: "#fff" } }}
+                    >
+                        <RouterLink to="/uvjeti">{t.components.footer.termsLink}</RouterLink>
+                    </Box>
                     <Text
                         fontFamily="mono"
                         fontSize="11px"

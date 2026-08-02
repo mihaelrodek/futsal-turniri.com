@@ -70,6 +70,7 @@ const LivePage = lazyWithReload(() => import('./pages/LivePage'))
 const MapPage = lazyWithReload(() => import('./pages/MapPage'))
 const StatsPage = lazyWithReload(() => import('./pages/StatsPage'))
 const PrivacyPage = lazyWithReload(() => import('./pages/PrivacyPage'))
+const TermsPage = lazyWithReload(() => import('./pages/TermsPage'))
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
 const PricingPage = lazyWithReload(() => import('./pages/PricingPage'))
 const ContactPage = lazyWithReload(() => import('./pages/ContactPage'))
@@ -332,6 +333,7 @@ function AppShell() {
                     {/* English alias for the stats page. */}
                     <Route path="/stats" element={<Navigate to="/statistika" replace />} />
                     <Route path="/privatnost" element={<PrivacyPage />} />
+                    <Route path="/uvjeti" element={<TermsPage />} />
                     {/* Public „Kontaktiraj nas" form - reachable without
                         login, like everything else user-facing. */}
                     <Route path="/kontakt" element={<ContactPage />} />

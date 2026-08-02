@@ -226,6 +226,10 @@ export type PublicRecordingRequest = {
     priceEurCents: number
     paid: boolean
     hasVideo: boolean
+    /** Backend already sends these on the public view - the status page needs
+     *  `kind` to name the package it is charging for. */
+    kind: RecordingRequestKind
+    goalLabel: string | null
 }
 
 /** Fetch the public status view of a request by its uuid - no auth required. */

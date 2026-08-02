@@ -56,6 +56,7 @@ export const sl: Dictionary = {
         login: "Prijava",
         profile: "Profil",
         notifications: "Obvestila",
+        unreadNotifications: (n: number) => `${n} ${n === 1 ? "novo obvestilo" : n === 2 ? "novi obvestili" : n < 5 ? "nova obvestila" : "novih obvestil"}`,
         logout: "Odjava",
         loggedInAs: "Prijavljen kot",
         anonymous: "Anonimno",
@@ -110,6 +111,7 @@ export const sl: Dictionary = {
             toastSuccessMatch: "Zahteva za posnetek je poslana.",
             toastSuccessGoal: "Zahteva za posnetek gola je poslana.",
             toastSuccessDescription: "Status spremljaš na svojem profilu, v zavihku „Moji posnetki“.",
+            noLivestream: "Posnetek te tekme ne obstaja, ker tekma ni bila v živo.",
             duplicateGoalDisabled: "Zahteve za posnetek gola trenutno niso na voljo.",
             duplicateMatchNotFinished: "Posnetek gola lahko zahtevaš šele, ko se tekma konča.",
             duplicateGoalUser: "Zahteva za ta gol že obstaja — preveri svoj profil.",
@@ -129,6 +131,13 @@ export const sl: Dictionary = {
             paymentCancelled: "Plačilo je bilo prekinjeno — lahko poskusiš znova.",
             requestLabel: "ZAHTEVA ZA POSNETEK",
             paidBadge: "Plačano",
+            packageTitleMatch: "Paket „Posnetek tekme“",
+            packageBodyMatch: "Video celotne tekme. Enkratno plačilo, brez naročnine. Povezavo za prenos dobiš na tej strani in po e-pošti.",
+            packageTitleGoal: "Paket „Posnetek gola“",
+            packageBodyGoal: "Videoizsek naročenega gola. Enkratno plačilo, brez naročnine. Povezavo za prenos dobiš na tej strani in po e-pošti.",
+            termsNoteBefore: "S plačilom potrjuješ",
+            termsLinkLabel: "pogoje uporabe",
+            termsNoteAfter: ", vključno s tem, da vračilo po dostavi posnetka ni mogoče.",
             contactHint: "Nekaj ne deluje?",
             contactButton: "Kontaktiraj nas",
             awaitingApproval: "Zahteva čaka na odobritev. Obvestilo prejmeš po e-pošti.",
@@ -371,6 +380,7 @@ export const sl: Dictionary = {
         shareDefaultTitle: "Tekma v živo",
         requestRecordingAria: "Zahtevaj posnetek",
         recordingCta: "Posnetek",
+        recordingUnavailableTitle: "Posnetek ni na voljo - ta tekma ni bila v živo, zato posnetek ne obstaja.",
         watchLiveStream: "Poglej prenos v živo",
         finished: "Končano",
         notStarted: "Se še ni začelo",
@@ -403,6 +413,11 @@ export const sl: Dictionary = {
          *  (live scoreboard + promo carousel), search/filter toolbar, sort
          *  menu, grid/list view toggle, and the upcoming/finished sections. */
         tournamentsPage: {
+            recordingPromo: {
+                title: "Te zanima posnetek tekme?",
+                body: "Naroči posnetek svoje tekme ali gola in s tem neposredno podpri naše delo - snemanje, prenose v živo in razvoj strani. Posnetki so na voljo za tekme, ki so bile v prenosu v živo.",
+                button: "Kupi posnetek",
+            },
             documentTitle: "Futsal turnirji na Hrvaškem - futsal-turniri.com",
             documentDescription:
                 "Pregled vseh prihajajočih in odigranih futsal turnirjev na Hrvaškem in v regiji. Išči po lokaciji, datumu in ceni.",
@@ -432,6 +447,13 @@ export const sl: Dictionary = {
                         subtitle:
                             "Spremljaj svojo ekipo v živo, prejemaj obvestila o golih in poišči turnirje v bližini na zemljevidu.",
                     },
+                    {
+                        kicker: "ZA IGRALCE",
+                        title: "Želiš posnetek svoje tekme?",
+                        gold: "Naroči ga in podpri naše delo.",
+                        subtitle:
+                            "Posnetek cele tekme ali izsek tvojega gola - na voljo za tekme, ki so bile v prenosu v živo. Vsak nakup neposredno financira snemanje in prenose.",
+                    },
                 ],
                 /** Labels inside the faux "app screenshot" mock cards
                  *  (PromoMockLive/Notif/Zapisnik/Bracket) - decorative sample
@@ -446,6 +468,10 @@ export const sl: Dictionary = {
                     addCard: "+ Karton",
                     nowLabel: "zdaj",
                     goalNotifTitle: (matchup: string) => `⚽ GOL! ${matchup}`,
+                    recordingLabel: "POSNETEK",
+                    recordingPrice: "20 €",
+                    recordingTitle: "Sokol - Dinamo MŽ",
+                    recordingDownload: "Pripravljeno za prenos",
                 },
             },
             /** classifyStatus() badge labels - shared between the "Danes" /
@@ -961,6 +987,8 @@ export const sl: Dictionary = {
             checkoutErrorTeamNoMatchesDesc: "Izberi drugo ekipo ali turnir.",
             checkoutErrorDuplicateTitle: "Zahteva že obstaja",
             checkoutErrorDuplicateDesc: "Za eno od izbranih tekem že obstaja odprta zahteva.",
+            checkoutErrorNoLivestreamTitle: "Posnetek ni na voljo",
+            checkoutErrorNoLivestreamDesc: "Ena od izbranih tekem ni bila v živo, zato posnetek ne obstaja. Odstrani jo iz košarice.",
             paymentSuccessTitle: "Plačilo uspešno!",
             paymentSuccessDesc: "Hvala za nakup. Status in prenos posnetka spremljaš na profilu, v zavihku „Moji posnetki“.",
             paymentCancelledDesc: "Plačilo je bilo prekinjeno. Košarica je ostala shranjena - lahko poskusiš znova.",
@@ -981,6 +1009,119 @@ export const sl: Dictionary = {
             unconfiguredLabel: "Še ni konfigurirano",
             configureButton: "Konfiguriraj",
             payButton: (price: string) => `Plačaj ${price}`,
+        },
+        termsPage: {
+            documentTitle: "Pogoji uporabe - futsal-turniri.com",
+            documentDescription:
+                "Pogoji uporabe platforme futsal-turniri.com - uporabniški račun, vsebina, plačljivi paketi posnetkov, dostava in vračilo denarja.",
+            kicker: "PRAVNO",
+            title: "Pogoji uporabe",
+            lastUpdatedPrefix: "Zadnja posodobitev:",
+            lastUpdatedDate: "2. avgusta 2026",
+            intro: "Z uporabo strani futsal-turniri.com sprejemaš te pogoje uporabe. Če se z njimi ne strinjaš, strani ne uporabljaj.",
+            contactHeading: "Kontakt",
+            contactBody: "Za vprašanja o teh pogojih, pritožbe ali zahteve za vračilo uporabi obrazec „Kontaktiraj nas\u201C ali piši na",
+            sections: [
+                {
+                    heading: "Ponudnik storitve",
+                    paragraphs: [
+                        "Storitev zagotavlja futsal-turniri.com. Kontaktni e-naslov je naveden na koncu teh pogojev.",
+                        "Ti pogoji veljajo za vse obiskovalce in registrirane uporabnike strani futsal-turniri.com, vključno z organizatorji turnirjev, igralci in kupci posnetkov.",
+                    ],
+                },
+                {
+                    heading: "Opis storitve",
+                    paragraphs: [
+                        "Platforma omogoča organizacijo in spremljanje amaterskih malonogometnih turnirjev: vnos ekip in igralcev, žreb, razpored, vodenje tekem v živo, lestvice in statistiko, deljenje rezultatov ter, kjer je na voljo, prenos v živo in video posnetke tekem.",
+                        "Osnovna uporaba strani je brezplačna. Zaračunavajo se samo paketi, ki so izrecno označeni s ceno in opisani v poglavju o plačljivih storitvah.",
+                        "Storitev se zagotavlja „takšna, kot je\u201C. Ne jamčimo neprekinjene dostopnosti, pravilnosti podatkov, ki jih vnesejo uporabniki, niti primernosti za določen namen.",
+                    ],
+                },
+                {
+                    heading: "Uporabniški račun",
+                    paragraphs: [
+                        "Del funkcionalnosti zahteva uporabniški račun. Podatki morajo biti točni, dostopne podatke pa moraš varovati in jih ne deliti z drugimi.",
+                        "Odgovarjaš za vsa dejanja, opravljena s tvojim računom. Račun lahko omejimo ali ukinemo ob kršitvi teh pogojev, zlorabi ali poskusu motenja delovanja sistema.",
+                        "Račun lahko kadar koli izbrišeš. Izbris ne odstrani samodejno rezultatov in statistike odigranih turnirjev, ki so del javne evidence tekmovanja.",
+                    ],
+                },
+                {
+                    heading: "Vsebina uporabnikov",
+                    paragraphs: [
+                        "Organizator turnirja odgovarja za točnost in zakonitost vnesenih podatkov, vključno z nazivi ekip, imeni igralcev, rezultati in fotografijami.",
+                        "Z vnosom vsebine jamčiš, da jo smeš objaviti, in nam daješ neizključno pravico do njenega prikaza v okviru storitve (stran, deljene povezave, izvoz PDF, prikaz med prenosom).",
+                        "Žaljiva, nezakonita ali s tujimi pravicami zaščitena vsebina ni dovoljena in jo lahko odstranimo brez predhodnega obvestila.",
+                    ],
+                },
+                {
+                    heading: "Snemanje in prenos v živo",
+                    paragraphs: [
+                        "Tekme se lahko snemajo in prenašajo v živo. Za snemanje na igrišču odgovarja organizator turnirja, ki mora o tem obvestiti udeležence.",
+                        "Posnetki se uporabljajo za prikaz na platformi, dostavo naročenih paketov in promocijo tekmovanj.",
+                        "Če meniš, da posnetek neupravičeno posega v tvoje pravice, se obrni na nas in zahtevo bomo obravnavali brez odlašanja.",
+                    ],
+                },
+                {
+                    heading: "Plačljivi paketi",
+                    paragraphs: [
+                        "Plačljive storitve se prodajajo kot paketi z vnaprej znano ceno v evrih: paket „Posnetek tekme\u201C (video celotne tekme) in paket „Posnetek gola\u201C (videoizsek enega gola). Cena je prikazana pred plačilom, na strani zahteve in v e-pošti.",
+                        "Paket se plača enkratno. Ni naročnine, samodejnega podaljšanja ali skritih stroškov.",
+                        "Plačilo s kartico obdeluje Stripe. Podatkov o kartici ne prejmemo in ne hranimo - vnesejo se izključno na Stripeovi strani za plačilo.",
+                        "S plačilom paketa potrjuješ, da si prebral in sprejel te pogoje uporabe.",
+                    ],
+                },
+                {
+                    heading: "Dostava",
+                    paragraphs: [
+                        "Po uspešnem plačilu se posnetek pripravi in dostavi prek povezave za prenos, dostopne na strani tvoje zahteve in po e-pošti.",
+                        "Dostava sledi v razumnem roku po obdelavi posnetega gradiva. Če dostava ni mogoča iz tehničnih razlogov (posnetek ne obstaja, je neuporaben ali izgubljen), se plačani znesek vrne v celoti.",
+                        "Kupljeni posnetek je namenjen osebni uporabi ter uporabi ekipe in igralcev s te tekme. Nadaljnja prodaja ni dovoljena.",
+                    ],
+                },
+                {
+                    heading: "Vračilo denarja in pravica do odstopa",
+                    paragraphs: [
+                        "Vračilo denarja je mogoče, dokler posnetek ni dostavljen. Zahtevo pošlji prek obrazca „Kontaktiraj nas\u201C z razlogom „Težava s plačilom\u201C; znesek vrnemo na isto plačilno sredstvo, praviloma v 14 dneh od prejema zahteve.",
+                        "Ko je posnetek dostavljen (povezava za prenos je na voljo), vračilo ni več mogoče, ker je digitalna vsebina v celoti dobavljena.",
+                        "Z naročilom paketa izrecno soglašaš, da se dostava digitalne vsebine začne pred iztekom zakonskega 14-dnevnega roka za odstop, in potrjuješ, da s tem izgubiš pravico do odstopa, skladno s predpisi o varstvu potrošnikov.",
+                        "Če dostavljeni posnetek bistveno odstopa od opisa paketa (npr. ni naročena tekma), imaš pravico do zamenjave ali vračila celotnega zneska.",
+                    ],
+                },
+                {
+                    heading: "Pritožbe",
+                    paragraphs: [
+                        "Pisno pritožbo lahko pošlješ prek obrazca „Kontaktiraj nas\u201C ali na kontaktni e-naslov. Na vsako pritožbo odgovorimo pisno najpozneje v 15 dneh od prejema.",
+                        "Spore poskušamo rešiti sporazumno. Potrošnik lahko spor prijavi tudi prek evropske platforme za spletno reševanje sporov.",
+                    ],
+                },
+                {
+                    heading: "Omejitev odgovornosti",
+                    paragraphs: [
+                        "Ne odgovarjamo za škodo zaradi začasne nedostopnosti storitve, izgube podatkov zaradi ravnanja uporabnika, netočnih podatkov, ki so jih vnesli uporabniki, ali delovanja storitev tretjih oseb (platforma za prenos, obdelava plačil, dostava e-pošte).",
+                        "Naša skupna odgovornost za plačljive storitve je omejena na znesek, ki si ga plačal za posamezni paket.",
+                    ],
+                },
+                {
+                    heading: "Intelektualna lastnina",
+                    paragraphs: [
+                        "Ime, logotip, oblika in programska koda platforme so naša last in se ne smejo uporabljati brez pisnega dovoljenja.",
+                        "Vsebina uporabnikov ostane njihova; platforma dobi le pravico prikaza, opisano v teh pogojih.",
+                    ],
+                },
+                {
+                    heading: "Spremembe pogojev",
+                    paragraphs: [
+                        "Pogoje lahko spremenimo zaradi sprememb storitve ali predpisov. Spremenjena različica se objavi na tej strani z novim datumom posodobitve.",
+                        "Za že plačane pakete veljajo pogoji, ki so veljali ob plačilu.",
+                    ],
+                },
+                {
+                    heading: "Pravo, ki se uporablja",
+                    paragraphs: [
+                        "Za te pogoje se uporablja pravo Republike Hrvaške. Za spore, ki jih ni mogoče rešiti sporazumno, je pristojno stvarno pristojno sodišče v Republiki Hrvaški.",
+                    ],
+                },
+            ],
         },
         privacyPage: {
             documentTitle: "Politika zasebnosti - futsal-turniri.com",
@@ -2544,6 +2685,7 @@ export const sl: Dictionary = {
         },
         footer: {
             privacyLink: "Zasebnost",
+            termsLink: "Pogoji",
             contactLink: "Kontakt",
         },
         jersey: {

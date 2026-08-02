@@ -75,6 +75,22 @@ export async function getNotifications(): Promise<NotificationInbox> {
 }
 
 /**
+ * Just the badge number - one COUNT on the backend, no inbox payload. The
+ * navbar renders on every page, so it deliberately does NOT reuse
+ * `getNotifications()`: that would pull up to 200 rows plus a label lookup per
+ * group to display a single dot.
+ *
+ * Guests get a 401, which is an expected state here (no badge), so it is
+ * silenced rather than toasted.
+ */
+export async function getUnreadNotificationCount(): Promise<number> {
+    const { data } = await http.get<{ unreadCount: number }>("/notifications/unread-count", {
+        silentErrorStatuses: [401],
+    })
+    return data.unreadCount
+}
+
+/**
  * Mark notifications as read. An EMPTY `ids` array means "mark ALL of mine
  * read" (backend contract). Fire-and-forget from the caller's point of view -
  * no toast, the badge disappearing is the feedback.

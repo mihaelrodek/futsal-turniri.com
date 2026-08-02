@@ -59,6 +59,20 @@ public class Matches {
     @Column(name = "bib_team")
     private Integer bibTeam;
 
+    /**
+     * True when this match was actually broadcast: set automatically when it is
+     * started from the zapisnik with the live clock (TIMER) while THIS
+     * tournament's stream is the one live on the platform. Never set by hand.
+     *
+     * <p>It is the gate on selling a recording. Footage only exists for matches
+     * the camera was actually rolling on, so without this flag a buyer could
+     * order - and pay for - a recording of a match nobody ever filmed, which is
+     * a refund and an apology rather than a sale. Defaults to false, including
+     * for every match played before this column existed.
+     */
+    @Column(name = "livestream", nullable = false)
+    private boolean livestream = false;
+
     private Integer score1;
     private Integer score2;
 

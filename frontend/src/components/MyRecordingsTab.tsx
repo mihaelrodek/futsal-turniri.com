@@ -131,16 +131,18 @@ export default function MyRecordingsTab() {
         enabled: pickerOpen && !!tournamentUuid,
     })
 
-    // Only matches with both teams known can be requested meaningfully. A whole
-    // match may be ordered upfront (any status); a goal clip only off a FINISHED
-    // match - while it's live an event can still be corrected or deleted, so the
-    // ordered goal wouldn't be stable. The backend enforces the same rule.
+    // Only matches with both teams known can be requested meaningfully, and
+    // only matches that were actually BROADCAST - no camera, no footage, so
+    // there is nothing to sell (backend: 409 NO_LIVESTREAM). A goal clip
+    // additionally needs a FINISHED match: while it's live an event can still
+    // be corrected or deleted, so the ordered goal wouldn't be stable.
     const pickableMatches = useMemo(
         () =>
             (schedule?.matches ?? []).filter(
                 (m) =>
                     m.team1Name &&
                     m.team2Name &&
+                    m.livestream === true &&
                     (pickedKind === "FULL_MATCH" || m.status === "FINISHED"),
             ),
         [schedule, pickedKind],

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Was this match actually broadcast? Set automatically when a match is
+        started with the live clock (TIMER) while the tournament's stream is
+        live; never edited by hand.
+
+        Selling a recording is gated on it: footage exists only for matches the
+        camera was rolling on. Existing rows default to false - a match played
+        before this column existed has no recording on file either.
+
+        NOT NULL with a default so the entity can map it as a primitive
+        boolean; a nullable column would map to Boolean and fail Hibernate's
+        schema validation (the same mismatch bib_team hit as smallint/integer).
+    -->
+    <changeSet id="2026-08-02-05-matches-livestream" author="mrodek">
+        <addColumn tableName="matches">
+            <column name="livestream" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

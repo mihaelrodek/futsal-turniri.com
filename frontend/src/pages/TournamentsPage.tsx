@@ -33,9 +33,13 @@ import {
     FiMapPin,
     FiNavigation,
     FiCheck,
+    FiDownload,
+    FiPlay,
     FiPlus,
     FiSearch,
+    FiShoppingCart,
     FiSliders,
+    FiVideo,
     FiX,
 } from "react-icons/fi"
 import type { TournamentCard } from "../types/tournaments"
@@ -658,6 +662,68 @@ function PromoMockFollower() {
     )
 }
 
+/* Buyer: the recording package card + its "spremno za preuzimanje" row - the
+   two states of the paid flow, so the slide shows what the money produces. */
+function PromoMockRecording() {
+    const tr = useTranslation()
+    const mockT = tr.pages.tournamentsPage.hero.mock
+    return (
+        <Box {...MOCK_SHELL} w="212px">
+            <Flex align="center" justify="space-between" px="3" py="1.5" bg="rgba(180,83,9,0.10)">
+                <HStack gap="1.5">
+                    <Box color="#b45309" display="inline-flex"><FiVideo size={11} /></Box>
+                    <Box fontFamily="mono" fontSize="9.5px" fontWeight={800} letterSpacing="0.1em" color="#b45309">
+                        {mockT.recordingLabel}
+                    </Box>
+                </HStack>
+                <Box fontFamily="mono" fontSize="10.5px" fontWeight={800} color="#b45309">
+                    {mockT.recordingPrice}
+                </Box>
+            </Flex>
+            {/* Faux video frame - a dark block with a play glyph, so the card
+                reads as "a video" without shipping an actual image. */}
+            <Box position="relative" h="74px" bg="#0B1522">
+                <PitchBackdrop opacity={0.25} variant="hero" tone="pitch" />
+                <Flex position="absolute" inset="0" align="center" justify="center">
+                    <Flex
+                        align="center"
+                        justify="center"
+                        w="28px"
+                        h="28px"
+                        rounded="full"
+                        bg="rgba(255,255,255,0.92)"
+                        color="#0B1522"
+                    >
+                        <FiPlay size={13} />
+                    </Flex>
+                </Flex>
+            </Box>
+            <VStack align="stretch" gap="0.5" px="3" py="2">
+                <Box fontSize="11px" fontWeight={700}>{mockT.recordingTitle}</Box>
+                <Flex align="center" gap="1.5" color="rgba(0,0,0,0.55)">
+                    <FiDownload size={10} />
+                    <Box fontSize="9.5px" fontWeight={600}>{mockT.recordingDownload}</Box>
+                </Flex>
+            </VStack>
+        </Box>
+    )
+}
+
+/* Buyer collage: the recording card over a live scoreboard - "gledao si je
+   uživo, sad je možeš imati". */
+function PromoMockBuyer() {
+    return (
+        <Box position="relative" w="250px" h="180px">
+            <Box position="absolute" left="0" bottom="0" transform="rotate(-3deg)">
+                <PromoMockLive />
+            </Box>
+            <Box position="absolute" right="0" top="0" transform="rotate(2.5deg)" zIndex={1}>
+                <PromoMockRecording />
+            </Box>
+        </Box>
+    )
+}
+
 /* Organiser: the match-record console (zapisnik) with faux add controls. */
 function PromoMockZapisnik() {
     const tr = useTranslation()
@@ -820,13 +886,21 @@ type PromoSlide = {
     subtitle: string
     /** Two-card collage - shown on both breakpoints, scaled down on mobile. */
     mock: React.ReactNode
+    /** Optional in-app CTA. Only the "buy a recording" slide has one: the other
+     *  two describe free features, where a button would be noise. */
+    ctaLabel?: string
+    ctaTo?: string
 }
 
 /** Mock collage per slide, in the same order as
  *  `t.pages.tournamentsPage.hero.promoSlides` (organiser, then follower). The
  *  copy is translated; these faux "app screenshot" collages are built from
  *  JSX so they stay here rather than in the dictionary. */
-const PROMO_MOCKS: React.ReactNode[] = [<PromoMockOrganizer key="organizer" />, <PromoMockFollower key="follower" />]
+const PROMO_MOCKS: React.ReactNode[] = [
+    <PromoMockOrganizer key="organizer" />,
+    <PromoMockFollower key="follower" />,
+    <PromoMockBuyer key="buyer" />,
+]
 
 function PromoHero({ data }: { data: PromoSlide }) {
     return (
@@ -920,6 +994,13 @@ function PromoHero({ data }: { data: PromoSlide }) {
                     >
                         {data.subtitle}
                     </Text>
+                    {data.ctaLabel && data.ctaTo && (
+                        <Button size="sm" colorPalette="pitch" mt="1" asChild>
+                            <RouterLink to={data.ctaTo}>
+                                <FiShoppingCart /> {data.ctaLabel}
+                            </RouterLink>
+                        </Button>
+                    )}
                 </VStack>
 
                 {/* Faux app screenshots - the full two-card collage on both
@@ -967,7 +1048,21 @@ function HomeHero({ match }: { match: LiveMatch | null }) {
     // progress), then the two always-present promo slides.
     const liveSlide = match ? <LiveHero key="live" match={match} /> : null
     const promos = tr.pages.tournamentsPage.hero.promoSlides.map((p, i) => (
-        <PromoHero key={i} data={{ ...p, mock: PROMO_MOCKS[i] }} />
+        <PromoHero
+            key={i}
+            data={{
+                ...p,
+                mock: PROMO_MOCKS[i],
+                // Only the buyer slide gets a button, and it reuses the strip's
+                // label so the two never drift apart.
+                ...(i === 2
+                    ? {
+                        ctaLabel: tr.pages.tournamentsPage.recordingPromo.button,
+                        ctaTo: "/kosarica",
+                    }
+                    : {}),
+            }}
+        />
     ))
     const slides = liveSlide ? [liveSlide, ...promos] : promos
     const liveCount = liveSlide ? 1 : 0
@@ -2575,6 +2670,65 @@ export default function TournamentsPage() {
                         ))}
                     </Grid>
                 )}
+            </Box>
+
+            {/* ── "Kupi snimku" strip ─────────────────────────────────────
+                Sits BETWEEN the two tournament sections on purpose: high
+                enough to be seen while scrolling, low enough that it never
+                pushes the live hero or the upcoming tournaments down. Amber,
+                like the recording pill on a match page, so the one commercial
+                colour in the app stays consistent. */}
+            <Box
+                borderWidth="1px"
+                borderColor="accent.amber"
+                rounded="2xl"
+                p={{ base: "4", md: "5" }}
+                bg="bg.panel"
+            >
+                <Flex
+                    direction={{ base: "column", md: "row" }}
+                    align={{ base: "stretch", md: "center" }}
+                    gap={{ base: "3", md: "5" }}
+                >
+                    <Flex
+                        align="center"
+                        justify="center"
+                        boxSize="44px"
+                        rounded="xl"
+                        flexShrink={0}
+                        color="accent.amber"
+                        borderWidth="1px"
+                        borderColor="accent.amber"
+                    >
+                        <FiVideo size={22} />
+                    </Flex>
+                    <Box flex="1" minW="0">
+                        <Heading
+                            as="h2"
+                            fontFamily="heading"
+                            fontSize={{ base: "18px", md: "20px" }}
+                            fontWeight={700}
+                            letterSpacing="-0.01em"
+                            color="fg.ink"
+                        >
+                            {tp.recordingPromo.title}
+                        </Heading>
+                        <Text fontSize="sm" color="fg.muted" mt="1" lineHeight="1.55">
+                            {tp.recordingPromo.body}
+                        </Text>
+                    </Box>
+                    <Button
+                        size="md"
+                        colorPalette="pitch"
+                        flexShrink={0}
+                        alignSelf={{ base: "stretch", md: "center" }}
+                        asChild
+                    >
+                        <RouterLink to="/kosarica">
+                            <FiShoppingCart /> {tp.recordingPromo.button}
+                        </RouterLink>
+                    </Button>
+                </Flex>
             </Box>
 
             {/* ── Finished section ────────────────────────────────────────── */}

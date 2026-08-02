@@ -24,7 +24,7 @@ import { useTeamColors, teamColor, teamShorts, teamKit, KitSwatch } from "../com
 import { buildKoMatchCodes } from "../utils/knockoutCodes"
 import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
-import { showSuccess } from "../toaster"
+import { showSuccess, toaster } from "../toaster"
 import { useTranslation } from "../i18n"
 import type { TeamKit } from "../api/tournaments"
 import type { MatchEventDto } from "../types/matchEvents"
@@ -345,6 +345,11 @@ export default function MatchLivePage() {
     const phaseLbl = matchPhaseLabel({ stage: scheduled.stage, groupName: scheduled.groupName })
     const title = tournamentName ?? live?.tournamentName ?? null
     const hasPens = scheduled.penalties1 != null && scheduled.penalties2 != null
+    /** A recording can only be ordered for a match that was actually filmed -
+     *  i.e. run with the live clock while the tournament was on stream. The
+     *  backend enforces it too (409 NO_LIVESTREAM); this only keeps the UI from
+     *  offering something it cannot deliver. */
+    const recordingAvailable = scheduled.livestream === true
     const groupForMatch = scheduled.groupName
         ? groups.find((g) => g.name === scheduled.groupName) ?? null
         : null
@@ -669,12 +674,32 @@ export default function MatchLivePage() {
                             another utility. Amber pill + the price: it looks
                             like an offer, and the price is the whole pitch -
                             people don't tap an unpriced "request" button. */}
+                        {/* The pill stays visible even when nothing was filmed -
+                            people look for it, and a missing button reads as a
+                            broken page. It just goes quiet (muted, not
+                            clickable) and says WHY, instead of taking an order
+                            for footage that does not exist. */}
                         {RECORDING_REQUEST_ENABLED && (
                             <chakra.button
                                 type="button"
-                                onClick={() => setRecordingOpen(true)}
+                                onClick={() => {
+                                    if (recordingAvailable) setRecordingOpen(true)
+                                    // A `title` tooltip is invisible on a phone,
+                                    // which is where most of this is read - so
+                                    // the reason is a toast, not only a hover.
+                                    else toaster.create({
+                                        type: "info",
+                                        title: t.matchLive.recordingUnavailableTitle,
+                                        duration: 5000,
+                                    })
+                                }}
                                 aria-label={t.matchLive.requestRecordingAria}
-                                title={t.recordingRequest.dialog.titleMatch}
+                                aria-disabled={!recordingAvailable}
+                                title={
+                                    recordingAvailable
+                                        ? t.recordingRequest.dialog.titleMatch
+                                        : t.matchLive.recordingUnavailableTitle
+                                }
                                 display="inline-flex"
                                 alignItems="center"
                                 gap="1.5"
@@ -682,16 +707,16 @@ export default function MatchLivePage() {
                                 py="1"
                                 rounded="full"
                                 borderWidth="1px"
-                                borderColor="accent.amber"
-                                color="accent.amber"
+                                borderColor={recordingAvailable ? "accent.amber" : "border"}
+                                color={recordingAvailable ? "accent.amber" : "fg.subtle"}
                                 bg="transparent"
                                 fontSize={{ base: "10px", md: "xs" }}
                                 fontWeight={800}
                                 lineHeight="1"
                                 whiteSpace="nowrap"
-                                cursor="pointer"
+                                cursor={recordingAvailable ? "pointer" : "not-allowed"}
                                 flexShrink={0}
-                                _hover={{ bg: "accent.amber", color: "white" }}
+                                _hover={recordingAvailable ? { bg: "accent.amber", color: "white" } : undefined}
                             >
                                 <FiVideo />
                                 {t.matchLive.recordingCta}
@@ -792,7 +817,7 @@ export default function MatchLivePage() {
                                    Gated behind GOAL_CLIP_REQUESTS_ENABLED, which
                                    is off until the feature goes on sale. */
                                 onRequestGoal={
-                                    GOAL_CLIP_REQUESTS_ENABLED && isFinished
+                                    GOAL_CLIP_REQUESTS_ENABLED && isFinished && recordingAvailable
                                         ? requestGoalClip
                                         : undefined
                                 }

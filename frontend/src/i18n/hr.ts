@@ -63,6 +63,8 @@ export const hr = {
         login: "Prijava",
         profile: "Profil",
         notifications: "Obavijesti",
+        /** aria/title of the red badge on the avatar. */
+        unreadNotifications: (n: number) => `${n} ${n === 1 ? "nova obavijest" : n < 5 ? "nove obavijesti" : "novih obavijesti"}`,
         logout: "Odjavi se",
         loggedInAs: "Prijavljen kao",
         anonymous: "Anonimno",
@@ -118,6 +120,8 @@ export const hr = {
             toastSuccessMatch: "Zahtjev za snimku je poslan.",
             toastSuccessGoal: "Zahtjev za snimku gola je poslan.",
             toastSuccessDescription: "Status pratiš na svom profilu, u kartici „Moje snimke“.",
+            /** 409 NO_LIVESTREAM - nothing was filmed, so nothing to sell. */
+            noLivestream: "Snimka ove utakmice ne postoji jer utakmica nije bila na prijenosu uživo.",
             duplicateGoalDisabled: "Zahtjevi za snimku gola trenutno nisu dostupni.",
             duplicateMatchNotFinished: "Snimku gola možeš zatražiti tek kad utakmica završi.",
             duplicateGoalUser: "Zahtjev za ovaj gol već postoji — provjeri svoj profil.",
@@ -137,6 +141,16 @@ export const hr = {
             paymentCancelled: "Plaćanje je prekinuto — možeš pokušati ponovno.",
             requestLabel: "ZAHTJEV ZA SNIMKU",
             paidBadge: "Plaćeno",
+            /** What the payment actually buys - shown right above the pay
+             *  button, because the terms' withdrawal clause only holds if the
+             *  buyer was told what they are ordering. */
+            packageTitleMatch: "Paket „Snimka utakmice“",
+            packageBodyMatch: "Video cijele utakmice. Jednokratno plaćanje, bez pretplate. Poveznicu za preuzimanje dobivaš na ovoj stranici i e-mailom.",
+            packageTitleGoal: "Paket „Snimka gola“",
+            packageBodyGoal: "Video isječak naručenog gola. Jednokratno plaćanje, bez pretplate. Poveznicu za preuzimanje dobivaš na ovoj stranici i e-mailom.",
+            termsNoteBefore: "Plaćanjem potvrđuješ",
+            termsLinkLabel: "Uvjete korištenja",
+            termsNoteAfter: ", uključujući da povrat nije moguć nakon što je snimka isporučena.",
             /** Escape hatch at the bottom of the status page - this is often the
              *  only page an anonymous buyer has. */
             contactHint: "Nešto ne radi kako treba?",
@@ -384,6 +398,9 @@ export const hr = {
          *  part of the pitch, so it must stay in sync with
          *  `recordingRequest.dialog.priceMatch`. */
         recordingCta: "Snimka",
+        /** Shown on the (disabled) recording pill when the match was never
+         *  broadcast, so no footage exists to sell. */
+        recordingUnavailableTitle: "Snimka nije dostupna - ova utakmica nije bila na prijenosu uživo, pa snimka ne postoji.",
         watchLiveStream: "Gledaj live stream",
         finished: "Završeno",
         notStarted: "Nije počelo",
@@ -416,6 +433,12 @@ export const hr = {
          *  (live scoreboard + promo carousel), search/filter toolbar, sort
          *  menu, grid/list view toggle, and the upcoming/finished sections. */
         tournamentsPage: {
+            /** "Kupi snimku" strip between the two tournament sections. */
+            recordingPromo: {
+                title: "Zanima te snimka utakmice?",
+                body: "Naruči snimku svoje utakmice ili gola i time izravno podržavaš naš rad - snimanje, prijenose uživo i razvoj stranice. Snimke su dostupne za utakmice koje su bile na prijenosu uživo.",
+                button: "Kupi snimku",
+            },
             documentTitle: "Futsal turniri u Hrvatskoj - futsal-turniri.com",
             documentDescription:
                 "Pregled svih nadolazećih i odigranih Futsal turnira u Hrvatskoj i regiji. Pretraži po lokaciji, datumu i cijeni.",
@@ -445,6 +468,13 @@ export const hr = {
                         subtitle:
                             "Prati svoju ekipu uživo, primaj obavijesti o golovima i pronađi turnire u blizini na karti.",
                     },
+                    {
+                        kicker: "ZA IGRAČE",
+                        title: "Želiš snimku svoje utakmice?",
+                        gold: "Naruči je i podrži naš rad.",
+                        subtitle:
+                            "Snimka cijele utakmice ili isječak tvog gola - dostupno za utakmice koje su bile na prijenosu uživo. Svaka kupnja izravno financira snimanje i prijenose.",
+                    },
                 ],
                 /** Labels inside the faux "app screenshot" mock cards
                  *  (PromoMockLive/Notif/Zapisnik/Bracket) - decorative sample
@@ -459,6 +489,10 @@ export const hr = {
                     addCard: "+ Karton",
                     nowLabel: "sada",
                     goalNotifTitle: (matchup: string) => `⚽ GOL! ${matchup}`,
+                    recordingLabel: "SNIMKA",
+                    recordingPrice: "20 €",
+                    recordingTitle: "Sokol - Dinamo MŽ",
+                    recordingDownload: "Spremno za preuzimanje",
                 },
             },
             /** classifyStatus() badge labels - shared between the "Danas" /
@@ -994,6 +1028,9 @@ export const hr = {
             checkoutErrorTeamNoMatchesDesc: "Odaberi drugu ekipu ili turnir.",
             checkoutErrorDuplicateTitle: "Već postoji zahtjev",
             checkoutErrorDuplicateDesc: "Za jednu od odabranih utakmica već postoji otvoren zahtjev.",
+            /** 409 NO_LIVESTREAM - a match in the cart was never filmed. */
+            checkoutErrorNoLivestreamTitle: "Snimka nije dostupna",
+            checkoutErrorNoLivestreamDesc: "Jedna od odabranih utakmica nije bila na prijenosu uživo, pa snimka ne postoji. Ukloni je iz košarice.",
             paymentSuccessTitle: "Plaćanje uspješno!",
             paymentSuccessDesc: "Hvala na kupnji. Status i preuzimanje snimke prati se na profilu, u kartici „Moje snimke“.",
             paymentCancelledDesc: "Plaćanje je prekinuto. Košarica je ostala sačuvana - možeš pokušati ponovno.",
@@ -1014,6 +1051,119 @@ export const hr = {
             unconfiguredLabel: "Nije konfigurirano",
             configureButton: "Konfiguriraj",
             payButton: (price: string) => `Plati ${price}`,
+        },
+        termsPage: {
+            documentTitle: "Uvjeti korištenja - futsal-turniri.com",
+            documentDescription:
+                "Uvjeti korištenja platforme futsal-turniri.com - korisnički račun, sadržaj, plaćeni paketi snimki, isporuka i povrat novca.",
+            kicker: "PRAVNO",
+            title: "Uvjeti korištenja",
+            lastUpdatedPrefix: "Zadnje ažurirano:",
+            lastUpdatedDate: "2. kolovoza 2026.",
+            intro: "Korištenjem stranice futsal-turniri.com prihvaćaš ove Uvjete korištenja. Ako se s njima ne slažeš, molimo te da stranicu ne koristiš.",
+            contactHeading: "Kontakt",
+            contactBody: "Za sva pitanja o ovim uvjetima, prigovore ili zahtjeve za povrat javi se putem obrasca „Kontaktiraj nas\u201C ili na",
+            sections: [
+                {
+                    heading: "Pružatelj usluge",
+                    paragraphs: [
+                        "Uslugu pruža futsal-turniri.com. Kontakt e-mail naveden je na kraju ovih uvjeta.",
+                        "Ovi uvjeti primjenjuju se na sve posjetitelje i registrirane korisnike stranice futsal-turniri.com, uključujući organizatore turnira, igrače i kupce snimki.",
+                    ],
+                },
+                {
+                    heading: "Opis usluge",
+                    paragraphs: [
+                        "Platforma omogućuje organizaciju i praćenje amaterskih malonogometnih turnira: unos ekipa i igrača, ždrijeb, raspored, vođenje utakmica uživo, tablice i statistiku, dijeljenje rezultata te, gdje je dostupno, prijenos uživo i video snimke utakmica.",
+                        "Osnovno korištenje stranice je besplatno. Naplaćuju se samo paketi izričito označeni cijenom, opisani u poglavlju o plaćenim uslugama.",
+                        "Usluga se pruža „takva kakva jest\u201C. Ne jamčimo neprekinutu dostupnost, ispravnost svih podataka koje unose korisnici ni prikladnost usluge za neku određenu svrhu.",
+                    ],
+                },
+                {
+                    heading: "Korisnički račun",
+                    paragraphs: [
+                        "Za dio funkcionalnosti potreban je korisnički račun. Podaci koje unosiš moraju biti točni, a pristupne podatke dužan si čuvati i ne dijeliti s drugima.",
+                        "Odgovoran si za sve radnje napravljene s tvog računa. Račun možemo privremeno ograničiti ili ukinuti u slučaju kršenja ovih uvjeta, zloupotrebe ili pokušaja narušavanja rada sustava.",
+                        "Račun možeš obrisati u bilo kojem trenutku. Brisanje računa ne briše automatski rezultate i statistiku odigranih turnira, jer su oni dio javne evidencije natjecanja.",
+                    ],
+                },
+                {
+                    heading: "Sadržaj koji unose korisnici",
+                    paragraphs: [
+                        "Organizator turnira odgovoran je za točnost i zakonitost podataka koje unosi, uključujući nazive ekipa, imena igrača, rezultate i fotografije.",
+                        "Unosom sadržaja jamčiš da imaš pravo na njegovo objavljivanje i daješ nam neisključivo pravo da ga prikazujemo u okviru usluge (stranica, dijeljene poveznice, PDF izvoz, prikaz na prijenosu uživo).",
+                        "Zabranjen je unos uvredljivog, protuzakonitog ili tuđim pravima zaštićenog sadržaja. Takav sadržaj možemo ukloniti bez prethodne najave.",
+                    ],
+                },
+                {
+                    heading: "Snimanje i prijenos uživo",
+                    paragraphs: [
+                        "Utakmice se mogu snimati i prenositi uživo. Za snimanje na terenu odgovoran je organizator turnira, koji je dužan sudionike o tome obavijestiti.",
+                        "Snimke se koriste za prikaz na platformi, isporuku naručenih paketa i promociju natjecanja.",
+                        "Ako smatraš da snimka neopravdano zadire u tvoja prava, javi nam se i zahtjev ćemo razmotriti bez odgode.",
+                    ],
+                },
+                {
+                    heading: "Plaćeni paketi",
+                    paragraphs: [
+                        "Plaćene usluge prodaju se kao paketi s unaprijed poznatom cijenom, iskazanom u eurima: paket „Snimka utakmice\u201C (video cijele utakmice) i paket „Snimka gola\u201C (video isječak jednog gola). Cijena paketa prikazana je prije plaćanja, na stranici zahtjeva i u e-mailu.",
+                        "Paket se plaća jednokratno. Nema pretplate, automatske obnove niti skrivenih troškova.",
+                        "Plaćanje karticom obrađuje Stripe. Podatke o kartici ne primamo niti pohranjujemo - unose se isključivo na Stripeovoj stranici za plaćanje.",
+                        "Plaćanjem paketa potvrđuješ da si pročitao i prihvatio ove Uvjete korištenja.",
+                    ],
+                },
+                {
+                    heading: "Isporuka",
+                    paragraphs: [
+                        "Nakon uspješnog plaćanja snimka se priprema i isporučuje putem poveznice za preuzimanje, dostupne na stranici tvog zahtjeva i putem e-maila.",
+                        "Snimka se isporučuje u razumnom roku nakon obrade materijala s terena. Ako isporuka nije moguća iz tehničkih razloga (snimka ne postoji, neupotrebljiva je ili je izgubljena), plaćeni iznos vraća se u cijelosti.",
+                        "Kupljena snimka namijenjena je osobnoj upotrebi te upotrebi ekipe i igrača s te utakmice. Daljnja preprodaja nije dopuštena.",
+                    ],
+                },
+                {
+                    heading: "Povrat novca i pravo na jednostrani raskid",
+                    paragraphs: [
+                        "Povrat novca moguć je sve dok snimka nije isporučena. Zahtjev za povrat pošalji putem obrasca „Kontaktiraj nas\u201C, uz odabir razloga „Problem s plaćanjem\u201C; iznos vraćamo na isto sredstvo plaćanja, u pravilu u roku od 14 dana od zaprimanja zahtjeva.",
+                        "Nakon što je snimka isporučena (poveznica za preuzimanje je dostupna), povrat nije moguć jer je digitalni sadržaj u cijelosti isporučen.",
+                        "Naručivanjem paketa izričito pristaješ na to da isporuka digitalnog sadržaja započne prije isteka zakonskog roka od 14 dana za jednostrani raskid ugovora i potvrđuješ da time gubiš pravo na jednostrani raskid, sukladno propisima o zaštiti potrošača.",
+                        "Ako isporučena snimka bitno odstupa od opisa paketa (npr. nije snimljena naručena utakmica), imaš pravo na zamjenu ili povrat cijelog iznosa.",
+                    ],
+                },
+                {
+                    heading: "Prigovori",
+                    paragraphs: [
+                        "Pisani prigovor možeš poslati putem obrasca „Kontaktiraj nas\u201C ili na kontakt e-mail. Na svaki prigovor odgovaramo pisanim putem najkasnije u roku od 15 dana od zaprimanja.",
+                        "Sporove nastojimo riješiti dogovorno. Potrošač spor može prijaviti i putem europske platforme za online rješavanje sporova.",
+                    ],
+                },
+                {
+                    heading: "Ograničenje odgovornosti",
+                    paragraphs: [
+                        "Ne odgovaramo za štetu nastalu privremenom nedostupnošću usluge, gubitkom podataka uzrokovanim postupcima korisnika, netočnim podacima koje su unijeli korisnici ni za rad usluga trećih strana (platforma za prijenos, obrada plaćanja, dostava e-pošte).",
+                        "Naša ukupna odgovornost za plaćene usluge ograničena je na iznos koji si platio za konkretan paket.",
+                    ],
+                },
+                {
+                    heading: "Intelektualno vlasništvo",
+                    paragraphs: [
+                        "Naziv, logotip, dizajn i programski kod platforme naše su vlasništvo i ne smiju se koristiti bez pisanog odobrenja.",
+                        "Sadržaj koji su unijeli korisnici ostaje njihov; platformi se daje samo pravo prikaza opisano u ovim uvjetima.",
+                    ],
+                },
+                {
+                    heading: "Izmjene uvjeta",
+                    paragraphs: [
+                        "Uvjete možemo izmijeniti radi promjena u usluzi ili propisima. Izmijenjena verzija objavljuje se na ovoj stranici s novim datumom ažuriranja.",
+                        "Na već plaćene pakete primjenjuju se uvjeti koji su vrijedili u trenutku plaćanja.",
+                    ],
+                },
+                {
+                    heading: "Mjerodavno pravo",
+                    paragraphs: [
+                        "Na ove uvjete primjenjuje se pravo Republike Hrvatske. Za sporove koji se ne riješe dogovorno nadležan je stvarno nadležan sud u Republici Hrvatskoj.",
+                    ],
+                },
+            ],
         },
         privacyPage: {
             documentTitle: "Pravila privatnosti - futsal-turniri.com",
@@ -2612,6 +2762,7 @@ export const hr = {
         },
         footer: {
             privacyLink: "Privatnost",
+            termsLink: "Uvjeti",
             contactLink: "Kontakt",
         },
         jersey: {

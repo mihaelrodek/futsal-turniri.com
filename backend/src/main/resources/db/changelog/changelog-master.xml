@@ -89,4 +89,5 @@
     <include file="db/changelog/2026-08-02-02-admin-sent-mail.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-02-03-matches-bib-team-integer.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-02-04-contact-messages-reason.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-02-05-matches-livestream.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

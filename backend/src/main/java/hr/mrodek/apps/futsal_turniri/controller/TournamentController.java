@@ -2247,6 +2247,18 @@ public class TournamentController {
         match.setLiveStartedAt(java.time.OffsetDateTime.now());
         match.setLivePausedAt(null);
 
+        // Was the camera actually rolling? TIMER mode (the only mode the
+        // overlay tracks) started while THIS tournament's stream is the one
+        // live on the platform. That combination is what produces footage, and
+        // it is the only thing that ever unlocks selling a recording of this
+        // match. Sticky once set: the broadcast can stop later, but the match
+        // WAS filmed.
+        if (match.getTournament() != null
+                && mode == MatchLiveMode.TIMER
+                && specto.broadcastStatus(match.getTournament()).broadcasting()) {
+            match.setLivestream(true);
+        }
+
         // First match to kick off (in any way) flips the tournament DRAFT →
         // STARTED, so the home page shows it "u tijeku" instead of upcoming.
         if (match.getTournament() != null) match.getTournament().markStartedIfDraft();

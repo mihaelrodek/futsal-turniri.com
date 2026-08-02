@@ -85,6 +85,19 @@ public class NotificationController {
     }
 
     /**
+     * Just the badge number. The navbar shows a dot on the avatar on EVERY
+     * page, so it must not pull the whole inbox (200 rows plus a match/
+     * tournament label lookup per group) to learn a single integer. One COUNT,
+     * no joins, no transaction needed beyond the read itself.
+     */
+    @GET
+    @Path("/unread-count")
+    @Transactional
+    public UnreadCountDto unreadCount() {
+        return new UnreadCountDto((int) repo.countUnread(jwt.getSubject()));
+    }
+
+    /**
      * Mark notifications read. A missing body, or missing/empty {@code ids},
      * means mark everything of mine as read - that's what the screen's
      * mark-all button does.
@@ -178,4 +191,7 @@ public class NotificationController {
 
     /** {@code marked} = rows actually flipped; {@code unreadCount} = the fresh badge value. */
     public record MarkReadResult(long marked, long unreadCount) {}
+
+    /** Response of GET /notifications/unread-count. */
+    public record UnreadCountDto(int unreadCount) {}
 }

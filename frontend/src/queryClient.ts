@@ -70,4 +70,7 @@ export const qk = {
     // "Obavijesti" inbox of the signed-in user (grouped push-notification
     // history). One entry - the page always reads the whole inbox.
     notifications: ["notifications", "inbox"] as const,
+    /** Badge count only - a separate key so the navbar (every page) never
+     *  drags the whole inbox payload along. */
+    notificationsUnread: ["notifications", "unread"] as const,
 }

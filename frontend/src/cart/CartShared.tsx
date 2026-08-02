@@ -7,12 +7,14 @@ import {
     HStack,
     Icon,
     Input,
+    Link as ChakraLink,
     NativeSelect,
     Spinner,
     Text,
     VStack,
     chakra,
 } from "@chakra-ui/react"
+import { Link as RouterLink } from "react-router-dom"
 import { LuFlame, LuTarget, LuTrash2, LuTrophy, LuVideo } from "react-icons/lu"
 import { FiCheck, FiEdit2 } from "react-icons/fi"
 import { useQuery } from "@tanstack/react-query"
@@ -99,10 +101,17 @@ export function ItemConfigurator({
         enabled: !!tournamentUuid && item.tier === "TEAM",
     })
 
+    /* Only matches that were actually broadcast can be bought - there is no
+       footage otherwise, and the backend rejects the checkout with
+       NO_LIVESTREAM. Filtered out here rather than shown-and-refused, so the
+       cart can never be assembled into an order that cannot succeed. */
     const pickableMatches = useMemo(
         () =>
             (schedule?.matches ?? []).filter(
-                (m) => m.team1Name && m.team2Name && (item.tier !== "GOAL" || m.status === "FINISHED"),
+                (m) =>
+                    m.team1Name && m.team2Name
+                    && m.livestream === true
+                    && (item.tier !== "GOAL" || m.status === "FINISHED"),
             ),
         [schedule, item.tier],
     )
@@ -417,6 +426,7 @@ export function CartCheckoutSection() {
             else if (code === "MATCH_NOT_FINISHED") showError(t.pages.cartPage.checkoutErrorMatchNotFinishedTitle, t.pages.cartPage.checkoutErrorMatchNotFinishedDesc)
             else if (code === "TEAM_NO_MATCHES") showError(t.pages.cartPage.checkoutErrorTeamNoMatchesTitle, t.pages.cartPage.checkoutErrorTeamNoMatchesDesc)
             else if (code === "DUPLICATE") showError(t.pages.cartPage.checkoutErrorDuplicateTitle, t.pages.cartPage.checkoutErrorDuplicateDesc)
+            else if (code === "NO_LIVESTREAM") showError(t.pages.cartPage.checkoutErrorNoLivestreamTitle, t.pages.cartPage.checkoutErrorNoLivestreamDesc)
             /* other errors toasted by the interceptor */
         } finally {
             setSubmitting(false)
@@ -497,6 +507,16 @@ export function CartCheckoutSection() {
             >
                 {t.pages.cartPage.payButton(formatPrice(cart.totalEurCents))}
             </Button>
+
+            {/* Same sentence as the single-request status page: the terms'
+                withdrawal waiver only holds if it was shown before paying. */}
+            <Text fontSize="xs" color="fg.muted">
+                {t.recordingRequest.status.termsNoteBefore}{" "}
+                <ChakraLink asChild color="pitch.600" fontWeight={600}>
+                    <RouterLink to="/uvjeti">{t.recordingRequest.status.termsLinkLabel}</RouterLink>
+                </ChakraLink>
+                {t.recordingRequest.status.termsNoteAfter}
+            </Text>
         </VStack>
     )
 }

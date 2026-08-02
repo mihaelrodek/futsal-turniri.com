@@ -68,6 +68,13 @@ public class RecordingRequestNotifier {
         return name == null || name.isBlank() ? "" : messages.t("mail.recording.tournamentLine", EmailService.escapeHtml(name));
     }
 
+    /** "By paying you accept the terms" - the sentence that makes the
+     *  withdrawal-right waiver in the terms hold. Rendered into every mail
+     *  that asks for money. */
+    private String termsHtml() {
+        return messages.t("mail.recording.termsNote", emailService.baseUrl() + "/uvjeti");
+    }
+
     private String statusLink(MatchRecordingRequest r) {
         return emailService.baseUrl() + "/snimke/zahtjev/" + r.getUuid();
     }
@@ -111,7 +118,9 @@ public class RecordingRequestNotifier {
         String body = MailTemplates.render("recording-request-approved", Map.of(
                 "intro", messages.t("mail.recording.approved.intro",
                         kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match)), formatEurCents(r.getPriceEurCents())),
-                "goal", goalHtml(r)));
+                "goal", goalHtml(r),
+                "thanks", messages.t("mail.recording.approved.thanks"),
+                "terms", termsHtml()));
         String subject = messages.t("mail.recording.approved.subject");
         String html = emailService.shell(subject, body, statusLink(r), messages.t("mail.recording.approved.cta"));
         emailService.sendHtml(to, messages.t("mail.recording.approved.emailSubject"), html);

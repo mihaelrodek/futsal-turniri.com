@@ -55,6 +55,9 @@ export type ScheduledMatch = {
     fouls1Second?: number | null
     fouls2First?: number | null
     fouls2Second?: number | null
+    /** True when the match was actually broadcast. Ordering a recording is
+     *  gated on it, backend and UI alike - there is no footage otherwise. */
+    livestream?: boolean
 }
 
 export type Schedule = ScheduleConfig & {

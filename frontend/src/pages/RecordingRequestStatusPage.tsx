@@ -7,6 +7,7 @@ import {
     Button,
     Card,
     HStack,
+    Link as ChakraLink,
     Spinner,
     Text,
     VStack,
@@ -206,6 +207,7 @@ export default function RecordingRequestStatusPage() {
     // Payment is due whenever a request has moved past REQUESTED but hasn't
     // been paid yet - covers both the normal APPROVED-then-pay step and a
     // DELIVERED-before-paid edge (video linked ahead of payment).
+    const isGoal = data.kind === "GOAL"
     const paymentDue = !data.paid && (data.status === "APPROVED" || data.status === "DELIVERED")
     const processing = data.paid && !data.hasVideo
     const downloadReady = data.status === "DELIVERED" && data.paid && data.hasVideo
@@ -277,6 +279,23 @@ export default function RecordingRequestStatusPage() {
 
                     {paymentDue && (
                         <VStack align="stretch" gap="2">
+                            {/* What the money buys, spelled out next to the
+                                button. A price alone doesn't say what arrives,
+                                and the withdrawal-right clause in the terms
+                                only holds if the buyer was actually told what
+                                they are ordering before they pay. */}
+                            <Box borderWidth="1px" borderColor="border.emphasized" bg="bg.subtle" rounded="md" p="3">
+                                <Text fontSize="sm" fontWeight={700}>
+                                    {isGoal
+                                        ? t.recordingRequest.status.packageTitleGoal
+                                        : t.recordingRequest.status.packageTitleMatch}
+                                </Text>
+                                <Text fontSize="sm" color="fg.muted" mt="0.5">
+                                    {isGoal
+                                        ? t.recordingRequest.status.packageBodyGoal
+                                        : t.recordingRequest.status.packageBodyMatch}
+                                </Text>
+                            </Box>
                             <Button
                                 size="lg"
                                 colorPalette="pitch"
@@ -289,6 +308,15 @@ export default function RecordingRequestStatusPage() {
                             {checkoutError && (
                                 <Text fontSize="sm" color="red.500">{checkoutError}</Text>
                             )}
+                            <Text fontSize="xs" color="fg.muted">
+                                {t.recordingRequest.status.termsNoteBefore}{" "}
+                                <ChakraLink asChild color="pitch.600" fontWeight={600}>
+                                    <RouterLink to="/uvjeti">
+                                        {t.recordingRequest.status.termsLinkLabel}
+                                    </RouterLink>
+                                </ChakraLink>
+                                {t.recordingRequest.status.termsNoteAfter}
+                            </Text>
                         </VStack>
                     )}
 

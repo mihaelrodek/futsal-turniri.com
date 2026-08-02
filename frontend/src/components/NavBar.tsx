@@ -18,11 +18,13 @@ import {
     useBreakpointValue,
 } from "@chakra-ui/react"
 import { Link as RouterLink, useMatch, useResolvedPath, useNavigate } from "react-router-dom"
-import { queryClient, PERSIST_KEY } from "../queryClient"
+import { useQuery } from "@tanstack/react-query"
+import { queryClient, PERSIST_KEY, qk } from "../queryClient"
 import { FiBell, FiGrid, FiLogOut, FiMenu, FiShoppingCart, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
 import { useAdminView } from "../admin/AdminViewContext"
 import { getProfile } from "../api/userMe"
+import { getUnreadNotificationCount } from "../api/notifications"
 import { InstallAppButton } from "./InstallAppButton"
 import { LiveNavItem } from "./LiveNavItem"
 import { Logo } from "./Logo"
@@ -97,11 +99,17 @@ function UserAvatar({
     email,
     avatarUrl,
     size = 30,
+    unread = 0,
 }: {
     name?: string | null
     email?: string | null
     avatarUrl?: string | null
     size?: number
+    /** Unread notifications. > 0 draws the same red badge the admin module
+     *  cards use, so "there is something waiting for you" looks identical
+     *  wherever it appears. The menu itself is one tap away, so the badge only
+     *  has to be noticed - it is deliberately not a button of its own. */
+    unread?: number
 }) {
     const t = useTranslation()
     const source = (name || email || "?").trim()
@@ -112,7 +120,11 @@ function UserAvatar({
             .slice(0, 2)
             .map((s) => s[0]?.toUpperCase())
             .join("") || "?"
+    // The badge hangs outside the avatar circle, so the wrapper must NOT clip
+    // (`overflow: hidden` lives on the inner circle, where the image needs it).
+    const badgeSize = Math.max(14, Math.round(size * 0.5))
     return (
+        <Box position="relative" flexShrink={0} w={`${size}px`} h={`${size}px`}>
         <Box
             w={`${size}px`}
             h={`${size}px`}
@@ -135,6 +147,32 @@ function UserAvatar({
             ) : (
                 initials
             )}
+        </Box>
+        {unread > 0 && (
+            <Box
+                position="absolute"
+                top="-2px"
+                right="-4px"
+                minW={`${badgeSize}px`}
+                h={`${badgeSize}px`}
+                px="1"
+                rounded="full"
+                bg="accent.red"
+                color="white"
+                fontSize={`${Math.max(9, Math.round(badgeSize * 0.62))}px`}
+                fontWeight={800}
+                lineHeight={`${badgeSize}px`}
+                textAlign="center"
+                // Rings the badge in the surface colour so it reads as a
+                // separate chip rather than a smudge on the avatar.
+                borderWidth="2px"
+                borderColor="bg.panel"
+                aria-label={t.nav.unreadNotifications(unread)}
+                title={t.nav.unreadNotifications(unread)}
+            >
+                {unread > 9 ? "9+" : unread}
+            </Box>
+        )}
         </Box>
     )
 }
@@ -206,6 +244,20 @@ export default function NavBar() {
     const { isAdmin, mode: adminViewMode, setMode: setAdminViewMode } = useAdminView()
     const navigate = useNavigate()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+    /* Unread badge on the avatar. Signed-in only (guests have no inbox and
+       would just collect 401s), and a background read: a failed or pending
+       count is simply "no badge", never a toast over the page. Refetches on
+       focus because the inbox changes while the tab sits in the background -
+       the one query in the app where returning to the tab is exactly when the
+       number is stale. */
+    const { data: unreadCount = 0 } = useQuery({
+        queryKey: qk.notificationsUnread,
+        queryFn: getUnreadNotificationCount,
+        enabled: !!user?.uid,
+        staleTime: 60_000,
+        refetchOnWindowFocus: true,
+    })
 
     function goTo(path: string) {
         setMobileMenuOpen(false)
@@ -363,7 +415,7 @@ export default function NavBar() {
                         _hover={{ bg: "pitch.100" }}
                         data-tour={isMobile ? undefined : "nav-auth"}
                     >
-                        <UserAvatar name={user.displayName} email={user.email} avatarUrl={avatarUrl} />
+                        <UserAvatar name={user.displayName} email={user.email} avatarUrl={avatarUrl} unread={unreadCount} />
                         <Box
                             as="span"
                             display={{ base: "none", lg: "inline" }}
@@ -385,6 +437,23 @@ export default function NavBar() {
                         </Menu.Item>
                         <Menu.Item value="notifications" onSelect={() => navigate("/obavijesti")}>
                             <FiBell /> {t.nav.notifications}
+                            {unreadCount > 0 && (
+                                <Box
+                                    as="span"
+                                    ms="auto"
+                                    minW="18px"
+                                    px="1.5"
+                                    rounded="full"
+                                    bg="accent.red"
+                                    color="white"
+                                    fontSize="10px"
+                                    fontWeight={800}
+                                    lineHeight="18px"
+                                    textAlign="center"
+                                >
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </Box>
+                            )}
                         </Menu.Item>
                         {/* Theme + language rows - plain content, NOT
                             Menu.Item, so flipping the switch / picking a
@@ -551,7 +620,7 @@ export default function NavBar() {
                                                 textAlign="left"
                                                 _hover={{ bg: "bg.subtle" }}
                                             >
-                                                <UserAvatar name={user.displayName} email={user.email} avatarUrl={avatarUrl} size={40} />
+                                                <UserAvatar name={user.displayName} email={user.email} avatarUrl={avatarUrl} size={40} unread={unreadCount} />
                                                 <Box minW="0" flex="1">
                                                     <Text fontSize="sm" fontWeight={700} truncate>
                                                         {user.displayName || t.nav.anonymous}
@@ -566,6 +635,23 @@ export default function NavBar() {
                                             </Button>
                                             <Button variant="ghost" justifyContent="flex-start" onClick={() => goTo("/obavijesti")}>
                                                 <FiBell /> {t.nav.notifications}
+                                                {unreadCount > 0 && (
+                                                    <Box
+                                                        as="span"
+                                                        ms="auto"
+                                                        minW="18px"
+                                                        px="1.5"
+                                                        rounded="full"
+                                                        bg="accent.red"
+                                                        color="white"
+                                                        fontSize="10px"
+                                                        fontWeight={800}
+                                                        lineHeight="18px"
+                                                        textAlign="center"
+                                                    >
+                                                        {unreadCount > 99 ? "99+" : unreadCount}
+                                                    </Box>
+                                                )}
                                             </Button>
                                         </VStack>
                                     )}

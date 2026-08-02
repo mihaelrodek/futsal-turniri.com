@@ -46,5 +46,8 @@ public record ScheduledMatchDto(
         /** Team name resolved from the standings for a round-one group-label slot
          *  once THAT group is finished (per-group). Null otherwise. */
         String slot1PredictedName,
-        String slot2PredictedName
+        String slot2PredictedName,
+        /** True when the match was actually broadcast - the only case in which
+         *  a recording of it can be ordered. See Matches#livestream. */
+        boolean livestream
 ) {}

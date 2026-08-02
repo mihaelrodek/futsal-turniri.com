@@ -884,6 +884,7 @@ public class SchedulingService {
                 sl != null ? sl.slot1Label() : null,
                 sl != null ? sl.slot2Label() : null,
                 sl != null ? sl.slot1PredictedName() : null,
-                sl != null ? sl.slot2PredictedName() : null);
+                sl != null ? sl.slot2PredictedName() : null,
+                m.isLivestream());
     }
 }

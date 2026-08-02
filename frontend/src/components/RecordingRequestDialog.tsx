@@ -148,7 +148,9 @@ export default function RecordingRequestDialog({
                 toaster.create({
                     type: "info",
                     title:
-                        code === "GOAL_REQUESTS_DISABLED"
+                        code === "NO_LIVESTREAM"
+                            ? d.noLivestream
+                            : code === "GOAL_REQUESTS_DISABLED"
                             ? d.duplicateGoalDisabled
                             : code === "MATCH_NOT_FINISHED"
                                 ? d.duplicateMatchNotFinished

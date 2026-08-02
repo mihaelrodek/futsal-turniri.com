@@ -352,6 +352,7 @@ public class RecordingRequestController {
     public Response create(@PathParam("matchId") Long matchId, @Valid CreateRecordingRequestBody body) {
         Matches match = matchesRepo.findByIdOptional(matchId).orElse(null);
         if (match == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (!match.isLivestream()) return conflict("NO_LIVESTREAM");
 
         RequesterContact contact = resolveContact(body);
         boolean duplicate = contact.uid() != null
@@ -414,6 +415,7 @@ public class RecordingRequestController {
         }
 
         Matches match = ev.getMatch();
+        if (!match.isLivestream()) return conflict("NO_LIVESTREAM");
         if (match.getStatus() != MatchStatus.FINISHED) {
             return conflict("MATCH_NOT_FINISHED");
         }
@@ -641,6 +643,14 @@ public class RecordingRequestController {
                                 || (m.getTeam2() != null && m.getTeam2().getId().equals(team.getId())))
                         .toList();
                 if (matchesForItem.isEmpty()) return conflict("TEAM_NO_MATCHES");
+            }
+
+            // Nothing was filmed → nothing to sell. Checked for EVERY match of
+            // the item, including the server-picked ones behind the TEAM tier:
+            // otherwise a "whole team" order would quietly bill for matches
+            // that were never broadcast.
+            for (Matches m : matchesForItem) {
+                if (!m.isLivestream()) return conflict("NO_LIVESTREAM");
             }
 
             // Same "an open request for this match already exists" guard as the

@@ -81,6 +81,10 @@ export default function NotificationsPage() {
 
     const invalidate = () => {
         void queryClient.invalidateQueries({ queryKey: qk.notifications })
+        // The navbar badge is its own (cheap) query - without this it would
+        // keep showing the old number until its staleTime ran out, i.e. the
+        // user marks everything read and the dot stubbornly stays.
+        void queryClient.invalidateQueries({ queryKey: qk.notificationsUnread })
     }
     const markAll = useMutation({
         // Empty array = "mark ALL of mine read" (backend contract).

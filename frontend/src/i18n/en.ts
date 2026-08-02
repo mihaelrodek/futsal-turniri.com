@@ -56,6 +56,7 @@ export const en: Dictionary = {
         login: "Sign in",
         profile: "Profile",
         notifications: "Notifications",
+        unreadNotifications: (n: number) => `${n} new ${n === 1 ? "notification" : "notifications"}`,
         logout: "Sign out",
         loggedInAs: "Signed in as",
         anonymous: "Anonymous",
@@ -109,6 +110,7 @@ export const en: Dictionary = {
             toastSuccessMatch: "Recording request sent.",
             toastSuccessGoal: "Goal recording request sent.",
             toastSuccessDescription: "Track the status on your profile, under the „My recordings“ tab.",
+            noLivestream: "There is no recording of this match - it was not broadcast live.",
             duplicateGoalDisabled: "Goal recording requests aren't available right now.",
             duplicateMatchNotFinished: "You can request a goal clip only once the match has finished.",
             duplicateGoalUser: "A request for this goal already exists — check your profile.",
@@ -128,6 +130,13 @@ export const en: Dictionary = {
             paymentCancelled: "Payment was cancelled — you can try again.",
             requestLabel: "RECORDING REQUEST",
             paidBadge: "Paid",
+            packageTitleMatch: "„Match recording“ package",
+            packageBodyMatch: "Video of the whole match. One-off payment, no subscription. The download link arrives on this page and by e-mail.",
+            packageTitleGoal: "„Goal recording“ package",
+            packageBodyGoal: "A clip of the goal you ordered. One-off payment, no subscription. The download link arrives on this page and by e-mail.",
+            termsNoteBefore: "By paying you accept the",
+            termsLinkLabel: "Terms of Service",
+            termsNoteAfter: ", including that no refund is possible once the recording has been delivered.",
             contactHint: "Something not working?",
             contactButton: "Contact us",
             awaitingApproval: "Request is awaiting approval. You'll get an email notice.",
@@ -370,6 +379,7 @@ export const en: Dictionary = {
         shareDefaultTitle: "Live match",
         requestRecordingAria: "Request recording",
         recordingCta: "Recording",
+        recordingUnavailableTitle: "No recording available - this match was not broadcast, so no footage exists.",
         watchLiveStream: "Watch live stream",
         finished: "Finished",
         notStarted: "Not started",
@@ -402,6 +412,11 @@ export const en: Dictionary = {
          *  (live scoreboard + promo carousel), search/filter toolbar, sort
          *  menu, grid/list view toggle, and the upcoming/finished sections. */
         tournamentsPage: {
+            recordingPromo: {
+                title: "Want a recording of your match?",
+                body: "Order the video of your match or goal and you directly support our work - the filming, the live broadcasts and the site itself. Recordings are available for matches that were broadcast live.",
+                button: "Buy a recording",
+            },
             documentTitle: "Futsal tournaments in Croatia - futsal-turniri.com",
             documentDescription:
                 "Browse all upcoming and finished futsal tournaments in Croatia and the region. Search by location, date and price.",
@@ -431,6 +446,13 @@ export const en: Dictionary = {
                         subtitle:
                             "Follow your team live, get notified on goals, and find tournaments nearby on the map.",
                     },
+                    {
+                        kicker: "FOR PLAYERS",
+                        title: "Want the video of your match?",
+                        gold: "Order it and support our work.",
+                        subtitle:
+                            "The whole match or just your goal - available for matches that were broadcast live. Every purchase directly funds the filming and the broadcasts.",
+                    },
                 ],
                 /** Labels inside the faux "app screenshot" mock cards
                  *  (PromoMockLive/Notif/Zapisnik/Bracket) - decorative sample
@@ -445,6 +467,10 @@ export const en: Dictionary = {
                     addCard: "+ Card",
                     nowLabel: "now",
                     goalNotifTitle: (matchup: string) => `⚽ GOAL! ${matchup}`,
+                    recordingLabel: "RECORDING",
+                    recordingPrice: "€20",
+                    recordingTitle: "Sokol - Dinamo MŽ",
+                    recordingDownload: "Ready to download",
                 },
             },
             /** classifyStatus() badge labels - shared between the "Today" /
@@ -960,6 +986,8 @@ export const en: Dictionary = {
             checkoutErrorTeamNoMatchesDesc: "Choose a different team or tournament.",
             checkoutErrorDuplicateTitle: "A request already exists",
             checkoutErrorDuplicateDesc: "One of the selected matches already has an open request.",
+            checkoutErrorNoLivestreamTitle: "No recording available",
+            checkoutErrorNoLivestreamDesc: "One of the selected matches was not broadcast live, so no footage exists. Remove it from the cart.",
             paymentSuccessTitle: "Payment successful!",
             paymentSuccessDesc: "Thanks for your purchase. Track the status and download the recording on your profile, under the „My recordings“ tab.",
             paymentCancelledDesc: "Payment was cancelled. Your cart has been kept - you can try again.",
@@ -980,6 +1008,119 @@ export const en: Dictionary = {
             unconfiguredLabel: "Not configured yet",
             configureButton: "Configure",
             payButton: (price: string) => `Pay ${price}`,
+        },
+        termsPage: {
+            documentTitle: "Terms of Service - futsal-turniri.com",
+            documentDescription:
+                "Terms of service for futsal-turniri.com - accounts, user content, paid recording packages, delivery and refunds.",
+            kicker: "LEGAL",
+            title: "Terms of Service",
+            lastUpdatedPrefix: "Last updated:",
+            lastUpdatedDate: "2 August 2026",
+            intro: "By using futsal-turniri.com you accept these Terms of Service. If you do not agree with them, please do not use the site.",
+            contactHeading: "Contact",
+            contactBody: "For any question about these terms, a complaint or a refund request, use the „Contact us\u201C form or write to",
+            sections: [
+                {
+                    heading: "Service provider",
+                    paragraphs: [
+                        "The service is provided by futsal-turniri.com. The contact e-mail is at the end of these terms.",
+                        "These terms apply to every visitor and registered user of futsal-turniri.com, including tournament organizers, players and buyers of recordings.",
+                    ],
+                },
+                {
+                    heading: "What the service is",
+                    paragraphs: [
+                        "The platform is used to run and follow amateur small-sided football tournaments: teams and players, the draw, the schedule, running matches live, standings and statistics, sharing results and, where available, a live broadcast and video recordings.",
+                        "Basic use of the site is free. Only the packages explicitly marked with a price are charged for, as described in the paid packages section.",
+                        "The service is provided „as is\u201C. We do not guarantee uninterrupted availability, the accuracy of data entered by users, or fitness for any particular purpose.",
+                    ],
+                },
+                {
+                    heading: "User account",
+                    paragraphs: [
+                        "Some features require an account. The details you enter must be accurate, and you must keep your credentials to yourself.",
+                        "You are responsible for everything done from your account. We may restrict or close an account that breaches these terms, is abused, or is used to disrupt the service.",
+                        "You can delete your account at any time. Deleting it does not automatically erase results and statistics of played tournaments, which are part of the public record of a competition.",
+                    ],
+                },
+                {
+                    heading: "User content",
+                    paragraphs: [
+                        "The tournament organizer is responsible for the accuracy and lawfulness of what they enter, including team names, player names, results and photographs.",
+                        "By entering content you confirm you are entitled to publish it and grant us a non-exclusive right to display it as part of the service (site, shared links, PDF export, broadcast overlay).",
+                        "Offensive, unlawful or infringing content is not allowed and may be removed without prior notice.",
+                    ],
+                },
+                {
+                    heading: "Recording and live broadcast",
+                    paragraphs: [
+                        "Matches may be recorded and broadcast live. Recording on site is the organizer's responsibility, including informing the participants.",
+                        "Recordings are used to display matches on the platform, to deliver purchased packages and to promote competitions.",
+                        "If you believe a recording unjustifiably affects your rights, contact us and we will review the request without delay.",
+                    ],
+                },
+                {
+                    heading: "Paid packages",
+                    paragraphs: [
+                        "Paid services are sold as packages at a price known in advance, stated in euros: the „Match recording\u201C package (video of the whole match) and the „Goal recording\u201C package (a clip of a single goal). The price is shown before payment, on the request page and in the e-mail.",
+                        "A package is a one-off purchase. There is no subscription, no automatic renewal and no hidden cost.",
+                        "Card payments are processed by Stripe. We never receive or store card details - they are entered only on Stripe's payment page.",
+                        "By paying for a package you confirm that you have read and accepted these Terms of Service.",
+                    ],
+                },
+                {
+                    heading: "Delivery",
+                    paragraphs: [
+                        "After a successful payment the recording is prepared and delivered through a download link, available on your request page and by e-mail.",
+                        "Delivery follows within a reasonable time after the footage is processed. If delivery turns out to be impossible for technical reasons (the recording does not exist, is unusable or was lost), the amount paid is refunded in full.",
+                        "A purchased recording is meant for personal use and for the team and players of that match. Reselling it is not permitted.",
+                    ],
+                },
+                {
+                    heading: "Refunds and the right of withdrawal",
+                    paragraphs: [
+                        "A refund is possible for as long as the recording has not been delivered. Send the request through the „Contact us\u201C form choosing the „Payment problem\u201C reason; the amount is returned to the same payment method, as a rule within 14 days of receiving the request.",
+                        "Once the recording has been delivered (the download link is available) a refund is no longer possible, because the digital content has been supplied in full.",
+                        "By ordering a package you expressly agree that delivery of digital content begins before the statutory 14-day withdrawal period ends, and you acknowledge that you thereby lose the right of withdrawal, in line with consumer protection law.",
+                        "If a delivered recording materially differs from the package description (e.g. it is not the match you ordered) you are entitled to a replacement or a full refund.",
+                    ],
+                },
+                {
+                    heading: "Complaints",
+                    paragraphs: [
+                        "A written complaint can be sent through the „Contact us\u201C form or to the contact e-mail. We answer every complaint in writing within 15 days of receiving it.",
+                        "We aim to settle disputes by agreement. A consumer may also submit a dispute through the European online dispute resolution platform.",
+                    ],
+                },
+                {
+                    heading: "Limitation of liability",
+                    paragraphs: [
+                        "We are not liable for damage caused by temporary unavailability of the service, by data loss caused by a user's own actions, by inaccurate data entered by users, or by third-party services (the broadcast platform, payment processing, e-mail delivery).",
+                        "Our total liability for paid services is limited to the amount you paid for the package in question.",
+                    ],
+                },
+                {
+                    heading: "Intellectual property",
+                    paragraphs: [
+                        "The name, logo, design and source code of the platform are ours and may not be used without written permission.",
+                        "Content entered by users stays theirs; the platform only receives the display right described in these terms.",
+                    ],
+                },
+                {
+                    heading: "Changes to these terms",
+                    paragraphs: [
+                        "We may change these terms as the service or the law changes. The amended version is published on this page with a new update date.",
+                        "Packages already paid for remain governed by the terms in force at the time of payment.",
+                    ],
+                },
+                {
+                    heading: "Governing law",
+                    paragraphs: [
+                        "These terms are governed by the law of the Republic of Croatia. Disputes that cannot be settled by agreement fall under the competent court in the Republic of Croatia.",
+                    ],
+                },
+            ],
         },
         privacyPage: {
             documentTitle: "Privacy Policy - futsal-turniri.com",
@@ -2540,6 +2681,7 @@ export const en: Dictionary = {
         },
         footer: {
             privacyLink: "Privacy",
+            termsLink: "Terms",
             contactLink: "Contact",
         },
         jersey: {

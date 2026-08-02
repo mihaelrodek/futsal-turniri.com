@@ -183,6 +183,13 @@ public class AdminMailController {
         }
     }
 
+    /** "By paying you accept the terms" - the sentence that makes the
+     *  withdrawal-right waiver in the terms hold. Rendered into every mail
+     *  that asks for money. */
+    private String termsHtml() {
+        return messages.t("mail.recording.termsNote", emailService.baseUrl() + "/uvjeti");
+    }
+
     private String statusLink(MatchRecordingRequest r) {
         return emailService.baseUrl() + "/snimke/zahtjev/" + r.getUuid();
     }
@@ -469,7 +476,9 @@ public class AdminMailController {
                         notifier.kindLabel(r.getKind()),
                         EmailService.escapeHtml(RecordingRequestNotifier.matchLabel(match)),
                         RecordingRequestNotifier.formatEurCents(r.getPriceEurCents())),
-                "goal", goalHtml(r)));
+                "goal", goalHtml(r),
+                "thanks", messages.t("mail.recording.approved.thanks"),
+                "terms", termsHtml()));
         String heading = messages.t("mail.recording.approved.subject");
         String html = emailService.shell(heading, bodyHtml, statusLink(r),
                 messages.t("mail.recording.approved.cta"));
@@ -505,7 +514,8 @@ public class AdminMailController {
                         notifier.kindLabel(r.getKind()),
                         EmailService.escapeHtml(RecordingRequestNotifier.matchLabel(match)),
                         RecordingRequestNotifier.formatEurCents(r.getPriceEurCents())),
-                "goal", goalHtml(r)));
+                "goal", goalHtml(r),
+                "terms", termsHtml()));
 
         String heading = messages.t("mail.adminMailer.payment.subject");
         String html = emailService.shell(heading, bodyHtml, statusUrl,
