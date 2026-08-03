@@ -10,10 +10,13 @@ import {
     Input,
     Spinner,
     Stack,
+    Tabs,
     Text,
     VStack,
 } from "@chakra-ui/react"
-import { FiChevronRight, FiSearch } from "react-icons/fi"
+import { useQueryClient } from "@tanstack/react-query"
+import { FiChevronRight, FiList, FiSearch } from "react-icons/fi"
+import { ADMIN_PENDING_COUNTS_KEY } from "../api/adminCounts"
 import {
     adminConfirmTournamentDelete,
     adminDeleteTournament,
@@ -88,15 +91,40 @@ import {
    a picker on top and revealed three stacked cards below it, so the tournament
    you were acting on was a scroll away from the buttons acting on it - and
    "Reset" of the wrong tournament is not a recoverable mistake.
+
+   Those three surfaces are now TABS, not a stack: the list is the daily work
+   and was pushed down the page by two panels that are looked at once a month.
+   The deletion tab carries a count badge because a request filed by an
+   organizer is otherwise invisible until someone scrolls - the same number the
+   console card badges (GET /admin/pending-counts).
    ────────────────────────────────────────────────────────────────────── */
 
 export default function AdminDashboardTab() {
     const t = useTranslation()
     const d = t.components.adminDashboardTab
+    const queryClient = useQueryClient()
 
     const [tournaments, setTournaments] = useState<AdminTournamentDto[] | null>(null)
     const [tournamentSearch, setTournamentSearch] = useState("")
     const [loadingTournaments, setLoadingTournaments] = useState(false)
+
+    // Lifted out of AdminDeleteRequestsCard: the tab trigger needs the count
+    // before the panel is ever opened, and two fetches of the same list would
+    // be two different numbers the moment one of them is stale.
+    const [deleteRequests, setDeleteRequests] = useState<AdminDeleteRequestDto[] | null>(null)
+
+    const loadDeleteRequests = useCallback(() => {
+        adminListDeleteRequests()
+            .then(setDeleteRequests)
+            .catch(() => setDeleteRequests([]))
+        // The console's card badge counts the same rows - keep it honest after
+        // a confirm/restore instead of waiting out its staleTime.
+        queryClient.invalidateQueries({ queryKey: ADMIN_PENDING_COUNTS_KEY })
+    }, [queryClient])
+
+    useEffect(() => { loadDeleteRequests() }, [loadDeleteRequests])
+
+    const pendingDeletes = deleteRequests?.length ?? 0
 
     const reload = useCallback(async () => {
         const rows = await adminListTournaments()
@@ -113,32 +141,76 @@ export default function AdminDashboardTab() {
         return () => { cancelled = true }
     }, [])
 
+    // Finished tournaments are the archive, not the work: they only grow in
+    // number and push what an admin actually acts on off the screen. Hidden
+    // until asked for - a search still only looks inside what is shown, so the
+    // toggle has to be flipped to find an old one by name.
+    const [showFinished, setShowFinished] = useState(false)
+
+    const finishedCount = useMemo(
+        () => (tournaments ?? []).filter((tour) => tour.status === "FINISHED").length,
+        [tournaments],
+    )
+
     // Client-side filter: the list is tens of rows, so a round trip per
     // keystroke would buy nothing.
     const filteredTournaments = useMemo(() => {
         if (!tournaments) return []
         const q = tournamentSearch.trim().toLowerCase()
-        if (!q) return tournaments
         return tournaments.filter((tour) => {
+            if (!showFinished && tour.status === "FINISHED") return false
+            if (!q) return true
             const hay = `${tour.name} ${tour.location ?? ""} ${tour.slug ?? ""}`.toLowerCase()
             return hay.includes(q)
         })
-    }, [tournaments, tournamentSearch])
+    }, [tournaments, tournamentSearch, showFinished])
 
     return (
-        <VStack align="stretch" gap="4">
-            <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-                <Card.Body p={{ base: "4", md: "6" }}>
-                    <Stack gap="3">
-                        <HStack justify="space-between" gap="3" wrap="wrap">
-                            <Text fontSize="sm" fontWeight="medium">{d.tournamentLabel}</Text>
-                            {tournaments && (
-                                <Text fontSize="xs" color="fg.muted">
-                                    {filteredTournaments.length === tournaments.length
-                                        ? d.countTotal(tournaments.length)
-                                        : d.countFiltered(filteredTournaments.length, tournaments.length)}
-                                </Text>
+        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
+            <Card.Body p={{ base: "4", md: "6" }}>
+                <Tabs.Root defaultValue="list" variant="line">
+                    <Tabs.List>
+                        <Tabs.Trigger value="list">
+                            <FiList /> {d.tabs.list}
+                        </Tabs.Trigger>
+                        <Tabs.Trigger value="deleteRequests">
+                            <FiTrash2 /> {d.tabs.deleteRequests}
+                            {pendingDeletes > 0 && (
+                                <Badge size="sm" variant="solid" colorPalette="red">
+                                    {pendingDeletes}
+                                </Badge>
                             )}
+                        </Tabs.Trigger>
+                        <Tabs.Trigger value="import">
+                            <FiUpload /> {d.tabs.import}
+                        </Tabs.Trigger>
+                    </Tabs.List>
+
+                    <Tabs.Content value="list">
+                        <Stack gap="3">
+                            <HStack justify="space-between" gap="3" wrap="wrap">
+                            <Text fontSize="sm" fontWeight="medium">{d.tournamentLabel}</Text>
+                            <HStack gap="2" wrap="wrap">
+                                {tournaments && (
+                                    <Text fontSize="xs" color="fg.muted">
+                                        {filteredTournaments.length === tournaments.length
+                                            ? d.countTotal(tournaments.length)
+                                            : d.countFiltered(filteredTournaments.length, tournaments.length)}
+                                    </Text>
+                                )}
+                                {finishedCount > 0 && (
+                                    <Button
+                                        size="xs"
+                                        variant="ghost"
+                                        colorPalette="gray"
+                                        onClick={() => setShowFinished((v) => !v)}
+                                    >
+                                        {showFinished
+                                            ? <><FiEyeOff /> {d.hideFinished}</>
+                                            : <><FiEye /> {d.showFinished(finishedCount)}</>}
+                                    </Button>
+                                )}
+                            </HStack>
                         </HStack>
 
                         <Box position="relative">
@@ -213,43 +285,53 @@ export default function AdminDashboardTab() {
                                 ))}
                             </VStack>
                         )}
-                    </Stack>
-                </Card.Body>
-            </Card.Root>
+                        </Stack>
+                    </Tabs.Content>
 
-            {/* Pending deletion requests - organizer "Obriši" only files a
-                request (tournament archived); the final soft delete or the
-                restore back to public happens here. */}
-            <AdminDeleteRequestsCard onChanged={reload} />
+                    {/* Pending deletion requests - organizer "Obriši" only files
+                        a request (tournament archived); the final soft delete or
+                        the restore back to public happens here. */}
+                    <Tabs.Content value="deleteRequests">
+                        <AdminDeleteRequests
+                            rows={deleteRequests}
+                            onChanged={() => { loadDeleteRequests(); reload() }}
+                        />
+                    </Tabs.Content>
 
-            {/* Import a tournament from an exported JSON dump - the inverse of
-                the per-tournament "Export u JSON" action. Always creates a NEW
-                tournament, so it belongs to no single one. */}
-            <AdminImportCard onImported={reload} />
-        </VStack>
+                    {/* Import a tournament from an exported JSON dump - the
+                        inverse of the per-tournament "Export u JSON" action.
+                        Always creates a NEW tournament, so it belongs to no
+                        single one. */}
+                    <Tabs.Content value="import">
+                        <AdminImportPanel onImported={reload} />
+                    </Tabs.Content>
+                </Tabs.Root>
+            </Card.Body>
+        </Card.Root>
     )
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   AdminDeleteRequestsCard - compact list of pending tournament-deletion
+   AdminDeleteRequests - compact list of pending tournament-deletion
    requests (name, requester, reason, date). "Potvrdi brisanje" finalizes
    the SOFT delete (is_deleted + deleted_at - rows are never physically
    removed); "Vrati" rejects the request and puts the tournament back on
-   the public listings. Always rendered so the admin knows the surface
-   exists; shows a one-line empty state when there's nothing pending.
+   the public listings.
+
+   Rows come from the parent (which needs the count for the tab badge) and
+   every action calls `onChanged`, which reloads BOTH lists - a confirmed
+   deletion changes the tournament list too.
    ────────────────────────────────────────────────────────────────────── */
-function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
+function AdminDeleteRequests({
+    rows,
+    onChanged,
+}: {
+    rows: AdminDeleteRequestDto[] | null
+    onChanged: () => void
+}) {
     const t = useTranslation()
     const dr = t.components.adminDashboardTab.deleteRequests
-    const [rows, setRows] = useState<AdminDeleteRequestDto[] | null>(null)
     const [busyKey, setBusyKey] = useState<string | null>(null)
-
-    function load() {
-        adminListDeleteRequests()
-            .then(setRows)
-            .catch(() => setRows([]))
-    }
-    useEffect(() => { load() }, [])
 
     async function confirmDelete(row: AdminDeleteRequestDto) {
         const key = row.uuid ?? row.slug
@@ -258,7 +340,6 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
         try {
             setBusyKey(key)
             await adminConfirmTournamentDelete(key)
-            load()
             onChanged()
         } finally {
             setBusyKey(null)
@@ -271,7 +352,6 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
         try {
             setBusyKey(key)
             await adminRestoreTournament(key)
-            load()
             onChanged()
         } finally {
             setBusyKey(null)
@@ -279,11 +359,8 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
     }
 
     return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="3">
-                    {/* Heading only - the list below says what it is. */}
-                    <Text fontSize="md" fontWeight="semibold">{dr.heading}</Text>
+                    <Text fontSize="sm" color="fg.muted">{dr.description}</Text>
                     {rows === null ? (
                         <HStack py="2" justify="center"><Spinner size="sm" /></HStack>
                     ) : rows.length === 0 ? (
@@ -354,13 +431,11 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
                         </Stack>
                     )}
                 </Stack>
-            </Card.Body>
-        </Card.Root>
     )
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   AdminImportCard - "Uvoz iz JSON-a": file picker for a .json dump made
+   AdminImportPanel - "Uvoz iz JSON-a": file picker for a .json dump made
    by the per-tournament export action. The file is parsed client-side
    (bad JSON never leaves the browser) and POSTed verbatim to
    /admin/tournaments/import, which creates a NEW tournament (fresh
@@ -368,7 +443,7 @@ function AdminDeleteRequestsCard({ onChanged }: { onChanged: () => void }) {
    remapped. On success the card shows a link to the new tournament and
    any server warnings (skipped poster, missing editor users).
    ────────────────────────────────────────────────────────────────────── */
-function AdminImportCard({ onImported }: { onImported: () => void }) {
+function AdminImportPanel({ onImported }: { onImported: () => void }) {
     const t = useTranslation()
     const ic = t.components.adminDashboardTab.importCard
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -403,13 +478,8 @@ function AdminImportCard({ onImported }: { onImported: () => void }) {
     }
 
     return (
-        <Card.Root variant="outline" rounded="xl" borderColor="border.emphasized" shadow="sm">
-            <Card.Body p={{ base: "4", md: "6" }}>
                 <Stack gap="3">
-                    <Box>
-                        <Text fontSize="md" fontWeight="semibold">{ic.heading}</Text>
-                        <Text fontSize="sm" color="fg.muted">{ic.description}</Text>
-                    </Box>
+                    <Text fontSize="sm" color="fg.muted">{ic.description}</Text>
 
                     <input
                         ref={fileInputRef}
@@ -473,8 +543,6 @@ function AdminImportCard({ onImported }: { onImported: () => void }) {
                         </Box>
                     )}
                 </Stack>
-            </Card.Body>
-        </Card.Root>
     )
 }
 

@@ -10,4 +10,7 @@ export type PlayerDto = {
     number: number | null;
     /** At most one player per team is the captain. */
     captain: boolean;
+    /** Goalkeeper mark ("GK"). Independent of `captain` and NOT limited to one
+     *  per team - a roster may carry a backup keeper. */
+    goalkeeper: boolean;
 };

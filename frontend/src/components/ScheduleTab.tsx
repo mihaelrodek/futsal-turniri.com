@@ -26,6 +26,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import type { Schedule, ScheduledMatch } from "../types/schedule"
 import { GoalscorersPanel } from "./liveMatch"
+import { TeamKitChip, useTeamColors } from "./jersey"
 import { ConfirmDialog, EmptyState, Loader, Panel } from "../ui/primitives"
 import { GhostButton, PrimaryButton, SectionCard } from "../ui/pitch"
 import { buildMatchIcs, downloadIcs } from "../utils/ics"
@@ -405,6 +406,10 @@ function MatchRow({
 }) {
     const t = useTranslation()
     const [expanded, setExpanded] = useState(false)
+    // One shared query per tournament, however many rows subscribe to it -
+    // useTeamColors is a react-query read keyed on the uuid, so calling it per
+    // row costs a subscription, not a request (5-minute staleTime on top).
+    const kitColors = useTeamColors(tournamentUuid)
     const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
         matchDisplay(match)
     // Only a FINISHED match offers the "Detalji" timeline expand - a live
@@ -572,15 +577,18 @@ function MatchRow({
                     cursor={canExpand ? "pointer" : "default"}
                     onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
                 >
-                    <Text
-                        fontSize={nameFont}
-                        fontWeight={700}
-                        color={t1Muted ? "fg.muted" : "fg.ink"}
-                        textAlign="right"
-                        lineClamp="3"
-                    >
-                        {t1Name}
-                    </Text>
+                    <HStack gap="2" justify="flex-end" minW="0">
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={12} />
+                        <Text
+                            fontSize={nameFont}
+                            fontWeight={700}
+                            color={t1Muted ? "fg.muted" : "fg.ink"}
+                            textAlign="right"
+                            lineClamp="3"
+                        >
+                            {t1Name}
+                        </Text>
+                    </HStack>
                     <Box
                         fontFamily="mono"
                         fontSize={scoreboard ? "lg" : "sm"}
@@ -597,15 +605,18 @@ function MatchRow({
                     >
                         {scoreText}
                     </Box>
-                    <Text
-                        fontSize={nameFont}
-                        fontWeight={700}
-                        color={t2Muted ? "fg.muted" : "fg.ink"}
-                        textAlign="left"
-                        lineClamp="3"
-                    >
-                        {t2Name}
-                    </Text>
+                    <HStack gap="2" minW="0">
+                        <Text
+                            fontSize={nameFont}
+                            fontWeight={700}
+                            color={t2Muted ? "fg.muted" : "fg.ink"}
+                            textAlign="left"
+                            lineClamp="3"
+                        >
+                            {t2Name}
+                        </Text>
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={12} />
+                    </HStack>
                 </Box>
             </VStack>
 
@@ -688,6 +699,7 @@ function MatchCard({
     isNext?: boolean
 }) {
     const t = useTranslation()
+    const kitColors = useTeamColors(tournamentUuid)
     const { isLive, t1Name, t2Name, t1Muted, t2Muted, scoreText } = matchDisplay(match)
     // Add-to-calendar only for a scheduled match that has a termin; the notify
     // bell for scheduled + live (pointless once finished).
@@ -784,15 +796,18 @@ function MatchCard({
                     alignItems="center"
                     gap="2"
                 >
-                    <Text
-                        fontSize="13px"
-                        fontWeight={700}
-                        color={t1Muted ? "fg.muted" : "fg.ink"}
-                        textAlign="right"
-                        lineClamp="2"
-                    >
-                        {t1Name}
-                    </Text>
+                    <HStack gap="1.5" justify="flex-end" minW="0">
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={10} />
+                        <Text
+                            fontSize="13px"
+                            fontWeight={700}
+                            color={t1Muted ? "fg.muted" : "fg.ink"}
+                            textAlign="right"
+                            lineClamp="2"
+                        >
+                            {t1Name}
+                        </Text>
+                    </HStack>
                     <Box
                         fontFamily="mono"
                         fontSize="sm"
@@ -809,15 +824,18 @@ function MatchCard({
                     >
                         {scoreText}
                     </Box>
-                    <Text
-                        fontSize="13px"
-                        fontWeight={700}
-                        color={t2Muted ? "fg.muted" : "fg.ink"}
-                        textAlign="left"
-                        lineClamp="2"
-                    >
-                        {t2Name}
-                    </Text>
+                    <HStack gap="1.5" minW="0">
+                        <Text
+                            fontSize="13px"
+                            fontWeight={700}
+                            color={t2Muted ? "fg.muted" : "fg.ink"}
+                            textAlign="left"
+                            lineClamp="2"
+                        >
+                            {t2Name}
+                        </Text>
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={10} />
+                    </HStack>
                 </Box>
             </VStack>
         </Panel>
@@ -860,6 +878,7 @@ function MatchCompactRow({
     isNext?: boolean
 }) {
     const t = useTranslation()
+    const kitColors = useTeamColors(tournamentUuid)
     const { isLive, isFinished, scoreboard, t1Name, t2Name, t1Muted, t2Muted, scoreText } =
         matchDisplay(match)
     // Add-to-calendar only for a scheduled match that has a termin; the notify
@@ -937,24 +956,30 @@ function MatchCompactRow({
                     the full remaining width. Muted colouring is preserved for
                     undecided knockout slots. */}
                 <VStack flex="1" minW="0" gap="0.5" align="stretch">
-                    <Text
-                        fontSize={{ base: "13px", md: "sm" }}
-                        fontWeight={700}
-                        lineHeight="1.25"
-                        truncate
-                        color={t1Muted ? "fg.muted" : "fg.ink"}
-                    >
-                        {t1Name}
-                    </Text>
-                    <Text
-                        fontSize={{ base: "13px", md: "sm" }}
-                        fontWeight={700}
-                        lineHeight="1.25"
-                        truncate
-                        color={t2Muted ? "fg.muted" : "fg.ink"}
-                    >
-                        {t2Name}
-                    </Text>
+                    <HStack gap="1.5" minW="0">
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={10} />
+                        <Text
+                            fontSize={{ base: "13px", md: "sm" }}
+                            fontWeight={700}
+                            lineHeight="1.25"
+                            truncate
+                            color={t1Muted ? "fg.muted" : "fg.ink"}
+                        >
+                            {t1Name}
+                        </Text>
+                    </HStack>
+                    <HStack gap="1.5" minW="0">
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={10} />
+                        <Text
+                            fontSize={{ base: "13px", md: "sm" }}
+                            fontWeight={700}
+                            lineHeight="1.25"
+                            truncate
+                            color={t2Muted ? "fg.muted" : "fg.ink"}
+                        >
+                            {t2Name}
+                        </Text>
+                    </HStack>
                 </VStack>
 
                 {(showCalBtn || showBell) && (

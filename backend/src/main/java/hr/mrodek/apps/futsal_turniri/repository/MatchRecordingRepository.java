@@ -15,6 +15,13 @@ public class MatchRecordingRepository implements AppRepository<MatchRecording, L
         return find("uuid", uuid).firstResultOptional();
     }
 
+    /** Lookup behind the PUBLIC permanent share link - the token is the
+     *  capability, so this is the only query that may be reached unauthenticated. */
+    public Optional<MatchRecording> findByShareToken(UUID shareToken) {
+        if (shareToken == null) return Optional.empty();
+        return find("shareToken", shareToken).firstResultOptional();
+    }
+
     public List<MatchRecording> findByMatchId(Long matchId) {
         return list("match.id = ?1", Sort.by("createdAt").descending(), matchId);
     }

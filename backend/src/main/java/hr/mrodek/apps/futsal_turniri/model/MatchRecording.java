@@ -47,6 +47,20 @@ public class MatchRecording {
     @Column(name = "uploaded_by_uid", length = 64)
     private String uploadedByUid;
 
+    /**
+     * Capability token behind the permanent share link
+     * ({@code GET /match-recordings/share/{token}}), which mints a fresh
+     * presigned URL per click so a copied link never expires.
+     *
+     * <p><b>The token IS the credential.</b> Anyone holding it downloads the
+     * video without an account, until an admin rotates it. Deliberately a
+     * SECOND random uuid rather than a reuse of {@link #uuid}: the row's own
+     * id travels through admin URLs and DTOs, and a shared link must be
+     * revocable without changing the identity of the recording.
+     */
+    @Column(name = "share_token", nullable = false, unique = true)
+    private UUID shareToken;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
@@ -54,5 +68,6 @@ public class MatchRecording {
     @PrePersist
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();
+        if (shareToken == null) shareToken = UUID.randomUUID();
     }
 }

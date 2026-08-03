@@ -38,6 +38,8 @@ import java.util.UUID;
  *   PUT    /match-recordings/{uuid}/match                   - re-map to a different match
  *   DELETE /match-recordings/{uuid}                         - remove (DB row + MinIO object)
  *   GET    /match-recordings/{uuid}/download-link           - presigned GET (admin verification)
+ *   POST   /match-recordings/{uuid}/share-token             - rotate the share token (revokes the old link)
+ *   GET    /match-recordings/share/{token}                  - PUBLIC permanent link -> 302 to a fresh presigned GET
  */
 @Path("/match-recordings")
 @Produces(MediaType.APPLICATION_JSON)
@@ -209,6 +211,49 @@ public class MatchRecordingController {
         String url = recordingStorage.presignedGet(
                 rec.getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, rec.getFileName());
         return Response.ok(new DownloadLinkResponse(url, DOWNLOAD_EXPIRY_SECONDS)).build();
+    }
+
+    /**
+     * The permanent share link: PUBLIC, and the token is the whole credential.
+     *
+     * <p>Redirects to a freshly presigned MinIO URL on every hit, which is the
+     * entire point - the copied link outlives any single presigned URL, while
+     * the object itself is never served from a bucket URL an admin pasted
+     * somewhere and cannot take back. Rotating the token
+     * ({@link #rotateShareToken}) kills the old link instantly.
+     *
+     * <p>{@code @PermitAll} deliberately overrides the class-level
+     * {@code @RolesAllowed("admin")} - a link that only works while logged in
+     * as an admin is not a link an admin can send to anyone.
+     *
+     * <p>302 rather than streaming the bytes through the app: MinIO does the
+     * Range/resume handling, and the video never occupies a Quarkus worker
+     * thread for the length of a download.
+     */
+    @GET
+    @Path("/share/{token}")
+    @jakarta.annotation.security.PermitAll
+    public Response share(@PathParam("token") UUID token) {
+        var rec = repo.findByShareToken(token).orElse(null);
+        // Same 404 for "no such token" and "revoked" - a probe learns nothing.
+        if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
+        String url = recordingStorage.presignedGet(
+                rec.getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, rec.getFileName());
+        return Response.seeOther(java.net.URI.create(url)).build();
+    }
+
+    /**
+     * Issues a NEW share token, which revokes the previous link the moment it
+     * commits. The only way back from "I pasted that link in the wrong chat".
+     */
+    @POST
+    @Path("/{uuid}/share-token")
+    @Transactional
+    public Response rotateShareToken(@PathParam("uuid") UUID uuid) {
+        var rec = repo.findByUuid(uuid).orElse(null);
+        if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
+        rec.setShareToken(UUID.randomUUID());
+        return Response.ok(mapper.toDto(rec)).build();
     }
 
     @DELETE

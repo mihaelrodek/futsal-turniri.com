@@ -15,6 +15,7 @@ public interface PlayerMapper {
             @Mapping(target = "name",    source = "name"),
             @Mapping(target = "number",  source = "number"),
             @Mapping(target = "captain", source = "captain"),
+            @Mapping(target = "goalkeeper", source = "goalkeeper"),
     })
     PlayerDto toDto(Player entity);
 

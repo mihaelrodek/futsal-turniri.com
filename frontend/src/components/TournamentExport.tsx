@@ -638,6 +638,9 @@ type PosterMatchRow = {
     status: string
 }
 
+/* Kept in step with KitSwatch (src/components/jersey.tsx): the outline is what
+   makes a white kit readable on the poster's light surface, so it is near
+   opaque and a full pixel wide. Change one, change both. */
 const POSTER_KIT_SHIRT_PATH =
     "M7 3 Q10 5.2 13 3 L16.5 4.2 L18.6 8.2 L15.4 9.6 L14 8 L14 15.2 L6 15.2 L6 8 L4.6 9.6 L1.4 8.2 L3.5 4.2 Z"
 const POSTER_KIT_SHORTS_PATH =
@@ -662,16 +665,16 @@ function PosterKitSwatch({
                 <path
                     d={POSTER_KIT_SHORTS_PATH}
                     fill={shortsColor}
-                    stroke="rgba(27,40,54,0.35)"
-                    strokeWidth={0.75}
+                    stroke="rgba(27,40,54,0.85)"
+                    strokeWidth={1}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                 />
                 <path
                     d={POSTER_KIT_SHIRT_PATH}
                     fill={shirtColor}
-                    stroke="rgba(27,40,54,0.35)"
-                    strokeWidth={0.75}
+                    stroke="rgba(27,40,54,0.85)"
+                    strokeWidth={1}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                 />

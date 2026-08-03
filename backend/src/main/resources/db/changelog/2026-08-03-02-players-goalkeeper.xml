@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Goalkeeper flag on a roster player - the "GK" mark next to "C".
+
+        Modelled exactly like `captain` (NOT NULL, default false) with one
+        deliberate difference: goalkeeper is NOT one-per-team. A captain is a
+        role the rules give to a single player; a roster routinely carries a
+        backup keeper, and forcing one would silently unmark the other every
+        time the organizer tagged the second one.
+
+        The two flags are independent: a player can be both, either, or
+        neither, and clearing both is the default state of every existing row.
+    -->
+    <changeSet id="2026-08-03-02-players-goalkeeper" author="mrodek">
+        <addColumn tableName="players">
+            <column name="goalkeeper" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

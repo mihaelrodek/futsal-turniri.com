@@ -27,6 +27,7 @@ import {
     setGroupAdvance
 } from "../api/groups"
 import type {Group, GroupMatch, ThirdPlacedTable} from "../types/groups"
+import {TeamKitChip, useTeamColors} from "./jersey"
 import type {TeamShort} from "../types/teams"
 import {
     endFirstHalf,
@@ -367,6 +368,8 @@ export default function GroupsTab({
     const queryClient = useQueryClient()
     // Seed from the react-query cache so returning to the Grupe tab (or a
     // recently-opened tournament) renders instantly instead of refetching.
+    // Kit colours for the standings rows - one shared query per tournament.
+    const kitColors = useTeamColors(uuid)
     const cachedGroups = queryClient.getQueryData<Group[]>(qk.groups(uuid))
     const [groups, setGroups] = useState<Group[] | null>(cachedGroups ?? null)
     const [loading, setLoading] = useState(!cachedGroups)
@@ -2103,9 +2106,12 @@ export default function GroupsTab({
                                         now. Clamped to 2 lines with a fixed row min-height
                                         (above) so single- and two-line groups render the
                                         same height and side-by-side cards stay aligned. */}
-                                        <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" lineHeight="1.25" minW="0">
-                                            {row.teamName}
-                                        </Text>
+                                        <HStack gap="2" minW="0">
+                                            <TeamKitChip colors={kitColors} teamId={row.teamId} size={11} />
+                                            <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="2" lineHeight="1.25" minW="0">
+                                                {row.teamName}
+                                            </Text>
+                                        </HStack>
                                         {/* P · N · I */}
                                         <StNum
                                             value={row.won}
@@ -2383,9 +2389,12 @@ export default function GroupsTab({
                                           color={q ? "pitch.500" : "fg.muted"} textAlign="center">
                                         {tr.rank}
                                     </Text>
-                                    <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
-                                        {tr.standing.teamName}
-                                    </Text>
+                                    <HStack gap="2" minW="0">
+                                        <TeamKitChip colors={kitColors} teamId={tr.standing.teamId} size={11} />
+                                        <Text fontSize="14px" fontWeight={700} color="fg.ink" lineClamp="3" minW="0">
+                                            {tr.standing.teamName}
+                                        </Text>
+                                    </HStack>
                                     {/* P · N · I */}
                                     <StNum
                                         value={tr.standing.won}
@@ -2534,6 +2543,7 @@ function GroupReorderDialog({
     onSaved: (groups: Group[]) => void
 }) {
     const t = useTranslation()
+    const kitColors = useTeamColors(uuid)
     // Seed from the current (computed) standings order.
     const [order, setOrder] = useState(() => group.standings.map((r) => r))
     const [saving, setSaving] = useState(false)
@@ -2610,6 +2620,7 @@ function GroupReorderDialog({
                                         >
                                             {idx + 1}
                                         </Text>
+                                        <TeamKitChip colors={kitColors} teamId={row.teamId} size={10} />
                                         <Text fontSize="sm" fontWeight={600} flex="1" minW="0" truncate>
                                             {row.teamName}
                                         </Text>

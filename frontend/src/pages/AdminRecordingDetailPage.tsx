@@ -14,7 +14,7 @@ import {
 } from "@chakra-ui/react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { FiDownload, FiEdit2, FiRepeat, FiSlash, FiTrash2 } from "react-icons/fi"
+import { FiCopy, FiDownload, FiEdit2, FiExternalLink, FiRefreshCw, FiRepeat, FiSlash, FiTrash2 } from "react-icons/fi"
 
 import {
     deleteMatchRecording,
@@ -22,8 +22,11 @@ import {
     fetchMatchRecordings,
     reassignMatchRecording,
     renameMatchRecording,
+    rotateMatchRecordingShareToken,
+    shareRecordingUrl,
     type MatchRecordingDto,
 } from "../api/matchRecordings"
+import { showError, showSuccess } from "../toaster"
 import { fetchTournaments } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import type { TournamentCard } from "../types/tournaments"
@@ -73,7 +76,7 @@ export default function AdminRecordingDetailPage() {
 
     const [rec, setRec] = useState<MatchRecordingDto | null>(null)
     const [loading, setLoading] = useState(true)
-    const [busy, setBusy] = useState<null | "download" | "rename" | "delete" | "reassign">(null)
+    const [busy, setBusy] = useState<null | "download" | "rename" | "delete" | "reassign" | "rotate">(null)
     const [deleteOpen, setDeleteOpen] = useState(false)
 
     /* Rename. */
@@ -128,6 +131,28 @@ export default function AdminRecordingDetailPage() {
             setBusy("download")
             const { url } = await fetchMatchRecordingDownloadLink(rec.uuid)
             window.open(url, "_blank", "noopener")
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    async function copyShareLink() {
+        if (!rec) return
+        try {
+            await navigator.clipboard.writeText(shareRecordingUrl(rec.shareToken))
+            showSuccess(p.share.copied)
+        } catch {
+            // Clipboard permission is the only local failure worth naming -
+            // the link is on screen and selectable either way.
+            showError(p.share.copyFailed)
+        }
+    }
+
+    async function rotateShareLink() {
+        if (!rec || busy) return
+        try {
+            setBusy("rotate")
+            setRec(await rotateMatchRecordingShareToken(rec.uuid))
         } finally {
             setBusy(null)
         }
@@ -227,6 +252,55 @@ export default function AdminRecordingDetailPage() {
                         <HStack justify="space-between" gap="3" wrap="wrap">
                             <Text fontSize="sm" color="fg.muted">{p.uploadedLabel}</Text>
                             <Text fontSize="sm" fontWeight={600}>{formatKickoff(rec.createdAt) || "-"}</Text>
+                        </HStack>
+                    </VStack>
+                </Panel>
+
+                {/* Permanent link. Auto-generated with the recording, so there
+                    is nothing to press first - the point is that it is already
+                    there when an admin needs to paste one into a mail. Every
+                    click mints a fresh presigned URL on the backend, so the
+                    link itself never expires. */}
+                <Panel p={{ base: "3", md: "4" }}>
+                    <VStack align="stretch" gap="2">
+                        <Box>
+                            <MonoLabel display="block">{p.share.label}</MonoLabel>
+                            <Text fontSize="xs" color="fg.muted" mt="0.5">{p.share.hint}</Text>
+                        </Box>
+                        <HStack gap="2" wrap={{ base: "wrap", md: "nowrap" }}>
+                            <Input
+                                size="sm"
+                                readOnly
+                                value={shareRecordingUrl(rec.shareToken)}
+                                fontFamily="mono"
+                                fontSize="13px"
+                                onFocus={(e) => e.currentTarget.select()}
+                            />
+                            <Button size="sm" variant="outline" colorPalette="pitch" onClick={copyShareLink}>
+                                <FiCopy /> {p.share.copy}
+                            </Button>
+                            <Button asChild size="sm" variant="ghost" colorPalette="pitch">
+                                <a
+                                    href={shareRecordingUrl(rec.shareToken)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <FiExternalLink /> {p.share.open}
+                                </a>
+                            </Button>
+                        </HStack>
+                        <HStack justify="space-between" gap="2" wrap="wrap">
+                            <Text fontSize="xs" color="fg.muted">{p.share.warning}</Text>
+                            <Button
+                                size="xs"
+                                variant="ghost"
+                                colorPalette="red"
+                                loading={busy === "rotate"}
+                                disabled={busy != null}
+                                onClick={rotateShareLink}
+                            >
+                                <FiRefreshCw /> {p.share.rotate}
+                            </Button>
                         </HStack>
                     </VStack>
                 </Panel>

@@ -39,6 +39,15 @@ public class Player {
     private boolean captain = false;
 
     /**
+     * True for a goalkeeper ("GK"). Independent of {@link #captain} in both
+     * directions - a player may be both, either or neither - and deliberately
+     * NOT one-per-team the way the captain is: a roster routinely carries a
+     * backup keeper, so marking a second one must not unmark the first.
+     */
+    @Column(name = "goalkeeper", nullable = false)
+    private boolean goalkeeper = false;
+
+    /**
      * Stable ordering within a team's roster. Defaults to a created-order
      * value so the list renders consistently across reloads.
      */

@@ -257,4 +257,11 @@ public class TournamentsRepository implements AppRepository<Tournaments, Long> {
     public List<Tournaments> findPendingDeleteRequests() {
         return list("archivedAt is not null", Sort.by("archivedAt").descending());
     }
+
+    /** How many of the above are waiting - the /admin console badge. Same
+     *  predicate as {@link #findPendingDeleteRequests()}, counted in the
+     *  database rather than by loading the rows. */
+    public long countPendingDeleteRequests() {
+        return count("archivedAt is not null");
+    }
 }

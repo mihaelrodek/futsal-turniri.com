@@ -379,6 +379,11 @@ export function TeamInfoDialog({
                                                                 whiteSpace="nowrap"
                                                             >
                                                                 {p.name}
+                                                                {p.goalkeeper ? (
+                                                                    <Text as="span" fontSize="2xs" color="fg.muted" ml="1.5">
+                                                                        (GK)
+                                                                    </Text>
+                                                                ) : null}
                                                                 {p.captain ? (
                                                                     <Text as="span" fontSize="2xs" color="fg.muted" ml="1.5">
                                                                         (C)

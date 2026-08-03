@@ -624,6 +624,7 @@ public class AdminController {
                 pm.put("name", p.getName());
                 pm.put("number", p.getNumber());
                 pm.put("captain", p.isCaptain());
+                pm.put("goalkeeper", p.isGoalkeeper());
                 pm.put("sortOrder", p.getSortOrder());
                 return pm;
             }).toList());
@@ -951,6 +952,8 @@ public class AdminController {
                 p.setName(pName.trim());
                 p.setNumber(impInt(pm, "number", "players.number"));
                 p.setCaptain(Boolean.TRUE.equals(impBool(pm, "captain", "players.captain")));
+                // Absent in a dump taken before the flag existed - defaults to false.
+                p.setGoalkeeper(Boolean.TRUE.equals(impBool(pm, "goalkeeper", "players.goalkeeper")));
                 p.setSortOrder(impInt(pm, "sortOrder", "players.sortOrder"));
                 playersRepo.persist(p);
                 Long oldPlayerId = impLong(pm, "id", "players.id");

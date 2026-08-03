@@ -8,5 +8,7 @@ public record PlayerDto(
         Long id,
         String name,
         Integer number,
-        boolean captain
+        boolean captain,
+        /** Goalkeeper mark - independent of {@code captain}, see Player. */
+        boolean goalkeeper
 ) {}

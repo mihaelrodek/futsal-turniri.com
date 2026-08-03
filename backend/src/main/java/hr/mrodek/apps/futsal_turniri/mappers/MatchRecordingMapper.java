@@ -21,6 +21,7 @@ public interface MatchRecordingMapper {
             @Mapping(target = "videoSizeBytes", source = "videoSizeBytes"),
             @Mapping(target = "uploadedByUid", source = "uploadedByUid"),
             @Mapping(target = "createdAt", source = "createdAt"),
+            @Mapping(target = "shareToken", source = "shareToken"),
     })
     MatchRecordingDto toDto(MatchRecording r);
 

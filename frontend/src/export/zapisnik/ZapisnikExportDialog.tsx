@@ -107,6 +107,15 @@ export function ZapisnikExportDialog({
                 if (cancelled) return
                 setCtx(c)
                 setVenueTown((v) => v || (c.tournament.location ?? ""))
+                // Seed the ticks from the roster's own GK marks (Ekipe ->
+                // igrači). Still editable here - who actually keeps goal in
+                // THIS match is a per-match call - but the common case no
+                // longer means re-ticking the same two names every export.
+                setGkIds(new Set(
+                    [...c.hostPlayers, ...c.guestPlayers]
+                        .filter((p) => p.goalkeeper)
+                        .map((p) => p.id),
+                ))
             })
             .catch((err) => {
                 console.error("[ZapisnikExport] context load failed", err)

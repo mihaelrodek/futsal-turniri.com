@@ -125,7 +125,10 @@ function KitBar({ jersey, shorts, lg }: { jersey?: string | null; shorts?: strin
             jersey={jersey ?? fallback}
             shorts={shorts ?? undefined}
             size={lg ? 14 : 12}
-            borderColor="whiteAlpha.500"
+            // Flipped pair: the scorebug sits on a dark overlay, so the
+            // readable outline is the light one and the halo has to be dark.
+            borderColor="whiteAlpha.700"
+            haloColor="blackAlpha.700"
         />
     )
 }

@@ -38,9 +38,12 @@ export const queryClient = new QueryClient({
  * cached payload's SHAPE changes in a breaking way (backend DTO change, key
  * restructure) so old persisted snapshots are discarded instead of rendered.
  */
+// v4: ScorerDto gained `teamId` (kit colours in the scorers list) and
+// AdminPendingCounts gained `turniri` (deletion-request badge) - a persisted v3
+// snapshot renders both as absent until the next refetch.
 // v3: AdminPendingCounts gained `poruke` - a persisted v2 snapshot would render
 // the new badge as absent until the next refetch.
-export const CACHE_BUSTER = "v3"
+export const CACHE_BUSTER = "v4"
 
 /** localStorage key the persister writes to (main.tsx). Cleared on logout. */
 export const PERSIST_KEY = "futsal-rq-cache"

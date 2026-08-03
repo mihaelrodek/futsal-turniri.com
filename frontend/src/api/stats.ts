@@ -14,6 +14,8 @@ import { http } from "./http"
 export type ScorerDto = {
     playerId: number
     playerName: string
+    /** DB id behind `teamName` - the key for the kit-colour lookup. */
+    teamId: number | null
     teamName: string
     goals: number
     goalsAll: number

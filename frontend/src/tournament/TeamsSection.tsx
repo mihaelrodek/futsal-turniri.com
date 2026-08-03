@@ -1133,6 +1133,7 @@ function RosterPanel({
                 name,
                 number: parseNumber(editNumber),
                 captain: p.captain,
+                goalkeeper: p.goalkeeper,
             })
             setPlayers((ps) => ps.map((x) => (x.id === p.id ? updated : x)))
             cancelEdit()
@@ -1143,21 +1144,45 @@ function RosterPanel({
         }
     }
 
-    async function makeCaptain(p: PlayerDto) {
-        if (p.captain) return
+    /** Toggle the captain mark. Unsetting has to be possible: a wrong tap used
+     *  to be permanent, since the only way back was to promote someone else. */
+    async function toggleCaptain(p: PlayerDto) {
+        const next = !p.captain
         try {
             setBusyId(p.id)
             const updated = await updatePlayer(uuid, team.id, p.id, {
                 name: p.name,
                 number: p.number,
-                captain: true,
+                captain: next,
             })
-            // Exactly one captain - clear the flag on everyone else locally.
             setPlayers((ps) =>
                 ps.map((x) =>
-                    x.id === updated.id ? updated : { ...x, captain: false },
+                    x.id === updated.id
+                        ? updated
+                        // Exactly one captain - the backend cleared everyone
+                        // else, so mirror that locally. Nothing to clear when
+                        // the mark was being REMOVED.
+                        : next ? { ...x, captain: false } : x,
                 ),
             )
+        } catch {
+            /* toaster surfaces the error */
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    /** Toggle the goalkeeper mark. Unlike the captain this is per player only -
+     *  several keepers on one roster are normal, so nobody else is touched. */
+    async function toggleGoalkeeper(p: PlayerDto) {
+        try {
+            setBusyId(p.id)
+            const updated = await updatePlayer(uuid, team.id, p.id, {
+                name: p.name,
+                number: p.number,
+                goalkeeper: !p.goalkeeper,
+            })
+            setPlayers((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
         } catch {
             /* toaster surfaces the error */
         } finally {
@@ -1561,6 +1586,12 @@ function RosterPanel({
                                         {p.name}
                                     </Text>
 
+                                    {p.goalkeeper && (
+                                        <Badge variant="solid" colorPalette="purple" title={t.teams.goalkeeper}>
+                                            {t.teams.goalkeeperBadge}
+                                        </Badge>
+                                    )}
+
                                     {p.captain && (
                                         <Badge variant="solid" colorPalette="brand" title={t.teams.captain}>
                                             {t.teams.captainBadge}
@@ -1577,17 +1608,30 @@ function RosterPanel({
                                          team-delete affordances. */}
                                     {showPlayerActions && (
                                         <HStack gap="1" flexShrink={0}>
-                                            {!p.captain && (
-                                                <Button
-                                                    size="2xs"
-                                                    variant="outline"
-                                                    onClick={() => makeCaptain(p)}
-                                                    loading={busy}
-                                                    title={t.teams.setCaptainTitle}
-                                                >
-                                                    {t.teams.captain}
-                                                </Button>
-                                            )}
+                                            {/* Both marks are independent toggles,
+                                                 and both can be off - a solid
+                                                 button means "on", an outline
+                                                 one "tap to set". */}
+                                            <Button
+                                                size="2xs"
+                                                variant={p.goalkeeper ? "solid" : "outline"}
+                                                colorPalette={p.goalkeeper ? "purple" : "gray"}
+                                                onClick={() => toggleGoalkeeper(p)}
+                                                loading={busy}
+                                                title={p.goalkeeper ? t.teams.unsetGoalkeeperTitle : t.teams.setGoalkeeperTitle}
+                                            >
+                                                {t.teams.goalkeeperBadge}
+                                            </Button>
+                                            <Button
+                                                size="2xs"
+                                                variant={p.captain ? "solid" : "outline"}
+                                                colorPalette={p.captain ? "brand" : "gray"}
+                                                onClick={() => toggleCaptain(p)}
+                                                loading={busy}
+                                                title={p.captain ? t.teams.unsetCaptainTitle : t.teams.setCaptainTitle}
+                                            >
+                                                {t.teams.captainBadge}
+                                            </Button>
                                             <IconButton
                                                 aria-label={t.teams.editPlayerAria}
                                                 size="2xs"

@@ -56,6 +56,9 @@ import java.util.stream.Collectors;
 @Consumes(MediaType.APPLICATION_JSON)
 public class TournamentController {
 
+    private static final org.jboss.logging.Logger LOG =
+            org.jboss.logging.Logger.getLogger(TournamentController.class);
+
     @Inject TournamentMapper tournamentMapper;
     @Inject hr.mrodek.apps.futsal_turniri.services.RenderCache renderCache;
     @Inject TeamMapper teamMapper;
@@ -70,6 +73,12 @@ public class TournamentController {
     @Inject PushService pushService;
     @Inject hr.mrodek.apps.futsal_turniri.services.EmailService emailService;
     @Inject hr.mrodek.apps.futsal_turniri.services.MessageService messages;
+    /** Fans an admin-facing item into every admin's "Obavijesti" inbox - the
+     *  in-app half of the deletion-request notification. */
+    @Inject hr.mrodek.apps.futsal_turniri.services.AdminNotifier adminNotifier;
+    /** Holds {@code recording_notify_email}, the single admin mailbox every
+     *  admin-facing notification in this codebase also mails. */
+    @Inject hr.mrodek.apps.futsal_turniri.repository.AppSettingsRepository appSettings;
 
     @Inject TournamentsRepository tournamentsRepo;
     @Inject TeamsRepository teamRepo;
@@ -493,8 +502,64 @@ public class TournamentController {
         if (admin) {
             t.setDeleted(true);
             t.setDeletedAt(now);
+        } else {
+            // Only a request that actually LANDS in the admin queue is worth a
+            // notification: an admin's own call finalizes on the spot, and a
+            // re-request on an already-archived tournament is rejected above.
+            // Every value is read HERE, on the request thread - the notifier
+            // and the mailer both run without a persistence context.
+            notifyAdminsOfDeleteRequest(t.getName(), reason, displayNameFromJwt());
         }
         return Response.ok(java.util.Map.of("finalized", admin)).build();
+    }
+
+    /**
+     * Tells the platform admins that an organizer asked for a tournament to be
+     * deleted - both channels the rest of the app uses for admin-facing work:
+     * the in-app "Obavijesti" inbox (which is what drives the badge on the
+     * console card) and the single {@code recording_notify_email} mailbox.
+     *
+     * <p>Fire-and-forget, exactly like every other admin notification: the
+     * organizer's request is already archived and committed, and neither a
+     * dead mail server nor an empty admin address book may fail it.
+     *
+     * @param tournamentName resolved by the caller - this method must not
+     *                       touch a lazy association
+     */
+    private void notifyAdminsOfDeleteRequest(String tournamentName, String reason, String requestedBy) {
+        String who = requestedBy == null || requestedBy.isBlank()
+                ? messages.t("tournament.deleteRequest.unknownRequester")
+                : requestedBy;
+        // Mail links use the mailer's own base URL, like every other notifier.
+        String link = emailService.baseUrl() + "/admin/turniri";
+
+        try {
+            adminNotifier.notifyAdmins(
+                    NotificationKind.ADMIN_REQUEST,
+                    messages.t("tournament.deleteRequest.inbox.title"),
+                    messages.t("tournament.deleteRequest.inbox.body", tournamentName, who),
+                    "/admin/turniri");
+        } catch (Exception e) {
+            LOG.warnf(e, "Delete request: admin inbox notification failed for %s", tournamentName);
+        }
+
+        try {
+            String notifyEmail = appSettings.get("recording_notify_email");
+            if (notifyEmail == null || notifyEmail.isBlank() || !emailService.isReady()) return;
+
+            String subject = messages.t("mail.tournamentDelete.subject");
+            String bodyHtml = MailTemplates.render("tournament-delete-request", java.util.Map.of(
+                    "intro", messages.t("mail.tournamentDelete.intro",
+                            EmailService.escapeHtml(tournamentName), EmailService.escapeHtml(who)),
+                    "reasonLine", reason == null || reason.isBlank()
+                            ? ""
+                            : messages.t("mail.tournamentDelete.reasonLine", EmailService.escapeHtml(reason))));
+            String html = emailService.shell(subject, bodyHtml, link,
+                    messages.t("mail.tournamentDelete.cta"));
+            emailService.sendHtml(notifyEmail, subject, html);
+        } catch (Exception e) {
+            LOG.warnf(e, "Delete request: admin notification email failed for %s", tournamentName);
+        }
     }
 
     /**
@@ -1916,6 +1981,13 @@ public class TournamentController {
         player.setName(name);
         player.setNumber(body.number());
 
+        // No one-per-team rule here, unlike the captain below: a roster may
+        // carry a backup keeper, and demoting the first one every time the
+        // second is tagged would make the mark unusable.
+        if (body.goalkeeper() != null) {
+            player.setGoalkeeper(Boolean.TRUE.equals(body.goalkeeper()));
+        }
+
         if (body.captain() != null) {
             if (Boolean.TRUE.equals(body.captain())) {
                 // Exactly one captain per team: clear it on every other
@@ -2102,6 +2174,7 @@ public class TournamentController {
                     return new ScorerDto(
                             player != null ? player.getId() : null,
                             player != null ? player.getName() : null,
+                            team != null ? team.getId() : null,
                             team != null ? team.getName() : null,
                             counted,
                             all

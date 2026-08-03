@@ -3,6 +3,7 @@ import { Box, chakra, Flex, Text } from "@chakra-ui/react"
 import { FiChevronDown, FiChevronRight, FiChevronUp } from "react-icons/fi"
 import type { LiveMatch } from "../api/live"
 import { GoalscorersPanel, LiveClock } from "./liveMatch"
+import { TeamKitChip, useTeamColors } from "./jersey"
 import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -39,6 +40,9 @@ export function LiveMatchRow({
 }) {
     const t = useTranslation()
     const [expanded, setExpanded] = useState(false)
+    // /uzivo mixes matches from several tournaments, so the lookup is keyed on
+    // each row's OWN tournament - one query per tournament on screen.
+    const kitColors = useTeamColors(match.tournamentUuid)
     const full = variant === "full"
     const team1 = match.team1Name?.trim() || t.components.liveMatchList.team1Fallback
     const team2 = match.team2Name?.trim() || t.components.liveMatchList.team2Fallback
@@ -90,6 +94,7 @@ export function LiveMatchRow({
                     {/* Teams + score */}
                     <Box flex="1" minW="0">
                         <Flex align="center" gap="2" minW="0">
+                            <TeamKitChip colors={kitColors} teamId={match.team1Id} size={10} />
                             <Text
                                 fontSize={full ? "md" : "sm"}
                                 fontWeight="semibold"
@@ -118,6 +123,7 @@ export function LiveMatchRow({
                             >
                                 {team2}
                             </Text>
+                            <TeamKitChip colors={kitColors} teamId={match.team2Id} size={10} />
                         </Flex>
                         <Flex justify="center" mt="1" minW="0">
                             <Text fontSize="xs" color="fg.muted" truncate minW="0">

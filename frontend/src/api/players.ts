@@ -36,12 +36,17 @@ export async function createPlayer(
     return data
 }
 
-/** Update an existing player. Pass `captain: true` to make this player the captain. */
+/**
+ * Update an existing player. `captain: true` makes this player the team's sole
+ * captain (the backend clears the flag on everyone else); `goalkeeper` is a
+ * plain per-player flag with no such side-effect. Omitting either leaves it as
+ * it was.
+ */
 export async function updatePlayer(
     tournamentUuid: string,
     teamId: number,
     playerId: number,
-    payload: { name: string; number?: number | null; captain?: boolean },
+    payload: { name: string; number?: number | null; captain?: boolean; goalkeeper?: boolean },
 ): Promise<PlayerDto> {
     const { data } = await http.put<PlayerDto>(
         `/tournaments/${tournamentUuid}/teams/${teamId}/players/${playerId}`,

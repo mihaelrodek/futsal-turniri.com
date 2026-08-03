@@ -130,6 +130,10 @@ export default function AdminStreamDetailPage() {
     const [baseUrl, setBaseUrl] = useState("")
     const [disconnectOpen, setDisconnectOpen] = useState(false)
 
+    // Closed by default: the player is the one thing on this screen that costs
+    // bandwidth, and most visits here are to press a button, not to watch.
+    const [playerOpen, setPlayerOpen] = useState(false)
+
     const load = useCallback(async () => {
         if (!uuid) return
         const [details, status, bc, conn] = await Promise.all([
@@ -250,12 +254,6 @@ export default function AdminStreamDetailPage() {
             </Flex>
 
             <VStack align="stretch" gap="4">
-                {/* Player first: on this screen the question is almost always
-                    "is the picture actually there right now". */}
-                <Panel p="0" overflow="hidden">
-                    <SpectoEmbed streamId={streamId} />
-                </Panel>
-
                 <Panel p={{ base: "3", md: "4" }}>
                     <VStack align="stretch" gap="3">
                         <HStack justify="space-between" gap="3" wrap="wrap">
@@ -265,7 +263,7 @@ export default function AdminStreamDetailPage() {
                                     {live ? c.broadcastingOnHome : c.notBroadcastingOnHome}
                                 </Text>
                             </Box>
-                            <HStack gap="2">
+                            <HStack gap="2" wrap="wrap">
                                 <Button
                                     size="sm"
                                     colorPalette="pitch"
@@ -282,6 +280,20 @@ export default function AdminStreamDetailPage() {
                                     onClick={() => run(() => stopSpectoBroadcast(uuid))}
                                 >
                                     <FiSquare /> {c.stopAndHide}
+                                </Button>
+                                {/* Disconnect sits with the other on-air controls
+                                    rather than in a panel of its own at the
+                                    bottom - it is the same decision ("this
+                                    stream, right now"), and it still asks for
+                                    confirmation before anything happens. */}
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorPalette="red"
+                                    disabled={busy}
+                                    onClick={() => setDisconnectOpen(true)}
+                                >
+                                    <FiSlash /> {c.disconnect}
                                 </Button>
                             </HStack>
                         </HStack>
@@ -336,22 +348,36 @@ export default function AdminStreamDetailPage() {
                     </VStack>
                 </Panel>
 
+                {/* Last, and closed by default. The player used to sit on top,
+                    which meant every visit - including the ones that only
+                    needed the stream id or the start button - opened an HLS
+                    connection and pulled video the admin was not watching.
+                    SpectoEmbed is mounted only while open, so closing it tears
+                    the playback down rather than hiding it. */}
                 <Panel p={{ base: "3", md: "4" }}>
-                    <HStack justify="space-between" gap="3" wrap="wrap">
-                        <Box>
-                            <Text fontSize="sm" fontWeight={700} color="fg.ink">{p.disconnectTitle}</Text>
-                            <Text fontSize="xs" color="fg.muted">{p.disconnectDesc}</Text>
-                        </Box>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            colorPalette="red"
-                            disabled={busy}
-                            onClick={() => setDisconnectOpen(true)}
-                        >
-                            <FiSlash /> {c.disconnect}
-                        </Button>
-                    </HStack>
+                    <VStack align="stretch" gap="3">
+                        <HStack justify="space-between" gap="3" wrap="wrap">
+                            <Box>
+                                <MonoLabel display="block" mb="0.5">{p.playerLabel}</MonoLabel>
+                                <Text fontSize="xs" color="fg.muted">{p.playerHint}</Text>
+                            </Box>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                colorPalette="pitch"
+                                onClick={() => setPlayerOpen((v) => !v)}
+                            >
+                                {playerOpen
+                                    ? <><FiEyeOff /> {p.hidePlayer}</>
+                                    : <><FiEye /> {p.showPlayer}</>}
+                            </Button>
+                        </HStack>
+                        {playerOpen && (
+                            <Box rounded="lg" overflow="hidden">
+                                <SpectoEmbed streamId={streamId} />
+                            </Box>
+                        )}
+                    </VStack>
                 </Panel>
             </VStack>
 

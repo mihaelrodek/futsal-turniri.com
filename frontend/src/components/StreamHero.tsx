@@ -960,6 +960,11 @@ function StreamTeamLineup({
                                 <Text fontSize="10px" fontWeight={800} color="fg.ink" textAlign={align} truncate>
                                     {p.name}
                                 </Text>
+                                {p.goalkeeper && (
+                                    <Box as="span" px="1" py="0.5" rounded="full" bg="purple.subtle" color="purple.fg" fontSize="8px" fontWeight={900}>
+                                        {t.components.streamHero.goalkeeperBadge}
+                                    </Box>
+                                )}
                                 {p.captain && (
                                     <Box as="span" px="1" py="0.5" rounded="full" bg="brand.subtle" color="brand.fg" fontSize="8px" fontWeight={900}>
                                         {t.components.streamHero.captainBadge}

@@ -23,4 +23,7 @@ public class MatchRecordingDto {
     private Long videoSizeBytes;
     private String uploadedByUid;
     private OffsetDateTime createdAt;
+    /** Capability token for the permanent share link - admin-only surface;
+     *  see {@code MatchRecording#shareToken}. */
+    private UUID shareToken;
 }

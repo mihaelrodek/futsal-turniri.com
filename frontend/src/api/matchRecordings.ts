@@ -13,6 +13,21 @@ export type MatchRecordingDto = {
     videoSizeBytes: number | null
     uploadedByUid: string | null
     createdAt: string
+    /** Capability token behind the permanent share link. Anyone holding it can
+     *  download the video without an account - see `shareRecordingUrl`. */
+    shareToken: string
+}
+
+/**
+ * The permanent, copy-pasteable download link for a recording.
+ *
+ * Built here rather than returned by the backend so it always matches the
+ * origin the admin is actually looking at (prod, a preview host, localhost) -
+ * a link with the wrong host is worse than no link. `/api` is the backend's
+ * HTTP root path in every environment (Vite proxies it in dev, Caddy in prod).
+ */
+export function shareRecordingUrl(shareToken: string): string {
+    return `${window.location.origin}/api/match-recordings/share/${shareToken}`
 }
 
 export type FetchMatchRecordingsParams = {
@@ -109,6 +124,19 @@ export async function fetchMatchRecordingDownloadLink(
 ): Promise<MatchRecordingDownloadLink> {
     const { data } = await http.get<MatchRecordingDownloadLink>(
         `/match-recordings/${uuid}/download-link`,
+    )
+    return data
+}
+
+/**
+ * Admin: issue a NEW share token, which revokes the previous permanent link
+ * the moment it commits. Returns the updated recording.
+ */
+export async function rotateMatchRecordingShareToken(uuid: string): Promise<MatchRecordingDto> {
+    const { data } = await http.post<MatchRecordingDto>(
+        `/match-recordings/${uuid}/share-token`,
+        {},
+        { successMessage: "Nova poveznica je generirana. Stara više ne radi." },
     )
     return data
 }

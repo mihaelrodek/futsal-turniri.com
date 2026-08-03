@@ -16,6 +16,8 @@ import {
     SectionCard,
 } from "../ui/pitch"
 import { ExportDialog, type ExportMeta } from "../components/TournamentExport"
+import { TeamKitChip, useTeamColors } from "../components/jersey"
+import type { TeamKit } from "../api/tournaments"
 
 /* ──────────────────────────────────────────────────────────────────────────
    "Statistika" section - Pitch theme.
@@ -88,25 +90,6 @@ function jerseyNumber(seed: number): string {
     return String(n)
 }
 
-/** Deterministic team-color from name - mirrors the colour ladder used in
- *  the live page so the same team reads as the same colour everywhere. */
-const TEAM_COLORS = [
-    "#dc2626",
-    "#2563eb",
-    "#7c3aed",
-    "#f59e0b",
-    "#10b981",
-    "#06b6d4",
-    "#ef4444",
-    "#8b5cf6",
-]
-function teamColor(name: string | null | undefined): string {
-    if (!name) return TEAM_COLORS[0]
-    let h = 0
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-    return TEAM_COLORS[h % TEAM_COLORS.length]
-}
-
 const MEDAL_COLORS = ["#f5c842", "#c0c5cc", "#cd8654"]
 
 const SCOPE_ORDER: ScorerScope[] = [
@@ -123,9 +106,12 @@ function ScorerRow({
     rank,
     splitTallies,
     hasGroups,
+    kitColors,
 }: {
     scorer: ScorerDto
     rank: number
+    /** Kit colours for the whole tournament, resolved once by the parent. */
+    kitColors: Record<string, TeamKit>
     /** True when group goals don't count - show the full tally next to the
      *  counted one so both reads stay visible. */
     splitTallies: boolean
@@ -137,7 +123,6 @@ function ScorerRow({
     const t = useTranslation()
     const medal = rank <= 3 ? MEDAL_COLORS[rank - 1] : null
     const num = jerseyNumber(scorer.playerId)
-    const tc = teamColor(scorer.teamName)
     const showAll = splitTallies && scorer.goalsAll !== scorer.goals
     return (
         <Grid
@@ -190,7 +175,9 @@ function ScorerRow({
                     {scorer.playerName}
                 </Text>
                 <HStack gap="1.5" mt="0.5">
-                    <Box w="8px" h="8px" rounded="sm" bg={tc} />
+                    {/* The team's real kit, not the old name-hash swatch: that
+                        colour looked like data and was a hash of the string. */}
+                    <TeamKitChip colors={kitColors} teamId={scorer.teamId} size={9} />
                     <Text fontSize="12px" color="fg.muted" truncate>
                         {scorer.teamName}
                     </Text>
@@ -255,6 +242,7 @@ export default function StatsSection({
     /** Label for a scorer-scope option. */
     const SCOPE_LABEL: Record<ScorerScope, string> = statsT.scopeOptions
     const queryClient = useQueryClient()
+    const kitColors = useTeamColors(uuid)
     // Seed from cache so returning to the Statistika tab paints instantly.
     const cachedScorers = queryClient.getQueryData<ScorerDto[]>(qk.scorers(uuid))
     const [scorers, setScorers] = useState<ScorerDto[]>(cachedScorers ?? [])
@@ -494,7 +482,7 @@ export default function StatsSection({
             >
                 <VStack align="stretch" gap="2">
                     {scorers.map((s, i) => (
-                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} hasGroups={hasGroups} />
+                        <ScorerRow key={s.playerId} scorer={s} rank={i + 1} splitTallies={splitTallies} hasGroups={hasGroups} kitColors={kitColors} />
                     ))}
                 </VStack>
             </SectionCard>

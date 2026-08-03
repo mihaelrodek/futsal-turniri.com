@@ -20,6 +20,9 @@ export type AdminPendingCounts = {
     ponude: number
     /** Contact-form messages (/kontakt) nobody has answered yet. */
     poruke: number
+    /** Tournaments archived on an organizer's deletion request, awaiting the
+     *  admin's confirm-or-restore in "Upravljanje turnirima". */
+    turniri: number
 }
 
 /**

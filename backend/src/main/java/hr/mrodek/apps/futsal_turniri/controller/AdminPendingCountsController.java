@@ -5,6 +5,7 @@ import hr.mrodek.apps.futsal_turniri.repository.CameraPackageInquiryRepository;
 import hr.mrodek.apps.futsal_turniri.repository.ContactMessageRepository;
 import hr.mrodek.apps.futsal_turniri.repository.MatchRecordingRequestRepository;
 import hr.mrodek.apps.futsal_turniri.repository.PlayerClaimRequestRepository;
+import hr.mrodek.apps.futsal_turniri.repository.TournamentsRepository;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -24,7 +25,7 @@ import jakarta.ws.rs.core.MediaType;
  * dashboard slow.
  *
  * Routes:
- *   GET /admin/pending-counts - {"zahtjeviSnimke":n,"zahtjeviIgraci":n,"ponude":n,"poruke":n}
+ *   GET /admin/pending-counts - {"zahtjeviSnimke":n,"zahtjeviIgraci":n,"ponude":n,"poruke":n,"turniri":n}
  */
 @Path("/admin/pending-counts")
 @RolesAllowed("admin")
@@ -35,6 +36,7 @@ public class AdminPendingCountsController {
     @Inject PlayerClaimRequestRepository claimRequests;
     @Inject CameraPackageInquiryRepository cameraInquiries;
     @Inject ContactMessageRepository contactMessages;
+    @Inject TournamentsRepository tournaments;
 
     @GET
     @Transactional
@@ -43,6 +45,7 @@ public class AdminPendingCountsController {
                 recordingRequests.countRequested(),
                 claimRequests.countPending(),
                 cameraInquiries.countUnhandled(),
-                contactMessages.countUnhandled());
+                contactMessages.countUnhandled(),
+                tournaments.countPendingDeleteRequests());
     }
 }

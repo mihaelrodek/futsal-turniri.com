@@ -13,10 +13,14 @@ package hr.mrodek.apps.futsal_turniri.dtos;
  * @param zahtjeviIgraci PlayerClaimRequest rows in PENDING
  * @param ponude         camera package inquiries with handled_at IS NULL
  * @param poruke         contact-form messages with handled_at IS NULL
+ * @param turniri        tournaments archived on an organizer's deletion
+ *                       request, still waiting for the admin to confirm or
+ *                       restore ("Upravljanje turnirima")
  */
 public record AdminPendingCountsDto(
         long zahtjeviSnimke,
         long zahtjeviIgraci,
         long ponude,
-        long poruke
+        long poruke,
+        long turniri
 ) {}

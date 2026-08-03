@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Permanent share link for a library recording.
+
+        Every download URL in this app so far is a presigned MinIO link that
+        expires within hours, which is right for a paid delivery but useless
+        when an admin just wants to paste "here is the video" into a mail. This
+        token is the stable half: GET /match-recordings/share/{token} mints a
+        FRESH presigned URL on every click, so the link an admin copies never
+        goes stale.
+
+        SECURITY: the token IS the credential - anyone holding it can download
+        the video, with no account, until the admin rotates it. It is a random
+        v4 uuid (122 bits) and never derived from the recording's own uuid, so
+        knowing one tells you nothing about the other, and rotating it does not
+        touch any other identifier.
+
+        Backfilled with gen_random_uuid() (built in since PG 13) so existing
+        rows get a token too; NOT NULL + unique only afterwards.
+    -->
+    <changeSet id="2026-08-03-01-match-recordings-share-token" author="mrodek">
+        <addColumn tableName="match_recordings">
+            <column name="share_token" type="uuid"/>
+        </addColumn>
+
+        <sql>UPDATE match_recordings SET share_token = gen_random_uuid() WHERE share_token IS NULL</sql>
+
+        <addNotNullConstraint tableName="match_recordings" columnName="share_token" columnDataType="uuid"/>
+
+        <addUniqueConstraint tableName="match_recordings"
+                             columnNames="share_token"
+                             constraintName="uq_match_recordings_share_token"/>
+    </changeSet>
+</databaseChangeLog>

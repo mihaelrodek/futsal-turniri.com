@@ -57,7 +57,11 @@ export function JerseyDot({ color, size = 10 }: { color?: string | null; size?: 
             rounded="full"
             bg={color}
             borderWidth="1px"
-            borderColor="blackAlpha.400"
+            borderColor="blackAlpha.800"
+            // Same double outline as KitSwatch, done with a ring shadow rather
+            // than a second stroke: dark border for light dots, light ring
+            // outside it for dark ones.
+            boxShadow="0 0 0 1px rgba(255,255,255,0.8)"
             flexShrink={0}
             title={t.components.jersey.jerseyColorTitle}
             aria-hidden
@@ -95,27 +99,63 @@ function kitStroke(token: string): string {
         : `var(--chakra-colors-${token.replace(/\./g, "-")})`
 }
 
+/* DOUBLE OUTLINE. A single dark outline solves the white kit on a white card
+   and does nothing for the opposite case - a black or navy kit on the dark
+   canvas (#0B1522) - which is just as common. So each path is stroked twice:
+
+     halo   light, 3px, drawn UNDER everything
+     border dark,  1px, drawn with the fill
+
+   Whichever background the chip lands on, one of the two reads. The halo is
+   only ever visible as the outer ~1px ring: its inner half is painted over by
+   the fills, which are drawn afterwards in the same order.
+
+   Both widths are `vectorEffect="non-scaling-stroke"`, so they are exact CSS
+   pixels at every `size` these chips render at - 9px in the stream fixture
+   list up to 15px in the live panel - instead of scaling into a blob on the
+   small ones. */
+const KIT_STROKE_WIDTH = 1
+const KIT_HALO_WIDTH = 3
+
+/* Neutral kit for a team that has no colours saved. Semantic tokens, not the
+   light greys the bracket used to hardcode: a light-grey silhouette on a dark
+   canvas is indistinguishable from a real WHITE kit, which is a lie about the
+   team rather than a missing value. Rendered at reduced opacity so "unknown"
+   never reads as "this team plays in grey".
+
+   This is why KitSwatch no longer returns null: an empty slot next to one team
+   name and a kit next to the other made the two rows sit differently, and the
+   caller could not tell "no colours" from "component decided not to render". */
+const KIT_NEUTRAL_FILL = "var(--chakra-colors-bg-muted)"
+const KIT_NEUTRAL_OPACITY = 0.5
+
 export function KitSwatch({
     jersey,
     shorts,
     size = 12,
-    borderColor = "blackAlpha.400",
+    borderColor = "blackAlpha.800",
+    haloColor = "whiteAlpha.800",
     rounded = "2px",
 }: {
     jersey?: string | null
     shorts?: string | null
     size?: number
     borderColor?: string
+    /** Outer ring, meant to CONTRAST with `borderColor`. A caller that flips
+     *  the border to a light colour for a dark surface must flip this too,
+     *  or the kit gets two light outlines and no contrast (see LiveScoreBug). */
+    haloColor?: string
     rounded?: string
 }) {
     const t = useTranslation()
-    if (!jersey && !shorts) return null
     const h = Math.round(size * 1.3)
+    const known = !!jersey || !!shorts
     // Mirror the old single-colour fallback: when only one colour is set the
     // whole kit takes that colour (shirt and shorts alike).
-    const shirtColor = jersey ?? shorts ?? undefined
-    const shortsColor = shorts ?? jersey ?? undefined
+    const shirtColor = jersey ?? shorts ?? KIT_NEUTRAL_FILL
+    const shortsColor = shorts ?? jersey ?? KIT_NEUTRAL_FILL
     const stroke = kitStroke(borderColor)
+    const halo = kitStroke(haloColor)
     return (
         <Box
             as="span"
@@ -125,7 +165,10 @@ export function KitSwatch({
             h={`${h}px`}
             borderRadius={rounded}
             flexShrink={0}
-            title={t.components.jersey.kitColorTitle}
+            opacity={known ? 1 : KIT_NEUTRAL_OPACITY}
+            title={known
+                ? t.components.jersey.kitColorTitle
+                : t.components.jersey.kitUnknownTitle}
             aria-hidden
         >
             <chakra.svg
@@ -135,12 +178,31 @@ export function KitSwatch({
                 display="block"
                 overflow="visible"
             >
-                {/* Shorts first so the shirt's hem overlaps the waistband cleanly. */}
+                {/* Halos first, unfilled: everything below paints over their
+                    inner half, leaving the outer ring. */}
+                <path
+                    d={KIT_SHORTS_PATH}
+                    fill="none"
+                    stroke={halo}
+                    strokeWidth={KIT_HALO_WIDTH}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+                <path
+                    d={KIT_SHIRT_PATH}
+                    fill="none"
+                    stroke={halo}
+                    strokeWidth={KIT_HALO_WIDTH}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                />
+                {/* Shorts before the shirt so the shirt's hem overlaps the
+                    waistband cleanly. */}
                 <path
                     d={KIT_SHORTS_PATH}
                     fill={shortsColor}
                     stroke={stroke}
-                    strokeWidth={0.75}
+                    strokeWidth={KIT_STROKE_WIDTH}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                 />
@@ -148,7 +210,7 @@ export function KitSwatch({
                     d={KIT_SHIRT_PATH}
                     fill={shirtColor}
                     stroke={stroke}
-                    strokeWidth={0.75}
+                    strokeWidth={KIT_STROKE_WIDTH}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                 />
