@@ -110,6 +110,16 @@ public class RecordingRequestNotifier {
         emailService.sendHtml(to, subject, html);
     }
 
+    /** The admin's own message, when they wrote one while approving or
+     *  rejecting. Same "Napomena: …" paragraph in both mails; empty when the
+     *  admin left the box blank, which is the common case. */
+    private String adminNoteHtml(MatchRecordingRequest r) {
+        String note = r.getAdminNote();
+        return note == null || note.isBlank()
+                ? ""
+                : messages.t("mail.recording.noteLine", EmailService.escapeHtml(note));
+    }
+
     /** Sent when an admin approves the request - states the price and asks for payment. */
     public void notifyApproved(MatchRecordingRequest r, Matches match) {
         String to = r.getContactEmail();
@@ -119,6 +129,7 @@ public class RecordingRequestNotifier {
                 "intro", messages.t("mail.recording.approved.intro",
                         kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match)), formatEurCents(r.getPriceEurCents())),
                 "goal", goalHtml(r),
+                "noteLine", adminNoteHtml(r),
                 "thanks", messages.t("mail.recording.approved.thanks"),
                 "terms", termsHtml()));
         String subject = messages.t("mail.recording.approved.subject");
@@ -134,8 +145,7 @@ public class RecordingRequestNotifier {
         String body = MailTemplates.render("recording-request-rejected", Map.of(
                 "intro", messages.t("mail.recording.rejected.intro",
                         kindLabel(r.getKind()), EmailService.escapeHtml(matchLabel(match))),
-                "noteLine", r.getAdminNote() == null || r.getAdminNote().isBlank()
-                        ? "" : messages.t("mail.recording.noteLine", EmailService.escapeHtml(r.getAdminNote()))));
+                "noteLine", adminNoteHtml(r)));
         String subject = messages.t("mail.recording.rejected.subject");
         String html = emailService.shell(subject, body, null, null);
         emailService.sendHtml(to, subject, html);

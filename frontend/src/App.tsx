@@ -84,6 +84,9 @@ const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournament
 const RecordingRequestStatusPage = lazyWithReload(() => import('./pages/RecordingRequestStatusPage'))
 const AdminHomePage = lazyWithReload(() => import('./pages/AdminHomePage'))
 const AdminModulePage = lazyWithReload(() => import('./pages/AdminModulePage'))
+const AdminStreamDetailPage = lazyWithReload(() => import('./pages/AdminStreamDetailPage'))
+const AdminTournamentDetailPage = lazyWithReload(() => import('./pages/AdminTournamentDetailPage'))
+const AdminRecordingDetailPage = lazyWithReload(() => import('./pages/AdminRecordingDetailPage'))
 
 /** Suspense fallback while a route chunk is being fetched. Sized to
  *  the main content area so the page doesn't jump when the real page
@@ -390,6 +393,34 @@ function AppShell() {
                         element={
                             <RequireAdmin>
                                 <AdminModulePage />
+                            </RequireAdmin>
+                        }
+                    />
+                    {/* One linked stream, on its own screen. Declared AFTER the
+                        generic module route - it is more specific, so router v7
+                        ranks it higher regardless of order, but keeping it next
+                        to its parent is what makes that obvious. */}
+                    <Route
+                        path="/admin/stream/:uuid"
+                        element={
+                            <RequireAdmin>
+                                <AdminStreamDetailPage />
+                            </RequireAdmin>
+                        }
+                    />
+                    <Route
+                        path="/admin/turniri/:id"
+                        element={
+                            <RequireAdmin>
+                                <AdminTournamentDetailPage />
+                            </RequireAdmin>
+                        }
+                    />
+                    <Route
+                        path="/admin/baza-snimki/:uuid"
+                        element={
+                            <RequireAdmin>
+                                <AdminRecordingDetailPage />
                             </RequireAdmin>
                         }
                     />

@@ -12,12 +12,14 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link as RouterLink } from "react-router-dom"
 import {
     FiCheck,
     FiDollarSign,
     FiEdit2,
     FiFilm,
     FiLink,
+    FiMail,
     FiX,
 } from "react-icons/fi"
 import {
@@ -145,10 +147,17 @@ function RecordingRequestRow({
         null | "approve" | "reject" | "paid" | "linkRecording" | "link"
     >(null)
 
-    // Reject flow: the button first reveals an inline textarea for the
-    // (optional) admin note, the second click confirms.
+    // ONE optional message, shared by both decisions - the backend stores it
+    // as `adminNote` either way and the notifier embeds the same "Napomena: …"
+    // paragraph in the approved and the rejected mail. Left blank, both mails
+    // go out exactly as before.
+    //
+    // Reject additionally keeps its two-step confirm (`rejecting`): rejecting
+    // is the one irreversible decision here - the request can never leave
+    // REJECTED - while approving is the expected outcome and stays one click.
     const [rejecting, setRejecting] = useState(false)
-    const [rejectNote, setRejectNote] = useState("")
+    const [noteOpen, setNoteOpen] = useState(false)
+    const [adminNote, setAdminNote] = useState("")
 
     // DELIVERED requests hide the library picker behind an "Uredi" toggle so
     // the common case (already correctly linked) stays a one-liner.
@@ -170,7 +179,12 @@ function RecordingRequestRow({
         if (busy) return
         try {
             setBusy("approve")
-            await setRecordingRequestStatus(req.uuid, { status: "APPROVED" })
+            await setRecordingRequestStatus(req.uuid, {
+                status: "APPROVED",
+                adminNote: adminNote.trim() || undefined,
+            })
+            setNoteOpen(false)
+            setAdminNote("")
             onChanged()
         } finally {
             setBusy(null)
@@ -183,10 +197,11 @@ function RecordingRequestRow({
             setBusy("reject")
             await setRecordingRequestStatus(req.uuid, {
                 status: "REJECTED",
-                adminNote: rejectNote.trim() || undefined,
+                adminNote: adminNote.trim() || undefined,
             })
             setRejecting(false)
-            setRejectNote("")
+            setNoteOpen(false)
+            setAdminNote("")
             onChanged()
         } finally {
             setBusy(null)
@@ -361,6 +376,26 @@ function RecordingRequestRow({
                     </Text>
                 )}
 
+                {/* Reply to whoever filed this. Shown for every status: the
+                    note on a request is often a question ("može li jeftinije",
+                    "koja je ovo utakmica"), and answering it is not part of
+                    the approve/reject flow. Hands the address and a subject to
+                    the mailer module through the URL - it is mounted without
+                    props, like every admin screen. The recipient's reply comes
+                    back to app.mail.reply-to, NOT to the From address (that
+                    domain has no MX record). */}
+                {req.contactEmail && (
+                    <HStack gap="2" wrap="wrap">
+                        {/* No `disabled` gate: with asChild this renders an
+                            <a>, and a disabled attribute there is invalid. */}
+                        <Button asChild size="xs" variant="outline" colorPalette="pitch">
+                            <RouterLink to={replyMailHref(req)}>
+                                <FiMail /> {t.recordingRequest.adminRequests.replyAction}
+                            </RouterLink>
+                        </Button>
+                    </HStack>
+                )}
+
                 {/* ── REQUESTED: approve / reject ── */}
                 {status === "REQUESTED" && (
                     <Stack gap="2">
@@ -384,36 +419,65 @@ function RecordingRequestRow({
                             >
                                 <FiX /> {t.common.reject}
                             </Button>
+                            {/* Opens the same box the reject flow shows. Hidden
+                                while rejecting - the box is already open then. */}
+                            {!rejecting && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    disabled={busy != null}
+                                    onClick={() => setNoteOpen((v) => !v)}
+                                >
+                                    <FiEdit2 /> {t.recordingRequest.adminRequests.addMessage}
+                                </Button>
+                            )}
                         </HStack>
-                        {rejecting && (
+                        {(rejecting || noteOpen) && (
                             <Stack gap="2">
                                 <Textarea
                                     size="sm"
                                     rows={2}
-                                    placeholder={t.recordingRequest.adminRequests.rejectPlaceholder}
-                                    value={rejectNote}
-                                    onChange={(e) => setRejectNote(e.target.value)}
+                                    maxLength={1000}
+                                    placeholder={t.recordingRequest.adminRequests.messagePlaceholder}
+                                    value={adminNote}
+                                    onChange={(e) => setAdminNote(e.target.value)}
                                 />
-                                <HStack gap="2" justify="flex-end">
-                                    <Button
-                                        size="xs"
-                                        variant="ghost"
-                                        disabled={busy != null}
-                                        onClick={() => { setRejecting(false); setRejectNote("") }}
-                                    >
-                                        {t.common.cancel}
-                                    </Button>
-                                    <Button
-                                        size="xs"
-                                        variant="solid"
-                                        colorPalette="red"
-                                        disabled={busy != null}
-                                        loading={busy === "reject"}
-                                        onClick={confirmReject}
-                                    >
-                                        {t.recordingRequest.adminRequests.confirmReject}
-                                    </Button>
-                                </HStack>
+                                <Text fontSize="xs" color="fg.muted">
+                                    {t.recordingRequest.adminRequests.messageHint}
+                                </Text>
+                                {rejecting ? (
+                                    <HStack gap="2" justify="flex-end">
+                                        <Button
+                                            size="xs"
+                                            variant="ghost"
+                                            disabled={busy != null}
+                                            onClick={() => { setRejecting(false); setAdminNote("") }}
+                                        >
+                                            {t.common.cancel}
+                                        </Button>
+                                        <Button
+                                            size="xs"
+                                            variant="solid"
+                                            colorPalette="red"
+                                            disabled={busy != null}
+                                            loading={busy === "reject"}
+                                            onClick={confirmReject}
+                                        >
+                                            {t.recordingRequest.adminRequests.confirmReject}
+                                        </Button>
+                                    </HStack>
+                                ) : (
+                                    <HStack gap="2" justify="flex-end">
+                                        <Button
+                                            size="xs"
+                                            variant="ghost"
+                                            disabled={busy != null}
+                                            onClick={() => { setNoteOpen(false); setAdminNote("") }}
+                                        >
+                                            {t.common.cancel}
+                                        </Button>
+                                    </HStack>
+                                )}
                             </Stack>
                         )}
                     </Stack>
@@ -522,6 +586,22 @@ function RecordingRequestRow({
 }
 
 /* ──────────────────────────── helpers ──────────────────────────── */
+
+/**
+ * Deep link into the admin mailer with the recipient and a subject already
+ * filled in - see the "Odgovori" button above. The mailer reads `to` /
+ * `naslov` once on mount and leaves both editable, so this is a starting
+ * point, not a locked-in send.
+ */
+function replyMailHref(req: RecordingRequestDto): string {
+    const params = new URLSearchParams({
+        to: req.contactEmail ?? "",
+        naslov: t.recordingRequest.adminRequests.replySubject(
+            `${req.team1Name} — ${req.team2Name}`,
+        ),
+    })
+    return `/admin/posalji-mail?${params.toString()}`
+}
 
 /** dd.mm.yyyy HH:mm, "-" for missing/unparsable values. */
 function formatDateTime(iso: string | null | undefined): string {

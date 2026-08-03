@@ -477,6 +477,11 @@ public class AdminMailController {
                         EmailService.escapeHtml(RecordingRequestNotifier.matchLabel(match)),
                         RecordingRequestNotifier.formatEurCents(r.getPriceEurCents())),
                 "goal", goalHtml(r),
+                // The note the admin typed when approving - the notifier
+                // renders the same paragraph, and a re-send that dropped it
+                // would read as a different decision than the first mail.
+                "noteLine", r.getAdminNote() == null || r.getAdminNote().isBlank()
+                        ? "" : messages.t("mail.recording.noteLine", EmailService.escapeHtml(r.getAdminNote())),
                 "thanks", messages.t("mail.recording.approved.thanks"),
                 "terms", termsHtml()));
         String heading = messages.t("mail.recording.approved.subject");

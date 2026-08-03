@@ -43,6 +43,23 @@ public class EmailService {
     @ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5181")
     String baseUrl;
 
+    /**
+     * Address a recipient's reply is delivered to. The {@code From} domain is
+     * send-only (no MX record on futsal-turniri.com, and Resend does not
+     * receive), so without this header every reply is lost - see
+     * {@code app.mail.reply-to}. Optional for the same reason as
+     * {@link #smtpUser}: an empty config value is a missing one, and a blank
+     * Reply-To must simply mean "don't set the header" - in which case
+     * {@link #shell} tells the reader the mailbox takes no replies.
+     */
+    @ConfigProperty(name = "app.mail.reply-to")
+    java.util.Optional<String> replyTo;
+
+    /** The configured Reply-To, or empty when replies go nowhere. */
+    private java.util.Optional<String> replyToAddress() {
+        return replyTo.map(String::trim).filter(r -> !r.isEmpty());
+    }
+
     /** True only when SMTP credentials are present; otherwise no mail is sent. */
     public boolean isReady() {
         return smtpUser.filter(u -> !u.isBlank()).isPresent();
@@ -61,7 +78,11 @@ public class EmailService {
         if (!isReady()) return;
         if (to == null || to.isBlank() || subject == null || html == null) return;
         try {
-            mailer.send(Mail.withHtml(to.trim(), subject, html))
+            Mail mail = Mail.withHtml(to.trim(), subject, html);
+            // Explicit lambda, not a method reference: Mail overloads
+            // setReplyTo(String) with setReplyTo(String...).
+            replyToAddress().ifPresent(r -> mail.setReplyTo(r));
+            mailer.send(mail)
                     .subscribe().with(
                             ignored -> { },
                             err -> LOG.warnf(err, "Email: send failed to %s", to));
@@ -128,7 +149,20 @@ public class EmailService {
                 "heading", escapeHtml(heading),
                 "body", bodyHtml,
                 "cta", cta,
-                "footer", messages.t("mail.shell.footer")));
+                "footer", footer()));
+    }
+
+    /**
+     * The footer sentence(s) under every mail. When no Reply-To is configured
+     * a reply from the recipient is delivered nowhere (the From domain has no
+     * MX record), so the mail has to say so rather than look answerable.
+     * Setting {@code app.mail.reply-to} removes the sentence automatically.
+     */
+    private String footer() {
+        String base = messages.t("mail.shell.footer");
+        return replyToAddress().isPresent()
+                ? base
+                : base + " " + messages.t("mail.shell.noReply");
     }
 
     /** Minimal HTML escaping for user-supplied text interpolated into email HTML. */

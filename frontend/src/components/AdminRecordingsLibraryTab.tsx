@@ -4,6 +4,7 @@ import {
     Box,
     Button,
     Card,
+    Flex,
     HStack,
     Input,
     NativeSelect,
@@ -13,28 +14,14 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-    FiCheck,
-    FiDownload,
-    FiEdit2,
-    FiPlus,
-    FiRepeat,
-    FiTrash2,
-    FiUploadCloud,
-    FiX,
-} from "react-icons/fi"
+import { Link as RouterLink } from "react-router-dom"
+import { FiChevronRight, FiPlus, FiUploadCloud, FiX } from "react-icons/fi"
 import {
     completeMatchRecordingUpload,
     createMatchRecordingUploadUrl,
-    deleteMatchRecording,
-    fetchMatchRecordingDownloadLink,
     fetchMatchRecordings,
-    reassignMatchRecording,
-    renameMatchRecording,
-    type MatchRecordingDto,
 } from "../api/matchRecordings"
 import { fetchTournaments } from "../api/tournaments"
-import type { TournamentCard } from "../types/tournaments"
 import { fetchSchedule } from "../api/schedule"
 import { qk } from "../queryClient"
 import { showError } from "../toaster"
@@ -468,12 +455,46 @@ export function AdminRecordingsLibraryTab() {
                     ) : (
                         <VStack align="stretch" gap="2">
                             {sortedRecordings.map((rec) => (
-                                <RecordingRow
+                                /* The row opens the recording. Rename, re-map
+                                   and delete used to expand INSIDE the row,
+                                   which turned the list into a form; they now
+                                   live on /admin/baza-snimki/{uuid}. */
+                                <Flex
                                     key={rec.uuid}
-                                    rec={rec}
-                                    tournaments={tournaments ?? []}
-                                    onChanged={invalidate}
-                                />
+                                    asChild
+                                    align="center"
+                                    justify="space-between"
+                                    gap="3"
+                                    p="3"
+                                    borderWidth="1px"
+                                    borderColor="border"
+                                    rounded="lg"
+                                    transition="border-color 0.15s ease, background 0.15s ease"
+                                    _hover={{ borderColor: "pitch.500", bg: "bg.subtle" }}
+                                >
+                                    <RouterLink to={`/admin/baza-snimki/${rec.uuid}`}>
+                                        <Box minW="0" flex="1">
+                                            <Text fontSize="sm" fontWeight={700} color="fg.ink" truncate>
+                                                {[rec.team1Name, rec.team2Name].filter(Boolean).join(" — ") || rec.tournamentName}
+                                            </Text>
+                                            <Text fontSize="xs" color="fg.muted" truncate>
+                                                {rec.tournamentName}
+                                                {rec.kickoffAt ? ` · ${formatKickoff(rec.kickoffAt)}` : ""}
+                                            </Text>
+                                            <Text fontSize="xs" fontFamily="mono" color="fg.subtle" truncate>
+                                                {rec.fileName ?? rec.uuid}
+                                            </Text>
+                                        </Box>
+                                        <HStack gap="2" flexShrink={0}>
+                                            {rec.videoSizeBytes != null && (
+                                                <Badge size="sm" variant="subtle" colorPalette="purple">
+                                                    {formatFileSize(rec.videoSizeBytes)}
+                                                </Badge>
+                                            )}
+                                            <Box color="fg.muted"><FiChevronRight /></Box>
+                                        </HStack>
+                                    </RouterLink>
+                                </Flex>
                             ))}
                         </VStack>
                     )}
@@ -484,219 +505,3 @@ export function AdminRecordingsLibraryTab() {
 }
 
 export default AdminRecordingsLibraryTab
-
-function RecordingRow({
-    rec,
-    tournaments,
-    onChanged,
-}: {
-    rec: MatchRecordingDto
-    tournaments: TournamentCard[]
-    onChanged: () => void
-}) {
-    const t = useTranslation()
-    const [busy, setBusy] = useState<null | "download" | "rename" | "delete" | "reassign">(null)
-    const [renaming, setRenaming] = useState(false)
-    const [nameInput, setNameInput] = useState(rec.fileName ?? "")
-
-    // Re-map picker: pre-filled with the recording's current tournament/match
-    // so fixing a wrong match within the same tournament is a one-select fix.
-    const [reassigning, setReassigning] = useState(false)
-    const [reassignTournamentUuid, setReassignTournamentUuid] = useState(rec.tournamentUuid)
-    const [reassignMatchId, setReassignMatchId] = useState<number | null>(rec.matchId)
-
-    const { data: reassignSchedule, isLoading: reassignScheduleLoading } = useQuery({
-        queryKey: qk.schedule(reassignTournamentUuid),
-        queryFn: () => fetchSchedule(reassignTournamentUuid),
-        enabled: reassigning && !!reassignTournamentUuid,
-    })
-    const reassignPickableMatches = (reassignSchedule?.matches ?? []).filter(
-        (m) => m.team1Name && m.team2Name,
-    )
-
-    function openReassign() {
-        setReassignTournamentUuid(rec.tournamentUuid)
-        setReassignMatchId(rec.matchId)
-        setReassigning(true)
-    }
-
-    async function confirmReassign() {
-        if (busy || reassignMatchId == null || reassignMatchId === rec.matchId) return
-        try {
-            setBusy("reassign")
-            await reassignMatchRecording(rec.uuid, reassignMatchId)
-            setReassigning(false)
-            onChanged()
-        } finally {
-            setBusy(null)
-        }
-    }
-
-    async function download() {
-        if (busy) return
-        try {
-            setBusy("download")
-            const { url } = await fetchMatchRecordingDownloadLink(rec.uuid)
-            window.open(url, "_blank")
-        } finally {
-            setBusy(null)
-        }
-    }
-
-    async function confirmRename() {
-        if (busy || !nameInput.trim()) return
-        try {
-            setBusy("rename")
-            await renameMatchRecording(rec.uuid, nameInput.trim())
-            setRenaming(false)
-            onChanged()
-        } finally {
-            setBusy(null)
-        }
-    }
-
-    async function remove() {
-        if (busy) return
-        if (!confirm(t.recordingRequest.adminLibrary.confirmDelete)) return
-        try {
-            setBusy("delete")
-            await deleteMatchRecording(rec.uuid)
-            onChanged()
-        } finally {
-            setBusy(null)
-        }
-    }
-
-    return (
-        <Box p="2.5" bg="bg.subtle" rounded="md" borderWidth="1px" borderColor="border.subtle">
-            <VStack align="stretch" gap="2">
-            <HStack justify="space-between" gap="2" wrap="wrap" align="start">
-                <VStack align="start" gap="0.5" flex="1" minW="0">
-                    <Text fontSize="sm" fontWeight={600} truncate>
-                        {rec.team1Name ?? "?"} — {rec.team2Name ?? "?"}
-                    </Text>
-                    <Text fontSize="xs" color="fg.muted" truncate maxW="full">
-                        {rec.tournamentName}{rec.kickoffAt ? ` · ${formatKickoff(rec.kickoffAt)}` : ""}
-                    </Text>
-                    {renaming ? (
-                        <HStack gap="1.5" mt="1">
-                            <Input
-                                size="xs"
-                                value={nameInput}
-                                onChange={(e) => setNameInput(e.target.value)}
-                                autoFocus
-                            />
-                            <Button size="2xs" variant="solid" colorPalette="pitch" loading={busy === "rename"} onClick={confirmRename}>
-                                <FiCheck />
-                            </Button>
-                            <Button size="2xs" variant="ghost" onClick={() => setRenaming(false)}>
-                                <FiX />
-                            </Button>
-                        </HStack>
-                    ) : (
-                        <Text fontSize="xs" fontFamily="mono" truncate maxW="full">
-                            {rec.fileName ?? rec.uuid}
-                        </Text>
-                    )}
-                </VStack>
-                <VStack align="end" gap="1" flexShrink={0}>
-                    {rec.videoSizeBytes != null && (
-                        <Badge size="sm" variant="subtle" colorPalette="purple">
-                            {formatFileSize(rec.videoSizeBytes)}
-                        </Badge>
-                    )}
-                    <HStack gap="1">
-                        <Button size="2xs" variant="ghost" loading={busy === "download"} onClick={download}>
-                            <FiDownload />
-                        </Button>
-                        {!renaming && (
-                            <Button size="2xs" variant="ghost" onClick={() => { setNameInput(rec.fileName ?? ""); setRenaming(true) }}>
-                                <FiEdit2 />
-                            </Button>
-                        )}
-                        <Button
-                            size="2xs"
-                            variant="ghost"
-                            onClick={() => (reassigning ? setReassigning(false) : openReassign())}
-                        >
-                            <FiRepeat />
-                        </Button>
-                        <Button size="2xs" variant="ghost" colorPalette="red" loading={busy === "delete"} onClick={remove}>
-                            <FiTrash2 />
-                        </Button>
-                    </HStack>
-                </VStack>
-            </HStack>
-
-            {reassigning && (
-                <Box borderWidth="1px" borderColor="border.emphasized" bg="bg.muted" rounded="md" p="2.5">
-                    <VStack align="stretch" gap="2">
-                        <Text fontSize="xs" color="fg.muted">{t.recordingRequest.adminLibrary.reassignLabel}</Text>
-                        <NativeSelect.Root size="sm">
-                            <NativeSelect.Field
-                                value={reassignTournamentUuid}
-                                onChange={(e) => {
-                                    setReassignTournamentUuid((e.target as HTMLSelectElement).value)
-                                    setReassignMatchId(null)
-                                }}
-                            >
-                                <option value="">{t.recordingRequest.adminLibrary.pickTournament}</option>
-                                {tournaments.map((tn) => (
-                                    <option key={tn.uuid} value={tn.uuid}>{tn.name}</option>
-                                ))}
-                            </NativeSelect.Field>
-                        </NativeSelect.Root>
-
-                        {reassignTournamentUuid && (
-                            reassignScheduleLoading ? (
-                                <HStack gap="2" color="fg.muted">
-                                    <Spinner size="xs" />
-                                    <Text fontSize="sm">{t.recordingRequest.adminLibrary.loadingMatches}</Text>
-                                </HStack>
-                            ) : reassignPickableMatches.length === 0 ? (
-                                <Text fontSize="sm" color="fg.muted">
-                                    {t.recordingRequest.adminLibrary.noMatchesTeams}
-                                </Text>
-                            ) : (
-                                <NativeSelect.Root size="sm">
-                                    <NativeSelect.Field
-                                        value={reassignMatchId == null ? "" : String(reassignMatchId)}
-                                        onChange={(e) => {
-                                            const v = (e.target as HTMLSelectElement).value
-                                            setReassignMatchId(v ? Number(v) : null)
-                                        }}
-                                    >
-                                        <option value="">{t.recordingRequest.adminLibrary.pickMatch}</option>
-                                        {reassignPickableMatches.map((m) => (
-                                            <option key={m.matchId} value={String(m.matchId)}>
-                                                {m.team1Name} – {m.team2Name}
-                                                {m.kickoffAt ? `, ${formatKickoff(m.kickoffAt)}` : ""}
-                                            </option>
-                                        ))}
-                                    </NativeSelect.Field>
-                                </NativeSelect.Root>
-                            )
-                        )}
-
-                        <HStack gap="2" justify="flex-end">
-                            <Button size="xs" variant="ghost" disabled={busy != null} onClick={() => setReassigning(false)}>
-                                {t.common.cancel}
-                            </Button>
-                            <Button
-                                size="xs"
-                                variant="solid"
-                                colorPalette="pitch"
-                                disabled={busy != null || reassignMatchId == null || reassignMatchId === rec.matchId}
-                                loading={busy === "reassign"}
-                                onClick={confirmReassign}
-                            >
-                                <FiCheck /> {t.recordingRequest.adminLibrary.reassignConfirm}
-                            </Button>
-                        </HStack>
-                    </VStack>
-                </Box>
-            )}
-            </VStack>
-        </Box>
-    )
-}

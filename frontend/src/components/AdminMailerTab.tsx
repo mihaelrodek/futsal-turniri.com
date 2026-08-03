@@ -14,6 +14,7 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSearchParams } from "react-router-dom"
 import { isAxiosError } from "axios"
 import { FiAlertCircle, FiCheck, FiMail, FiSend, FiX } from "react-icons/fi"
 import {
@@ -46,14 +47,22 @@ import { useTranslation } from "../i18n"
  * silently drifts.
  *
  * <p>Mounted prop-less by the admin module registry (src/admin/modules.tsx).
+ *
+ * <p>Deep-linkable: {@code /admin/posalji-mail?to=…&naslov=…} pre-fills the
+ * free-form recipient and subject. That is how "Odgovori" on a recording
+ * request lands here - the registry mounts every admin screen without props,
+ * so the URL is the only channel a sibling module can hand something over.
+ * Read once, on mount: the fields stay freely editable afterwards, and
+ * re-applying them on every render would fight the admin's own typing.
  */
 export default function AdminMailerTab() {
     const t = useTranslation()
     const queryClient = useQueryClient()
+    const [searchParams] = useSearchParams()
 
     const [templateKey, setTemplateKey] = useState<AdminMailTemplateKey>("FREEFORM")
-    const [toEmail, setToEmail] = useState("")
-    const [subject, setSubject] = useState("")
+    const [toEmail, setToEmail] = useState(() => searchParams.get("to")?.trim() ?? "")
+    const [subject, setSubject] = useState(() => searchParams.get("naslov")?.trim() ?? "")
     const [bodyText, setBodyText] = useState("")
     const [requestUuid, setRequestUuid] = useState("")
     const [search, setSearch] = useState("")
