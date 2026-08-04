@@ -39,6 +39,26 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
                 matchId, teamId, MatchEventType.FOUL).firstResultOptional();
     }
 
+    /** How many yellows a player already has in this match - a second one is a
+     *  sending-off, so the caller turns it into a red as well. */
+    public long yellowCount(Long matchId, Long playerId) {
+        return count("match.id = ?1 and player.id = ?2 and type = ?3",
+                matchId, playerId, MatchEventType.YELLOW_CARD);
+    }
+
+    /**
+     * The YELLOW that produced a red - same player, same minute.
+     *
+     * A second yellow is stored as two rows and rendered as one; deleting the
+     * red therefore has to take its yellow with it, or the timeline is left
+     * with a lone yellow for a player who was sent off.
+     */
+    public java.util.Optional<MatchEvent> findPairedYellow(Long matchId, Long playerId, Integer minute) {
+        if (playerId == null || minute == null) return java.util.Optional.empty();
+        return find("match.id = ?1 and player.id = ?2 and minute = ?3 and type = ?4 order by id desc",
+                matchId, playerId, minute, MatchEventType.YELLOW_CARD).firstResultOptional();
+    }
+
     public boolean playerSentOff(Long matchId, Long playerId) {
         return count("match.id = ?1 and player.id = ?2 and type = ?3",
                 matchId, playerId, MatchEventType.RED_CARD) > 0;

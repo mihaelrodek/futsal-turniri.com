@@ -2416,6 +2416,7 @@ export const hr = {
             tournamentFinishedTitle: "Turnir je završen",
             tournamentFinishedDesc: (count: number) => `Sve utakmice (${count}) su odigrane i zabilježene.`,
             showFinished: (count: number) => `Pokaži završene (${count})`,
+            pickMatch: "Izaberi utakmicu",
             upcomingHeading: "Nadolazeće utakmice",
             upcomingHint: "Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.",
             fullscreenButton: "Puni zaslon",

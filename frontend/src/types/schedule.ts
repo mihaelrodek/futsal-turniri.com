@@ -39,6 +39,10 @@ export type ScheduledMatch = {
     slot2Label: string | null
     slot1PredictedName: string | null
     slot2PredictedName: string | null
+    /** DB ids behind the predicted names - the key for the kit-colour lookup.
+     *  Null while the slot is still undecided. */
+    slot1PredictedTeamId?: number | null
+    slot2PredictedTeamId?: number | null
     score1: number | null
     score2: number | null
     kickoffAt: string | null
@@ -125,6 +129,10 @@ export type SchedulePreviewMatch = {
     slot2Label: string | null
     slot1PredictedName: string | null
     slot2PredictedName: string | null
+    /** DB ids behind the predicted names - the key for the kit-colour lookup.
+     *  Null while the slot is still undecided. */
+    slot1PredictedTeamId?: number | null
+    slot2PredictedTeamId?: number | null
     /** False for knockout placeholders (teams decided after the group stage). */
     teamsKnown: boolean
     /** 0-based index in the single-court plan order - the identity a

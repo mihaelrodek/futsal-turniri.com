@@ -591,7 +591,7 @@ function MatchRow({
                     onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
                 >
                     <HStack gap="2" justify="flex-end" minW="0">
-                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={12} />
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id ?? match.slot1PredictedTeamId} size={12} />
                         <Text
                             fontSize={nameFont}
                             fontWeight={700}
@@ -628,7 +628,7 @@ function MatchRow({
                         >
                             {t2Name}
                         </Text>
-                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={12} />
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id ?? match.slot2PredictedTeamId} size={12} />
                     </HStack>
                 </Box>
             </VStack>
@@ -810,7 +810,7 @@ function MatchCard({
                     gap="2"
                 >
                     <HStack gap="1.5" justify="flex-end" minW="0">
-                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={10} />
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id ?? match.slot1PredictedTeamId} size={10} />
                         <Text
                             fontSize="13px"
                             fontWeight={700}
@@ -847,7 +847,7 @@ function MatchCard({
                         >
                             {t2Name}
                         </Text>
-                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={10} />
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id ?? match.slot2PredictedTeamId} size={10} />
                     </HStack>
                 </Box>
             </VStack>
@@ -970,7 +970,7 @@ function MatchCompactRow({
                     undecided knockout slots. */}
                 <VStack flex="1" minW="0" gap="0.5" align="stretch">
                     <HStack gap="1.5" minW="0">
-                        <TeamKitChip colors={kitColors} teamId={match.team1Id} size={10} />
+                        <TeamKitChip colors={kitColors} teamId={match.team1Id ?? match.slot1PredictedTeamId} size={10} />
                         <Text
                             fontSize={{ base: "13px", md: "sm" }}
                             fontWeight={700}
@@ -982,7 +982,7 @@ function MatchCompactRow({
                         </Text>
                     </HStack>
                     <HStack gap="1.5" minW="0">
-                        <TeamKitChip colors={kitColors} teamId={match.team2Id} size={10} />
+                        <TeamKitChip colors={kitColors} teamId={match.team2Id ?? match.slot2PredictedTeamId} size={10} />
                         <Text
                             fontSize={{ base: "13px", md: "sm" }}
                             fontWeight={700}

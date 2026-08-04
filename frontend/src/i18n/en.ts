@@ -2334,6 +2334,7 @@ export const en: Dictionary = {
             tournamentFinishedTitle: "Tournament finished",
             tournamentFinishedDesc: (count: number) => `All matches (${count}) have been played and recorded.`,
             showFinished: (count: number) => `Show finished (${count})`,
+            pickMatch: "Pick a match",
             upcomingHeading: "Upcoming matches",
             upcomingHint: "Pairings fill in once the group stage ends - until then it shows TBD.",
             fullscreenButton: "Fullscreen",

@@ -39,6 +39,10 @@ const ACTION_CARD_RED = "#c0392b"
 /** A translucent tint of a colour - works on any (light/dark) surface. */
 const actionTint = (hex: string, pct: number) => `color-mix(in srgb, ${hex} ${pct}%, transparent)`
 
+/* Card marks. `rounded="sm"` is 8px in this theme (system.ts) - on a 15x19
+   box that is almost an oval, which is why these read as blobs. Cards use an
+   explicit 2px radius plus a hairline edge so they look like the thing they
+   represent. */
 export function ActionButton({
     type,
     penalty,
@@ -92,7 +96,15 @@ export function ActionButton({
         ) : type === "EXCLUSION" ? (
             <Text as="span" fontSize="lg" lineHeight="1">🕑</Text>
         ) : (
-            <Box as="span" w="15px" h="19px" rounded="sm" bg={type === "YELLOW_CARD" ? ACTION_CARD_YELLOW : ACTION_CARD_RED} />
+            <Box
+                as="span"
+                w="14px"
+                h="19px"
+                borderRadius="2px"
+                borderWidth="1px"
+                borderColor="blackAlpha.400"
+                bg={type === "YELLOW_CARD" ? ACTION_CARD_YELLOW : ACTION_CARD_RED}
+            />
         )
     return (
         <chakra.button
@@ -147,6 +159,38 @@ export function ActionButton({
  *  the name, an optional trailing marker (card emoji), and a checkmark when
  *  selected. Used by LiveMatchPanel's pairing-entry roster columns and by
  *  ShootoutTeamColumn below. */
+
+
+/**
+ * Pair a second yellow with the red it produced.
+ *
+ * The backend records a second yellow as TWO events - the yellow the organizer
+ * tapped and an automatic red at the same minute for the same player - because
+ * both are real cards and both go to the stream overlay. On a timeline they are
+ * one incident, so the yellow is hidden and the red renders as "🟨🟥".
+ *
+ * Matched on player + minute, the only thing the two share; a red with no
+ * yellow beside it stays a straight red.
+ */
+export function secondYellowPairs(events: MatchEventDto[]): {
+    hiddenYellowIds: Set<number>
+    secondYellowRedIds: Set<number>
+} {
+    const hiddenYellowIds = new Set<number>()
+    const secondYellowRedIds = new Set<number>()
+    for (const red of events) {
+        if (red.type !== "RED_CARD" || red.playerId == null) continue
+        const yellow = events.find((e) =>
+            e.type === "YELLOW_CARD"
+            && e.playerId === red.playerId
+            && e.minute === red.minute
+            && !hiddenYellowIds.has(e.id))
+        if (!yellow) continue
+        hiddenYellowIds.add(yellow.id)
+        secondYellowRedIds.add(red.id)
+    }
+    return { hiddenYellowIds, secondYellowRedIds }
+}
 
 /**
  * Which half an event belongs to.
@@ -371,6 +415,9 @@ type LiveClockProps = {
     halfCount?: number | null
     /** When true, render the phase label ("Poluvrijeme" / "2. pol." / "Kraj"). */
     showLabel?: boolean
+    /** Pin the phase label OUTSIDE the clock, to its left, so a centring
+     *  container centres the digits rather than label+digits together. */
+    labelOutside?: boolean
     /** When true, suppress the "Pauza" word the clock otherwise prints while
      *  paused (the ⏸ icon + frozen time still show). Lets a caller that renders
      *  its OWN "PAUZA" label next to the clock avoid a doubled-up "Pauza". */
@@ -504,6 +551,7 @@ export function LiveClock({
     showLabel,
     hidePauseLabel,
     size = "xs",
+    labelOutside,
 }: LiveClockProps) {
     const t = useTranslation()
     const [, setTick] = useState(0)
@@ -520,7 +568,14 @@ export function LiveClock({
     const clockColor = st.paused ? "fg.muted" : st.endingSoon ? "accent.amber" : "red.fg"
     const iconSize = size === "md" ? 14 : 11
 
-    return (
+    const showsLabel = (showLabel || (st.paused && !hidePauseLabel)) && !!label
+    const labelEl = showsLabel ? (
+        <Text as="span" color="fg.muted" fontWeight="medium">
+            {label}
+        </Text>
+    ) : null
+
+    const clock = (
         <Text
             as="span"
             fontSize={size === "md" ? "md" : "xs"}
@@ -532,14 +587,26 @@ export function LiveClock({
             gap="1"
             whiteSpace="nowrap"
         >
-            {(showLabel || (st.paused && !hidePauseLabel)) && label && (
-                <Text as="span" color="fg.muted" fontWeight="medium">
-                    {label}
-                </Text>
-            )}
+            {!labelOutside && labelEl}
             {st.paused ? <FiPause size={iconSize} /> : <FiClock size={iconSize} />}
             {st.display}
         </Text>
+    )
+
+    // `labelOutside` lifts the phase label out of the clock's own flex and pins
+    // it to the LEFT of it, so the TIME is what a centring container centres.
+    // Inline, a longer label ("Poluvrijeme" vs "Kraj") pushed the digits off
+    // centre and the clock visibly shifted at every half transition.
+    if (!labelOutside) return clock
+    return (
+        <Box as="span" position="relative" display="inline-flex" alignItems="center">
+            {labelEl && (
+                <Box as="span" position="absolute" right="100%" pr="2" whiteSpace="nowrap">
+                    {labelEl}
+                </Box>
+            )}
+            {clock}
+        </Box>
     )
 }
 
@@ -1127,6 +1194,55 @@ export type TimelineFouls = {
  *  bare inline content (no background/padding) so the caller can drop it into
  *  whatever chip masks the dashed centre line. Mono numerals in `pitch.fg` to
  *  match the live console's cyan foul styling. */
+
+/**
+ * One team's accumulated fouls for a half, sitting on that team's SIDE of the
+ * timeline.
+ *
+ * Replaces the single "PREKRŠAJI 3 : 0" chip that used to ride inside the half
+ * pill: with a centred label and the counts split left/right, each number is
+ * under the team it belongs to instead of the reader having to work out which
+ * side of the colon is whose.
+ */
+export function HalfFoulSide({ count, align }: { count: number; align: "left" | "right" }) {
+    return (
+        <HStack
+            as="span"
+            gap="1"
+            align="center"
+            justify={align === "right" ? "flex-end" : "flex-start"}
+            color="fg.muted"
+            flexShrink={0}
+        >
+            {align === "right" && <FoulCountText value={count} />}
+            <Box as="span" display="inline-flex" lineHeight="1"><GiSoccerKick size={12} /></Box>
+            {align === "left" && <FoulCountText value={count} />}
+        </HStack>
+    )
+}
+
+/** Hairline between a half separator's foul count and its label. Rendered only
+ *  when the counts are there - a divider with nothing on one side of it is just
+ *  a stray line. */
+export function HalfPillDivider() {
+    return <Box as="span" w="1px" alignSelf="stretch" my="0.5" bg="border" flexShrink={0} />
+}
+
+function FoulCountText({ value }: { value: number }) {
+    return (
+        <Text
+            as="span"
+            fontFamily="mono"
+            fontSize="2xs"
+            fontWeight={800}
+            color={value >= 5 ? "accent.red" : "pitch.fg"}
+            fontVariantNumeric="tabular-nums"
+        >
+            {value}
+        </Text>
+    )
+}
+
 export function FoulChip({ a, b }: { a: number; b: number }) {
     const t = useTranslation()
     return (
@@ -1336,7 +1452,10 @@ export function GoalscorersPanel({
         // Regulation events (goals/cards/in-game penalties/2-min suspensions)
         // sit on the minute-sorted timeline; penalty-SHOOTOUT kicks get their
         // own marked "Penali" section below.
+        const { hiddenYellowIds, secondYellowRedIds } = secondYellowPairs(events)
+
         const regulation = events
+            .filter((e) => !hiddenYellowIds.has(e.id))
             .filter((e) =>
                 e.type === "GOAL" || e.type === "OWN_GOAL"
                 || e.type === "YELLOW_CARD" || e.type === "RED_CARD"
@@ -1470,7 +1589,25 @@ export function GoalscorersPanel({
                             line stays hidden behind the header. */}
                         {sec.title && (
                             <Flex justify="center" py="2">
-                                <HStack gap="2.5" align="center" bg="bg.panel" px="3">
+                                {/* One masking chip around label + both foul
+                                    counts, so the dashed centre line stays
+                                    hidden behind the whole group and the
+                                    numbers read as part of the header. */}
+                                <HStack
+                                    gap="2.5"
+                                    align="center"
+                                    // Same bordered pill as the zapisnik and
+                                    // the stream ticker. `bg.panel` is not
+                                    // decoration - it is what masks the dashed
+                                    // centre line running behind the header.
+                                    bg="bg.panel"
+                                    borderWidth="1px"
+                                    borderColor="border"
+                                    rounded="full"
+                                    px="3"
+                                    py="1"
+                                >
+                                    {sf && <><HalfFoulSide count={sf[0]} align="right" /><HalfPillDivider /></>}
                                     <Text
                                         fontSize="xs"
                                         fontWeight={700}
@@ -1481,7 +1618,7 @@ export function GoalscorersPanel({
                                     >
                                         {sec.title}
                                     </Text>
-                                    {sf && <FoulChip a={sf[0]} b={sf[1]} />}
+                                    {sf && <><HalfPillDivider /><HalfFoulSide count={sf[1]} align="left" /></>}
                                 </HStack>
                             </Flex>
                         )}
@@ -1492,6 +1629,7 @@ export function GoalscorersPanel({
                                 isLeft={evt.teamId === t1Id}
                                 scoreLabel={scoreLabels.get(evt.id) ?? null}
                                 foulOrdinal={foulOrdinals.get(evt.id)}
+                                secondYellow={secondYellowRedIds.has(evt.id)}
                                 onRequestGoal={onRequestGoal}
                             />
                         ))}
@@ -1517,9 +1655,12 @@ export function TimelineEventLine({
     scoreLabel,
     onRequestGoal,
     foulOrdinal,
+    secondYellow,
 }: {
     evt: MatchEventDto
     isLeft: boolean
+    /** This RED came from a second yellow - draw both cards in the one row. */
+    secondYellow?: boolean
     /** For a FOUL row: which accumulated foul of that team in that half this
      *  was - the running number is the point of showing fouls at all. */
     foulOrdinal?: number
@@ -1600,6 +1741,12 @@ export function TimelineEventLine({
         <Box as="span" display="inline-flex" color="fg.muted" flexShrink={0} lineHeight="1">
             <GiSoccerKick size={13} />
         </Box>
+    ) : secondYellow ? (
+        // Second yellow: both cards in one row, so it reads as the sending-off
+        // it is rather than as an unexplained straight red.
+        <Text as="span" fontSize="xs" flexShrink={0} lineHeight="1.4" whiteSpace="nowrap">
+            🟨🟥
+        </Text>
     ) : (
         <Text fontSize="xs" flexShrink={0} lineHeight="1.4">
             {icon}

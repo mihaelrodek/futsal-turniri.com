@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { Box, Button, Flex, HStack, Menu, Portal, Text, VStack } from "@chakra-ui/react"
-import { FiCheckCircle, FiChevronDown, FiEyeOff, FiInfo, FiMaximize2, FiPlay } from "react-icons/fi"
+import { FiCheckCircle, FiChevronDown, FiEyeOff, FiInfo, FiList, FiMaximize2, FiPlay } from "react-icons/fi"
 import { LuRadioTower } from "react-icons/lu"
 
 import { fetchGroups } from "../api/groups"
@@ -132,8 +133,30 @@ export default function LiveControlTab({
     standaloneHref,
     onClockArgs,
     onFixturesSettled,
+    selectorSlot,
+    onSelectedMatch,
+    onScore,
 }: {
     uuid: string
+    /** Forwarded to the panel: the live, event-derived score for a host header. */
+    onScore?: (score1: number, score2: number) => void
+    /** Reports which match the console is CURRENTLY on, so a host header can
+     *  follow the picker instead of showing whatever happens to be live. Called
+     *  with null while nothing is selected. */
+    onSelectedMatch?: (m: {
+        team1Id: number | null
+        team1Name: string | null
+        team2Id: number | null
+        team2Name: string | null
+        score1: number | null
+        score2: number | null
+        status: string | null
+    } | null) => void
+    /** DOM node to render the match picker into instead of inline - the
+     *  zapisnik's sticky header. A portal rather than a lifted React node:
+     *  the picker owns open/selected state, and handing a rendered node up
+     *  through a callback would re-create it on every parent render. */
+    selectorSlot?: HTMLElement | null
     /** Tournament FINISHED + non-admin viewer: render the "locked" notice
      *  instead of the live-control console (the simplest robust lock). */
     finishedLocked?: boolean
@@ -303,6 +326,29 @@ export default function LiveControlTab({
         (showFinished ? finished[0] ?? null : null)
     const selected = selectable.find((e) => e.match.matchId === selectedId) ?? fallback
 
+    // Keep the host header in step with the picker. Depends on the score and
+    // status too, so a goal entered on the selected match updates the header
+    // without waiting for the live-matches poll.
+    const sm = selected?.match
+    useEffect(() => {
+        if (!onSelectedMatch) return
+        onSelectedMatch(sm
+            ? {
+                team1Id: sm.team1Id ?? null,
+                team1Name: sm.team1Name ?? null,
+                team2Id: sm.team2Id ?? null,
+                team2Name: sm.team2Name ?? null,
+                score1: sm.score1 ?? null,
+                score2: sm.score2 ?? null,
+                status: sm.status ?? null,
+            }
+            : null)
+        return () => onSelectedMatch(null)
+    }, [
+        onSelectedMatch, sm, sm?.team1Id, sm?.team1Name, sm?.team2Id, sm?.team2Name,
+        sm?.score1, sm?.score2, sm?.status,
+    ])
+
     // Finished + locked: the console is off entirely - show the notice instead.
     if (finishedLocked) {
         return (
@@ -415,20 +461,22 @@ export default function LiveControlTab({
         py: "2.5",
         bg: "bg.panel",
     }
-    const selector =
-        (selectable.length + pending.length > 1 || (finished.length > 0 && !showFinished)) ? (
+    /** True when there is anything to pick BETWEEN - one match needs no menu. */
+    const hasPicker =
+        selectable.length + pending.length > 1 || (finished.length > 0 && !showFinished)
+
+    /**
+     * The picker, around whatever trigger the caller wants.
+     *
+     * Two triggers exist: the wide match card the console shows inline, and a
+     * compact "Izaberi utakmicu" button for the zapisnik's sticky header. The
+     * MENU is shared - one list, one selection state, one "Pokaži završene"
+     * toggle - so the two can never drift apart.
+     */
+    const pickerMenu = (trigger: React.ReactNode) => (
             <Menu.Root open={pickerOpen} onOpenChange={(e) => setPickerOpen(e.open)}>
                 <Menu.Trigger asChild>
-                    <Flex
-                        {...cardBox}
-                        as="button"
-                        cursor="pointer"
-                        _hover={{ borderColor: "border.emphasized" }}
-                        textAlign="left"
-                    >
-                        {selectedMeta && <MatchCardContent meta={selectedMeta} />}
-                        <Box color="fg.muted" flexShrink={0}><FiChevronDown size={16} /></Box>
-                    </Flex>
+                    {trigger}
                 </Menu.Trigger>
                 <Portal>
                     <Menu.Positioner>
@@ -490,16 +538,59 @@ export default function LiveControlTab({
                     </Menu.Positioner>
                 </Portal>
             </Menu.Root>
-        ) : (
-            <Flex {...cardBox}>
-                {selectedMeta && <MatchCardContent meta={selectedMeta} />}
-            </Flex>
-        )
+    )
 
-    // Keyed by id+status so a status change (SCHEDULED→LIVE→…) remounts it with
-    // fresh state.
+    const wideTrigger = (
+        <Flex
+            {...cardBox}
+            as="button"
+            cursor="pointer"
+            _hover={{ borderColor: "border.emphasized" }}
+            textAlign="left"
+        >
+            {selectedMeta && <MatchCardContent meta={selectedMeta} />}
+            <Box color="fg.muted" flexShrink={0}><FiChevronDown size={16} /></Box>
+        </Flex>
+    )
+
+    // Inline in the console: the wide card, exactly as before. When a host
+    // supplies a header slot the picker moves there instead, and the console
+    // renders nothing in its place - two of the same control on one screen is
+    // one too many.
+    const selector = selectorSlot
+        ? null
+        : hasPicker
+            ? pickerMenu(wideTrigger)
+            : (
+                <Flex {...cardBox}>
+                    {selectedMeta && <MatchCardContent meta={selectedMeta} />}
+                </Flex>
+            )
+
+    /** The header-mounted picker, portalled into the host's slot. */
+    const headerPicker = selectorSlot && hasPicker
+        ? createPortal(
+            pickerMenu(
+                <Button
+                    size="xs"
+                    variant="outline"
+                    colorPalette="gray"
+                    maxW={{ base: "9.5rem", md: "13rem" }}
+                >
+                    <FiList />
+                    <Box as="span" truncate>{tc.pickMatch}</Box>
+                    <FiChevronDown size={14} />
+                </Button>,
+            ),
+            selectorSlot,
+        )
+        : null
+
+    // Keyed by id+status so a status change (SCHEDULED→LIVE→…) remounts the
+    // panel with fresh state.
     return selected ? (
         <VStack align="stretch" gap="4">
+            {headerPicker}
             <LiveMatchPanel
                 key={`${selected.match.matchId}-${selected.match.status}`}
                 uuid={uuid}
@@ -509,6 +600,7 @@ export default function LiveControlTab({
                 selector={selector}
                 streamActive={streamActive}
                 onClockArgs={onClockArgs}
+                onScore={onScore}
                 footerAction={
                     standaloneHref ? (
                         <Button

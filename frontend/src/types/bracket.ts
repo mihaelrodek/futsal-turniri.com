@@ -21,6 +21,10 @@ export type BracketMatch = {
     slot2Label: string | null
     slot1PredictedName: string | null
     slot2PredictedName: string | null
+    /** DB ids behind the predicted names - the key for the kit-colour lookup.
+     *  Null while the slot is still undecided. */
+    slot1PredictedTeamId?: number | null
+    slot2PredictedTeamId?: number | null
     score1: number | null
     score2: number | null
     penalties1: number | null

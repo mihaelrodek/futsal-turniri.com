@@ -48,6 +48,11 @@ public record BracketMatchDto(
          *  stage). Null otherwise. */
         String slot1PredictedName,
         String slot2PredictedName,
+        /** DB ids behind the predicted names, so the UI can show the predicted
+         *  team's KIT. Without them a decided-but-not-yet-played slot drew the
+         *  "colours unknown" kit even though the colours were known. */
+        Long slot1PredictedTeamId,
+        Long slot2PredictedTeamId,
         /** Which side wears fluorescent training bibs ("markirka") in THIS
          *  match: 1, 2 or null. That side's effective jersey colour is bib
          *  yellow for this match only. */

@@ -18,6 +18,7 @@ import { fetchSchedule } from "../api/schedule"
 import { fetchPlayers } from "../api/players"
 import { liveGroupStandings } from "./liveStandings"
 import { useTeamColors, teamColor, teamShorts, TeamKitChip, KitSwatch } from "./jersey"
+import { HalfFoulSide, HalfPillDivider, secondYellowPairs } from "./liveMatch"
 import type { MatchEventDto } from "../types/matchEvents"
 import type { LiveMatch } from "../api/live"
 import type { Group } from "../types/groups"
@@ -447,23 +448,53 @@ function useMatchTicker(
     // (an event's half = minute below / at-or-above the boundary), penalty
     // kicks get their own section.
     const sections = useMemo(() => {
-        const regulation = events.filter((e) => REGULATION.has(e.type))
+        // A second yellow is stored as yellow + auto-red; show it as the one
+        // sending-off it is, not as two separate rows.
+        const { hiddenYellowIds } = secondYellowPairs(events)
+        const regulation = events.filter((e) => REGULATION.has(e.type) && !hiddenYellowIds.has(e.id))
         const pens = events.filter((e) => !REGULATION.has(e.type))
-        const out: { key: string; title: string; events: MatchEventDto[] }[] = []
+        // Per-half accumulated fouls, so the separator can show each team's
+        // count on its own side - the same treatment the match-page timeline
+        // and the zapisnik use. Null for a half with none on either side, and
+        // always for the penalties section (a shootout has no fouls).
+        const foulPair = (a?: number | null, b?: number | null): [number, number] | null => {
+            const x = a ?? 0
+            const y = b ?? 0
+            return x === 0 && y === 0 ? null : [x, y]
+        }
+        const out: {
+            key: string
+            title: string
+            events: MatchEventDto[]
+            fouls?: [number, number] | null
+        }[] = []
         const hl = match?.halfLengthMin != null && match.halfLengthMin > 0 ? match.halfLengthMin : null
         if (regulation.length > 0) {
             if (hl != null) {
                 const first = regulation.filter((e) => e.minute < hl)
                 const second = regulation.filter((e) => e.minute >= hl)
-                if (first.length) out.push({ key: "h1", title: t.components.streamHero.firstHalfSection, events: first })
-                if (second.length) out.push({ key: "h2", title: t.components.streamHero.secondHalfSection, events: second })
+                if (first.length) out.push({
+                    key: "h1",
+                    title: t.components.streamHero.firstHalfSection,
+                    events: first,
+                    fouls: foulPair(match?.fouls1First, match?.fouls2First),
+                })
+                if (second.length) out.push({
+                    key: "h2",
+                    title: t.components.streamHero.secondHalfSection,
+                    events: second,
+                    fouls: foulPair(match?.fouls1Second, match?.fouls2Second),
+                })
             } else {
                 out.push({ key: "reg", title: "", events: regulation })
             }
         }
         if (pens.length) out.push({ key: "pen", title: t.components.streamHero.penaltiesSection, events: pens })
         return out
-    }, [events, match?.halfLengthMin, t])
+    }, [
+        events, match?.halfLengthMin, t,
+        match?.fouls1First, match?.fouls1Second, match?.fouls2First, match?.fouls2Second,
+    ])
 
     return { colors, showUpcoming, bodyRef, sections }
 }
@@ -564,20 +595,33 @@ function MatchTickerBody({
                         <Box key={s.key} mb="1.5">
                             {s.title && (
                                 <Flex justify="center" my="1.5">
-                                    <Text
-                                        fontSize="9px"
-                                        fontFamily="mono"
-                                        fontWeight={800}
-                                        letterSpacing="0.08em"
-                                        color="fg.muted"
+                                    {/* One pill around the lot: the half label
+                                        centred, each team's foul count inside
+                                        the same border on its own side. Loose
+                                        counts outside the pill read as two
+                                        stray numbers next to a chip. */}
+                                    <HStack
+                                        gap="2"
+                                        align="center"
                                         borderWidth="1px"
                                         borderColor="border"
                                         rounded="full"
                                         px="2"
                                         py="0.5"
                                     >
-                                        {s.title.toUpperCase()}
-                                    </Text>
+                                        {s.fouls && <><HalfFoulSide count={s.fouls[0]} align="right" /><HalfPillDivider /></>}
+                                        <Text
+                                            fontSize="9px"
+                                            fontFamily="mono"
+                                            fontWeight={800}
+                                            letterSpacing="0.08em"
+                                            color="fg.muted"
+                                            whiteSpace="nowrap"
+                                        >
+                                            {s.title.toUpperCase()}
+                                        </Text>
+                                        {s.fouls && <><HalfPillDivider /><HalfFoulSide count={s.fouls[1]} align="left" /></>}
+                                    </HStack>
                                 </Flex>
                             )}
                             {s.events.map((e) => (

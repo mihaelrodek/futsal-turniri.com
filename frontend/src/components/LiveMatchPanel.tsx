@@ -34,11 +34,13 @@ import { useTeamColors, teamColor, teamShorts, KitSwatch } from "./jersey"
 import {
     ActionButton,
     DirectScoreEditor,
-    FoulChip,
     PenaltyShootout,
     PlayerButton,
     clockState,
+    HalfFoulSide,
+    HalfPillDivider,
     eventHalf,
+    secondYellowPairs,
     liveMatchMinute,
     matchPhase,
     type TimelineFouls,
@@ -143,6 +145,7 @@ export default function LiveMatchPanel({
     footerAction,
     streamActive = false,
     onClockArgs,
+    onScore,
 }: {
     uuid: string
     kind: "group" | "knockout"
@@ -162,6 +165,9 @@ export default function LiveMatchPanel({
      *  zapisnik header) so its clock ticks from the exact same instants and
      *  freezes together on pause. Called with the current local clockArgs while
      *  the match is LIVE + TIMER, and with null when it isn't (or on unmount). */
+    /** Reports the LIVE (event-derived) score to a host header, so it moves the
+     *  instant a goal is entered instead of on the next fixtures reload. */
+    onScore?: (score1: number, score2: number) => void
     onClockArgs?: (
         args: {
             liveStartedAt: string | null | undefined
@@ -327,6 +333,14 @@ export default function LiveMatchPanel({
         events && events.length > 0
             ? liveScore
             : { s1: match.score1 ?? 0, s2: match.score2 ?? 0 }
+
+    // Lift the LIVE score to a host header. This score is derived from the
+    // events (optimistically, before the server even answers), while the score
+    // a host gets from the fixtures list only moves on the next reload - which
+    // is why the zapisnik header sat on the old result until a page refresh.
+    useEffect(() => {
+        onScore?.(score.s1, score.s2)
+    }, [onScore, score.s1, score.s2])
 
     // Half config (length + count) for TIMER matches.
     useEffect(() => {
@@ -673,16 +687,20 @@ export default function LiveMatchPanel({
         // two unrelated lines. The block is centred but its rows are not - a
         // centred sentence under a centred button gave no clue which one it
         // belonged to.
-        <VStack align="center" gap="1.5" mt="3" mb="1">
+        <VStack align="stretch" gap="1.5">
             {showClockButton && (
-                <HStack gap="2.5" align="center" maxW="36rem" w="full">
+                <HStack gap="2.5" align="center" w="full">
                     <Button
                         size="xs"
                         variant="outline"
                         minW="10.5rem"
                         justifyContent="flex-start"
                         flexShrink={0}
-                        colorPalette={clockVisibleOnStream ? "gray" : "pitch"}
+                        // Teal = the thing is currently ON. This used to be
+                        // inverted (teal while the clock was HIDDEN), so the two
+                        // switches in this block contradicted each other: one
+                        // was teal for "visible", the other for "hidden".
+                        colorPalette={clockVisibleOnStream ? "pitch" : "gray"}
                         loading={clockVisibilityBusy}
                         onClick={toggleStreamClockVisibility}
                     >
@@ -694,7 +712,7 @@ export default function LiveMatchPanel({
                     </Text>
                 </HStack>
             )}
-            <HStack gap="2.5" align="center" maxW="36rem" w="full">
+            <HStack gap="2.5" align="center" w="full">
                 <Button
                     size="xs"
                     variant="outline"
@@ -717,13 +735,10 @@ export default function LiveMatchPanel({
         </VStack>
     )
 
-    const actionRow = (showClockButton: boolean) => (
-        <>
-            {settingsRow(showClockButton)}
-            <Flex justify="center" align="center" gap="2" wrap="wrap" mt="2">
-                {footerAction}
-            </Flex>
-        </>
+    const actionRow = () => (
+        <Flex justify="center" align="center" gap="2" wrap="wrap" mt="2">
+            {footerAction}
+        </Flex>
     )
 
     const eventEntry = (
@@ -988,7 +1003,7 @@ export default function LiveMatchPanel({
                             </Box>
                         )}
 
-                        {footerAction && actionRow(false)}
+                        {footerAction && actionRow()}
 
                         {isFinished && (
                             <Box mt="4">
@@ -1049,11 +1064,11 @@ export default function LiveMatchPanel({
                                         {halfLabel}
                                     </Text>
                                 )}
-                                {actionRow(isLive && isTimer)}
+                                {footerAction && actionRow()}
                             </VStack>
                         )}
 
-                        {!isTimer && footerAction && actionRow(false)}
+                        {!isTimer && footerAction && actionRow()}
 
                         {shootout ? (
                             <PenaltyShootout
@@ -1071,11 +1086,34 @@ export default function LiveMatchPanel({
                             <>
                                 {eventEntry}
 
+                                {/* Settings, between the entry card and the
+                                    flow controls: they belong with "Završi
+                                    utakmicu", not with the clock. Up by the
+                                    clock they were the first thing on the
+                                    screen, ahead of the scoreboard - and they
+                                    are touched once a tournament, not once a
+                                    goal. */}
+                                {/* Settings LEFT, match-flow actions RIGHT, one
+                                    row. Two things of different weight: the
+                                    left column is set once a tournament, the
+                                    right one ends the match. They wrap onto
+                                    separate lines on a narrow screen. */}
+                                <Flex
+                                    mt="4"
+                                    gap="4"
+                                    align="center"
+                                    justify="space-between"
+                                    wrap="wrap"
+                                >
+                                <Box flex="1 1 20rem" minW="0">
+                                    {settingsRow(isLive && isTimer)}
+                                </Box>
+
                                 {/* Flow controls: the primary phase button + ⋯ menu.
                                     A half transition (end 1st / start 2nd) is a
                                     brand-cyan action; "Završi utakmicu" keeps its
                                     distinct amber treatment. */}
-                                <HStack gap="2.5" mt="4" align="stretch" justify="center">
+                                <HStack gap="2.5" align="stretch" justify="flex-end" flexShrink={0}>
                                     {primary.phase ? (
                                         <Button
                                             colorPalette="pitch"
@@ -1109,17 +1147,23 @@ export default function LiveMatchPanel({
                                         <FiMoreHorizontal size={18} />
                                     </IconButton>
                                 </HStack>
+                                </Flex>
                                 {overflow && (
-                                    <Button
-                                        mt="2"
-                                        w="full"
-                                        variant="outline"
-                                        colorPalette="red"
-                                        loading={resetting}
-                                        onClick={() => setConfirmResetOpen(true)}
-                                    >
-                                        {t.components.liveMatchPanel.revertToPrep}
-                                    </Button>
+                                    // Sized to its label and tucked under the ⋯
+                                    // it belongs to. Full-width it read as the
+                                    // screen's primary action, which is the one
+                                    // thing a "wipe this match" button must not.
+                                    <Flex justify="flex-end" mt="2">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            colorPalette="red"
+                                            loading={resetting}
+                                            onClick={() => setConfirmResetOpen(true)}
+                                        >
+                                            {t.components.liveMatchPanel.revertToPrep}
+                                        </Button>
+                                    </Flex>
                                 )}
                             </>
                         )}
@@ -2049,6 +2093,8 @@ type TimelineRow =
     | { kind: "section"; label: string }
     | {
           kind: "event"
+          /** This RED came from a second yellow - the row draws both cards. */
+          secondYellow?: boolean
           id: number
           clientEventId?: string | null
           isHome: boolean
@@ -2105,8 +2151,12 @@ function CenterTimeline({
         // Shootout kicks aren't part of either half - split them into their
         // own "PENALI" section at the end, same as the public match ticker
         // (StreamHero.tsx's REGULATION/pens split).
+        // A second yellow is stored as yellow + auto-red; on the timeline it is
+        // ONE incident, so the yellow is dropped and the red carries both cards.
+        const { hiddenYellowIds, secondYellowRedIds } = secondYellowPairs(events)
         const regulation = events.filter((e) =>
             e.type !== "PENALTY_GOAL" && e.type !== "PENALTY_MISSED"
+            && !hiddenYellowIds.has(e.id)
             && (showFouls || e.type !== "FOUL"))
         const pens = events.filter((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED")
 
@@ -2133,6 +2183,7 @@ function CenterTimeline({
             if (isGoal) { isHome ? (h += 1) : (a += 1) }
             out.push({
                 kind: "event",
+                secondYellow: secondYellowRedIds.has(e.id),
                 id: e.id,
                 clientEventId: e.clientEventId,
                 isHome,
@@ -2204,6 +2255,10 @@ function CenterTimeline({
  *  dashed centre line, with the half's accumulated foul tally beside the
  *  label when there is one. */
 function HalfPill({ label, fouls }: { label: string; fouls: [number, number] | null }) {
+    // Label dead-centre on the timeline's spine, each team's foul count on ITS
+    // OWN side. The old single "PREKRŠAJI 3 : 0" chip sat inside the pill and
+    // pushed the label off centre, and left the reader to work out which side
+    // of the colon belonged to which team.
     return (
         <Flex justify="center" py="1">
             <HStack
@@ -2217,10 +2272,11 @@ function HalfPill({ label, fouls }: { label: string; fouls: [number, number] | n
                 px="3"
                 py="0.5"
             >
-                <Text as="span" fontSize="xs" fontWeight={800} color="fg.muted">
+                {fouls && <><HalfFoulSide count={fouls[0]} align="right" /><HalfPillDivider /></>}
+                <Text as="span" fontSize="xs" fontWeight={800} color="fg.muted" whiteSpace="nowrap">
                     {label}
                 </Text>
-                {fouls && <FoulChip a={fouls[0]} b={fouls[1]} />}
+                {fouls && <><HalfPillDivider /><HalfFoulSide count={fouls[1]} align="left" /></>}
             </HStack>
         </Flex>
     )
@@ -2299,7 +2355,7 @@ function TimelineEventRow({ row, canDelete, foulOrdinal, onUndo }: { row: Extrac
                         {undoBtn}
                         {nameEl}
                         {minEl}
-                        <EventIcon type={row.type} />
+                        {row.secondYellow ? <SecondYellowIcon /> : <EventIcon type={row.type} />}
                     </Flex>
                     <Flex justify="center" px="1">{center}</Flex>
                     <Box />
@@ -2309,13 +2365,23 @@ function TimelineEventRow({ row, canDelete, foulOrdinal, onUndo }: { row: Extrac
                     <Box />
                     <Flex justify="center" px="1">{center}</Flex>
                     <Flex align="center" gap="1.5" minW="0" pl="1">
-                        <EventIcon type={row.type} />
+                        {row.secondYellow ? <SecondYellowIcon /> : <EventIcon type={row.type} />}
                         {minEl}
                         {nameEl}
                         {undoBtn}
                     </Flex>
                 </>
             )}
+        </Box>
+    )
+}
+
+/** Both cards, for a red that came from a second yellow. */
+function SecondYellowIcon() {
+    return (
+        <Box as="span" display="inline-flex" gap="0.5" flexShrink={0}>
+            <Box as="span" w="12px" h="16px" borderRadius="2px" borderWidth="1px" borderColor="blackAlpha.400" bg={CARD_YELLOW} />
+            <Box as="span" w="12px" h="16px" borderRadius="2px" borderWidth="1px" borderColor="blackAlpha.400" bg={CARD_RED} />
         </Box>
     )
 }
@@ -2336,7 +2402,20 @@ function EventIcon({ type }: { type: MatchEventType }) {
     // fouls. Without it a foul fell through to the card block below and drew a
     // RED CARD - the one icon on this timeline that must never be wrong.
     if (type === "FOUL") return <Box as="span" color="fg.muted" flexShrink={0} lineHeight="1"><GiSoccerKick size={15} /></Box>
-    return <Box as="span" w="13px" h="16px" rounded="sm" flexShrink={0} bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
+    // Explicit 2px radius: `rounded="sm"` is 8px in this theme, which turns a
+    // 13x16 card into a lozenge.
+    return (
+        <Box
+            as="span"
+            w="12px"
+            h="16px"
+            borderRadius="2px"
+            borderWidth="1px"
+            borderColor="blackAlpha.400"
+            flexShrink={0}
+            bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED}
+        />
+    )
 }
 
 function playerLabel(e: MatchEventDto, t: Dictionary): string {

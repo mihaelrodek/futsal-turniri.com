@@ -3308,8 +3308,27 @@ public class TournamentController {
         // futsal - auto-record it as its own EXCLUSION event (same player/
         // side) so the organizer doesn't have to tap it separately. No
         // clientEventId (nothing offline-queued this on the client side).
+        // SECOND YELLOW = a red. The organizer taps "Žuti" as usual; the red is
+        // recorded for them, at the same minute and for the same player, so the
+        // pair reads as one sending-off on the timeline and the player is
+        // locked out of further events by the existing playerSentOff guard.
+        //
+        // Written BEFORE the auto-exclusion block below so that block sees a
+        // red and adds the 2-minute exclusion too - a second yellow sends a
+        // player off exactly like a straight red does.
+        MatchEvent autoRed = null;
+        if (type == MatchEventType.YELLOW_CARD && player != null
+                && matchEventRepo.yellowCount(match.getId(), player.getId()) > 1) {
+            autoRed = new MatchEvent();
+            autoRed.setMatch(match);
+            autoRed.setType(MatchEventType.RED_CARD);
+            autoRed.setPlayer(player);
+            autoRed.setMinute(body.minute());
+            matchEventRepo.persist(autoRed);
+        }
+
         MatchEvent autoExclusion = null;
-        if (type == MatchEventType.RED_CARD) {
+        if (type == MatchEventType.RED_CARD || autoRed != null) {
             autoExclusion = new MatchEvent();
             autoExclusion.setMatch(match);
             autoExclusion.setType(MatchEventType.EXCLUSION);
@@ -3370,9 +3389,20 @@ public class TournamentController {
                     case EXCLUSION -> specto.exclusion(st, event.getId(),
                             spectoSide(match, spectoEventTeam(event)),
                             event.getPlayer() != null ? event.getPlayer().getName() : null);
-                    case YELLOW_CARD -> specto.card(st, event.getId(),
-                            spectoSide(match, spectoEventTeam(event)),
-                            event.getPlayer() != null ? event.getPlayer().getName() : null, "yellow");
+                    case YELLOW_CARD -> {
+                        String side = spectoSide(match, spectoEventTeam(event));
+                        String pn = event.getPlayer() != null ? event.getPlayer().getName() : null;
+                        specto.card(st, event.getId(), side, pn, "yellow");
+                        // Second yellow: the overlay gets BOTH cards, in order,
+                        // plus the exclusion - the same sequence a straight red
+                        // produces, so viewers see why he left the pitch.
+                        if (autoRed != null) {
+                            specto.card(st, autoRed.getId(), side, pn, "red");
+                            if (autoExclusion != null) {
+                                specto.exclusion(st, autoExclusion.getId(), side, pn);
+                            }
+                        }
+                    }
                     case RED_CARD -> {
                         specto.card(st, event.getId(),
                                 spectoSide(match, spectoEventTeam(event)),
@@ -3434,6 +3464,18 @@ public class TournamentController {
         // can decrement the same side that must now lose the goal.
         String cancelSide = wasScoreGoal ? spectoSide(match, spectoEventTeam(event)) : null;
         long cancelEventId = event.getId();
+
+        // A red that came from a SECOND YELLOW is stored as two rows and shown
+        // as one, so deleting it must take the yellow with it. Without this the
+        // timeline kept a lone yellow for a player who is no longer sent off -
+        // and a later yellow would have counted as his second all over again.
+        // Matched on player + minute, the same pairing the timeline renders.
+        if (event.getType() == MatchEventType.RED_CARD && event.getPlayer() != null) {
+            matchEventRepo.findPairedYellow(
+                            match.getId(), event.getPlayer().getId(), event.getMinute())
+                    .ifPresent(y -> matchEventRepo.delete(y));
+        }
+
         matchEventRepo.delete(event);
 
         if (wasScoreGoal) {

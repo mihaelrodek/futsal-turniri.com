@@ -13,6 +13,7 @@ import { usePolling } from "../hooks/usePolling"
 import { useLiveSocket } from "../hooks/useLiveSocket"
 import { Loader } from "../ui/primitives"
 import { LiveClock } from "../components/liveMatch"
+import { TeamKitChip, useTeamColors } from "../components/jersey"
 import { PulseDot } from "../ui/pitch"
 import LiveControlTab from "../components/LiveControlTab"
 import TournamentResults from "../components/TournamentResults"
@@ -43,6 +44,18 @@ type HeaderClockArgs = {
     livePausedAt: string | null
     halfLengthMin: number | null
     halfCount: number | null
+}
+
+
+/** The match the sticky header describes - lifted from the console's picker. */
+type HeaderMatch = {
+    team1Id: number | null
+    team1Name: string | null
+    team2Id: number | null
+    team2Name: string | null
+    score1: number | null
+    score2: number | null
+    status: string | null
 }
 
 export default function ZapisnikModePage() {
@@ -156,6 +169,9 @@ export default function ZapisnikModePage() {
     }, [queryClient])
     usePolling(loadLive, 5_000)
     useLiveSocket(() => loadLive())
+    // Kit chips for the scoreboard in the sticky header (shared cached fetch).
+    const kitColors = useTeamColors(details?.uuid)
+
     const liveMatch = useMemo(
         () => liveList.find((m) => m.tournamentUuid === details?.uuid) ?? null,
         [liveList, details?.uuid],
@@ -167,6 +183,60 @@ export default function ZapisnikModePage() {
     // fetchLiveMatches poll. Falls back to the liveMatch-derived render below
     // for the brief window before the first callback fires.
     const [clockArgs, setClockArgs] = useState<HeaderClockArgs | null>(null)
+
+    // The console portals its match picker into this node (see LiveControlTab's
+    // `selectorSlot`), so the picker sits in the sticky header instead of
+    // scrolling away with the console.
+    const [selectorSlot, setSelectorSlot] = useState<HTMLElement | null>(null)
+
+    /**
+     * The match the console is CURRENTLY on, lifted from the picker.
+     *
+     * The header used to render `liveMatch` - the tournament's live match -
+     * which is right only while that is also the selected one. Pick a finished
+     * fixture from the header and the scoreboard kept showing the live game's
+     * teams and score, i.e. the wrong match entirely.
+     */
+    const [headerMatch, setHeaderMatch] = useState<HeaderMatch | null>(null)
+
+    /** Live score lifted from the console - moves the instant a goal is entered,
+     *  unlike the fixtures snapshot behind `headerMatch`. Cleared when the
+     *  selection changes so a stale score never rides onto another match. */
+    const [liveScore, setLiveScore] = useState<{ s1: number; s2: number } | null>(null)
+    const onScore = useCallback((s1: number, s2: number) => setLiveScore({ s1, s2 }), [])
+
+    /**
+     * MUST be stable. The console reports the selection from an effect that
+     * lists this callback in its dependencies, so an inline arrow - a new
+     * function every render - re-ran the effect, which set state, which
+     * rendered again: a loop that pinned the page and swallowed the back
+     * button's navigation.
+     */
+    const onSelectedMatch = useCallback((m: HeaderMatch | null) => {
+        // Drop the previous match's live score with the selection, or it would
+        // flash on the new one.
+        setLiveScore(null)
+        setHeaderMatch(m)
+    }, [])
+
+    // The tournament's live clock belongs in the header only while the console
+    // is actually ON that match. Pick a finished fixture and the live game's
+    // clock kept ticking up there, over another match's score.
+    const headerFollowsLive = headerMatch === null || headerMatch.status === "LIVE"
+
+    // What the header shows: the selection when the console has one, else the
+    // tournament's live match (the brief window before the console mounts).
+    const headerScore = headerMatch ?? (liveMatch
+        ? {
+            team1Id: liveMatch.team1Id ?? null,
+            team1Name: liveMatch.team1Name,
+            team2Id: liveMatch.team2Id ?? null,
+            team2Name: liveMatch.team2Name,
+            score1: liveMatch.score1,
+            score2: liveMatch.score2,
+            status: "LIVE",
+        }
+        : null)
 
     // organizer = admin OR creator OR granted co-editor. Owner/admin resolve
     // locally; the co-editor path waits for the access probe above.
@@ -208,7 +278,12 @@ export default function ZapisnikModePage() {
                     matter how long the tournament name is. */}
                 <Box
                     display="grid"
-                    gridTemplateColumns="1fr auto 1fr"
+                    // `minmax(0, 1fr)`, not a bare `1fr`: a plain fr track is
+                    // floored at min-content, so the wide left column (the
+                    // tournament name, and the match picker in the row below)
+                    // and the empty right one never came out equal - and the
+                    // centred clock/scoreboard drifted left with them.
+                    gridTemplateColumns="minmax(0, 1fr) auto minmax(0, 1fr)"
                     alignItems="center"
                     gap="2"
                     maxW="min(1600px, 96vw)"
@@ -254,8 +329,8 @@ export default function ZapisnikModePage() {
                         empty while nothing is live. */}
                     <Box justifySelf="center">
                         {clockArgs ? (
-                            <LiveClock {...clockArgs} size="md" showLabel />
-                        ) : liveMatch?.liveMode === "TIMER" && liveMatch.liveStartedAt ? (
+                            <LiveClock {...clockArgs} size="md" showLabel labelOutside />
+                        ) : headerFollowsLive && liveMatch?.liveMode === "TIMER" && liveMatch.liveStartedAt ? (
                             <LiveClock
                                 liveStartedAt={liveMatch.liveStartedAt}
                                 firstHalfEndedAt={liveMatch.firstHalfEndedAt ?? null}
@@ -265,8 +340,9 @@ export default function ZapisnikModePage() {
                                 halfCount={liveMatch.halfCount}
                                 size="md"
                                 showLabel
+                                labelOutside
                             />
-                        ) : liveMatch ? (
+                        ) : headerFollowsLive && liveMatch ? (
                             <HStack
                                 gap="1.5"
                                 color="accent.red"
@@ -284,6 +360,100 @@ export default function ZapisnikModePage() {
                     {/* Right column intentionally empty - balances the grid. */}
                     <Box />
                 </Box>
+
+                {/* Live scoreboard, pinned under the header row.
+                    The console has no score of its own: it is a data-entry
+                    screen, and the running result only existed at the bottom of
+                    the page, inside "tijek utakmice" - teams standing at the
+                    table were adding goals up by hand. Here it rides along with
+                    the sticky header, so it stays on screen while the organizer
+                    scrolls through rosters and actions. */}
+                {(headerScore || selectorSlot !== null) && (
+                    <Box
+                        borderTopWidth="1px"
+                        borderColor="border.subtle"
+                        maxW="min(1600px, 96vw)"
+                        mx="auto"
+                        px={{ base: "3", md: "6" }}
+                        py="1.5"
+                    >
+                        {/* Row: picker LEFT, scoreboard centred, empty right
+                            column of the same 1fr width to keep it centred.
+
+                            In normal flow, NOT absolutely positioned: as an
+                            overlay the picker's button overflowed the short row
+                            and sat over the header above it, swallowing clicks
+                            on the back arrow. */}
+                        <Box
+                            display="grid"
+                            // The middle track gets a DEFINITE share (2fr), not
+                            // `auto`: an auto track is sized by its content, so
+                            // the scoreboard inside it could not split itself
+                            // evenly and the score drifted with whichever team
+                            // name was longer.
+                            gridTemplateColumns="minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr)"
+                            alignItems="center"
+                            gap={{ base: "2", md: "3" }}
+                        >
+                        <Box ref={setSelectorSlot} justifySelf="start" minW="0" />
+                        <Box
+                            display="grid"
+                            // Equal halves either side of the score, so the
+                            // score itself sits on the centre line - directly
+                            // under the clock above it.
+                            gridTemplateColumns="minmax(0, 1fr) auto minmax(0, 1fr)"
+                            alignItems="center"
+                            gap={{ base: "2", md: "3" }}
+                            minW="0"
+                            w="full"
+                        >
+                            {headerScore ? (<>
+                            <HStack gap="2" minW="0" justify="flex-end">
+                                <Text
+                                    fontSize={{ base: "xs", md: "sm" }}
+                                    fontWeight={800}
+                                    color="fg.ink"
+                                    textAlign="right"
+                                    truncate
+                                    minW="0"
+                                >
+                                    {headerScore.team1Name ?? "-"}
+                                </Text>
+                                <TeamKitChip colors={kitColors} teamId={headerScore.team1Id} size={11} />
+                            </HStack>
+
+                            <Text
+                                fontFamily="mono"
+                                fontSize={{ base: "lg", md: "xl" }}
+                                fontWeight={800}
+                                color="fg.ink"
+                                fontVariantNumeric="tabular-nums"
+                                whiteSpace="nowrap"
+                                px="1"
+                            >
+                                {liveScore?.s1 ?? headerScore.score1 ?? 0} : {liveScore?.s2 ?? headerScore.score2 ?? 0}
+                            </Text>
+
+                            <HStack gap="2" minW="0">
+                                <TeamKitChip colors={kitColors} teamId={headerScore.team2Id} size={11} />
+                                <Text
+                                    fontSize={{ base: "xs", md: "sm" }}
+                                    fontWeight={800}
+                                    color="fg.ink"
+                                    truncate
+                                    minW="0"
+                                >
+                                    {headerScore.team2Name ?? "-"}
+                                </Text>
+                            </HStack>
+                            </>) : <Box minH="7" />}
+                        </Box>
+                        {/* Balances the picker column so the scoreboard sits on
+                            the true centre, in line with the clock above. */}
+                        <Box />
+                        </Box>
+                    </Box>
+                )}
             </Box>
 
             <Box
@@ -333,6 +503,9 @@ export default function ZapisnikModePage() {
                     uuid={uuid}
                     onClockArgs={setClockArgs}
                     onFixturesSettled={onFixturesSettled}
+                    selectorSlot={selectorSlot}
+                    onSelectedMatch={onSelectedMatch}
+                    onScore={onScore}
                 />
             </Box>
         </>

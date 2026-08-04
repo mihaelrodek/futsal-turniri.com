@@ -2338,6 +2338,7 @@ export const sl: Dictionary = {
             tournamentFinishedTitle: "Turnir je končan",
             tournamentFinishedDesc: (count: number) => `Vse tekme (${count}) so odigrane in zabeležene.`,
             showFinished: (count: number) => `Prikaži končane (${count})`,
+            pickMatch: "Izberi tekmo",
             upcomingHeading: "Prihajajoče tekme",
             upcomingHint: "Pari se zapolnijo, ko se konča skupinski del - do takrat piše TBD.",
             fullscreenButton: "Celoten zaslon",

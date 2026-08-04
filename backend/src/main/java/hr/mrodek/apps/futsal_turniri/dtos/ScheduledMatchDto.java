@@ -47,6 +47,9 @@ public record ScheduledMatchDto(
          *  once THAT group is finished (per-group). Null otherwise. */
         String slot1PredictedName,
         String slot2PredictedName,
+        /** DB ids behind the predicted names - the kit-colour lookup key. */
+        Long slot1PredictedTeamId,
+        Long slot2PredictedTeamId,
         /** True when the match was actually broadcast - the only case in which
          *  a recording of it can be ordered. See Matches#livestream. */
         boolean livestream

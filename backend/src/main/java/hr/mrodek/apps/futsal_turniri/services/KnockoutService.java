@@ -86,7 +86,13 @@ public class KnockoutService {
             String slot1Label,
             String slot2Label,
             String slot1PredictedName,
-            String slot2PredictedName) {}
+            String slot2PredictedName,
+            /** DB ids behind the predicted names. Carried so the UI can look the
+             *  predicted team's KIT up: a bracket slot showing "Željezarija
+             *  Dalis" had a name but no id, so every such row drew the neutral
+             *  "colours unknown" kit even though the colours were known. */
+            Long slot1PredictedTeamId,
+            Long slot2PredictedTeamId) {}
 
     /** Group-standings ranking used to seed qualifiers within a placement tier. */
     private static final Comparator<GroupStandingRowDto> STANDING_RANK =
@@ -606,6 +612,7 @@ public class KnockoutService {
         List<SlotLabels> out = new ArrayList<>(flat.size());
         for (Node node : flat) {
             String l1 = null, l2 = null, p1 = null, p2 = null;
+            Long pid1 = null, pid2 = null;
             if (node.stage == MatchStage.THIRD_PLACE) {
                 if (semis.size() >= 1) {
                     l1 = "L " + stageAbbrev(MatchStage.SEMIFINAL) + semis.get(0).indexInStage;
@@ -620,8 +627,10 @@ public class KnockoutService {
                     GroupDto runnerGroup = groups.get(pair[1]);
                     l1 = groupSlotLabel(winnerGroup, 1);
                     p1 = groupPredictedName(winnerGroup, 0);
+                    pid1 = groupPredictedTeamId(winnerGroup, 0);
                     l2 = groupSlotLabel(runnerGroup, 2);
                     p2 = groupPredictedName(runnerGroup, 1);
+                    pid2 = groupPredictedTeamId(runnerGroup, 1);
                 }
             } else {
                 if (node.feeder1 != null) {
@@ -631,7 +640,7 @@ public class KnockoutService {
                     l2 = "W " + stageAbbrev(node.feeder2.stage) + node.feeder2.indexInStage;
                 }
             }
-            out.add(new SlotLabels(l1, l2, p1, p2));
+            out.add(new SlotLabels(l1, l2, p1, p2, pid1, pid2));
         }
         return out;
     }
@@ -1218,6 +1227,19 @@ public class KnockoutService {
      * use); a wildcard token resolves only once EVERY group is finished (the
      * cross-group best-next-placed table isn't final until then).
      */
+    private Long resolveSourceTeamId(Tournaments t, List<GroupDto> groups, String label) {
+        ParsedSource ps = parseSlotSource(t, groups, label);
+        if (ps == null) return null;
+        if (ps.isWildcard()) {
+            for (GroupDto g : groups) if (!groupComplete(g)) return null;
+            for (ThirdPlacedTableDto.Row row : groupStageService.thirdPlacedTable(t).rows()) {
+                if (row.rank() == ps.wildcardRank()) return row.standing().teamId();
+            }
+            return null;
+        }
+        return groupPredictedTeamId(ps.group(), ps.placeIndex());
+    }
+
     private String resolveSourceName(Tournaments t, List<GroupDto> groups, String label) {
         ParsedSource ps = parseSlotSource(t, groups, label);
         if (ps == null) return null;
@@ -1670,6 +1692,8 @@ public class KnockoutService {
                 sl != null ? sl.slot2Label() : null,
                 sl != null ? sl.slot1PredictedName() : null,
                 sl != null ? sl.slot2PredictedName() : null,
+                sl != null ? sl.slot1PredictedTeamId() : null,
+                sl != null ? sl.slot2PredictedTeamId() : null,
                 m.getBibTeam());
     }
 
@@ -1790,16 +1814,19 @@ public class KnockoutService {
             boolean s1HasSource = m.getSlot1Source() != null;
             boolean s2HasSource = m.getSlot2Source() != null;
             String l1 = null, l2 = null, p1 = null, p2 = null;
+            Long pid1 = null, pid2 = null;
             // Emit the pretty label for the persisted source: a group placement
             // ("A1") shows verbatim, a wildcard token ("2-1"/"3-1") shows as
             // "Najbolji 2-1". The raw token stays only in the DB column.
             if (s1Null && s1HasSource) {
                 l1 = displaySourceLabel(m.getSlot1Source());
                 p1 = resolveSourceName(t, groups, m.getSlot1Source());
+                pid1 = resolveSourceTeamId(t, groups, m.getSlot1Source());
             }
             if (s2Null && s2HasSource) {
                 l2 = displaySourceLabel(m.getSlot2Source());
                 p2 = resolveSourceName(t, groups, m.getSlot2Source());
+                pid2 = resolveSourceTeamId(t, groups, m.getSlot2Source());
             }
 
             if (m.getStage() == entry) {
@@ -1813,10 +1840,12 @@ public class KnockoutService {
                         if (s1Null && !s1HasSource) {
                             l1 = groupSlotLabel(winnerGroup, 1);
                             p1 = groupPredictedName(winnerGroup, 0);
+                            pid1 = groupPredictedTeamId(winnerGroup, 0);
                         }
                         if (s2Null && !s2HasSource) {
                             l2 = groupSlotLabel(runnerGroup, 2);
                             p2 = groupPredictedName(runnerGroup, 1);
+                            pid2 = groupPredictedTeamId(runnerGroup, 1);
                         }
                     }
                 }
@@ -1841,8 +1870,9 @@ public class KnockoutService {
                     l2 = "W " + codeOf(f2, indexInStage);
                 }
             }
-            if (l1 != null || l2 != null || p1 != null || p2 != null) {
-                out.put(m.getId(), new SlotLabels(l1, l2, p1, p2));
+            if (l1 != null || l2 != null || p1 != null || p2 != null
+                    || pid1 != null || pid2 != null) {
+                out.put(m.getId(), new SlotLabels(l1, l2, p1, p2, pid1, pid2));
             }
         }
         return out;
@@ -1866,6 +1896,12 @@ public class KnockoutService {
     private static String groupPredictedName(GroupDto g, int placeIndex) {
         if (!groupComplete(g) || g.standings().size() <= placeIndex) return null;
         return g.standings().get(placeIndex).teamName();
+    }
+
+    /** The id twin of {@link #groupPredictedName} - same row, same conditions. */
+    private static Long groupPredictedTeamId(GroupDto g, int placeIndex) {
+        if (!groupComplete(g) || g.standings().size() <= placeIndex) return null;
+        return g.standings().get(placeIndex).teamId();
     }
 
     /** Whether every one of a group's matches has finished - a group completes

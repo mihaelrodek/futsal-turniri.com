@@ -2270,7 +2270,11 @@ function MatchCard({
                         winner={w1}
                         loser={w2}
                         live={isLive}
-                        kit={teamKit(colors, m.team1Id)}
+                        // Fall back to the PREDICTED team: a slot that reads
+                        // "Željezarija Dalis (A1)" has no team1Id yet, and
+                        // without this it drew the neutral unknown-colours kit
+                        // even though the colours are known.
+                        kit={teamKit(colors, m.team1Id ?? m.slot1PredictedTeamId)}
                         edit={editing
                             ? { value: form.s1, onChange: (v) => onFormChange((f) => ({ ...f, s1: v })) }
                             : undefined}
@@ -2285,7 +2289,7 @@ function MatchCard({
                         winner={w2}
                         loser={w1}
                         live={isLive}
-                        kit={teamKit(colors, m.team2Id)}
+                        kit={teamKit(colors, m.team2Id ?? m.slot2PredictedTeamId)}
                         edit={editing
                             ? { value: form.s2, onChange: (v) => onFormChange((f) => ({ ...f, s2: v })) }
                             : undefined}
