@@ -69,6 +69,10 @@ public class TournamentController {
     @Inject StorageService storageService;
     @Inject GeocodeService geocodeService;
     @Inject SlugService slugService;
+    /** Resolves "A1" / "Pobj. ČF1" slot labels for knockout fixtures whose
+     *  teams are still undecided - shared with the Raspored so both screens
+     *  name the same fixture the same way. */
+    @Inject KnockoutService knockoutService;
     @Inject TournamentSlugService tournamentSlugService;
     @Inject PushService pushService;
     @Inject hr.mrodek.apps.futsal_turniri.services.EmailService emailService;
@@ -2107,13 +2111,32 @@ public class TournamentController {
     @GET
     @Path("/upcoming-matches")
     public List<UpcomingMatchDto> listUpcomingMatches() {
-        return matchesRepo.findUpcomingMatches(OffsetDateTime.now().minusHours(1), 40)
+        List<Matches> upcoming = matchesRepo.findUpcomingMatches(OffsetDateTime.now().minusHours(1), 40)
                 .stream()
                 // Hidden tournaments stay visible only to their organisers /
                 // admins, matching the tournament list and detail endpoints.
                 .filter(m -> m.getTournament() == null || canView(m.getTournament()))
+                .toList();
+
+        // Slot labels are computed PER TOURNAMENT (they depend on that
+        // tournament's bracket and group standings), so resolve them once per
+        // distinct tournament in the feed rather than once per match. The feed
+        // is capped at 40 matches and typically spans a handful of tournaments.
+        Map<Long, KnockoutService.SlotLabels> labels = new HashMap<>();
+        Map<Long, Tournaments> koTournaments = new LinkedHashMap<>();
+        for (Matches m : upcoming) {
+            var t = m.getTournament();
+            if (t == null || m.getStage() == null || m.getStage() == MatchStage.GROUP) continue;
+            koTournaments.putIfAbsent(t.getId(), t);
+        }
+        for (Tournaments t : koTournaments.values()) {
+            labels.putAll(knockoutService.knockoutSlotLabels(t));
+        }
+
+        return upcoming.stream()
                 .map(m -> {
                     var t = m.getTournament();
+                    var sl = labels.get(m.getId());
                     return new UpcomingMatchDto(
                             m.getId(),
                             t != null && t.getUuid() != null ? t.getUuid().toString() : null,
@@ -2124,7 +2147,12 @@ public class TournamentController {
                             m.getKickoffAt(),
                             m.getTableNo(),
                             m.getStage() != null ? m.getStage().name() : null,
-                            m.getGroup() != null ? m.getGroup().getName() : null
+                            m.getGroup() != null ? m.getGroup().getName() : null,
+                            m.getKnockoutCode(),
+                            sl != null ? sl.slot1Label() : null,
+                            sl != null ? sl.slot2Label() : null,
+                            sl != null ? sl.slot1PredictedName() : null,
+                            sl != null ? sl.slot2PredictedName() : null
                     );
                 })
                 .collect(Collectors.toList());

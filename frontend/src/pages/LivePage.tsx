@@ -6,6 +6,7 @@ import {
     fetchLiveMatches,
     fetchUpcomingMatches,
     matchPhaseLabel,
+    upcomingTeamLabel,
     pickFeaturedFirst,
     type LiveMatch,
     type UpcomingMatch,
@@ -1463,11 +1464,15 @@ export default function LivePage() {
                                                 </Flex>
                                                 <Box flex="1" minW="0">
                                                     <Text fontSize="sm" fontWeight={700} truncate color="fg.ink">
-                                                        {m.team1Name ?? "-"}{" "}
+                                                        {/* A knockout fixture whose teams aren't
+                                                            decided yet still names itself - "A1 vs
+                                                            Obrt Janeš" - exactly like the Raspored,
+                                                            instead of "- vs -". */}
+                                                        {upcomingTeamLabel(m, 1)}{" "}
                                                         <Box as="span" color="fg.muted" fontWeight={500}>
                                                             {t.pages.embedTournamentPage.vsLabel}
                                                         </Box>{" "}
-                                                        {m.team2Name ?? "-"}
+                                                        {upcomingTeamLabel(m, 2)}
                                                     </Text>
                                                     <HStack gap="1" mt="0.5" color="fg.muted">
                                                         <FiCalendar size={11} />

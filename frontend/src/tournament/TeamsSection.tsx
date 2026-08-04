@@ -51,6 +51,7 @@ import { ConfirmDialog, EmptyState, Panel } from "../ui/primitives"
 import { markDemoOffered, shouldOfferDemo } from "../utils/demoStorage"
 import { showError, showSuccess } from "../toaster"
 import { TeamAvatar } from "./parts"
+import RegistrationLinksPanel from "../components/RegistrationLinksPanel"
 import { t, useTranslation } from "../i18n"
 
 /* "Ekipe" section - team management as a master-detail.
@@ -377,13 +378,21 @@ export default function TeamsSection(props: TeamsSectionProps) {
     const overCapacity = capacity != null && teams.length > capacity
     const userAlreadyRegistered =
         !!userUid && teams.some((p) => p.submittedByUid === userUid)
-    // Self-register flow is intentionally hidden from the UI for now -
-    // the backend side of "a regular user adds their own team to a
-    // tournament" needs more work (rate-limit, anti-spam, organiser
-    // approval flow). All the client-side wiring (dialog, presets,
-    // mutations) is kept intact so we can flip this back to `true`
-    // without rebuilding the flow once the backend lands.
-    const showSelfRegisterButton = false
+    // Registration is open to EVERYONE while the tournament still accepts
+    // entries - signed in or not. The three things this used to wait on now
+    // exist: submissions are throttled per client IP, the contact fields are
+    // mandatory for an anonymous entry, and nothing is published until the
+    // organizer approves it (Teams#pendingApproval).
+    //
+    // Anonymous visitors get the full form rather than a redirect to /prijava:
+    // the club contact filling in a roster will not create an account to do
+    // it, and that redirect is what sent organizers back to typing rosters in
+    // by hand.
+    // Hidden from whoever runs the tournament: an organizer adds teams with
+    // "Dodaj ekipu" (immediate, no approval step), so a second button that
+    // files a request they then have to approve to themselves is pure noise.
+    // Everyone else sees it - signed in or not.
+    const showSelfRegisterButton = !tournamentLocked && !tournamentAlready && !canEdit
 
     // Organiser add-team actions (Uvezi više / Dodaj ekipu) - available only
     // while registration is still open (not started / locked / drawn). Kept in
@@ -605,6 +614,21 @@ export default function TeamsSection(props: TeamsSectionProps) {
                         <chakra.span aria-hidden>&nbsp;</chakra.span>
                     )}
                 </Text>
+
+                {/* Who filed a FORM registration. The backend sends these to
+                    organizers/admins only, so no contact detail leaks into the
+                    public team list - rendering them unconditionally is safe. */}
+                {(p.registeredByName || p.registeredContact) && (
+                    <Text fontSize="xs" color="fg.muted" css={{ overflowWrap: "anywhere" }}>
+                        {tr.teams.registeredByPrefix}
+                        {[p.registeredByName, p.registeredContact].filter(Boolean).join(" · ")}
+                    </Text>
+                )}
+                {p.registrationNote && (
+                    <Text fontSize="xs" color="fg.muted" lineClamp={2}>
+                        {tr.teams.registrationNotePrefix}{p.registrationNote}
+                    </Text>
+                )}
 
                 <HStack gap="2" wrap="wrap" justify="space-between" mt="auto">
                     <HStack gap="1.5" wrap="wrap">
@@ -836,6 +860,10 @@ export default function TeamsSection(props: TeamsSectionProps) {
                     onTryDemo?.()
                 }}
             />
+
+            {/* Registration links - organizer only, and only while the
+                tournament can still take entries. */}
+            {canEdit && !tournamentAlready && uuid && <RegistrationLinksPanel uuid={uuid} />}
 
             {!tournamentAlready && openRequests.length > 0 && (
                 <Panel bg="brand.subtle" borderColor="brand.emphasized" p={{ base: "4", md: "5" }}>

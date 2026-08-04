@@ -93,29 +93,52 @@ const KIT_SHIRT_PATH =
 const KIT_SHORTS_PATH =
     "M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z"
 
-function kitStroke(token: string): string {
-    return /^(#|rgb|hsl|var\(|transparent|currentcolor)/i.test(token)
-        ? token
-        : `var(--chakra-colors-${token.replace(/\./g, "-")})`
+/**
+ * Resolve a Chakra colour token to a CSS value usable inside an SVG `stroke`.
+ *
+ * The dash-casing is NOT cosmetic. Chakra generates its CSS variable names
+ * through `dashCase()`, which lowercases every capital: `blackAlpha.800`
+ * becomes `--chakra-colors-black-alpha-800`. Replacing only the dot produced
+ * `--chakra-colors-blackAlpha-800`, a variable that does not exist - and an
+ * undefined var makes the browser drop the whole `stroke` declaration, so the
+ * outline was never painted anywhere. That is why a white kit rendered as
+ * nothing at all on every screen.
+ *
+ * A literal fallback is baked into the `var()` so a future token typo degrades
+ * to a visible outline instead of silently deleting it again.
+ */
+function kitStroke(token: string, fallback: string): string {
+    if (/^(#|rgb|hsl|var\(|transparent|currentcolor)/i.test(token)) return token
+    const name = token
+        .replace(/\./g, "-")
+        .replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+    return `var(--chakra-colors-${name}, ${fallback})`
 }
+
+/** Literal fallbacks for the two default outlines - see kitStroke(). */
+const KIT_BORDER_FALLBACK = "rgba(0, 0, 0, 0.8)"
+const KIT_HALO_FALLBACK = "rgba(255, 255, 255, 0.8)"
 
 /* DOUBLE OUTLINE. A single dark outline solves the white kit on a white card
    and does nothing for the opposite case - a black or navy kit on the dark
    canvas (#0B1522) - which is just as common. So each path is stroked twice:
 
-     halo   light, 3px, drawn UNDER everything
-     border dark,  1px, drawn with the fill
+     halo   light, 2.25px, drawn UNDER everything
+     border dark,  0.6px,  drawn with the fill
 
    Whichever background the chip lands on, one of the two reads. The halo is
-   only ever visible as the outer ~1px ring: its inner half is painted over by
-   the fills, which are drawn afterwards in the same order.
+   only ever visible as its outer half - roughly 0.8px - because the inner half
+   is painted over by the fills, which are drawn afterwards in the same order.
 
-   Both widths are `vectorEffect="non-scaling-stroke"`, so they are exact CSS
-   pixels at every `size` these chips render at - 9px in the stream fixture
-   list up to 15px in the live panel - instead of scaling into a blob on the
-   small ones. */
-const KIT_STROKE_WIDTH = 1
-const KIT_HALO_WIDTH = 3
+   Sub-pixel widths on purpose: these chips are 9-15px tall, and a full-pixel
+   outline on a 9px silhouette reads as a black blob with a hint of colour in
+   the middle rather than as a kit. Antialiasing renders them as a thin grey
+   line, which is exactly what is wanted.
+
+   Both widths are `vectorEffect="non-scaling-stroke"`, so they stay the same
+   thickness at every `size` instead of growing with the swatch. */
+const KIT_STROKE_WIDTH = 0.6
+const KIT_HALO_WIDTH = 2.25
 
 /* Neutral kit for a team that has no colours saved. Semantic tokens, not the
    light greys the bracket used to hardcode: a light-grey silhouette on a dark
@@ -154,8 +177,8 @@ export function KitSwatch({
     // whole kit takes that colour (shirt and shorts alike).
     const shirtColor = jersey ?? shorts ?? KIT_NEUTRAL_FILL
     const shortsColor = shorts ?? jersey ?? KIT_NEUTRAL_FILL
-    const stroke = kitStroke(borderColor)
-    const halo = kitStroke(haloColor)
+    const stroke = kitStroke(borderColor, KIT_BORDER_FALLBACK)
+    const halo = kitStroke(haloColor, KIT_HALO_FALLBACK)
     return (
         <Box
             as="span"

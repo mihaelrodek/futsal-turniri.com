@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Team self-registration by FORM, and by a shareable link.
+
+        Two things are added here:
+
+        1. `tournament_registration_links` - a token an organizer generates and
+           sends to a club. Anyone holding it can file ONE registration without
+           an account, which is the whole point: the person filling the roster
+           in is usually not a user of this app and never will be. The token is
+           therefore the credential; `active` is how the organizer takes it
+           back, and `use_count` is how they see it was used.
+
+           `label` is what makes the link "personalised": free text the
+           organizer writes ("NK Sokol", "prijave - istok"), shown back to them
+           in the list and to whoever opens the form.
+
+        2. Columns on `teams` for what a form submission carries and a
+           self-registration by a logged-in user does not: who filed it when
+           there is no Firebase account behind it (`registered_by_name` /
+           `registered_contact`), their message to the organizer
+           (`registration_note`), and which link it came through.
+
+        Nothing here changes visibility: a registration lands as a normal team
+        row with the EXISTING `pending_approval = true`, so it stays out of the
+        public lists, the draw and the "can this tournament start" count until
+        the organizer approves it - the same gate self-registration already
+        used. The roster and the kit colours are plain players/teams columns,
+        which is why approving needs no data migration of its own.
+    -->
+
+    <changeSet id="2026-08-03-03-registration-links-seq" author="mrodek">
+        <createSequence sequenceName="seq_tournament_registration_links_id" incrementBy="1" startValue="1"/>
+    </changeSet>
+
+    <changeSet id="2026-08-03-03-registration-links" author="mrodek">
+        <createTable tableName="tournament_registration_links">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <!-- The capability token that travels in /prijava-ekipe/{token}. -->
+            <column name="token" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="tournament_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Free-text note that makes the link personal ("NK Sokol"). -->
+            <column name="label" type="varchar(200)"/>
+            <column name="created_by_uid" type="varchar(64)"/>
+            <!-- Revocation switch. Never delete a used link: the teams that
+                 came through it point at it. -->
+            <column name="active" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="use_count" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="tournament_registration_links"
+                                 baseColumnNames="tournament_id"
+                                 referencedTableName="tournaments" referencedColumnNames="id"
+                                 onDelete="CASCADE"
+                                 constraintName="fk_registration_links_tournament"/>
+
+        <createIndex tableName="tournament_registration_links" indexName="idx_registration_links_tournament">
+            <column name="tournament_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2026-08-03-03-teams-registration-fields" author="mrodek">
+        <addColumn tableName="teams">
+            <!-- Who filed the form. Null for an organizer-added team and for a
+                 self-registration by a signed-in user (submitted_by_uid covers
+                 that one, and the profile carries the name). -->
+            <column name="registered_by_name" type="varchar(200)"/>
+            <!-- Phone or e-mail, exactly as typed - the organizer's only way
+                 back to an anonymous submitter. -->
+            <column name="registered_contact" type="varchar(200)"/>
+            <column name="registration_note" type="varchar(1000)"/>
+            <column name="registration_link_id" type="bigint"/>
+        </addColumn>
+
+        <!-- ON DELETE SET NULL, not CASCADE: deleting a link must never take
+             the teams that registered through it with it. -->
+        <addForeignKeyConstraint baseTableName="teams"
+                                 baseColumnNames="registration_link_id"
+                                 referencedTableName="tournament_registration_links"
+                                 referencedColumnNames="id"
+                                 onDelete="SET NULL"
+                                 constraintName="fk_teams_registration_link"/>
+    </changeSet>
+</databaseChangeLog>

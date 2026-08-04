@@ -39,7 +39,15 @@ public record TeamDto(
 
         // Optional shorts (hlače) colour ("#rrggbb", lowercase), chosen
         // separately from the jersey; null = not set.
-        String shortsColor
+        String shortsColor,
+
+        // ── Registration-form fields. ORGANIZER-ONLY, like claimToken above:
+        // a submitter's phone/e-mail must not travel in the team list every
+        // visitor of the tournament page reads. Null for organizer-added teams
+        // and whenever the viewer isn't an organizer/admin.
+        String registeredByName,
+        String registeredContact,
+        String registrationNote
 ) {
     /** Backwards-compat constructor for callers that don't yet enrich submitter info. */
     public TeamDto(
@@ -48,7 +56,7 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 
     /** Earlier constructor without co-owner / token fields. */
@@ -59,6 +67,6 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, submittedBySlug, submittedByName,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 }

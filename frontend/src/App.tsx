@@ -74,6 +74,7 @@ const TermsPage = lazyWithReload(() => import('./pages/TermsPage'))
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'))
 const PricingPage = lazyWithReload(() => import('./pages/PricingPage'))
 const ContactPage = lazyWithReload(() => import('./pages/ContactPage'))
+const TeamRegistrationPage = lazyWithReload(() => import('./pages/TeamRegistrationPage'))
 const CartPage = lazyWithReload(() => import('./pages/CartPage'))
 const ProfileRedirect = lazyWithReload(() => import('./pages/ProfileRedirect'))
 const NotificationsPage = lazyWithReload(() => import('./pages/NotificationsPage'))
@@ -340,6 +341,13 @@ function AppShell() {
                     {/* Public „Kontaktiraj nas" form - reachable without
                         login, like everything else user-facing. */}
                     <Route path="/kontakt" element={<ContactPage />} />
+                    {/* Team registration by shared link. PUBLIC and
+                        deliberately so: the club contact filling in a roster
+                        will not create an account to do it, and requiring one
+                        is what sends organizers back to typing rosters in by
+                        hand. The token in the path is the whole credential;
+                        everything filed lands pending. */}
+                    <Route path="/prijava-ekipe/:token" element={<TeamRegistrationPage />} />
                     <Route path="/vodic" element={<GuidePage />} />
                     <Route path="/cjenik" element={<PricingPage />} />
                     {/* English alias for the pricing page. */}

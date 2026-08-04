@@ -21,6 +21,14 @@ export type TeamShort = {
     /** Shorts (hlače) colour ("#rrggbb"), chosen separately from the jersey;
      *  null = not set. Together they render a two-tone kit chip. */
     shortsColor?: string | null;
+    /** Who filed the registration form, when it came in without an account.
+     *  ORGANIZER-ONLY - the backend nulls these for every other viewer, so a
+     *  submitter's phone number never travels in the public team list. */
+    registeredByName?: string | null;
+    /** Phone or e-mail exactly as typed by the submitter. Organizer-only. */
+    registeredContact?: string | null;
+    /** The submitter's message to the organizer. Organizer-only. */
+    registrationNote?: string | null;
 };
 
 // Local-only helper for brand-new rows before the server assigns an id.

@@ -22,5 +22,18 @@ public record UpcomingMatchDto(
          *  show the phase next to the tournament name. */
         String stage,
         /** Group letter (A, B, …) for GROUP-stage matches; null for knockout. */
-        String groupName
+        String groupName,
+        /** Stable numbered knockout code ("Š1", "O3", "ČF2", "PF1"), so /uzivo
+         *  can say "ČF1" instead of a bare "Četvrtfinale" - four quarter-finals
+         *  all labelled the same are indistinguishable in a list. */
+        String knockoutCode,
+        /** Predicted-pairing label for a slot whose team is still undecided
+         *  ("A1", "Pobj. ČF1"). Exactly the fields the Raspored already renders -
+         *  without them a knockout fixture reads as "- vs -" until the group
+         *  stage ends, which is most of the time it spends in this feed. */
+        String slot1Label,
+        String slot2Label,
+        /** Team name resolved from the standings once that group is finished. */
+        String slot1PredictedName,
+        String slot2PredictedName
 ) {}

@@ -2,6 +2,12 @@
 <html lang="hr">
   <head>
     <meta charset="UTF-8" />
+    <!-- /favicon.ico FIRST and as a real file. Google (and every crawler that
+         gives up on parsing HTML) probes the root path blind; before this file
+         existed that request fell through to the SPA and returned index.html
+         with 200 text/html, which reads as "there is a favicon here and it is
+         broken". Multi-size ICO: 16, 32 and 48 px. -->
+    <link rel="icon" sizes="16x16 32x32 48x48" href="/favicon.ico" />
     <link rel="icon" type="image/svg+xml" href="/logo/mark-green.svg" />
     <!-- PNG favicon fallback - Google's favicon crawler doesn't reliably
          pick up SVG favicons; it wants a raster icon whose size is a

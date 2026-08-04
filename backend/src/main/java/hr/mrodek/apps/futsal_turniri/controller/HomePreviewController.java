@@ -54,6 +54,12 @@ public class HomePreviewController {
     @ConfigProperty(name = "app.default-og-image")
     Optional<String> defaultOgImage;
 
+    /** Public origin. A constant here rather than the {@code app.public-base-url}
+     *  property the other preview controllers inject, because every link this
+     *  class emits already hardcodes the same absolute host - one literal, not
+     *  two sources of truth. */
+    private static final String SITE_BASE = "https://futsal-turniri.com";
+
     /** Croatian-localised long format for tournament dates in the list. */
     private static final DateTimeFormatter HR_DATE =
             DateTimeFormatter.ofPattern("EEEE, d. MMMM yyyy. 'u' HH:mm",
@@ -239,6 +245,19 @@ public class HomePreviewController {
                 .append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"")
                 .append(escapeAttr(canonical)).append("\">\n");
+        // Favicon links. THE reason the search result showed a generic globe:
+        // Googlebot never sees index.html - Caddy rewrites a crawler request for
+        // "/" to this SSR preview, and Google reads the site favicon from the
+        // HOME PAGE head. Without these the indexed page declares no icon at
+        // all. Absolute URLs: the preview is served from /api/preview/* while
+        // the canonical page is "/", so a relative href resolves against the
+        // wrong base.
+        sb.append("<link rel=\"icon\" sizes=\"16x16 32x32 48x48\" href=\"")
+                .append(escapeAttr(SITE_BASE)).append("/favicon.ico\">\n");
+        sb.append("<link rel=\"icon\" type=\"image/png\" sizes=\"192x192\" href=\"")
+                .append(escapeAttr(SITE_BASE)).append("/icon-192.png\">\n");
+        sb.append("<link rel=\"apple-touch-icon\" href=\"")
+                .append(escapeAttr(SITE_BASE)).append("/apple-touch-icon.png\">\n");
         sb.append("<meta property=\"og:type\" content=\"website\">\n");
         sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
         sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");

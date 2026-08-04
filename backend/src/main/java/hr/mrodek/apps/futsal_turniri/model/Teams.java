@@ -91,6 +91,34 @@ public class Teams {
     private boolean pendingApproval = false;
 
     /**
+     * Name of the person who filed the registration FORM, when there is no
+     * Firebase account behind it (a submission through a
+     * {@link TournamentRegistrationLink}). Null for an organizer-added team and
+     * for a signed-in self-registration - there {@link #submittedByUid} is the
+     * identity and the profile carries the name.
+     */
+    @Column(name = "registered_by_name", length = 200)
+    private String registeredByName;
+
+    /** Phone or e-mail exactly as typed - the organizer's only way back to an
+     *  anonymous submitter. */
+    @Column(name = "registered_contact", length = 200)
+    private String registeredContact;
+
+    /** Free-text message the submitter left for the organizer. */
+    @Column(name = "registration_note", length = 1000)
+    private String registrationNote;
+
+    /**
+     * The link this registration came through, or null when the team was added
+     * by the organizer / self-registered from inside the app. Nulled rather
+     * than cascaded if the link row ever goes away.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "registration_link_id")
+    private TournamentRegistrationLink registrationLink;
+
+    /**
      * Opaque random token embedded in the team-sharing URL
      * (/claim-team/{token}). Set when a team is self-registered or
      * backfilled for existing teams. Stable - the same primary can

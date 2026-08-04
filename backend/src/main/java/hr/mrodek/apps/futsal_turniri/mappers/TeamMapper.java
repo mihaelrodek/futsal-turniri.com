@@ -56,6 +56,12 @@ public interface TeamMapper {
             // on every replaceTeams save.
             @Mapping(target = "jerseyColor",         ignore = true),
             @Mapping(target = "shortsColor",         ignore = true),
+            // Written once at registration time and never by the teams-list
+            // editor - without these, saving the list would null them out.
+            @Mapping(target = "registeredByName",    ignore = true),
+            @Mapping(target = "registeredContact",   ignore = true),
+            @Mapping(target = "registrationNote",    ignore = true),
+            @Mapping(target = "registrationLink",    ignore = true),
             @Mapping(target = "createdAt",           ignore = true),
             @Mapping(target = "updatedAt",           ignore = true)
     })
@@ -95,7 +101,13 @@ public interface TeamMapper {
                 co == null ? null : co.getDisplayName(),
                 includeClaimToken ? e.getClaimToken() : null,
                 e.getJerseyColor(),
-                e.getShortsColor()
+                e.getShortsColor(),
+                // Same gate as the claim token: contact details of whoever
+                // filed the registration are for the organizer, not for the
+                // public team list.
+                includeClaimToken ? e.getRegisteredByName() : null,
+                includeClaimToken ? e.getRegisteredContact() : null,
+                includeClaimToken ? e.getRegistrationNote() : null
         );
     }
 

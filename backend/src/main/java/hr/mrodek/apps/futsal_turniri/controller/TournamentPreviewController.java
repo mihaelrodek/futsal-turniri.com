@@ -164,6 +164,19 @@ public class TournamentPreviewController {
         sb.append("<title>").append(escapeHtml(title)).append(" - futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
+        // Favicon links. THE reason the search result showed a generic globe:
+        // Googlebot never sees index.html - Caddy rewrites a crawler request for
+        // "/" to this SSR preview, and Google reads the site favicon from the
+        // HOME PAGE head. Without these the indexed page declares no icon at
+        // all. Absolute URLs: the preview is served from /api/preview/* while
+        // the canonical page is "/", so a relative href resolves against the
+        // wrong base.
+        sb.append("<link rel=\"icon\" sizes=\"16x16 32x32 48x48\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/favicon.ico\">\n");
+        sb.append("<link rel=\"icon\" type=\"image/png\" sizes=\"192x192\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/icon-192.png\">\n");
+        sb.append("<link rel=\"apple-touch-icon\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/apple-touch-icon.png\">\n");
 
         sb.append("<meta property=\"og:type\" content=\"video.other\">\n");
         sb.append("<meta property=\"og:locale\" content=\"hr_HR\">\n");
@@ -244,6 +257,19 @@ public class TournamentPreviewController {
         sb.append("<title>").append(escapeHtml(name)).append(" - futsal-turniri.com</title>\n");
         sb.append("<meta name=\"description\" content=\"").append(escapeAttr(description)).append("\">\n");
         sb.append("<link rel=\"canonical\" href=\"").append(escapeAttr(spaUrl)).append("\">\n");
+        // Favicon links. THE reason the search result showed a generic globe:
+        // Googlebot never sees index.html - Caddy rewrites a crawler request for
+        // "/" to this SSR preview, and Google reads the site favicon from the
+        // HOME PAGE head. Without these the indexed page declares no icon at
+        // all. Absolute URLs: the preview is served from /api/preview/* while
+        // the canonical page is "/", so a relative href resolves against the
+        // wrong base.
+        sb.append("<link rel=\"icon\" sizes=\"16x16 32x32 48x48\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/favicon.ico\">\n");
+        sb.append("<link rel=\"icon\" type=\"image/png\" sizes=\"192x192\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/icon-192.png\">\n");
+        sb.append("<link rel=\"apple-touch-icon\" href=\"")
+                .append(escapeAttr(publicBaseUrl)).append("/apple-touch-icon.png\">\n");
 
         // OpenGraph
         sb.append("<meta property=\"og:type\" content=\"article\">\n");

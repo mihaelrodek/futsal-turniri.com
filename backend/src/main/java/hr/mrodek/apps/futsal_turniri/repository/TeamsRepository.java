@@ -25,6 +25,23 @@ public class TeamsRepository implements AppRepository<Teams, Long> {
     }
 
     /**
+     * {@code registrationLinkId -> teams filed through it} for one tournament,
+     * in ONE grouped query - the organizer's link list shows a count per row
+     * and a query per link would scale with however many links they made.
+     */
+    public java.util.Map<Long, Long> countByRegistrationLink(Long tournamentId) {
+        var rows = em.createQuery(
+                        "select t.registrationLink.id, count(t) from Teams t "
+                                + "where t.tournament.id = :tid and t.registrationLink is not null "
+                                + "group by t.registrationLink.id", Object[].class)
+                .setParameter("tid", tournamentId)
+                .getResultList();
+        var out = new java.util.HashMap<Long, Long>();
+        for (Object[] row : rows) out.put((Long) row[0], (Long) row[1]);
+        return out;
+    }
+
+    /**
      * Teams from a given tournament that aren't yet linked to any registered
      * user. Used by the admin dashboard to surface candidates for legacy /
      * organizer-added teams that a real user can claim retroactively.

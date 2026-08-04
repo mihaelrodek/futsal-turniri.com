@@ -98,6 +98,32 @@ export type UpcomingMatch = {
     stage?: string | null
     /** Group letter (A, B, …) for GROUP matches; null for knockout. */
     groupName?: string | null
+    /** Numbered knockout code ("ČF1", "PF2") - distinguishes the four
+     *  quarter-finals from each other, which a bare "Četvrtfinale" cannot. */
+    knockoutCode?: string | null
+    /** Predicted-pairing labels for slots whose team is still undecided,
+     *  same fields the Raspored renders ("A1", "Pobj. ČF1"). */
+    slot1Label?: string | null
+    slot2Label?: string | null
+    /** Team name resolved from the standings once that group finished. */
+    slot1PredictedName?: string | null
+    slot2PredictedName?: string | null
+}
+
+/**
+ * What to print for one side of an upcoming fixture.
+ *
+ * Same fallback ladder the Raspored uses (see `matchDisplay` in
+ * ScheduleTab.tsx): the real team once it is known, otherwise the name
+ * predicted from the finished group, otherwise the slot label ("A1"). Only a
+ * fixture with none of the three falls back to "-", instead of every knockout
+ * fixture reading "- vs -" for the whole group stage.
+ */
+export function upcomingTeamLabel(m: UpcomingMatch, side: 1 | 2): string {
+    const name = side === 1 ? m.team1Name : m.team2Name
+    const predicted = side === 1 ? m.slot1PredictedName : m.slot2PredictedName
+    const label = side === 1 ? m.slot1Label : m.slot2Label
+    return name ?? predicted ?? label ?? "-"
 }
 
 /** Croatian phase label appended after the tournament name on /uzivo
@@ -106,6 +132,7 @@ export type UpcomingMatch = {
 export function matchPhaseLabel(m: {
     stage?: string | null
     groupName?: string | null
+    knockoutCode?: string | null
 }): string | null {
     if (!m.stage) return null
     if (m.stage === "GROUP") return m.groupName ? `Skupina ${m.groupName}` : "Grupa"
@@ -117,7 +144,11 @@ export function matchPhaseLabel(m: {
         FINAL: "Finale",
         THIRD_PLACE: "Za 3. mjesto",
     }
-    return KNOCKOUT[m.stage] ?? null
+    const phase = KNOCKOUT[m.stage] ?? null
+    // "Četvrtfinale · ČF1". The round alone is ambiguous the moment a stage
+    // has more than one fixture, which is every stage except the final.
+    if (phase && m.knockoutCode) return `${phase} · ${m.knockoutCode}`
+    return phase
 }
 
 /** Upcoming matches across every tournament, soonest-first (max 40). */

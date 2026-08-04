@@ -13,13 +13,20 @@ import {
     VStack,
     chakra,
 } from "@chakra-ui/react"
-import { FiX } from "react-icons/fi"
+import { FiEdit3, FiX } from "react-icons/fi"
 
 import type { TeamShort } from "../types/teams"
 import type { UserTeamPreset } from "../api/userTeamPresets"
 import type { ScheduledMatch } from "../types/schedule"
 import type { PlayerDto } from "../types/players"
 import { fetchPlayers } from "../api/players"
+import { isAxiosError } from "axios"
+import TeamRegistrationForm from "../components/TeamRegistrationForm"
+import {
+    registerTeamAsUser,
+    submitPublicRegistration,
+    type TeamRegistrationInput,
+} from "../api/teamRegistration"
 import { fetchScorers } from "../api/stats"
 import { useTranslation } from "../i18n"
 import { TeamAvatar } from "./parts"
@@ -44,6 +51,7 @@ export function SelfRegisterDialog({
     error,
     submitting,
     onSubmit,
+    onOpenFull,
 }: {
     open: boolean
     onClose: () => void
@@ -55,6 +63,9 @@ export function SelfRegisterDialog({
     error: string | null
     submitting: boolean
     onSubmit: () => void
+    /** Opens the full registration form (roster, kit, C/GK). Omit to hide the
+     *  switch entirely. */
+    onOpenFull?: () => void
 }) {
     const t = useTranslation()
     return (
@@ -125,6 +136,23 @@ export function SelfRegisterDialog({
                                 <chakra.b color="yellow.fg">{t.tournamentSection.dialogs.selfRegister.pendingNoticeHighlight}</chakra.b>{" "}
                                 {t.tournamentSection.dialogs.selfRegister.pendingNoticeSuffix}
                             </Text>
+
+                            {/* The quick path above is a name and nothing else,
+                                which is the right default - most people sign up
+                                first and fill the squad in later. This is the
+                                door to the same form the shared link opens. */}
+                            {onOpenFull && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    colorPalette="pitch"
+                                    alignSelf="flex-start"
+                                    disabled={submitting}
+                                    onClick={onOpenFull}
+                                >
+                                    <FiEdit3 /> {t.tournamentSection.dialogs.selfRegister.fullFormAction}
+                                </Button>
+                            )}
 
                             {error && (
                                 <Box borderWidth="1px" borderColor="red.muted" bg="red.subtle" rounded="md" p="2">
@@ -682,6 +710,85 @@ export function DeleteTeamDialog({
                             onClick={onConfirm}
                         >
                             {dt.confirm}
+                        </Button>
+                    </Dialog.Footer>
+                </Dialog.Content>
+            </Dialog.Positioner>
+        </Dialog.Root>
+    )
+}
+
+/* ---------- Full registration form, in a dialog ----------
+   The same component the shared link renders, for a signed-in user who wants
+   to enter the roster and kit straight away instead of just a name. Contact
+   fields are optional here: the account is the identity.
+   ────────────────────────────────────────────────────────────────────── */
+export function TeamRegistrationDialog({
+    open,
+    uuid,
+    signedIn,
+    onClose,
+    onRegistered,
+}: {
+    open: boolean
+    uuid: string
+    /** Drives BOTH the endpoint and whether the contact fields are required.
+     *  A signed-in submission carries an account the organizer can reach;
+     *  an anonymous one has to leave a phone or e-mail behind. */
+    signedIn: boolean
+    onClose: () => void
+    /** Called after a successful submit so the caller can refresh the team
+     *  list - the new team shows up there as pending. */
+    onRegistered: (teamName: string) => void
+}) {
+    const t = useTranslation()
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    async function submit(payload: TeamRegistrationInput) {
+        if (busy) return
+        setError(null)
+        try {
+            setBusy(true)
+            const res = signedIn
+                ? await registerTeamAsUser(uuid, payload)
+                : await submitPublicRegistration(uuid, payload)
+            onRegistered(res.teamName)
+            onClose()
+        } catch (err) {
+            const errors = t.pages.teamRegistration.errors
+            const code = isAxiosError(err) && typeof err.response?.data === "string"
+                ? err.response.data
+                : null
+            setError(code && code in errors ? errors[code as keyof typeof errors] : errors.generic)
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <Dialog.Root open={open} onOpenChange={(e) => { if (!e.open) onClose() }}>
+            <Dialog.Backdrop />
+            <Dialog.Positioner>
+                <Dialog.Content maxW="2xl">
+                    <Dialog.Header py="3" px="4" borderBottomWidth="1px" borderColor="border">
+                        <Heading size="sm">{t.tournamentSection.dialogs.selfRegister.fullFormTitle}</Heading>
+                    </Dialog.Header>
+                    <Dialog.Body py="4" px="4" maxH="70vh" overflowY="auto">
+                        <TeamRegistrationForm
+                            // Mandatory even for a signed-in submitter: the
+                            // organizer needs a phone/e-mail they can act on
+                            // without first digging through a profile page.
+                            requireContact
+                            busy={busy}
+                            errorText={error}
+                            submitLabel={t.tournamentSection.dialogs.selfRegister.submit}
+                            onSubmit={submit}
+                        />
+                    </Dialog.Body>
+                    <Dialog.Footer py="3" px="4" borderTopWidth="1px" borderColor="border">
+                        <Button variant="ghost" onClick={onClose} disabled={busy}>
+                            {t.common.cancel}
                         </Button>
                     </Dialog.Footer>
                 </Dialog.Content>

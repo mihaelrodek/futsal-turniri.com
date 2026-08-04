@@ -133,6 +133,17 @@ function stageBadgeText(
     return !isGroup && knockoutCode ? `${stageLabel} - ${knockoutCode}` : stageLabel
 }
 
+/* Group and knockout badges are both TINTED, in different hues: the knockout
+   one used to be the same neutral grey as any disabled chip, so a schedule
+   read as "coloured rows are the group stage, grey rows are filler" when the
+   grey ones are in fact the important half. Teal = group, purple = knockout;
+   one shared map so the two badge sizes can't drift apart. */
+function stageBadgeColors(isGroup: boolean): { bg: string; color: string } {
+    return isGroup
+        ? { bg: "brand.subtle", color: "brand.fg" }
+        : { bg: "purple.subtle", color: "purple.fg" }
+}
+
 function StageBadge({
     stage,
     groupName,
@@ -145,6 +156,7 @@ function StageBadge({
     const t = useTranslation()
     const isGroup = stage === "GROUP"
     const base = stageBadgeText(t, stage, groupName, knockoutCode)
+    const c = stageBadgeColors(isGroup)
     return (
         <Box
             as="span"
@@ -155,8 +167,8 @@ function StageBadge({
             fontWeight="semibold"
             letterSpacing="wide"
             textTransform="uppercase"
-            bg={isGroup ? "brand.subtle" : "bg.muted"}
-            color={isGroup ? "brand.fg" : "fg.muted"}
+            bg={c.bg}
+            color={c.color}
             flexShrink={0}
             whiteSpace="nowrap"
             minW={{ base: "104px", md: "128px" }}
@@ -179,6 +191,7 @@ function CompactStageBadge({
     const t = useTranslation()
     const isGroup = stage === "GROUP"
     const base = stageBadgeText(t, stage, groupName, knockoutCode, true)
+    const c = stageBadgeColors(isGroup)
     return (
         <Box
             as="span"
@@ -189,8 +202,8 @@ function CompactStageBadge({
             fontWeight="semibold"
             letterSpacing="0.04em"
             textTransform="uppercase"
-            bg={isGroup ? "brand.subtle" : "bg.muted"}
-            color={isGroup ? "brand.fg" : "fg.muted"}
+            bg={c.bg}
+            color={c.color}
             flexShrink={0}
             whiteSpace="nowrap"
             w="full"

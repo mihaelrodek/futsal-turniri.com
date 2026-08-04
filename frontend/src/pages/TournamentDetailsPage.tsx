@@ -17,7 +17,7 @@ import { registerLocale } from "react-datepicker"
 import { hr } from "date-fns/locale"
 import "react-datepicker/dist/react-datepicker.css"
 import "../datepicker.css"
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import {
@@ -93,6 +93,7 @@ import {
     DeleteTournamentDialog,
     SelfRegisterDialog,
     TeamInfoDialog,
+    TeamRegistrationDialog,
 } from "../tournament/dialogs"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -208,7 +209,6 @@ export default function TournamentDetailsPage() {
     const t18n = useTranslation()
     const { uuid } = useParams<{ uuid: string }>()
     const navigate = useNavigate()
-    const location = useLocation()
     const { user, isAdmin, loading: authLoading } = useAuth()
 
     const queryClient = useQueryClient()
@@ -517,6 +517,7 @@ export default function TournamentDetailsPage() {
     const [selfRegOpen, setSelfRegOpen] = useState(false)
     const [presets, setPresets] = useState<UserTeamPreset[]>([])
     const [selfRegName, setSelfRegName] = useState("")
+    const [fullRegOpen, setFullRegOpen] = useState(false)
     const [selfRegSubmitting, setSelfRegSubmitting] = useState(false)
     const [selfRegError, setSelfRegError] = useState<string | null>(null)
 
@@ -1104,10 +1105,12 @@ export default function TournamentDetailsPage() {
     }
 
     function onSelfRegisterClick() {
+        // Not signed in - straight to the full form rather than to /prijava.
+        // Sending a club contact to a sign-up screen is precisely what makes
+        // them give up; the form works without an account and the entry lands
+        // pending either way.
         if (!user) {
-            navigate("/prijava", {
-                state: { from: `${location.pathname}${location.search}` },
-            })
+            setFullRegOpen(true)
             return
         }
         setSelfRegOpen(true)
@@ -1929,6 +1932,25 @@ export default function TournamentDetailsPage() {
                 error={selfRegError}
                 submitting={selfRegSubmitting}
                 onSubmit={submitSelfRegister}
+                onOpenFull={() => {
+                    setSelfRegOpen(false)
+                    setSelfRegError(null)
+                    setFullRegOpen(true)
+                }}
+            />
+
+            {/* The full form (roster, kit, C/GK) - same component the shared
+                registration link renders. Lands pending, exactly like the
+                quick path above. */}
+            <TeamRegistrationDialog
+                open={fullRegOpen}
+                uuid={uuid ?? ""}
+                signedIn={!!user}
+                onClose={() => setFullRegOpen(false)}
+                onRegistered={() => {
+                    setSelfRegName("")
+                    void refreshAll()
+                }}
             />
 
             <TeamInfoDialog
