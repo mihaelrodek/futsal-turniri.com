@@ -2242,6 +2242,32 @@ public class TournamentController {
         return Response.ok(tournamentMapper.toDetails(t)).build();
     }
 
+    /** Body of {@link #setShowFoulsInTimeline}. */
+    public record ShowFoulsRequest(Boolean show) {}
+
+    /**
+     * Turn accumulated fouls on the event timeline on or off for the whole
+     * tournament. Organizer/admin only.
+     *
+     * <p>Switching it OFF only stops the rendering - the {@code FOUL} events
+     * stay, so switching it back on shows the full history instead of only
+     * what has happened since. Returns the fresh details DTO so every timeline
+     * on screen re-renders at once.
+     */
+    @PUT
+    @Path("/{uuid}/fouls-in-timeline")
+    @Authenticated
+    @Transactional
+    public Response setShowFoulsInTimeline(@PathParam("uuid") String uuid, ShowFoulsRequest req) {
+        var t = tournamentsRepo.findByUuidOrSlug(uuid).orElse(null);
+        if (t == null) return Response.status(Response.Status.NOT_FOUND).build();
+        assertCanEdit(t);
+
+        t.setShowFoulsInTimeline(Boolean.TRUE.equals(req == null ? null : req.show()));
+        t.setUpdatedAt(OffsetDateTime.now());
+        return Response.ok(tournamentMapper.toDetails(t)).build();
+    }
+
     /* ===================== Live match (status + events) ===================== */
 
     /**
@@ -2615,13 +2641,29 @@ public class TournamentController {
                     .entity(messages.t("tournament.error.teamAndHalfInvalid")).build();
         }
         int step = Integer.signum(body.delta());
+        int before;
         if (body.team() == 1) {
+            before = body.half() == 1 ? nz(match.getFouls1First()) : nz(match.getFouls1Second());
             if (body.half() == 1) match.setFouls1First(clampFoul(match.getFouls1First(), step));
             else match.setFouls1Second(clampFoul(match.getFouls1Second(), step));
         } else {
+            before = body.half() == 1 ? nz(match.getFouls2First()) : nz(match.getFouls2Second());
             if (body.half() == 1) match.setFouls2First(clampFoul(match.getFouls2First(), step));
             else match.setFouls2Second(clampFoul(match.getFouls2Second(), step));
         }
+
+        // Mirror the counter onto the timeline. The counters stay authoritative
+        // for the deveterac display - this event exists only so the timeline can
+        // say WHEN a foul happened, which a running total cannot.
+        //
+        // A decrement at 0 changed no counter, so it must not delete an event
+        // either; `before` is what tells the two apart.
+        if (step > 0) {
+            recordFoulEvent(match, body.team(), body.half(), body.minute());
+        } else if (step < 0 && before > 0) {
+            removeLastFoulEvent(match, body.team());
+        }
+
         notifyLive(match);
         return Response.ok(new MatchFoulsDto(
                 match.getFouls1First(), match.getFouls1Second(),
@@ -2630,6 +2672,120 @@ public class TournamentController {
 
     private static int clampFoul(Integer current, int step) {
         return Math.max(0, (current == null ? 0 : current) + step);
+    }
+
+    private static int nz(Integer v) {
+        return v == null ? 0 : v;
+    }
+
+    /**
+     * Write one FOUL timeline entry for a foul just counted.
+     *
+     * <p>No player: a foul is recorded against the TEAM and the zapisnik never
+     * asks who committed it. The minute comes from the zapisnik's clock; with
+     * none, the half's own boundary is used so the entry at least sorts into
+     * the correct half rather than landing in the 0th minute of the match.
+     */
+    private void recordFoulEvent(Matches match, int teamNo, int half, Integer minute) {
+        Teams team = teamNo == 1 ? match.getTeam1() : match.getTeam2();
+        if (team == null) return;
+
+        int resolved = minute != null ? Math.max(0, minute) : liveMinute(match, half);
+
+        MatchEvent e = new MatchEvent();
+        e.setMatch(match);
+        e.setType(MatchEventType.FOUL);
+        e.setTeam(team);
+        e.setMinute(resolved);
+        // RECORD the half instead of leaving it to be re-derived from the
+        // minute. The counter this foul came from is per half and the request
+        // says which one; the minute rule is ambiguous exactly at the boundary
+        // (minute 10 of a 2x10 match is both the end of the 1st half and
+        // "minute >= half length"), which had the zapisnik and the public
+        // timeline filing the same foul under different halves.
+        e.setHalf(half);
+        matchEventRepo.save(e);
+    }
+
+    /**
+     * The current match minute, derived from the live clock, for a foul whose
+     * caller sent none.
+     *
+     * <p>Every zapisnik tap flushes through the idempotent SET endpoint, which
+     * carries one minute for a whole batch, so deriving it here is what makes a
+     * foul land where it happened rather than at the top of the half. The
+     * caller's minute still wins when it sends one - it is the zapisnik's own
+     * clock, and it is right even when the request is delayed.
+     *
+     * <p>Pauses are honoured; a queue drained long after the fact necessarily
+     * stamps the flush, not the tap. Falls back to the half boundary when the
+     * match has no clock at all (a result typed in after the fact).
+     */
+    private int liveMinute(Matches match, int half) {
+        Integer halfLen = match.getTournament() != null ? match.getTournament().getHalfLengthMin() : null;
+        int boundary = half == 2 && halfLen != null ? halfLen : 0;
+
+        OffsetDateTime startedAt = half == 2 ? match.getSecondHalfStartedAt() : match.getLiveStartedAt();
+        if (startedAt == null) return boundary;
+
+        OffsetDateTime now = match.getLivePausedAt() != null ? match.getLivePausedAt() : OffsetDateTime.now();
+        long secs = Math.max(0, java.time.Duration.between(startedAt, now).getSeconds());
+        int minute = boundary + (int) (secs / 60);
+
+        // Clamp to the end of the half. Raw elapsed time keeps running after a
+        // half's clock has expired and the app is waiting for the organizer, so
+        // an unclamped value wrote fouls at minute 93 of a 2x10 match.
+        if (halfLen != null && halfLen > 0) {
+            int limit = half == 2 ? 2 * halfLen : halfLen;
+            if (minute > limit) minute = limit;
+        }
+        return minute;
+    }
+
+    /**
+     * Take one off the accumulated-foul counter that a deleted FOUL event was
+     * counted in. Team from the event, half from its minute; clamped at 0 so a
+     * double delete can never drive the tally negative.
+     */
+    private void decrementFoulCounter(Matches match, MatchEvent event) {
+        Long teamId = event.getTeam() != null ? event.getTeam().getId() : null;
+        if (teamId == null) return;
+
+        // The recorded half wins; the minute rule is only a fallback for rows
+        // written before the column existed.
+        boolean second;
+        if (event.getHalf() != null) {
+            second = event.getHalf() == 2;
+        } else {
+            Integer halfLen = match.getTournament() != null ? match.getTournament().getHalfLengthMin() : null;
+            second = halfLen != null && halfLen > 0 && event.getMinute() != null
+                    && event.getMinute() >= halfLen;
+        }
+
+        boolean isTeam1 = match.getTeam1() != null && Objects.equals(match.getTeam1().getId(), teamId);
+        if (isTeam1) {
+            if (second) match.setFouls1Second(clampFoul(match.getFouls1Second(), -1));
+            else match.setFouls1First(clampFoul(match.getFouls1First(), -1));
+        } else {
+            if (second) match.setFouls2Second(clampFoul(match.getFouls2Second(), -1));
+            else match.setFouls2First(clampFoul(match.getFouls2First(), -1));
+        }
+    }
+
+    /**
+     * Undo the last FOUL entry for a team - the counterpart of the counter's
+     * "-" button.
+     *
+     * <p>Matched by team and recency only, not by half: the event carries a
+     * minute, not a half, and "undo" always means the one just entered. Undoing
+     * a first-half foul while the second half runs would take the newer entry -
+     * an edge case the counter itself has too, since it also only knows totals.
+     */
+    private void removeLastFoulEvent(Matches match, int teamNo) {
+        Teams team = teamNo == 1 ? match.getTeam1() : match.getTeam2();
+        if (team == null) return;
+        matchEventRepo.findLastFoul(match.getId(), team.getId())
+                .ifPresent(e -> matchEventRepo.delete(e));
     }
 
     /**
@@ -2691,13 +2847,30 @@ public class TournamentController {
                     .entity(messages.t("tournament.error.teamAndHalfInvalid")).build();
         }
         int value = Math.max(0, body.value());
+        int before;
         if (body.team() == 1) {
+            before = body.half() == 1 ? nz(match.getFouls1First()) : nz(match.getFouls1Second());
             if (body.half() == 1) match.setFouls1First(value);
             else match.setFouls1Second(value);
         } else {
+            before = body.half() == 1 ? nz(match.getFouls2First()) : nz(match.getFouls2Second());
             if (body.half() == 1) match.setFouls2First(value);
             else match.setFouls2Second(value);
         }
+
+        // Keep the timeline in step with an ABSOLUTE set too - this is the path
+        // EVERY zapisnik tap flushes through (see useOfflineMatchFouls), not
+        // just a reconnect, so without it fouls would never reach the timeline
+        // at all. The minute belongs to the tap that produced this value: right
+        // for the normal one-tap flush, and the last tap's minute for a queue
+        // drained after a spell offline.
+        for (int i = before; i < value; i++) {
+            recordFoulEvent(match, body.team(), body.half(), body.minute());
+        }
+        for (int i = value; i < before; i++) {
+            removeLastFoulEvent(match, body.team());
+        }
+
         notifyLive(match);
         return Response.ok(new MatchFoulsDto(
                 match.getFouls1First(), match.getFouls1Second(),
@@ -3246,6 +3419,16 @@ public class TournamentController {
 
         boolean wasScoreGoal = event.getType() == MatchEventType.GOAL
                 || event.getType() == MatchEventType.OWN_GOAL;
+
+        // A FOUL row is the timeline half of an accumulated foul - deleting it
+        // has to take the counter down with it, or the "deveterac" tally keeps
+        // counting a foul the organizer has just removed. Which half the foul
+        // belonged to is read from its minute, the same rule the timeline uses
+        // to place it, and the side from its own team - not from whatever half
+        // happens to be running now.
+        if (event.getType() == MatchEventType.FOUL) {
+            decrementFoulCounter(match, event);
+        }
         // SpectoStream: capture the credited side + event id BEFORE the row is
         // deleted (its lazy team/player are still loadable here), so the overlay
         // can decrement the same side that must now lose the goal.

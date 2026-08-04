@@ -69,6 +69,21 @@ export function useOfflineMatchFouls(
     uuid: string,
     matchId: number,
     server: FoulCounts,
+    /**
+     * Live match minute, read at flush time. It stamps the timeline entries the
+     * server writes for the new fouls - without it every foul would sit at the
+     * half boundary, which defeats the point of putting them on a timeline.
+     *
+     * A ref, not a value: this hook's flush runs from timers and event handlers
+     * that would otherwise close over a stale minute.
+     */
+    minuteRef?: { current: number | null },
+    /**
+     * Called after the server accepted a foul change. A foul now also writes a
+     * FOUL row on the timeline, and the timeline is loaded separately - without
+     * this the row only appeared after a page refresh.
+     */
+    onSynced?: () => void,
 ) {
     // Refs are the source of truth (read synchronously inside taps/flush loop);
     // the state mirrors just trigger re-renders. Seed once from localStorage -
@@ -118,7 +133,8 @@ export function useOfflineMatchFouls(
                 const target = queueRef.current[field] as number
                 const { team, half } = FIELD_META[field]
                 try {
-                    const res = await setMatchFouls(uuid, matchId, team, half, target)
+                    const res = await setMatchFouls(
+                        uuid, matchId, team, half, target, minuteRef?.current ?? null)
                     // Clear only if unchanged during the await - a newer tap
                     // re-queued a fresher value we must still flush.
                     if (queueRef.current[field] === target) {
@@ -127,6 +143,9 @@ export function useOfflineMatchFouls(
                         commitQueue(nq)
                         commitLocal({ ...localRef.current, [field]: res[field] })
                     }
+                    // The server may have created or removed FOUL timeline
+                    // rows - tell the caller to reload its events.
+                    onSynced?.()
                 } catch (err: any) {
                     if (err?.response) {
                         // Server REJECTED it (4xx/5xx) - won't succeed on retry,
@@ -144,7 +163,7 @@ export function useOfflineMatchFouls(
             flushingRef.current = false
             setSyncing(false)
         }
-    }, [uuid, matchId, commitQueue, commitLocal])
+    }, [uuid, matchId, commitQueue, commitLocal, minuteRef, onSynced])
 
     // Re-init when the match changes: reload its queue, re-merge over the server
     // snapshot, and try to flush anything left over from a previous outage.

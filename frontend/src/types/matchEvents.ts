@@ -36,7 +36,12 @@ export type MatchLiveMode = "TIMER" | "SIMPLE"
  *  PENALTY_MISSED_LIVE - a timeline-only record.
  *
  *  EXCLUSION is a futsal 2-minute suspension ("isključenje 2 min") -
- *  timeline-only; unlike a red card it does NOT lock the player out. */
+ *  timeline-only; unlike a red card it does NOT lock the player out.
+ *
+ *  FOUL is one accumulated TEAM foul, written alongside the fouls counters so
+ *  the timeline can show when it happened. Carries no player (nobody enters
+ *  who committed it) and is rendered only while the tournament has
+ *  `showFoulsInTimeline` on. */
 export type MatchEventType =
     | "GOAL"
     | "OWN_GOAL"
@@ -46,11 +51,18 @@ export type MatchEventType =
     | "PENALTY_MISSED"
     | "PENALTY_MISSED_LIVE"
     | "EXCLUSION"
+    | "FOUL"
 
 /** A single recorded event in a live (or finished) match. */
 export type MatchEventDto = {
     id: number
     type: MatchEventType
+    /** Which half it happened in (1/2) when RECORDED rather than inferred from
+     *  the minute; null for older rows and for the types that still infer it.
+     *  Set for FOUL, because the minute rule is ambiguous exactly at the half
+     *  boundary - minute 10 of a 2x10 match belongs to the first half but
+     *  satisfies "minute >= half length". */
+    half?: number | null
     /** Null for an unattributed event (player not named). */
     playerId: number | null
     /** Null for an unattributed event (player not named). */

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Box, Button, Dialog, Flex, Grid, HStack, IconButton, Portal, Text, VStack, chakra } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
-import { GiSoccerBall } from "react-icons/gi"
+import { GiSoccerBall, GiSoccerKick } from "react-icons/gi"
 import { FiX, FiClock, FiPlay, FiHome } from "react-icons/fi"
 
 import { useTranslation, type Dictionary } from "../i18n"
@@ -350,6 +350,10 @@ export default function StreamHero({
 
 const REGULATION: ReadonlySet<string> = new Set([
     "GOAL", "OWN_GOAL", "YELLOW_CARD", "RED_CARD", "PENALTY_MISSED_LIVE", "EXCLUSION",
+    // FOUL rides along so the fouls a tournament opted into showing appear here
+    // too; without it every foul dropped into the "not regulation" bucket and
+    // was rendered under the PENALI heading.
+    "FOUL",
 ])
 
 /** A live match's events: load on match switch, then poll while it runs
@@ -669,6 +673,8 @@ function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
             ? er.penSuffix(e.playerName ?? f.unknownScorer)
             : e.type === "PENALTY_MISSED_LIVE"
                 ? (e.playerName != null ? er.penSuffix(e.playerName) : er.missedPenaltyLive)
+                : e.type === "FOUL"
+                    ? f.foulLabel
                 : e.type === "EXCLUSION"
                     ? (e.playerName != null ? er.exclusionSuffix(e.playerName) : er.exclusionLabel)
                     : e.type === "PENALTY_MISSED" || e.type === "PENALTY_GOAL"
@@ -684,6 +690,10 @@ function TickerRow({ e, left }: { e: MatchEventDto; left: boolean }) {
             <Box color="fg.muted" display="inline-flex"><FiX size={13} /></Box>
         ) : e.type === "EXCLUSION" ? (
             <Text as="span" fontSize="11px" lineHeight="1" flexShrink={0}>🕑</Text>
+        ) : e.type === "FOUL" ? (
+            // Same sliding-tackle mark as every other timeline. It used to fall
+            // through to the card block below and drew a RED CARD.
+            <Box color="fg.muted" display="inline-flex"><GiSoccerKick size={13} /></Box>
         ) : (
             <Box
                 w="9px"

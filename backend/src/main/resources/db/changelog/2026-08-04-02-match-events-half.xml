@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Which half a match event belongs to, recorded rather than inferred.
+
+        The timeline has always derived it from the minute: `minute < half
+        length` = first half, otherwise second. That is ambiguous at exactly the
+        boundary - a foul in the 10th minute of a 2x10 match is the last minute
+        of the first half AND minute 10, and the renderers disagreed about it:
+        the zapisnik put it in the first half, the public timeline in the
+        second, for one and the same row.
+
+        Fouls are where this hurts, because the counter that produced them is
+        already per-half - the request literally says which half it counts
+        towards - and that answer was being thrown away and then guessed at.
+        So it is stored.
+
+        Nullable on purpose: every event written before this column existed has
+        no answer, and inventing one would be worse than falling back to the old
+        minute rule for those rows. Set for FOUL events from here on; other
+        event types may follow, and until they do they keep the old behaviour.
+    -->
+    <changeSet id="2026-08-04-02-match-events-half" author="mrodek">
+        <addColumn tableName="match_events">
+            <column name="half" type="smallint"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+        smallint above was the wrong width: the entity maps this to Integer,
+        like every other numeric column here (minute, the fouls counters), and
+        Hibernate's boot-time schema validation rejected the mismatch outright.
+
+        Widened in a SECOND changeSet rather than by editing the first: the
+        original has already run on developer databases, and rewriting an
+        applied changeSet fails Liquibase's checksum on the next boot.
+    -->
+    <changeSet id="2026-08-04-02b-match-events-half-integer" author="mrodek">
+        <modifyDataType tableName="match_events" columnName="half" newDataType="int"/>
+    </changeSet>
+</databaseChangeLog>

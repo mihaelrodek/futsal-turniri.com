@@ -215,10 +215,14 @@ export async function adjustMatchFouls(
     team: 1 | 2,
     half: 1 | 2,
     delta: number,
+    /** Match minute, for the timeline entry the counter writes alongside
+     *  itself. Omit from a screen with no clock - the entry then lands on the
+     *  half boundary instead of the 0th minute. */
+    minute?: number | null,
 ): Promise<MatchFouls> {
     const { data } = await http.post<MatchFouls>(
         `/tournaments/${tournamentUuid}/matches/${matchId}/fouls`,
-        { team, half, delta },
+        { team, half, delta, minute: minute ?? null },
         { silent: true } as any,
     )
     return data
@@ -236,10 +240,13 @@ export async function setMatchFouls(
     team: 1 | 2,
     half: 1 | 2,
     value: number,
+    /** Match minute of the tap that produced this value - stamps the timeline
+     *  entries the set creates. Omit where no clock is available. */
+    minute?: number | null,
 ): Promise<MatchFouls> {
     const { data } = await http.post<MatchFouls>(
         `/tournaments/${tournamentUuid}/matches/${matchId}/fouls/set`,
-        { team, half, value },
+        { team, half, value, minute: minute ?? null },
         { silent: true } as any,
     )
     return data

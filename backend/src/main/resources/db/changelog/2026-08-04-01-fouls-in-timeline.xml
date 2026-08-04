@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Accumulated fouls on the event timeline - opt in, per tournament.
+
+        Until now a foul was ONLY a counter (matches.fouls1_first &co): a
+        running total per team per half, with no record of when any single foul
+        happened. That is all the "deveterac" display needs, and it is why the
+        timeline could not show fouls at all.
+
+        From here a foul ALSO writes a FOUL row on match_events, stamped with
+        the minute like every other timeline entry, so "3. accumulated foul in
+        the 12th minute" becomes something the app can render. The counters stay
+        the source of truth for the deveterac display - they are not derived
+        from the events, so nothing about the existing zapisnik behaviour
+        changes and no backfill is needed.
+
+        Fouls recorded BEFORE this change have no events and therefore never
+        appear on a timeline. Nothing can recover them: the information was
+        never stored.
+
+        The flag itself is per TOURNAMENT and off by default - most organizers
+        do not want a timeline that is mostly fouls, and the players who asked
+        for it are a minority of one tournament. Switching it off leaves the
+        FOUL events in place; they are simply not rendered, so turning it back
+        on shows the full history rather than only what happened since.
+    -->
+    <changeSet id="2026-08-04-01-tournaments-show-fouls-in-timeline" author="mrodek">
+        <addColumn tableName="tournaments">
+            <column name="show_fouls_in_timeline" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

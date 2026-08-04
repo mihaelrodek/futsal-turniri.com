@@ -56,6 +56,19 @@ public class MatchEvent {
     @Column(name = "minute", nullable = false)
     private Integer minute;
 
+    /**
+     * Which half this happened in (1 or 2), when it is KNOWN rather than
+     * guessed. Null for every event written before the column existed, and for
+     * the types that still infer it from {@link #minute}.
+     *
+     * <p>Set for {@code FOUL}: the accumulated-foul counter is per half and the
+     * request says which one, so the minute rule - ambiguous at exactly the
+     * half boundary, where a foul in the 10th minute of a 2x10 match could be
+     * read either way - must not be used to re-derive it.
+     */
+    @Column(name = "half")
+    private Integer half;
+
     /** Assisting player - set only for goals, and even then optional. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assist_player_id")

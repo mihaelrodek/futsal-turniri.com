@@ -99,6 +99,10 @@ public record TournamentDetailsResponse(
         // ALL | KNOCKOUT | ROUND_OF_32 | ROUND_OF_16 | QUARTERFINAL | SEMIFINAL.
         String scorerScope,
 
+        // Opt-in: render accumulated team fouls on every event timeline.
+        // Per tournament and off by default - see Tournaments#showFoulsInTimeline.
+        boolean showFoulsInTimeline,
+
         // Deletion requested (tournament archived, awaiting the platform
         // admin's final confirm). Null = active. Drives the pending-deletion
         // banner + disables re-requesting in the SPA.

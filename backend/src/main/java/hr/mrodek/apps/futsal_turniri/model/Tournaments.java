@@ -316,6 +316,18 @@ public class Tournaments {
     private ScorerScope scorerScope = ScorerScope.KNOCKOUT;
 
     /**
+     * Show accumulated team fouls on the event timeline (zapisnik, match
+     * details, every "tijek događaja"). Off by default: on most tournaments the
+     * fouls would outnumber everything else on the timeline and bury the goals.
+     *
+     * <p>Switching it off hides the {@code FOUL} events but never deletes them,
+     * so switching it back on restores the full history rather than only what
+     * has happened since.
+     */
+    @Column(name = "show_fouls_in_timeline", nullable = false)
+    private boolean showFoulsInTimeline = false;
+
+    /**
      * Admin-curated "tournament of the day" highlight. When non-null, this
      * is the timestamp at which an admin promoted the tournament to the
      * daily hero shown on /uzivo. The public lookup picks the row with

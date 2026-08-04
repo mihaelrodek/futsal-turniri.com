@@ -26,6 +26,14 @@ package hr.mrodek.apps.futsal_turniri.enums;
  * goal - while a MISSED one is {@code PENALTY_MISSED_LIVE}, a timeline-only
  * record (no score, no stats).
  *
+ * <p>{@code FOUL} is one ACCUMULATED team foul, written alongside the
+ * {@code matches.fouls*} counters so the timeline can show when each one was
+ * committed. Timeline-only and opt-in: it is rendered only while the
+ * tournament has {@code showFoulsInTimeline} set. The counters remain the
+ * source of truth for the "deveterac" display - these events are never summed
+ * to produce it - and a FOUL row carries no player, because a foul is recorded
+ * against the team and nobody enters who committed it.
+ *
  * <p>{@code EXCLUSION} is a futsal 2-minute suspension ("isključenje 2 min").
  * Timeline-only: it never affects the score, and - unlike a red card - it does
  * NOT lock the player out of further events (he returns after 2 minutes).
@@ -38,5 +46,6 @@ public enum MatchEventType {
     PENALTY_GOAL,
     PENALTY_MISSED,
     PENALTY_MISSED_LIVE,
-    EXCLUSION
+    EXCLUSION,
+    FOUL
 }

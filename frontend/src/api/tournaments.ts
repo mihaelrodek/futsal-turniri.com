@@ -235,6 +235,30 @@ export async function setScorerScope(
 }
 
 /**
+ * Show (or stop showing) accumulated team fouls on every event timeline of
+ * this tournament. Organizer/admin only.
+ *
+ * Switching it off only hides the FOUL events - they are never deleted, so
+ * turning it back on restores the full history instead of only what has
+ * happened since.
+ */
+export async function setShowFoulsInTimeline(
+    uuid: string,
+    show: boolean,
+): Promise<TournamentDetails> {
+    const { data } = await http.put<TournamentDetails>(
+        `/tournaments/${uuid}/fouls-in-timeline`,
+        { show },
+        {
+            successMessage: show
+                ? "Prekršaji se sada prikazuju u tijeku događaja."
+                : "Prekršaji se više ne prikazuju u tijeku događaja.",
+        } as any,
+    )
+    return data
+}
+
+/**
  * Whether the CURRENT caller may manage this tournament (owner / admin /
  * granted co-editor). Lets the SPA enable the edit UI for co-editors, whose
  * grants aren't otherwise visible client-side. Silent + never cached.

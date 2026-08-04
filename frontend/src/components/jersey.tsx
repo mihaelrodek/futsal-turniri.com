@@ -93,6 +93,7 @@ const KIT_SHIRT_PATH =
 const KIT_SHORTS_PATH =
     "M6.2 14.5 L13.8 14.5 L14.8 24.4 L10.9 24.4 L10 18.6 L9.1 24.4 L5.2 24.4 Z"
 
+
 /**
  * Resolve a Chakra colour token to a CSS value usable inside an SVG `stroke`.
  *

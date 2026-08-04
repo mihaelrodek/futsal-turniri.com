@@ -93,4 +93,6 @@
     <include file="db/changelog/2026-08-03-01-match-recordings-share-token.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-03-02-players-goalkeeper.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-03-03-team-registration.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-04-01-fouls-in-timeline.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-04-02-match-events-half.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

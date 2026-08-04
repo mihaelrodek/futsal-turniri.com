@@ -130,6 +130,11 @@ export type TournamentDetails = {
      *  (group-stage goals excluded); set via PUT /{uuid}/scorer-scope. */
     scorerScope?: ScorerScope | null;
 
+    /** Opt-in: render accumulated team fouls on every event timeline of this
+     *  tournament. Off by default; set via PUT /{uuid}/fouls-in-timeline.
+     *  Switching it off hides the FOUL events, never deletes them. */
+    showFoulsInTimeline?: boolean;
+
     /** ISO timestamp of a pending deletion request (tournament archived,
      *  awaiting the platform admin's final confirm). Null = active. Drives
      *  the pending-deletion banner + disables re-requesting. */

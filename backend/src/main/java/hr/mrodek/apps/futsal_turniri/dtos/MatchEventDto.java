@@ -17,6 +17,10 @@ public record MatchEventDto(
         String playerName,
         Long teamId,
         Integer minute,
+        /** Which half it happened in (1/2) when RECORDED rather than guessed;
+         *  null for older rows and types that still infer it from the minute.
+         *  Set for FOUL - see MatchEvent#half. */
+        Integer half,
         Long assistPlayerId,
         String assistPlayerName,
         /** Echoes the client idempotency key so the frontend can reconcile an

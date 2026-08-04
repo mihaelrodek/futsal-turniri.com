@@ -98,6 +98,8 @@ public interface TournamentMapper {
             @Mapping(target = "hidden", source = "hidden"),
             // Best-scorer goal scope (which stages count toward the race).
             @Mapping(target = "scorerScope", source = "scorerScope", qualifiedByName = "enumToName"),
+            // Fouls on the timeline (opt-in, per tournament).
+            @Mapping(target = "showFoulsInTimeline", source = "showFoulsInTimeline"),
             // Pending deletion request (archived, awaiting admin confirm).
             @Mapping(target = "archivedAt", source = "archivedAt"),
     })

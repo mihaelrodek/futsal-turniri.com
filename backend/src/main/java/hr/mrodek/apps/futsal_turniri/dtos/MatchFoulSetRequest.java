@@ -10,10 +10,16 @@ package hr.mrodek.apps.futsal_turniri.dtos;
  *
  * @param team  1 or 2 (which team the count belongs to)
  * @param half  1 or 2 (which half it counts towards - fouls reset each half)
- * @param value the absolute foul count to set (clamped at 0)
+ * @param value  the absolute foul count to set (clamped at 0)
+ * @param minute match minute of the tap that produced this value, used to
+ *               stamp the timeline entries the set creates. Right for the
+ *               normal case (one tap, flushed immediately); a queue drained
+ *               after a spell offline carries only the LAST tap's minute, and
+ *               null falls back to the half boundary.
  */
 public record MatchFoulSetRequest(
         int team,
         int half,
-        int value
+        int value,
+        Integer minute
 ) {}

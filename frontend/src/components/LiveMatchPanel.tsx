@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, Flex, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react"
 import { FiEdit2, FiEye, FiEyeOff, FiMinus, FiMoreHorizontal, FiPause, FiPlay, FiPlus, FiX } from "react-icons/fi"
-import { GiSoccerBall } from "react-icons/gi"
+import { GiSoccerBall, GiSoccerKick } from "react-icons/gi"
 import { LuTimer, LuTimerOff } from "react-icons/lu"
 
 import {
@@ -15,6 +15,9 @@ import {
     startMatch,
     startSecondHalf,
 } from "../api/matchEvents"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { qk } from "../queryClient"
+import { fetchTournamentDetails, setShowFoulsInTimeline } from "../api/tournaments"
 import { recordKnockoutResult } from "../api/bracket"
 import { recordGroupResult } from "../api/groups"
 import { fetchSchedule } from "../api/schedule"
@@ -35,6 +38,7 @@ import {
     PenaltyShootout,
     PlayerButton,
     clockState,
+    eventHalf,
     liveMatchMinute,
     matchPhase,
     type TimelineFouls,
@@ -71,6 +75,17 @@ const PITCH = "#2AD4C8"
  *  theme token - same hex as the backend so app, stream overlay and exports all
  *  show the identical shade. */
 const BIB_YELLOW = "#D9F225"
+
+/** The colour a side's kit reads as while it wears the markirka: the bib
+ *  yellow replaces the jersey colour entirely, on every surface that shows one
+ *  colour per team. */
+function effectiveJersey(
+    jersey: string | null | undefined,
+    side: 1 | 2,
+    bibTeam: 1 | 2 | null,
+): string | null {
+    return bibTeam === side ? BIB_YELLOW : jersey ?? null
+}
 /** Readable ink on the bib yellow (it's far too bright for white text). */
 const BIB_INK = "#25300A"
 /** A translucent tint of a colour - works on any (light/dark) surface. */
@@ -79,13 +94,6 @@ const tint = (hex: string, pct: number) => `color-mix(in srgb, ${hex} ${pct}%, t
 /** THE one place the bib override is applied: for the side wearing the bibs the
  *  effective dres colour is bib yellow for this match only (shorts unchanged);
  *  every other side keeps its own kit colour. */
-function effectiveJersey(
-    jersey: string | null | undefined,
-    side: 1 | 2,
-    bibTeam: 1 | 2 | null,
-): string | null {
-    return bibTeam === side ? BIB_YELLOW : jersey ?? null
-}
 
 export type PanelMatch = {
     matchId: number
@@ -175,6 +183,33 @@ export default function LiveMatchPanel({
 
     // Kit (dres + hlače) colours → a two-tone chip next to each team name.
     const teamColors = useTeamColors(uuid)
+
+    // "Show fouls on the timeline" - stored on the TOURNAMENT, so the choice
+    // holds for every match of it and survives being switched off and on (the
+    // FOUL events are never deleted, only hidden).
+    const foulsQueryClient = useQueryClient()
+    const { data: tournamentForFouls } = useQuery({
+        queryKey: qk.tournamentDetails(uuid),
+        queryFn: () => fetchTournamentDetails(uuid),
+        enabled: !!uuid,
+        staleTime: 5 * 60_000,
+    })
+    const showFoulsOnTimeline = !!tournamentForFouls?.showFoulsInTimeline
+    const [togglingFouls, setTogglingFouls] = useState(false)
+
+    async function toggleFoulsOnTimeline() {
+        if (togglingFouls) return
+        try {
+            setTogglingFouls(true)
+            const updated = await setShowFoulsInTimeline(uuid, !showFoulsOnTimeline)
+            // Patch then invalidate: every timeline in the app reads this same
+            // query, so they all follow at once.
+            foulsQueryClient.setQueryData(qk.tournamentDetails(uuid), updated)
+            foulsQueryClient.invalidateQueries({ queryKey: qk.tournamentDetails(uuid) })
+        } finally {
+            setTogglingFouls(false)
+        }
+    }
     const jerseyC1 = teamColor(teamColors, match.team1Id)
     const jerseyC2 = teamColor(teamColors, match.team2Id)
     const shortsC1 = teamShorts(teamColors, match.team1Id)
@@ -186,9 +221,12 @@ export default function LiveMatchPanel({
     const [bibTeam, setBibTeam] = useState<1 | 2 | null>(match.bibTeam ?? null)
     const [bibBusy, setBibBusy] = useState(false)
     useEffect(() => setBibTeam(match.bibTeam ?? null), [match.bibTeam])
-    // Effective dres colours - derived ONCE here, used by every kit swatch.
+
+
+
     const effJerseyC1 = effectiveJersey(jerseyC1, 1, bibTeam)
     const effJerseyC2 = effectiveJersey(jerseyC2, 2, bibTeam)
+    // Effective dres colours - derived ONCE here, used by every kit swatch.
 
     // Offline-first live events: optimistic add/delete, queued while offline,
     // replayed on reconnect (idempotent via a client key). Score derives from
@@ -619,15 +657,31 @@ export default function LiveMatchPanel({
     // the scheduled branch, and never while the penalty shootout handoff is up.
     const editingScore = isScheduled && showDirectScore && !shootout
 
-    const actionRow = (showClockButton: boolean) => {
-        if (!footerAction && !showClockButton) return null
-        return (
-            <Flex justify="center" align="center" gap="2" wrap="wrap" mt="2">
-                {footerAction}
-                {showClockButton && (
+    /**
+     * The two "what everyone else sees" switches, with a line each saying what
+     * they do. They sit ABOVE the match-ending action rather than up by the
+     * clock: both are settings, not in-play controls, and an unlabelled eye
+     * icon next to a running clock told nobody what it would change.
+     *
+     * The stream-clock one only appears where a stream clock exists (a live
+     * TIMER match); the fouls one is a tournament-wide setting and always does.
+     */
+    const settingsRow = (showClockButton: boolean) => (
+        // One row per switch: the button, then the sentence that says what it
+        // changes. A shared min-width on the buttons keeps the two sentences
+        // starting at the same x, so the pair reads as a list rather than as
+        // two unrelated lines. The block is centred but its rows are not - a
+        // centred sentence under a centred button gave no clue which one it
+        // belonged to.
+        <VStack align="center" gap="1.5" mt="3" mb="1">
+            {showClockButton && (
+                <HStack gap="2.5" align="center" maxW="36rem" w="full">
                     <Button
                         size="xs"
                         variant="outline"
+                        minW="10.5rem"
+                        justifyContent="flex-start"
+                        flexShrink={0}
                         colorPalette={clockVisibleOnStream ? "gray" : "pitch"}
                         loading={clockVisibilityBusy}
                         onClick={toggleStreamClockVisibility}
@@ -635,10 +689,42 @@ export default function LiveMatchPanel({
                         {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
                         {clockVisibleOnStream ? t.components.liveMatchPanel.streamClock.hideAction : t.components.liveMatchPanel.streamClock.showAction}
                     </Button>
-                )}
+                    <Text fontSize="2xs" color="fg.muted" lineHeight="1.35">
+                        {t.components.liveMatchPanel.streamClock.explainer}
+                    </Text>
+                </HStack>
+            )}
+            <HStack gap="2.5" align="center" maxW="36rem" w="full">
+                <Button
+                    size="xs"
+                    variant="outline"
+                    minW="10.5rem"
+                    justifyContent="flex-start"
+                    flexShrink={0}
+                    colorPalette={showFoulsOnTimeline ? "pitch" : "gray"}
+                    loading={togglingFouls}
+                    onClick={toggleFoulsOnTimeline}
+                >
+                    {showFoulsOnTimeline ? <FiEyeOff /> : <FiEye />}
+                    {showFoulsOnTimeline
+                        ? t.components.liveMatchPanel.timelineFouls.hideAction
+                        : t.components.liveMatchPanel.timelineFouls.showAction}
+                </Button>
+                <Text fontSize="2xs" color="fg.muted" lineHeight="1.35">
+                    {t.components.liveMatchPanel.timelineFouls.explainer}
+                </Text>
+            </HStack>
+        </VStack>
+    )
+
+    const actionRow = (showClockButton: boolean) => (
+        <>
+            {settingsRow(showClockButton)}
+            <Flex justify="center" align="center" gap="2" wrap="wrap" mt="2">
+                {footerAction}
             </Flex>
-        )
-    }
+        </>
+    )
 
     const eventEntry = (
         <PairingEntry
@@ -664,6 +750,7 @@ export default function LiveMatchPanel({
             sentOffPlayerIds={sentOffIds}
             yellowCardedPlayerIds={yellowIds}
             penaltyInProgress={penaltyInProgress}
+            onFoulsSynced={refetchEvents}
         />
     )
 
@@ -1076,8 +1163,19 @@ export default function LiveMatchPanel({
                                 events={events}
                                 team1Id={match.team1Id}
                                 halfLengthMin={halfLengthMin}
+                                showFouls={showFoulsOnTimeline}
                                 canDelete
-                                onUndo={(ev) => deleteEvent(ev)}
+                                onUndo={async (ev) => {
+                                    await deleteEvent(ev)
+                                    // Deleting a FOUL also takes the accumulated
+                                    // counter down on the server, and those
+                                    // counters live on the `match` prop this
+                                    // panel does not own - so ask the owner to
+                                    // reload rather than doing the arithmetic
+                                    // here, which is what produced a counter
+                                    // that briefly showed the wrong number.
+                                    if (ev.type === "FOUL") await onChanged()
+                                }}
                                 fouls={{
                                     t1First: match.fouls1First ?? 0,
                                     t1Second: match.fouls1Second ?? 0,
@@ -1263,7 +1361,15 @@ type PendingPlayer = { team: number; playerId: number | null; playerName: string
 /** One tappable action of the pairing entry. `penalty: true` on a GOAL marks
  *  an in-game penalty goal - the event stays a regular GOAL (score + scorer
  *  stats) but carries the penalty flag for display and the stream overlay. */
-type EntryAction = { type: MatchEventType; penalty?: boolean; label: string }
+type EntryAction = {
+    type: MatchEventType
+    penalty?: boolean
+    label: string
+    /** Shown INSTEAD of `label` below `md`. Only "Isključenje 2'" needs one -
+     *  it is the one label that will not fit a fifth of a phone's width, and
+     *  the clock icon above it already says what it is. */
+    shortLabel?: string
+}
 
 function actionsFor(t: Dictionary): EntryAction[] {
     const a = t.components.liveMatchPanel.actions
@@ -1277,7 +1383,7 @@ function actionsFor(t: Dictionary): EntryAction[] {
         { type: "OWN_GOAL", label: a.ownGoal },
         { type: "YELLOW_CARD", label: a.yellow },
         { type: "RED_CARD", label: a.red },
-        { type: "EXCLUSION", label: a.exclusion },
+        { type: "EXCLUSION", label: a.exclusion, shortLabel: a.exclusionShort },
     ]
 }
 
@@ -1304,6 +1410,7 @@ function PairingEntry({
     sentOffPlayerIds,
     yellowCardedPlayerIds,
     penaltyInProgress,
+    onFoulsSynced,
 }: {
     uuid: string
     matchId: number
@@ -1327,6 +1434,9 @@ function PairingEntry({
      *  goal actions (Gol / Auto-gol) are then blocked so they can't leak into
      *  the scorer stats; cards + fouls stay available. */
     penaltyInProgress: boolean
+    /** Reload the timeline after a foul reaches the server - a foul now also
+     *  writes a FOUL row there, and the two are loaded separately. */
+    onFoulsSynced?: () => void
 }) {
     const t = useTranslation()
     const [rosters, setRosters] = useState<Record<number, PlayerDto[]>>({})
@@ -1337,8 +1447,22 @@ function PairingEntry({
     // manual edit turns it off, "Sada" / "Prati mjerač" turn it back on.
     const [autoMinute, setAutoMinute] = useState(true)
 
+    // Keep the ref the fouls hook reads in step with the field above. A ref,
+    // not a value, because the hook's flush runs from timers and would
+    // otherwise close over a stale minute.
+    useEffect(() => {
+        const parsed = parseInt(minute, 10)
+        minuteRef.current = Number.isFinite(parsed) ? Math.max(0, parsed) : null
+    }, [minute])
+
     // Fouls - offline-first, one hook instance for the whole match.
-    const { fouls, bump } = useOfflineMatchFouls(uuid, matchId, serverFouls)
+    // The zapisnik's own minute field, read at flush time so each foul is
+    // stamped with the minute shown on screen. The server can only derive a
+    // minute from raw elapsed time, which keeps counting after a half's clock
+    // has expired - that is how a foul entered at 20' ended up written as 93'.
+    const minuteRef = useRef<number | null>(null)
+    const { fouls, bump } = useOfflineMatchFouls(
+        uuid, matchId, serverFouls, minuteRef, onFoulsSynced)
     const foulsHome = half === 1 ? fouls.fouls1First : fouls.fouls1Second
     const foulsAway = half === 1 ? fouls.fouls2First : fouls.fouls2Second
 
@@ -1611,15 +1735,18 @@ function PairingEntry({
                     </Text>
                 </Box>
             )}
-            {/* 5 tiles: 4-across on mobile (Isključenje wraps to its own row),
-                one full row on desktop/web. */}
-            <Box display="grid" gridTemplateColumns={{ base: "repeat(4, 1fr)", md: "repeat(5, 1fr)" }} gap="2" mb="3.5">
+            {/* All 5 tiles on ONE row at every width. They used to be 4-across
+                on mobile, which dropped "Isključenje 2'" onto a row of its own
+                and made the block twice as tall as the thing it sits under. The
+                tile itself goes compact below that breakpoint to pay for it. */}
+            <Box display="grid" gridTemplateColumns="repeat(5, minmax(0, 1fr))" gap={{ base: "1", md: "2" }} mb="3.5">
                 {actionsFor(t).map((a) => (
                     <ActionButton
                         key={`${a.type}${a.penalty ? "-pen" : ""}`}
                         type={a.type}
                         penalty={a.penalty}
                         label={a.label}
+                        shortLabel={a.shortLabel}
                         selected={sameAction(pendingAction, a)}
                         disabled={penaltyInProgress && isGoalAction(a)}
                         onClick={() => selectAction(a)}
@@ -1713,14 +1840,34 @@ function RosterColumn({
             p={{ base: "3", md: "4" }}
             bg="bg.panel"
         >
-            <HStack gap="2.5" minW="0">
+            {/* Header: kit + name on the left, markirka hard right.
+                The name WRAPS to two lines instead of truncating - a club name
+                is what the organizer identifies the column by, and half of one
+                is worse than a second line. `minH` of two lines is reserved on
+                BOTH columns so a short name next to a long one doesn't leave
+                the two panels' fouls blocks sitting at different heights. */}
+            <HStack gap="2.5" minW="0" align="flex-start" minH={{ base: "3.5rem", md: "4rem" }}>
                 {/* Always the kit silhouette: the team's own colours when set,
                     otherwise filled with the fixed home/away identity colour -
                     a colour-less team used to get a plain square/dot here,
                     which read as a different kind of marker next to a real
                     jersey on the other column. */}
-                <KitSwatch jersey={jerseyColor ?? shortsColor ?? color} shorts={shortsColor} size={15} />
-                <Text fontSize={{ base: "xl", md: "2xl" }} fontWeight={800} color="fg.ink" truncate minW="0">{teamName ?? "-"}</Text>
+                <Box pt="0.5" flexShrink={0}>
+                    <KitSwatch jersey={jerseyColor ?? shortsColor ?? color} shorts={shortsColor} size={15} />
+                </Box>
+                <Text
+                    fontSize={{ base: "xl", md: "2xl" }}
+                    fontWeight={800}
+                    color="fg.ink"
+                    lineHeight="1.15"
+                    lineClamp={2}
+                    flex="1"
+                    minW="0"
+                    css={{ overflowWrap: "anywhere" }}
+                >
+                    {teamName ?? "-"}
+                </Text>
+                {bibControl && <Box flexShrink={0}>{bibControl}</Box>}
             </HStack>
 
             {/* Fouls block (cyan). While a TIMER match is live the accumulated
@@ -1728,26 +1875,29 @@ function RosterColumn({
                 is read-only/muted. Otherwise one combined counter that writes to
                 the current half. The ≥5 warning colour is preserved either way.
 
-                The markirka toggle rides in the SAME row, right of the fouls -
-                both are per-match, per-team switches, so they read as one strip
-                and the team header goes back to being just kit + name. */}
+                The markirka toggle used to ride in this row; it now sits in the
+                team header, where it labels the team rather than the fouls. */}
             <Flex gap="2" align="stretch" wrap="wrap">
-            {/* `1 1 180px`: the pair shares one row whenever the column is wide
-                enough, and the toggle drops to its own line on a narrow phone
-                rather than crushing the +/- targets. */}
             <Box flex="1 1 180px" minW="0">
             {splitByHalf ? (
                 <VStack align="stretch" gap="1.5" rounded="lg" px="3" py="2" bg="pitch.subtle">
-                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg" textAlign="center">{t.components.liveMatch.foulControls.label.toUpperCase()}</Text>
-                    <HStack gap="2.5" justify="center">
-                        <HalfFoulCounter label={t.components.liveMatch.clockLabels.firstHalf} count={foulsFirst} active={currentHalf === 1} onFoul={onFoul} />
-                        <Text fontSize="sm" fontWeight={800} color="fg.subtle" lineHeight="1">·</Text>
-                        <HalfFoulCounter label={t.components.liveMatch.clockLabels.secondHalf} count={foulsSecond} active={currentHalf === 2} onFoul={onFoul} />
+                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg" textAlign="center">{t.components.liveMatch.foulControls.accumulatedLabel.toUpperCase()}</Text>
+                    {/* The two halves are separate tallies (fouls reset at the
+                        break), so they get a real divider instead of the middle
+                        dot that read as "1 · 6" - one number with a separator. */}
+                    <HStack gap="0" justify="center" align="stretch">
+                        <Box flex="1" display="flex" justifyContent="center" pr="3">
+                            <HalfFoulCounter label={t.components.liveMatch.clockLabels.firstHalf} count={foulsFirst} active={currentHalf === 1} onFoul={onFoul} />
+                        </Box>
+                        <Box w="1px" bg="pitch.fg" opacity={0.25} flexShrink={0} />
+                        <Box flex="1" display="flex" justifyContent="center" pl="3">
+                            <HalfFoulCounter label={t.components.liveMatch.clockLabels.secondHalf} count={foulsSecond} active={currentHalf === 2} onFoul={onFoul} />
+                        </Box>
                     </HStack>
                 </VStack>
             ) : (
                 <Flex align="center" justify="space-between" rounded="lg" px="3" py="1.5" bg="pitch.subtle">
-                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg">{t.components.liveMatch.foulControls.label.toUpperCase()}</Text>
+                    <Text fontSize="2xs" fontWeight={800} letterSpacing="wide" color="pitch.fg">{t.components.liveMatch.foulControls.accumulatedLabel.toUpperCase()}</Text>
                     <HStack gap="2.5">
                         <IconButton aria-label={t.components.liveMatchPanel.foulAdjust.decreaseAria} size="2xs" variant="outline" disabled={foulsCount === 0} onClick={() => onFoul(-1)}>
                             <FiMinus />
@@ -1767,25 +1917,24 @@ function RosterColumn({
                 </Flex>
             )}
             </Box>
-            {bibControl && (
-                <Flex align="center" flexShrink={0}>
-                    {bibControl}
-                </Flex>
-            )}
             </Flex>
 
-            {/* Player list - "Nepoznati igrač" first, then the roster - in TWO
-                columns, filled top-down: 11 entries land 6 + 5. Column-first
-                flow (`grid-auto-flow: column` over a fixed row count) does the
-                split in CSS, so the roster array is never sliced and the
-                reading order stays "down the first column, then the second".
-                Halves the vertical space, which is what matters on a phone
-                held pitchside. */}
+            {/* Player list - "Nepoznati igrač" first, then the roster.
+                ONE per row on a phone: two columns there left each name about
+                40% of the screen, so anything longer than a first name was cut
+                to an ellipsis - and the roster is the one place the organizer
+                has to read a full name to tap the right player.
+
+                From `md` up it goes back to TWO columns filled top-down (11
+                entries land 6 + 5). Column-first flow (`grid-auto-flow: column`
+                over a fixed row count) does that split in CSS, so the roster
+                array is never sliced and the reading order stays "down the
+                first column, then the second". */}
             <Box
                 display="grid"
-                gridTemplateColumns="1fr 1fr"
-                gridAutoFlow="column"
-                gridTemplateRows={`repeat(${rosterRows}, auto)`}
+                gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
+                gridAutoFlow={{ base: "row", md: "column" }}
+                gridTemplateRows={{ base: "auto", md: `repeat(${rosterRows}, auto)` }}
                 gap="1.5"
                 alignContent="start"
             >
@@ -1917,26 +2066,56 @@ function CenterTimeline({
     canDelete,
     onUndo,
     fouls,
+    showFouls = false,
 }: {
     events: MatchEventDto[]
     team1Id: number | null
     halfLengthMin: number | null
     canDelete: boolean
-    onUndo: (ev: MatchEventDto) => void
-    /** Accumulated per-half team fouls - a tally on each half separator. Fouls
-     *  are counters, so they never become rows on the timeline. */
+    onUndo: (ev: MatchEventDto) => void | Promise<void>
+    /** Accumulated per-half team fouls - a tally on each half separator. */
     fouls?: TimelineFouls | null
+    /** Also put each foul on the timeline as its own row. Opt-in per
+     *  tournament (Tournaments#showFoulsInTimeline) - off, the fouls stay a
+     *  tally on the half separator and nothing else. */
+    showFouls?: boolean
 }) {
     const t = useTranslation()
     const hasHalves = halfLengthMin != null && halfLengthMin > 0
+
+    // Which accumulated foul each FOUL row was, per team and per half - the
+    // running number is the point of putting fouls on a timeline at all.
+    // Counted by id (entry order), not by minute: a foul typed in late still
+    // happened after the ones before it.
+    const foulOrdinals = useMemo(() => {
+        const out = new Map<number, number>()
+        if (!showFouls) return out
+        const running = new Map<string, number>()
+        for (const e of events.filter((x) => x.type === "FOUL").sort((a, b) => a.id - b.id)) {
+            const half = eventHalf(e, halfLengthMin)
+            const key = `${e.teamId}:${half}`
+            const next = (running.get(key) ?? 0) + 1
+            running.set(key, next)
+            out.set(e.id, next)
+        }
+        return out
+    }, [events, halfLengthMin, showFouls])
+
     const rows: TimelineRow[] = useMemo(() => {
         // Shootout kicks aren't part of either half - split them into their
         // own "PENALI" section at the end, same as the public match ticker
         // (StreamHero.tsx's REGULATION/pens split).
-        const regulation = events.filter((e) => e.type !== "PENALTY_GOAL" && e.type !== "PENALTY_MISSED")
+        const regulation = events.filter((e) =>
+            e.type !== "PENALTY_GOAL" && e.type !== "PENALTY_MISSED"
+            && (showFouls || e.type !== "FOUL"))
         const pens = events.filter((e) => e.type === "PENALTY_GOAL" || e.type === "PENALTY_MISSED")
 
-        const sorted = [...regulation].sort((a, b) => a.minute - b.minute || a.id - b.id)
+        // Ordered by HALF first: a foul recorded in the 1st half must not sort
+        // into the 2nd just because its minute equals the half length.
+        const sorted = [...regulation].sort((a, b) =>
+            eventHalf(a, halfLengthMin) - eventHalf(b, halfLengthMin)
+            || a.minute - b.minute
+            || a.id - b.id)
         const secondHalfMin = halfLengthMin != null && halfLengthMin > 0 ? halfLengthMin : null
         const out: TimelineRow[] = [
             { kind: "half", label: t.components.liveMatch.timeline.firstHalfTitle, half: secondHalfMin != null ? 1 : null },
@@ -1945,7 +2124,7 @@ function CenterTimeline({
         let a = 0
         let sep2 = false
         for (const e of sorted) {
-            if (secondHalfMin != null && !sep2 && e.minute > secondHalfMin) {
+            if (secondHalfMin != null && !sep2 && eventHalf(e, halfLengthMin) === 2) {
                 out.push({ kind: "half", label: t.components.liveMatch.timeline.secondHalfTitle, half: 2 })
                 sep2 = true
             }
@@ -1982,7 +2161,7 @@ function CenterTimeline({
             }
         }
         return out
-    }, [events, team1Id, halfLengthMin, t])
+    }, [events, team1Id, halfLengthMin, showFouls, t])
 
     // Accumulated foul tally for a half separator. `null` half = no boundary
     // known, so the single header carries both halves combined. A 0:0 half
@@ -2012,7 +2191,7 @@ function CenterTimeline({
                     ) : r.kind === "section" ? (
                         <HalfPill key={`s-${i}`} label={r.label} fouls={null} />
                     ) : (
-                        <TimelineEventRow key={r.clientEventId ?? r.id} row={r} canDelete={canDelete} onUndo={() => onUndo(r.ev)} />
+                        <TimelineEventRow key={r.clientEventId ?? r.id} row={r} canDelete={canDelete} foulOrdinal={foulOrdinals.get(r.ev.id)} onUndo={() => onUndo(r.ev)} />
                     ),
                 )}
                 {trailingFouls && <HalfPill label={t.components.liveMatch.timeline.secondHalfTitle} fouls={trailingFouls} />}
@@ -2047,7 +2226,7 @@ function HalfPill({ label, fouls }: { label: string; fouls: [number, number] | n
     )
 }
 
-function TimelineEventRow({ row, canDelete, onUndo }: { row: Extract<TimelineRow, { kind: "event" }>; canDelete: boolean; onUndo: () => void }) {
+function TimelineEventRow({ row, canDelete, foulOrdinal, onUndo }: { row: Extract<TimelineRow, { kind: "event" }>; canDelete: boolean; foulOrdinal?: number; onUndo: () => void }) {
     const t = useTranslation()
     const undoBtn = canDelete ? (
         <IconButton aria-label={t.components.liveMatch.eventRow.removeAria} size="2xs" variant="ghost" rounded="full" color="fg.subtle" onClick={onUndo} flexShrink={0}>
@@ -2103,7 +2282,12 @@ function TimelineEventRow({ row, canDelete, onUndo }: { row: Extract<TimelineRow
             flex="1"
             minW="0"
         >
-            {row.player}
+            {/* A foul belongs to the TEAM, so the row says which accumulated
+                foul it was ("3. prekršaj") instead of naming a player - nobody
+                enters who committed one. */}
+            {row.type === "FOUL"
+                ? t.components.liveMatch.eventRow.foulLabel(foulOrdinal ?? 0)
+                : row.player}
         </Text>
     )
 
@@ -2148,6 +2332,10 @@ function EventIcon({ type }: { type: MatchEventType }) {
     if (type === "PENALTY_MISSED" || type === "PENALTY_MISSED_LIVE")
         return <Text as="span" fontSize="xs" fontWeight={800} color="accent.red" flexShrink={0}>✗</Text>
     if (type === "EXCLUSION") return <Text as="span" fontSize="sm" lineHeight="1.4" flexShrink={0}>🕑</Text>
+    // The same sliding-tackle mark the fullscreen board uses for accumulated
+    // fouls. Without it a foul fell through to the card block below and drew a
+    // RED CARD - the one icon on this timeline that must never be wrong.
+    if (type === "FOUL") return <Box as="span" color="fg.muted" flexShrink={0} lineHeight="1"><GiSoccerKick size={15} /></Box>
     return <Box as="span" w="13px" h="16px" rounded="sm" flexShrink={0} bg={type === "YELLOW_CARD" ? CARD_YELLOW : CARD_RED} />
 }
 

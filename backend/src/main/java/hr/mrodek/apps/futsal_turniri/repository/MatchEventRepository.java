@@ -26,6 +26,19 @@ public class MatchEventRepository implements AppRepository<MatchEvent, Long> {
 
     /** True if the player has already been sent off (red card) in this match -
      *  a sent-off player can't score or otherwise affect the match. */
+    /**
+     * The most recently written FOUL entry for one team in a match - what the
+     * zapisnik's "-" button undoes.
+     *
+     * <p>Ordered by id, not by minute: "undo" means the entry made LAST, and a
+     * foul entered out of order (a correction typed in after the clock moved
+     * on) still has the highest id.
+     */
+    public java.util.Optional<MatchEvent> findLastFoul(Long matchId, Long teamId) {
+        return find("match.id = ?1 and team.id = ?2 and type = ?3 order by id desc",
+                matchId, teamId, MatchEventType.FOUL).firstResultOptional();
+    }
+
     public boolean playerSentOff(Long matchId, Long playerId) {
         return count("match.id = ?1 and player.id = ?2 and type = ?3",
                 matchId, playerId, MatchEventType.RED_CARD) > 0;

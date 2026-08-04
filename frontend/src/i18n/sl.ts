@@ -1922,6 +1922,7 @@ export const sl: Dictionary = {
                 unknownScorer: "Neznan strelec",
                 unknownPenaltyTaker: "Neznan izvajalec",
                 unknownPlayer: "Neznan igralec",
+                foulLabel: "Prekršek",
             },
         },
         multiDaySchedulePlanner: {
@@ -2973,6 +2974,7 @@ export const sl: Dictionary = {
                 /** "{name} (2 min)" - a named 2-minute suspension. */
                 exclusionSuffix: (name: string) => `${name} (2 min)`,
                 /** Unattributed 2-minute suspension. */
+                foulLabel: (n: number) => (n > 0 ? `${n}. prekršek` : "Prekršek"),
                 exclusionLabel: "Izključitev 2 min",
             },
             goalEntry: {
@@ -3018,7 +3020,10 @@ export const sl: Dictionary = {
             },
             foulControls: {
                 label: "Prekrški",
+                accumulatedLabel: "Nakopičeni prekrški",
                 resetAria: "Ponastavi prekrške",
+                showOnTimelineAria: "Prikaži prekrške v poteku dogodkov (cel turnir)",
+                hideOnTimelineAria: "Ne prikazuj prekrškov v poteku dogodkov",
                 resetDialogTitle: "Ponastaviti prekrške?",
                 resetDialogDesc: "Nakopičeni prekrški obeh ekip se ponastavijo na 0.",
                 resetConfirmLabel: "Da, ponastavi",
@@ -3047,9 +3052,15 @@ export const sl: Dictionary = {
             /** Splošni samostalnik za `liveMatch.directScore.decreaseAria` /
              *  `increaseAria` pri oznakah stopničnega vnosa rezultata. */
             scoreNoun: "rezultat",
+            timelineFouls: {
+                showAction: "Prikaži prekrške",
+                hideAction: "Skrij prekrške",
+                explainer: "Prekrški se izpišejo v poteku tekme, poleg golov in kartonov. Velja za cel turnir.",
+            },
             streamClock: {
                 hideAction: "Skrij uro na prenosu",
                 showAction: "Prikaži uro na prenosu",
+                explainer: "Ura in preostali čas na prenosu v živo. Velja samo za to tekmo.",
             },
             /** Fluorescentne markirke: ko obe ekipi prideta v podobnih dresih,
              *  ena nosi markirke - samo za to tekmo. */
@@ -3087,6 +3098,7 @@ export const sl: Dictionary = {
                 penaltyGoal: "11m - gol",
                 penaltyMissed: "11m - zgrešeno",
                 exclusion: "Izključitev 2'",
+                exclusionShort: "2'",
                 fallback: "Dejanje",
             },
             minuteAdjust: {

@@ -1984,6 +1984,7 @@ export const hr = {
                 unknownScorer: "Nepoznati strijelac",
                 unknownPenaltyTaker: "Nepoznati izvođač",
                 unknownPlayer: "Nepoznati igrač",
+                foulLabel: "Prekršaj",
             },
         },
         multiDaySchedulePlanner: {
@@ -3064,6 +3065,7 @@ export const hr = {
                 /** "{name} (2 min)" - a named 2-minute suspension. */
                 exclusionSuffix: (name: string) => `${name} (2 min)`,
                 /** Unattributed 2-minute suspension. */
+                foulLabel: (n: number) => (n > 0 ? `${n}. prekršaj` : "Prekršaj"),
                 exclusionLabel: "Isključenje 2 min",
             },
             goalEntry: {
@@ -3109,7 +3111,10 @@ export const hr = {
             },
             foulControls: {
                 label: "Prekršaji",
+                accumulatedLabel: "Akumulirani prekršaji",
                 resetAria: "Resetiraj prekršaje",
+                showOnTimelineAria: "Prikaži prekršaje u tijeku događaja (cijeli turnir)",
+                hideOnTimelineAria: "Ne prikazuj prekršaje u tijeku događaja",
                 resetDialogTitle: "Resetirati prekršaje?",
                 resetDialogDesc: "Akumulirani prekršaji oba tima vraćaju se na 0.",
                 resetConfirmLabel: "Da, resetiraj",
@@ -3138,9 +3143,15 @@ export const hr = {
             /** Generic noun passed into `liveMatch.directScore.decreaseAria` /
              *  `increaseAria` for the in-place score stepper's aria-labels. */
             scoreNoun: "rezultat",
+            timelineFouls: {
+                showAction: "Pokaži prekršaje",
+                hideAction: "Sakrij prekršaje",
+                explainer: "Prekršaji se ispisuju u tijeku utakmice, uz gol i kartone. Vrijedi za cijeli turnir.",
+            },
             streamClock: {
                 hideAction: "Sakrij sat na streamu",
                 showAction: "Prikaži sat na streamu",
+                explainer: "Sat i preostalo vrijeme na prijenosu uživo. Vrijedi samo za ovu utakmicu.",
             },
             /** Fluorescent training bibs: when both ekipe dođu u sličnim
              *  dresovima, jedna nosi markirke - samo za tu utakmicu. */
@@ -3178,6 +3189,7 @@ export const hr = {
                 penaltyGoal: "Penal - gol",
                 penaltyMissed: "Penal - promašaj",
                 exclusion: "Isključenje 2'",
+                exclusionShort: "2'",
                 fallback: "Radnja",
             },
             minuteAdjust: {

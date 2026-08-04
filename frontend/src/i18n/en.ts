@@ -1918,6 +1918,7 @@ export const en: Dictionary = {
                 unknownScorer: "Unknown scorer",
                 unknownPenaltyTaker: "Unknown taker",
                 unknownPlayer: "Unknown player",
+                foulLabel: "Foul",
             },
         },
         multiDaySchedulePlanner: {
@@ -2969,6 +2970,7 @@ export const en: Dictionary = {
                 /** "{name} (2 min)" - a named 2-minute suspension. */
                 exclusionSuffix: (name: string) => `${name} (2 min)`,
                 /** Unattributed 2-minute suspension. */
+                foulLabel: (n: number) => (n > 0 ? `Foul ${n}` : "Foul"),
                 exclusionLabel: "2-minute suspension",
             },
             goalEntry: {
@@ -3014,7 +3016,10 @@ export const en: Dictionary = {
             },
             foulControls: {
                 label: "Fouls",
+                accumulatedLabel: "Accumulated fouls",
                 resetAria: "Reset fouls",
+                showOnTimelineAria: "Show fouls on the event timeline (whole tournament)",
+                hideOnTimelineAria: "Stop showing fouls on the event timeline",
                 resetDialogTitle: "Reset fouls?",
                 resetDialogDesc: "Both teams' accumulated fouls are reset to 0.",
                 resetConfirmLabel: "Yes, reset",
@@ -3043,9 +3048,15 @@ export const en: Dictionary = {
             /** Generic noun passed into `liveMatch.directScore.decreaseAria` /
              *  `increaseAria` for the in-place score stepper's aria-labels. */
             scoreNoun: "score",
+            timelineFouls: {
+                showAction: "Show fouls",
+                hideAction: "Hide fouls",
+                explainer: "Fouls are listed on the match timeline, alongside goals and cards. Applies to the whole tournament.",
+            },
             streamClock: {
                 hideAction: "Hide clock on stream",
                 showAction: "Show clock on stream",
+                explainer: "The clock and time remaining on the live stream. Applies to this match only.",
             },
             /** Fluorescent training bibs: when both teams turn up in a similar
              *  kit, one of them wears bibs - for that match only. */
@@ -3083,6 +3094,7 @@ export const en: Dictionary = {
                 penaltyGoal: "Penalty - goal",
                 penaltyMissed: "Penalty - missed",
                 exclusion: "Suspension 2'",
+                exclusionShort: "2'",
                 fallback: "Action",
             },
             minuteAdjust: {
