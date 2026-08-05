@@ -30,6 +30,7 @@ import {
     FiClock,
     FiFilter,
     FiGrid,
+    FiInfo,
     FiList,
     FiMapPin,
     FiNavigation,
@@ -1679,7 +1680,22 @@ function TournamentCardView({
                         </Box>
                     </Box>
 
-                    {variant === "finished" && winner ? (
+                    {/* A finished tournament with no result ever entered was
+                        run on paper, not here: no schedule, no standings, no
+                        scorers behind the card. The fill bar in its place read
+                        as "12/16 signed up" - a promise of content that isn't
+                        there. `anyResult === false` (not falsy): an older cached
+                        card without the field must keep the bar. */}
+                    {variant === "finished" && !winner && t.anyResult === false ? (
+                        <HStack gap="2" align="center" color="fg.muted">
+                            <Box flexShrink={0} display="inline-flex">
+                                <FiInfo size={13} />
+                            </Box>
+                            <Text fontSize="12px" fontWeight={600} lineHeight="1.3">
+                                {tp.card.notRecordedLabel}
+                            </Text>
+                        </HStack>
+                    ) : variant === "finished" && winner ? (
                         <HStack gap="2" align="center">
                             <Box
                                 fontFamily="mono"

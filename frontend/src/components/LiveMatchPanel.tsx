@@ -957,12 +957,6 @@ export default function LiveMatchPanel({
                                     )}
                                 </HStack>
 
-                                {streamActive && (
-                                    <Text fontSize="xs" color="fg.muted" textAlign="center" mb="3">
-                                        {t.components.liveMatchPanel.streamActiveNote}
-                                    </Text>
-                                )}
-
                                 {/* Result-only panel. A level knockout score hands
                                     off to the penalty shootout RIGHT HERE - the
                                     live-branch shootout render is unreachable for

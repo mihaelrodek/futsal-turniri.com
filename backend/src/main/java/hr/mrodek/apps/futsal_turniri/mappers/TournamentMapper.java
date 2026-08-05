@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.mappers;
 
 import hr.mrodek.apps.futsal_turniri.dtos.CreateTournamentRequest;
+import hr.mrodek.apps.futsal_turniri.dtos.TournamentCardContext;
 import hr.mrodek.apps.futsal_turniri.dtos.TournamentCardDto;
 import hr.mrodek.apps.futsal_turniri.dtos.TournamentDetailsResponse;
 import hr.mrodek.apps.futsal_turniri.enums.RewardType;
@@ -34,19 +35,17 @@ public interface TournamentMapper {
             @Mapping(target = "winnerName", source = "winnerName"),
             @Mapping(target = "status", source = "status", qualifiedByName = "enumToName"),
             @Mapping(target = "bannerUrl", expression = "java(publicUrl(t))"),
-            @Mapping(target = "registeredTeams",
-                    expression = "java(teamCountsByTournamentId.getOrDefault(t.getId(), 0L).intValue())"),
-            @Mapping(target = "liveMatch",
-                    expression = "java(liveTournamentIds.contains(t.getId()))"),
+            @Mapping(target = "registeredTeams", expression = "java(ctx.teamCount(t.getId()))"),
+            @Mapping(target = "liveMatch", expression = "java(ctx.isLive(t.getId()))"),
+            @Mapping(target = "anyResult", expression = "java(ctx.hasResult(t.getId()))"),
             @Mapping(target = "hidden", source = "hidden"),
     })
-    TournamentCardDto toCard(Tournaments t,
-                             @Context Map<Long, Long> teamCountsByTournamentId,
-                             @Context java.util.Set<Long> liveTournamentIds);
+    // ONE context object, not one parameter per lookup: MapStruct rejects two
+    // @Context parameters of the same type, and the live/played lookups are
+    // both Set<Long> ("The types of @Context parameters must be unique").
+    TournamentCardDto toCard(Tournaments t, @Context TournamentCardContext ctx);
 
-    List<TournamentCardDto> toCardList(List<Tournaments> list,
-                                       @Context Map<Long, Long> teamCountsByTournamentId,
-                                       @Context java.util.Set<Long> liveTournamentIds);
+    List<TournamentCardDto> toCardList(List<Tournaments> list, @Context TournamentCardContext ctx);
 
     /* ========== Entity -> Full Details DTO ========== */
     @Mappings({

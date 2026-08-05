@@ -38,6 +38,11 @@ export type TournamentCard = {
     status?: TournamentStatus | null;
     /** True when this tournament currently has a match in progress. */
     liveMatch?: boolean;
+    /** True when at least one match here was played to a result. False on a
+     *  tournament that was created (maybe even drawn into groups) and then
+     *  marked finished without a single result - the finished listing says so,
+     *  because such a card otherwise promises standings that don't exist. */
+    anyResult?: boolean;
     /** Set when an admin featured this tournament; null otherwise. The home
      *  list sorts featured tournaments first (before live ones). */
     featuredAt?: string | null;

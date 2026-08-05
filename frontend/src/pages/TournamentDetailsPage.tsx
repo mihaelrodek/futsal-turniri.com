@@ -1021,6 +1021,29 @@ export default function TournamentDetailsPage() {
     // Single-flight guard for the team-list bulk save.
     const savingTeamsRef = useRef(false)
 
+    /* The Zapisnik console pins a scoreboard of its own, and it has to land
+       directly UNDER whatever this page already pins - the NavBar plus (below
+       lg) the sticky title/tab bar. That bar's height is not a constant: the
+       title wraps to a second row for long names, and it is display:none from
+       lg up. So it's measured instead of guessed; a hidden element reports 0,
+       which correctly leaves just the NavBar. */
+    const stickyBarRef = useRef<HTMLDivElement | null>(null)
+    const [stickyBarH, setStickyBarH] = useState(0)
+    useEffect(() => {
+        const el = stickyBarRef.current
+        if (!el) return
+        setStickyBarH(el.offsetHeight)
+        if (typeof ResizeObserver === "undefined") return
+        const ro = new ResizeObserver(() => setStickyBarH(el.offsetHeight))
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+    // NavBar heights, same numbers the bar above uses for its own `top`.
+    const consoleStickyTop = {
+        base: `calc(52px + ${stickyBarH}px)`,
+        md: `calc(56px + ${stickyBarH}px)`,
+    }
+
     function buildTeamsPayload() {
         return teams.map((p) => ({
             id: p.id > 0 ? p.id : undefined,
@@ -1375,6 +1398,7 @@ export default function TournamentDetailsPage() {
                 short box scrolled past (same trap as the desktop sidebar).
                 Hidden on lg+, where the sidebar carries all of it. */}
             <Box
+                ref={stickyBarRef}
                 display={{ base: "block", lg: "none" }}
                 position="sticky"
                 // Right under the sticky NavBar: 53px in its mobile layout,
@@ -1772,6 +1796,7 @@ export default function TournamentDetailsPage() {
                         uuid={t.uuid}
                         finishedLocked={finishedLocked}
                         standaloneHref={`/turniri/${t.slug ?? t.uuid}/zapisnik`}
+                        stickyTop={consoleStickyTop}
                     />
                 )}
 

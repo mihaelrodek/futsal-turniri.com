@@ -46,7 +46,7 @@ export const queryClient = new QueryClient({
 // snapshot renders both as absent until the next refetch.
 // v3: AdminPendingCounts gained `poruke` - a persisted v2 snapshot would render
 // the new badge as absent until the next refetch.
-export const CACHE_BUSTER = "v5"
+export const CACHE_BUSTER = "v6"
 
 /** localStorage key the persister writes to (main.tsx). Cleared on logout. */
 export const PERSIST_KEY = "futsal-rq-cache"

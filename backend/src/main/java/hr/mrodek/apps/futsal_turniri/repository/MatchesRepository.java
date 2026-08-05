@@ -94,6 +94,33 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
     }
 
     /**
+     * Tournament ids (from the given set) with at least one FINISHED match -
+     * i.e. the tournament was actually played out on the platform.
+     *
+     * <p>Plenty of tournaments are created here, sometimes drawn into groups,
+     * and then run on paper: the organizer marks them finished without a single
+     * result ever being entered. Their cards used to look identical to a fully
+     * scored tournament, so visitors opened them expecting standings and found
+     * an empty table. This is the flag that lets the listing say so up front.
+     *
+     * <p>FINISHED, not "any match row": a generated schedule is not evidence of
+     * anything having been played. Same distinct scalar projection as the LIVE
+     * lookup above - one query for the whole page, no N+1.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Long> findTournamentIdsWithFinishedMatch(List<Long> tournamentIds) {
+        if (tournamentIds == null || tournamentIds.isEmpty()) return List.of();
+        return em.createQuery("""
+                        select distinct m.tournament.id
+                        from Matches m
+                        where m.tournament.id in :ids
+                          and m.status = hr.mrodek.apps.futsal_turniri.enums.MatchStatus.FINISHED
+                        """)
+                .setParameter("ids", tournamentIds)
+                .getResultList();
+    }
+
+    /**
      * Every match the given team was on either side of, ordered by round
      * number then table number - i.e. how the day actually played out.
      * Eager-fetches round + the opponents so the caller doesn't N+1 when

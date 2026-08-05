@@ -33,6 +33,11 @@ public class TournamentCardDto {
     private String status;
     /** True when this tournament has at least one match in progress (status LIVE). */
     private boolean liveMatch;
+    /** True when at least one match has been played to a result here - i.e. the
+     *  tournament was actually run on the platform, not just created and later
+     *  flipped to FINISHED. The finished listing badges the negative case, so a
+     *  visitor knows there are no standings to open. */
+    private boolean anyResult;
     /** Set when an admin has featured this tournament; null otherwise. The home
      *  list sorts featured tournaments to the very front (before live ones). */
     private OffsetDateTime featuredAt;

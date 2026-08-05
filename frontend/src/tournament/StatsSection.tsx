@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react"
 import { Box, Flex, Grid, HStack, NativeSelect, Text, VStack } from "@chakra-ui/react"
 import { FiAward, FiDownload, FiTarget } from "react-icons/fi"
 import { fetchScorers, type ScorerDto } from "../api/stats"
+import { fetchBracket } from "../api/bracket"
 import { setScorerScope } from "../api/tournaments"
 import type { ScorerScope, TournamentDetails, TournamentFormat } from "../types/tournaments"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { qk } from "../queryClient"
 import { Loader } from "../ui/primitives"
 import { useTranslation } from "../i18n"
@@ -100,6 +101,19 @@ const SCOPE_ORDER: ScorerScope[] = [
     "QUARTERFINAL",
     "SEMIFINAL",
 ]
+
+/** The scopes that name ONE knockout round - offered only when the bracket
+ *  actually contains that round. A tournament whose bracket starts at the
+ *  quarter-finals was still offering "Od šesnaestine finala" / "Od osmine
+ *  finala": settings that rank by a round nobody plays, so they silently
+ *  behave like "samo eliminacija" and read as a bug. The two scopes that are
+ *  not rounds (KNOCKOUT, ALL) are never filtered by this. */
+const ROUND_SCOPE_STAGE: Partial<Record<ScorerScope, string>> = {
+    ROUND_OF_32: "ROUND_OF_32",
+    ROUND_OF_16: "ROUND_OF_16",
+    QUARTERFINAL: "QUARTERFINAL",
+    SEMIFINAL: "SEMIFINAL",
+}
 
 function ScorerRow({
     scorer,
@@ -266,7 +280,37 @@ export default function StatsSection({
     // meaningless choice there, and defaults to true (assume groups exist)
     // for any caller that hasn't threaded `format` through yet.
     const hasGroups = format !== "KNOCKOUT_ONLY"
-    const visibleScopeOrder = hasGroups ? SCOPE_ORDER : SCOPE_ORDER.filter((s) => s !== "ALL")
+
+    // Which knockout rounds this tournament actually has. Read from the bracket
+    // (the only place that knows), and only while the picker is on screen -
+    // visitors see a plain badge and need no extra request. A failed/absent
+    // bracket returns null, which leaves every round scope on offer rather than
+    // hiding the one the organizer already chose.
+    const { data: bracket } = useQuery({
+        queryKey: qk.bracket(uuid),
+        queryFn: () => fetchBracket(uuid),
+        enabled: !!uuid && canEdit,
+        staleTime: 60_000,
+    })
+    const bracketStages = useMemo(() => {
+        if (!bracket) return null
+        const stages = new Set(bracket.rounds.map((r) => r.stage))
+        return stages.size ? stages : null
+    }, [bracket])
+
+    const visibleScopeOrder = useMemo(() => {
+        let list = hasGroups ? SCOPE_ORDER : SCOPE_ORDER.filter((s) => s !== "ALL")
+        if (bracketStages) {
+            list = list.filter((s) => {
+                const stage = ROUND_SCOPE_STAGE[s]
+                // Keep the CURRENT scope even when its round is gone (a reset
+                // bracket, a re-draw): dropping it would leave the select with
+                // no matching option and show a value the tournament isn't on.
+                return !stage || bracketStages.has(stage) || s === scorerScope
+            })
+        }
+        return list
+    }, [hasGroups, bracketStages, scorerScope])
 
     useEffect(() => {
         if (!uuid) return

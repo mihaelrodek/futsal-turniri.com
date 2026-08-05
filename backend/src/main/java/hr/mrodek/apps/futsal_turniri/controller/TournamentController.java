@@ -1049,7 +1049,15 @@ public class TournamentController {
         Set<Long> liveTournamentIds =
                 new HashSet<>(matchesRepo.findTournamentIdsWithLiveMatch(ids));
 
-        return tournamentMapper.toCardList(visible, counts, liveTournamentIds);
+        // Tournaments that were actually played out here - the finished listing
+        // badges the ones that weren't ("nije vođen na stranici").
+        Set<Long> playedTournamentIds =
+                new HashSet<>(matchesRepo.findTournamentIdsWithFinishedMatch(ids));
+
+        return tournamentMapper.toCardList(
+                visible,
+                new hr.mrodek.apps.futsal_turniri.dtos.TournamentCardContext(
+                        counts, liveTournamentIds, playedTournamentIds));
     }
 
     /**
@@ -1089,10 +1097,12 @@ public class TournamentController {
                             .orElse(0L);
                     Set<Long> liveIds = new HashSet<>(
                             matchesRepo.findTournamentIdsWithLiveMatch(java.util.List.of(t.getId())));
+                    Set<Long> playedIds = new HashSet<>(
+                            matchesRepo.findTournamentIdsWithFinishedMatch(java.util.List.of(t.getId())));
                     var card = tournamentMapper.toCardList(
                             java.util.List.of(t),
-                            Map.of(t.getId(), count),
-                            liveIds).get(0);
+                            new hr.mrodek.apps.futsal_turniri.dtos.TournamentCardContext(
+                                    Map.of(t.getId(), count), liveIds, playedIds)).get(0);
                     return Response.ok(card).build();
                 })
                 .orElseGet(() -> Response.noContent().build());

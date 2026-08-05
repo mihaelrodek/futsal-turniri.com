@@ -551,6 +551,9 @@ export const hr = {
             card: {
                 hiddenBadge: "🔒 SKRIVENO",
                 winnerLabel: "POBJEDNIK",
+                /** Finished tournament with no result ever entered - it was
+                 *  run on paper, so there is nothing to open. */
+                notRecordedLabel: "Nije vođen na stranici - nema unesenih rezultata",
                 fillLabel: "Popunjenost",
                 freeEntry: "Besplatan ulaz",
                 entryFeeLabel: "kotizacija",
@@ -2418,7 +2421,7 @@ export const hr = {
             showFinished: (count: number) => `Pokaži završene (${count})`,
             pickMatch: "Izaberi utakmicu",
             upcomingHeading: "Nadolazeće utakmice",
-            upcomingHint: "Parovi se popunjavaju kad završi grupna faza - do tada stoji TBD.",
+            upcomingHint: "Parovi se popunjavaju kad završi grupna faza - do tada stoji predviđena ekipa ili oznaka pozicije („A1“, „Pobj. ČF1“).",
             fullscreenButton: "Puni zaslon",
             streamSectionHeading: "Prijenos utakmice",
             streamShow: "Prikaži prijenos",
@@ -3161,7 +3164,6 @@ export const hr = {
                 aria: (team: string) => `Markirka - ${team}`,
             },
             finishedNotice: "Utakmica je završena.",
-            streamActiveNote: "Prijenos je aktivan za ovaj turnir - utakmica se može pokrenuti samo uživo s mjeračem vremena.",
             resultOnlyDoneNotice: "Prikazan samo krajnji rezultat bez strijelca.",
             noEventsNotice: "Još nema zabilježenih događaja.",
             cancelResultEntry: "Odustani od unosa rezultata",
