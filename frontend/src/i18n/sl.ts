@@ -3071,6 +3071,7 @@ export const sl: Dictionary = {
                 aria: (team: string) => `Markirka - ${team}`,
             },
             finishedNotice: "Tekma je končana.",
+            versus: "vs",
             resultOnlyDoneNotice: "Prikazan je samo končni rezultat, brez strelca.",
             noEventsNotice: "Še ni zabeleženih dogodkov.",
             cancelResultEntry: "Prekliči vnos rezultata",

@@ -3164,6 +3164,9 @@ export const hr = {
                 aria: (team: string) => `Markirka - ${team}`,
             },
             finishedNotice: "Utakmica je završena.",
+            /** Separator between the two teams before kickoff, where there
+             *  is no result to show yet. */
+            versus: "vs",
             resultOnlyDoneNotice: "Prikazan samo krajnji rezultat bez strijelca.",
             noEventsNotice: "Još nema zabilježenih događaja.",
             cancelResultEntry: "Odustani od unosa rezultata",

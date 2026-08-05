@@ -329,7 +329,7 @@ export default function ZapisnikModePage() {
                         empty while nothing is live. */}
                     <Box justifySelf="center">
                         {clockArgs ? (
-                            <LiveClock {...clockArgs} size="md" showLabel labelOutside />
+                            <LiveClock {...clockArgs} size="md" clockOnly />
                         ) : headerFollowsLive && liveMatch?.liveMode === "TIMER" && liveMatch.liveStartedAt ? (
                             <LiveClock
                                 liveStartedAt={liveMatch.liveStartedAt}
@@ -339,8 +339,7 @@ export default function ZapisnikModePage() {
                                 halfLengthMin={liveMatch.halfLengthMin}
                                 halfCount={liveMatch.halfCount}
                                 size="md"
-                                showLabel
-                                labelOutside
+                                clockOnly
                             />
                         ) : headerFollowsLive && liveMatch ? (
                             <HStack
@@ -500,7 +499,16 @@ export default function ZapisnikModePage() {
                 )}
 
                 <LiveControlTab
-                    uuid={uuid}
+                    // The CANONICAL uuid, not the route param - that may be a
+                    // slug. Every data call accepts either, but the console
+                    // also compares this against the stream banner's
+                    // `tournamentUuid`, which is always the uuid: with a slug
+                    // in hand that test failed, so the fullscreen zapisnik did
+                    // not know its own tournament was streaming and kept
+                    // offering the start modes ("bez mjerača", "samo
+                    // rezultat") that cannot drive the overlay clock - while
+                    // the embedded tab, which passes t.uuid, hid them.
+                    uuid={details.uuid}
                     onClockArgs={setClockArgs}
                     onFixturesSettled={onFixturesSettled}
                     selectorSlot={selectorSlot}

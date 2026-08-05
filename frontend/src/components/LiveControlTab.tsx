@@ -310,7 +310,7 @@ function ScoreboardBar({
                     has no time to show. */}
                 <Box justifySelf="end" minW="0">
                     {clock ? (
-                        <LiveClock {...clock} size="xs" showLabel labelOutside />
+                        <LiveClock {...clock} size="xs" clockOnly />
                     ) : isLive ? (
                         <PulseDot color="accent.red" size={6} />
                     ) : null}
@@ -549,6 +549,28 @@ export default function LiveControlTab({
 
     const kitColors = useTeamColors(uuid)
     const ownScoreboard = !selectorSlot
+
+    /* -- Stream toggle --------------------------------------------------
+       Owned HERE rather than inside StreamSection so the show/hide button can
+       sit in the console's action row, next to "Uživo" and "Puni zaslon".
+       Before kickoff those were three separate one-button rows; the stream is
+       one of the things the organizer reaches for at that moment, so it
+       belongs on the same line. The section below is then purely the player. */
+    const streamUrl = banner?.url && banner.tournamentUuid === uuid ? banner.url : null
+    const [streamShown, setStreamShown] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(`zapisnik-stream-${uuid}`) === "1"
+        } catch {
+            return false
+        }
+    })
+    const toggleStream = useCallback(() => {
+        setStreamShown((prev) => {
+            const next = !prev
+            try { localStorage.setItem(`zapisnik-stream-${uuid}`, next ? "1" : "0") } catch { /* ignore */ }
+            return next
+        })
+    }, [uuid])
 
     useEffect(() => {
         if (!onSelectedMatch) return
@@ -844,23 +866,38 @@ export default function LiveControlTab({
                 onClockArgs={handleClockArgs}
                 onScore={handleScore}
                 footerAction={
-                    standaloneHref ? (
-                        <Button
-                            size="xs"
-                            variant="outline"
-                            colorPalette="pitch"
-                            onClick={() => navigate(standaloneHref)}
-                        >
-                            <FiMaximize2 /> {tc.fullscreenButton}
-                        </Button>
+                    standaloneHref || streamUrl ? (
+                        <>
+                            {standaloneHref && (
+                                <Button
+                                    size="xs"
+                                    variant="outline"
+                                    colorPalette="pitch"
+                                    onClick={() => navigate(standaloneHref)}
+                                >
+                                    <FiMaximize2 /> {tc.fullscreenButton}
+                                </Button>
+                            )}
+                            {streamUrl && (
+                                <Button
+                                    size="xs"
+                                    variant="outline"
+                                    colorPalette="pitch"
+                                    onClick={toggleStream}
+                                >
+                                    {streamShown
+                                        ? <><FiEyeOff /> {tc.streamHide}</>
+                                        : <><FiPlay /> {tc.streamShow}</>}
+                                </Button>
+                            )}
+                        </>
                     ) : undefined
                 }
             />
             {/* Optional live stream of the match being recorded (organizer aid):
-                only when the admin has linked a stream to THIS tournament. Kept
-                below the console and low-key when collapsed - it's a nice-to-have,
-                not the main event. */}
-            <StreamSection uuid={uuid} banner={banner} />
+                only when the admin has linked a stream to THIS tournament, and
+                only once asked for - the toggle lives up in the action row. */}
+            <StreamSection uuid={uuid} url={streamUrl} shown={streamShown} />
         </VStack>
     ) : null
 }
@@ -869,70 +906,34 @@ export default function LiveControlTab({
    StreamSection - lets the scorekeeper watch the tournament's live stream right
    inside the Zapisnik, so goals can be entered the moment they happen. Uses
    ONLY the stream the admin linked to this tournament (the home-page banner);
-   there's no URL to paste. Off by default; the show/hide choice is remembered
-   per tournament. Renders nothing when no stream is linked here.
-   ────────────────────────────────────────────────────────────────────────── */
-function StreamSection({ uuid, banner }: { uuid: string; banner: StreamBanner | null }) {
-    const t = useTranslation()
-    const tc = t.components.liveControlTab
-    const [shown, setShown] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem(`zapisnik-stream-${uuid}`) === "1"
-        } catch {
-            return false
-        }
-    })
+   there's no URL to paste.
 
-    // A stream is available here only when the admin linked one to THIS
-    // tournament (t.uuid is canonical, same as banner.tournamentUuid).
-    const url = banner?.url && banner.tournamentUuid === uuid ? banner.url : null
+   Purely the PLAYER - no card, no heading, no hide button. All three were
+   chrome around a video that already carries its own scorebug and controls,
+   and the hide button was the SECOND one on screen (the action row above owns
+   the toggle and the remembered per-tournament choice). Renders nothing until
+   asked for.
+   ────────────────────────────────────────────────────────────────────────── */
+function StreamSection({
+    uuid,
+    url,
+    shown,
+}: {
+    uuid: string
+    url: string | null
+    shown: boolean
+}) {
     // Zapisnik watchers join the global viewer count too: heartbeat only while
     // the player is actually shown. Called before the early return below so the
     // hook order stays stable across renders.
     const viewers = useStreamPresence(shown && !!url)
-    if (!url) return null
-
-    function toggle() {
-        setShown((prev) => {
-            const next = !prev
-            try { localStorage.setItem(`zapisnik-stream-${uuid}`, next ? "1" : "0") } catch { /* ignore */ }
-            return next
-        })
-    }
+    if (!url || !shown) return null
 
     return (
-        <Box
-            bg="bg.panel"
-            borderWidth="1px"
-            borderColor="border"
-            rounded={shown ? "2xl" : "xl"}
-            shadow={shown ? "sm" : "none"}
-            p="3"
-            // Expanded: the panel HUGS the (now bigger) player and centres, so
-            // there's no dead white frame to its left/right - the video is the
-            // star. Collapsed stays a slim full-width row so the show/hide
-            // toggle is always easy to find.
-            w={shown ? { base: "full", md: "fit-content" } : "full"}
-            minW={shown ? { md: "480px" } : undefined}
-            mx={shown ? "auto" : undefined}
-        >
-            <Flex align="center" justify="space-between" gap="2" mb={shown ? "3" : "0"}>
-                <HStack gap="2" minW="0">
-                    <Box color="accent.red" display="inline-flex"><LuRadioTower size={16} /></Box>
-                    <Text fontSize="sm" fontWeight={800} color="fg.ink" truncate>{tc.streamSectionHeading}</Text>
-                </HStack>
-                <Button size="sm" variant="outline" colorPalette="pitch" onClick={toggle} flexShrink={0}>
-                    {shown ? <><FiEyeOff /> {tc.streamHide}</> : <><FiPlay /> {tc.streamShow}</>}
-                </Button>
-            </Flex>
-            {shown && (
-                // A real width (not just maxW) drives the fit-content panel to
-                // hug the player at up to 760px; maxW="full" keeps it from
-                // overflowing a narrow content column (e.g. tablet width).
-                <Box w={{ base: "full", md: "760px" }} maxW="full" mx="auto">
-                    <StreamPlayer url={url} viewers={viewers} tournamentUuid={uuid} />
-                </Box>
-            )}
+        // A real width (not just maxW) lets the player fill up to 760px;
+        // maxW="full" keeps it from overflowing a narrow content column.
+        <Box w={{ base: "full", md: "760px" }} maxW="full" mx="auto">
+            <StreamPlayer url={url} viewers={viewers} tournamentUuid={uuid} />
         </Box>
     )
 }

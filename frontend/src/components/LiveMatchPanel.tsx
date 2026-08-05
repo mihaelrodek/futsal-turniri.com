@@ -78,6 +78,22 @@ const PITCH = "#2AD4C8"
  *  show the identical shade. */
 const BIB_YELLOW = "#D9F225"
 
+/* Shared shape of the two pre-match team cards. A fixed width (not hug) so the
+   two sit as a matched pair whatever the names are - a short name next to a
+   long one otherwise produced two boxes of wildly different size stacked on
+   each other. `borderColor` is set per team to its identity colour. */
+const teamBox = {
+    gap: "2.5",
+    minW: "0",
+    w: "full",
+    maxW: "30rem",
+    px: "3.5",
+    py: "2",
+    borderWidth: "1px",
+    rounded: "xl",
+    bg: "bg.surfaceTint",
+} as const
+
 /** The colour a side's kit reads as while it wears the markirka: the bib
  *  yellow replaces the jersey colour entirely, on every surface that shows one
  *  colour per team. */
@@ -672,67 +688,62 @@ export default function LiveMatchPanel({
     const editingScore = isScheduled && showDirectScore && !shootout
 
     /**
-     * The two "what everyone else sees" switches, with a line each saying what
-     * they do. They sit ABOVE the match-ending action rather than up by the
-     * clock: both are settings, not in-play controls, and an unlabelled eye
-     * icon next to a running clock told nobody what it would change.
+     * The "what everyone else sees" switches plus the host's view actions, on
+     * ONE wrapping row. They sit above the match-ending action rather than up
+     * by the clock: all of them are settings, not in-play controls, and an
+     * unlabelled eye icon next to a running clock told nobody what it would
+     * change.
      *
-     * The stream-clock one only appears where a stream clock exists (a live
+     * The explanatory sentences are gone from the layout and live on as
+     * `title` tooltips: each one restated its own button ("Sakrij sat na
+     * streamu" / "Sat i preostalo vrijeme na prijenosu uživo"), and two
+     * paragraphs of small grey text took more of a pitchside screen than the
+     * controls themselves.
+     *
+     * The stream-clock switch only appears where a stream clock exists (a live
      * TIMER match); the fouls one is a tournament-wide setting and always does.
      */
     const settingsRow = (showClockButton: boolean) => (
-        // One row per switch: the button, then the sentence that says what it
-        // changes. A shared min-width on the buttons keeps the two sentences
-        // starting at the same x, so the pair reads as a list rather than as
-        // two unrelated lines. The block is centred but its rows are not - a
-        // centred sentence under a centred button gave no clue which one it
-        // belonged to.
-        <VStack align="stretch" gap="1.5">
+        <Flex gap="2" align="center" wrap="wrap">
             {showClockButton && (
-                <HStack gap="2.5" align="center" w="full">
-                    <Button
-                        size="xs"
-                        variant="outline"
-                        minW="10.5rem"
-                        justifyContent="flex-start"
-                        flexShrink={0}
-                        // Teal = the thing is currently ON. This used to be
-                        // inverted (teal while the clock was HIDDEN), so the two
-                        // switches in this block contradicted each other: one
-                        // was teal for "visible", the other for "hidden".
-                        colorPalette={clockVisibleOnStream ? "pitch" : "gray"}
-                        loading={clockVisibilityBusy}
-                        onClick={toggleStreamClockVisibility}
-                    >
-                        {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
-                        {clockVisibleOnStream ? t.components.liveMatchPanel.streamClock.hideAction : t.components.liveMatchPanel.streamClock.showAction}
-                    </Button>
-                    <Text fontSize="2xs" color="fg.muted" lineHeight="1.35">
-                        {t.components.liveMatchPanel.streamClock.explainer}
-                    </Text>
-                </HStack>
-            )}
-            <HStack gap="2.5" align="center" w="full">
                 <Button
                     size="xs"
                     variant="outline"
-                    minW="10.5rem"
-                    justifyContent="flex-start"
                     flexShrink={0}
-                    colorPalette={showFoulsOnTimeline ? "pitch" : "gray"}
-                    loading={togglingFouls}
-                    onClick={toggleFoulsOnTimeline}
+                    // Teal = the thing is currently ON. This used to be
+                    // inverted (teal while the clock was HIDDEN), so the two
+                    // switches in this block contradicted each other: one
+                    // was teal for "visible", the other for "hidden".
+                    colorPalette={clockVisibleOnStream ? "pitch" : "gray"}
+                    loading={clockVisibilityBusy}
+                    title={t.components.liveMatchPanel.streamClock.explainer}
+                    onClick={toggleStreamClockVisibility}
                 >
-                    {showFoulsOnTimeline ? <FiEyeOff /> : <FiEye />}
-                    {showFoulsOnTimeline
-                        ? t.components.liveMatchPanel.timelineFouls.hideAction
-                        : t.components.liveMatchPanel.timelineFouls.showAction}
+                    {clockVisibleOnStream ? <FiEyeOff /> : <FiEye />}
+                    {clockVisibleOnStream ? t.components.liveMatchPanel.streamClock.hideAction : t.components.liveMatchPanel.streamClock.showAction}
                 </Button>
-                <Text fontSize="2xs" color="fg.muted" lineHeight="1.35">
-                    {t.components.liveMatchPanel.timelineFouls.explainer}
-                </Text>
-            </HStack>
-        </VStack>
+            )}
+            <Button
+                size="xs"
+                variant="outline"
+                flexShrink={0}
+                colorPalette={showFoulsOnTimeline ? "pitch" : "gray"}
+                loading={togglingFouls}
+                title={t.components.liveMatchPanel.timelineFouls.explainer}
+                onClick={toggleFoulsOnTimeline}
+            >
+                {showFoulsOnTimeline ? <FiEyeOff /> : <FiEye />}
+                {showFoulsOnTimeline
+                    ? t.components.liveMatchPanel.timelineFouls.hideAction
+                    : t.components.liveMatchPanel.timelineFouls.showAction}
+            </Button>
+            {/* Host actions (puni zaslon, prijenos) close the row. Up by the
+                clock they sat between the running time and the action grid -
+                the busiest spot on a live screen - for two things touched once
+                a match. They are view controls, so they belong with the other
+                switches, not with the scoring. */}
+            {footerAction}
+        </Flex>
     )
 
     const actionRow = () => (
@@ -771,11 +782,11 @@ export default function LiveMatchPanel({
 
     return (
         <VStack align="stretch" gap="0">
-            {/* Main card. A stable minimum height (desktop) so switching matches
-                or going pre-match↔live - both remount this panel by design - no
-                longer makes the console box jump between the shorter pre-match
-                layout and the taller live one. */}
-            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" px={{ base: "4", md: "6" }} pb={{ base: "4", md: "6" }} pt="3" minH={{ base: "auto", md: "440px" }} display="flex" flexDirection="column">
+            {/* Main card. The 440px floor keeps the box from jumping as the
+                LIVE layout mounts/unmounts - but it does NOT apply before
+                kickoff: with the pre-match block down to one line, that floor
+                was 400px of empty card under a single row of buttons. */}
+            <Box bg="bg.panel" borderWidth="1px" borderColor="border" rounded="3xl" shadow="sm" px={{ base: "4", md: "6" }} pb={{ base: "4", md: "6" }} pt="3" minH={isScheduled ? undefined : { base: "auto", md: "440px" }} display="flex" flexDirection="column">
                 {/* Match selector (built by the host). It stays centred on its
                     own row; auxiliary actions live lower in the console so they
                     cannot pull the dropdown off centre. */}
@@ -791,10 +802,80 @@ export default function LiveMatchPanel({
                     A finished match stays top-aligned (it also carries a
                     timeline below). */}
                 {!isLive && (
-                    <VStack align="stretch" gap="0" mt="5" flex="1" justifyContent={isScheduled ? "center" : "flex-start"}>
+                    <VStack align="stretch" gap="0" mt={isScheduled ? "3" : "5"} flex="1" justifyContent={isScheduled ? "center" : "flex-start"}>
+                        {/* PRE-MATCH: a compact line, not a scoreboard.
+                            A match that hasn't started has no result, so the
+                            0 : 0 in 3xl type was stating nothing at the top of
+                            its own screen-tall card - and the teams are already
+                            named in the sticky bar right above. What is left is
+                            what the organizer actually needs before kickoff:
+                            who plays and how to start. The full scoreboard
+                            comes back the moment it means something - a
+                            finished result, or the result-only editor with its
+                            steppers.
+
+                            No bib ("markirka") toggles here: the choice belongs
+                            to the live roster, where it is next to the players
+                            it recolours, and two entry points for one column
+                            only invited disagreement about which was current.
+
+                            STACKED, one team per line, with "vs" between them.
+                            Side by side, two long club names ("DŠR Žarovnica &
+                            MH System & Bueno Caffe") ate the full card width
+                            and shrank to a size that no longer read from the
+                            table, or wrapped mid-name. A line each fits any
+                            name at full size, and the vertical order is the
+                            same home-then-away order as everywhere else. */}
+                        {isScheduled && !editingScore && (
+                            <VStack gap="1" mb="4" w="full" align="center">
+                                {/* A card per team, so the two names read as two
+                                    entries rather than as one wrapped sentence -
+                                    a long club name spanning two lines was hard
+                                    to tell from two teams. The tinted panel also
+                                    carries the kit, which used to float loose in
+                                    the middle of the card. */}
+                                <HStack
+                                    {...teamBox}
+                                    borderColor={HOME}
+                                >
+                                    <KitSwatch jersey={effJerseyC1 ?? shortsC1 ?? HOME} shorts={shortsC1} size={13} />
+                                    <Text
+                                        fontSize={{ base: "sm", md: "lg" }}
+                                        fontWeight={800}
+                                        color={HOME}
+                                        lineClamp={2}
+                                        css={{ overflowWrap: "anywhere" }}
+                                        minW="0"
+                                    >
+                                        {match.team1Name ?? "-"}
+                                    </Text>
+                                </HStack>
+                                <Text fontSize="xs" fontWeight={700} color="fg.subtle">
+                                    {t.components.liveMatchPanel.versus}
+                                </Text>
+                                <HStack
+                                    {...teamBox}
+                                    borderColor={AWAY}
+                                >
+                                    <KitSwatch jersey={effJerseyC2 ?? shortsC2 ?? AWAY} shorts={shortsC2} size={13} />
+                                    <Text
+                                        fontSize={{ base: "sm", md: "lg" }}
+                                        fontWeight={800}
+                                        color={AWAY}
+                                        lineClamp={2}
+                                        css={{ overflowWrap: "anywhere" }}
+                                        minW="0"
+                                    >
+                                        {match.team2Name ?? "-"}
+                                    </Text>
+                                </HStack>
+                            </VStack>
+                        )}
+
                         {/* Scoreboard - a 1fr/auto/1fr grid so the score stays
                             truly centred no matter how uneven the two team names
                             are; long names wrap instead of pushing the score off. */}
+                        {(!isScheduled || editingScore) && (
                         <Box
                             display="grid"
                             gridTemplateColumns="1fr auto 1fr"
@@ -809,16 +890,9 @@ export default function LiveMatchPanel({
                         >
                             <HStack gap="2" justify="flex-end" minW="0">
                                 {/* Identity-colour fallback keeps both sides showing a
-                                    jersey even when a team has no kit colours. */}
-                                {!isFinished && (
-                                    <BibToggle
-                                        compact
-                                        teamName={match.team1Name}
-                                        active={bibTeam === 1}
-                                        disabled={bibBusy || match.team1Id == null}
-                                        onClick={() => handleBib(1)}
-                                    />
-                                )}
+                                    jersey even when a team has no kit colours. The bib
+                                    toggle is NOT here: it belongs to the live roster,
+                                    beside the players it recolours. */}
                                 <KitSwatch jersey={effJerseyC1 ?? shortsC1 ?? HOME} shorts={shortsC1} size={13} />
                                 <Text fontSize={{ base: "xl", md: "3xl" }} fontWeight={800} color={HOME} textAlign="right" lineClamp={2} css={{ overflowWrap: "anywhere" }} minW="0">
                                     {match.team1Name ?? "-"}
@@ -854,17 +928,9 @@ export default function LiveMatchPanel({
                                     {match.team2Name ?? "-"}
                                 </Text>
                                 <KitSwatch jersey={effJerseyC2 ?? shortsC2 ?? AWAY} shorts={shortsC2} size={13} />
-                                {!isFinished && (
-                                    <BibToggle
-                                        compact
-                                        teamName={match.team2Name}
-                                        active={bibTeam === 2}
-                                        disabled={bibBusy || match.team2Id == null}
-                                        onClick={() => handleBib(2)}
-                                    />
-                                )}
                             </HStack>
                         </Box>
+                        )}
 
                         {/* Status line only for a FINISHED match - the scheduled
                             "još nije pokrenuta" note was redundant next to the
@@ -894,7 +960,7 @@ export default function LiveMatchPanel({
                                                 color="white"
                                                 _hover={{ bg: HOME, opacity: 0.9 }}
                                                 fontWeight={800}
-                                                size="lg"
+                                                size="md"
                                                 loading={starting}
                                                 onClick={() => handleStart("TIMER")}
                                             >
@@ -904,7 +970,7 @@ export default function LiveMatchPanel({
                                                 <Button
                                                     variant="outline"
                                                     fontWeight={700}
-                                                    size="lg"
+                                                    size="md"
                                                     loading={starting}
                                                     onClick={() => handleStart("SIMPLE")}
                                                 >
@@ -920,7 +986,7 @@ export default function LiveMatchPanel({
                                     {!streamActive && (
                                         <Button
                                             variant="outline"
-                                            size="lg"
+                                            size="md"
                                             fontWeight={700}
                                             color="fg.ink"
                                             onClick={() => {
@@ -946,7 +1012,7 @@ export default function LiveMatchPanel({
                                         a level knockout score hands off to penalties. */}
                                     {editingScore && !streamActive && (
                                         <Button
-                                            size="lg"
+                                            size="md"
                                             colorPalette="pitch"
                                             fontWeight={800}
                                             loading={savingScore}
@@ -997,6 +1063,10 @@ export default function LiveMatchPanel({
                             </Box>
                         )}
 
+                        {/* Host actions (puni zaslon, prijenos) on their own
+                            row under the starters: they are view controls, not
+                            ways to begin the match, and sharing a row invited
+                            reaching for the wrong one. */}
                         {footerAction && actionRow()}
 
                         {isFinished && (
@@ -1058,11 +1128,8 @@ export default function LiveMatchPanel({
                                         {halfLabel}
                                     </Text>
                                 )}
-                                {footerAction && actionRow()}
                             </VStack>
                         )}
-
-                        {!isTimer && footerAction && actionRow()}
 
                         {shootout ? (
                             <PenaltyShootout

@@ -415,9 +415,10 @@ type LiveClockProps = {
     halfCount?: number | null
     /** When true, render the phase label ("Poluvrijeme" / "2. pol." / "Kraj"). */
     showLabel?: boolean
-    /** Pin the phase label OUTSIDE the clock, to its left, so a centring
-     *  container centres the digits rather than label+digits together. */
-    labelOutside?: boolean
+    /** Counter ONLY - no phase label at all, not even the "Pauza" word. For
+     *  the header bars, where the digits are the whole point and any label
+     *  next to them shifted the clock off centre at every half transition. */
+    clockOnly?: boolean
     /** When true, suppress the "Pauza" word the clock otherwise prints while
      *  paused (the ⏸ icon + frozen time still show). Lets a caller that renders
      *  its OWN "PAUZA" label next to the clock avoid a doubled-up "Pauza". */
@@ -551,7 +552,7 @@ export function LiveClock({
     showLabel,
     hidePauseLabel,
     size = "xs",
-    labelOutside,
+    clockOnly,
 }: LiveClockProps) {
     const t = useTranslation()
     const [, setTick] = useState(0)
@@ -587,27 +588,18 @@ export function LiveClock({
             gap="1"
             whiteSpace="nowrap"
         >
-            {!labelOutside && labelEl}
+            {!clockOnly && labelEl}
             {st.paused ? <FiPause size={iconSize} /> : <FiClock size={iconSize} />}
             {st.display}
         </Text>
     )
 
-    // `labelOutside` lifts the phase label out of the clock's own flex and pins
-    // it to the LEFT of it, so the TIME is what a centring container centres.
-    // Inline, a longer label ("Poluvrijeme" vs "Kraj") pushed the digits off
-    // centre and the clock visibly shifted at every half transition.
-    if (!labelOutside) return clock
-    return (
-        <Box as="span" position="relative" display="inline-flex" alignItems="center">
-            {labelEl && (
-                <Box as="span" position="absolute" right="100%" pr="2" whiteSpace="nowrap">
-                    {labelEl}
-                </Box>
-            )}
-            {clock}
-        </Box>
-    )
+    // The header bars ask for the counter alone: a phase label beside the
+    // digits pushed them off centre whenever it changed length ("1. pol." →
+    // "Poluvrijeme" → "Kraj"), and under them it was a caption for something
+    // the console already states in full. Paused still reads without a word -
+    // the time freezes, greys out, and the icon becomes ⏸.
+    return clock
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

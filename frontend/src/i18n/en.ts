@@ -3067,6 +3067,7 @@ export const en: Dictionary = {
                 aria: (team: string) => `Bibs - ${team}`,
             },
             finishedNotice: "The match has finished.",
+            versus: "vs",
             resultOnlyDoneNotice: "Only the final result is shown, without a scorer.",
             noEventsNotice: "No events recorded yet.",
             cancelResultEntry: "Cancel result entry",
