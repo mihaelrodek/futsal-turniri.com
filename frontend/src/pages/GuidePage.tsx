@@ -301,12 +301,23 @@ function Chapter({
 }
 
 /** Icon + image per showcase feature, zipped by index with the translated
- *  text in each chapter's `g.chapterX.features` array. Order matters. */
+ *  text in each chapter's `g.chapterX.features` array. Order matters.
+ *
+ *  `?v=2` on bracket/grupe/raspored/statistika: Caddy caches `*.webp` for 7
+ *  days (`@staticimg`, same rule as logos/icons), and those four filenames
+ *  already existed in a prior deploy - swapping the file's bytes in place
+ *  left returning visitors' browsers showing the old cached image for up to
+ *  a week after redeploy. A query-string bump forces a fresh fetch; every
+ *  future content swap of an EXISTING filename needs its `v` bumped again
+ *  (the Caddyfile comment on `@staticimg` says the same: rename/version
+ *  rather than rely on cache expiry). The other filenames here are new in
+ *  this same deploy, so no stale copy exists anywhere yet - no `?v=` needed
+ *  until the day their content changes again. */
 const CREATE_SHOWCASE_META: { icon: ElementType; image: ShowcaseImage }[] = [
     { icon: LuUsers, image: { src: "/vodic/ekipe-poredak.webp", width: 1828, height: 1466 } },
     { icon: LuShuffle, image: { src: "/vodic/zdrijeb.webp", width: 2024, height: 1528 } },
     { icon: LuCalendarClock, image: { src: "/vodic/raspored-pregled.webp", width: 1252, height: 1208 } },
-    { icon: LuCalendarCheck, image: { src: "/vodic/raspored.webp", width: 2036, height: 1398 } },
+    { icon: LuCalendarCheck, image: { src: "/vodic/raspored.webp?v=2", width: 2036, height: 1398 } },
 ]
 
 const ZAPISNIK_SHOWCASE_META: { icon: ElementType; image: ShowcaseImage }[] = [
@@ -317,9 +328,9 @@ const ZAPISNIK_SHOWCASE_META: { icon: ElementType; image: ShowcaseImage }[] = [
 ]
 
 const RESULTS_SHOWCASE_META: { icon: ElementType; image: ShowcaseImage }[] = [
-    { icon: LuTable, image: { src: "/vodic/grupe.webp", width: 1930, height: 1386 } },
-    { icon: LuTrophy, image: { src: "/vodic/bracket.webp", width: 1246, height: 1022 } },
-    { icon: LuChartColumn, image: { src: "/vodic/statistika.webp", width: 1858, height: 1244 } },
+    { icon: LuTable, image: { src: "/vodic/grupe.webp?v=2", width: 1930, height: 1386 } },
+    { icon: LuTrophy, image: { src: "/vodic/bracket.webp?v=2", width: 1246, height: 1022 } },
+    { icon: LuChartColumn, image: { src: "/vodic/statistika.webp?v=2", width: 1858, height: 1244 } },
 ]
 
 export default function GuidePage() {

@@ -55,6 +55,19 @@ public class MatchRecordingController {
      *  was (re)issued - see {@link MatchRecording#getShareTokenCreatedAt()}. */
     private static final long SHARE_LINK_VALID_HOURS = 48;
 
+    /** Same crawler User-Agent list Caddy already matches on for the
+     *  tournament-page SSR previews (see the Caddyfile comment block) - the
+     *  link-preview bots (WhatsApp, Slack, Telegram, …) that read only
+     *  {@code <head>} before rendering a chat preview card. This endpoint
+     *  lives under {@code /api}, so there's no SPA route for Caddy to
+     *  UA-branch in front of - the branching happens here instead. */
+    private static final java.util.regex.Pattern CRAWLER_UA = java.util.regex.Pattern.compile(
+            "(?i)(facebookexternalhit|whatsapp|telegrambot|slackbot|twitterbot|linkedinbot|"
+                    + "discordbot|skypeuripreview|pinterest|applebot|googlebot|bingbot|duckduckbot|yandexbot)");
+
+    private static final java.time.format.DateTimeFormatter SHARE_DATETIME =
+            java.time.format.DateTimeFormatter.ofPattern("EEE, d. MMMM yyyy. 'u' HH:mm", java.util.Locale.forLanguageTag("hr-HR"));
+
     @Inject MatchRecordingRepository repo;
     @Inject MatchRecordingRequestRepository requestRepo;
     @Inject MatchesRepository matchesRepo;
@@ -243,20 +256,84 @@ public class MatchRecordingController {
      * instead of MinIO - a browser followed this link directly (it's pasted
      * into chats/emails, never fetched by the SPA), so a raw 404 JSON body is
      * the wrong thing to show; a real page explaining the link died is not.
+     *
+     * <p>A LINK-PREVIEW bot (WhatsApp, Slack, Telegram, …) gets an HTML page
+     * with {@code og:*} tags naming the match instead of the redirect - a bot
+     * that followed the redirect would otherwise land on an anonymous MinIO
+     * binary and show a blank/broken chat preview, and the admin pasting the
+     * link would have no way to tell which recording it was for at a glance.
+     * A real browser (no crawler UA) still gets the redirect unchanged.
      */
     @GET
     @Path("/share/{token}")
     @jakarta.annotation.security.PermitAll
-    public Response share(@PathParam("token") UUID token) {
+    public Response share(@PathParam("token") UUID token, @HeaderParam("User-Agent") String userAgent) {
         var rec = repo.findByShareToken(token).orElse(null);
         // Same 404 for "no such token" and "revoked" - a probe learns nothing.
         if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
-        if (rec.getShareTokenCreatedAt().plusHours(SHARE_LINK_VALID_HOURS).isBefore(OffsetDateTime.now())) {
+        boolean expired = rec.getShareTokenCreatedAt().plusHours(SHARE_LINK_VALID_HOURS).isBefore(OffsetDateTime.now());
+        boolean isCrawler = userAgent != null && CRAWLER_UA.matcher(userAgent).find();
+
+        if (isCrawler && !expired) {
+            return Response.ok(renderSharePreviewHtml(rec, token))
+                    .type("text/html; charset=UTF-8")
+                    .build();
+        }
+        if (expired) {
             return Response.seeOther(java.net.URI.create(frontendBaseUrl + "/snimka/istekla")).build();
         }
         String url = recordingStorage.presignedGet(
                 rec.getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, rec.getFileName());
         return Response.seeOther(java.net.URI.create(url)).build();
+    }
+
+    /**
+     * SSR preview for a link-preview bot hitting {@code /share/{token}} - see
+     * {@link #share}. Title is the match ("Ekipa A - Ekipa B"), description
+     * names the tournament + kickoff when known. {@code noindex} because this
+     * is a capability link, not a page anyone should find via search.
+     */
+    private String renderSharePreviewHtml(MatchRecording rec, UUID token) {
+        Matches match = rec.getMatch();
+        String title = matchLabel(match);
+        StringBuilder desc = new StringBuilder("Snimka utakmice");
+        if (match.getTournament() != null && match.getTournament().getName() != null) {
+            desc.append(" - ").append(match.getTournament().getName());
+        }
+        if (match.getKickoffAt() != null) {
+            desc.append(" (").append(SHARE_DATETIME.format(match.getKickoffAt())).append(")");
+        }
+        String shareUrl = frontendBaseUrl.replaceAll("/+$", "") + "/api/match-recordings/share/" + token;
+
+        StringBuilder sb = new StringBuilder(768);
+        sb.append("<!doctype html>\n<html lang=\"hr\">\n<head>\n");
+        sb.append("<meta charset=\"UTF-8\">\n");
+        sb.append("<meta name=\"robots\" content=\"noindex, nofollow\">\n");
+        sb.append("<title>").append(escapeHtml(title)).append(" - futsal-turniri.com</title>\n");
+        sb.append("<meta name=\"description\" content=\"").append(escapeAttr(desc.toString())).append("\">\n");
+        sb.append("<meta property=\"og:type\" content=\"video.other\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"futsal-turniri.com\">\n");
+        sb.append("<meta property=\"og:title\" content=\"").append(escapeAttr(title)).append("\">\n");
+        sb.append("<meta property=\"og:description\" content=\"").append(escapeAttr(desc.toString())).append("\">\n");
+        sb.append("<meta property=\"og:url\" content=\"").append(escapeAttr(shareUrl)).append("\">\n");
+        sb.append("<meta name=\"twitter:card\" content=\"summary\">\n");
+        sb.append("<meta name=\"twitter:title\" content=\"").append(escapeAttr(title)).append("\">\n");
+        sb.append("<meta name=\"twitter:description\" content=\"").append(escapeAttr(desc.toString())).append("\">\n");
+        sb.append("</head>\n<body>\n<p>").append(escapeHtml(title)).append("</p>\n</body>\n</html>\n");
+        return sb.toString();
+    }
+
+    /** Minimal HTML escape for text node content. */
+    private static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** Stricter escape for attribute values (also escapes quotes). */
+    private static String escapeAttr(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
     /**
