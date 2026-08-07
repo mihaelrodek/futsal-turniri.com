@@ -53,6 +53,10 @@ export const sl: Dictionary = {
         map: "Zemljevid",
         stats: "Statistika",
         pricing: "Cenik",
+        guide: "Vodič",
+        contact: "Kontakt",
+        /** Heading of the secondary-pages block in the menus/drawer. */
+        moreLabel: "Več",
         login: "Prijava",
         profile: "Profil",
         notifications: "Obvestila",
@@ -125,6 +129,10 @@ export const sl: Dictionary = {
             pageDescription: "Status zahteve za video posnetek tekme.",
             notFoundTitle: "Zahteva ni bila najdena",
             notFoundDescription: "Povezava zahteve ni veljavna ali je bila zahteva izbrisana.",
+            /** Shown when the request WAS delivered but the link's 48h window
+             *  since delivery has passed - distinct from notFound above. */
+            linkExpiredTitle: "Povezava je potekla",
+            linkExpiredDescription: "Ta povezava velja 48 ur po dostavi posnetka in ne deluje več. Javi se nam, pošljemo ti novo.",
             backToTournaments: "Nazaj na turnirje",
             matchLabelFallback: "Tekma",
             paymentSuccess: "Plačilo uspešno! Hvala.",
@@ -188,6 +196,8 @@ export const sl: Dictionary = {
             paidBadge: "Plačano",
             downloadErrorNotPaidTitle: "Posnetek še ni plačan",
             downloadErrorNotPaidDesc: "Plačaj posnetek pred prenosom.",
+            downloadErrorLinkExpiredTitle: "Povezava je potekla",
+            downloadErrorLinkExpiredDesc: "Ta povezava velja 48 ur po dostavi posnetka. Javi se nam, pošljemo ti novo.",
             downloadErrorGenericTitle: "Posnetek še ni na voljo",
             downloadErrorGenericDesc: "Poskusi znova malo kasneje.",
             checkoutErrorNotConfiguredTitle: "Plačilo trenutno ni na voljo",
@@ -911,17 +921,6 @@ export const sl: Dictionary = {
         guidePage: {
             documentTitle: "Kaj ponujamo - Futsal Turnirji",
             documentDescription: "Vse, kar potrebuješ za futsal turnir na enem mestu: ustvarjanje, žreb, urnik, vodenje v živo, rezultati, lestvice in statistika.",
-            navItems: [
-                { label: "Turnirji", desc: "Seznam vseh turnirjev. Išči in filtriraj po lokaciji, kotizaciji in skupni nagradi, nato odpri kateri koli turnir." },
-                { label: "V živo", desc: "Tekme, ki se ravno igrajo - rezultati, merilec časa in strelci se osvežujejo v realnem času." },
-                { label: "Ustvari turnir", desc: "Zaženi nov turnir v nekaj minutah - vnesi osnovne podatke in format. Popolnoma brezplačno." },
-                { label: "Zemljevid", desc: "Vsi turnirji prikazani na zemljevidu - poišči tiste najbližje sebi na prvi pogled." },
-                { label: "Statistika", desc: "Večna lestvica strelcev čez vse turnirje - kdo je dosegel največ golov." },
-                { label: "Prijava", desc: "Prijava z Googlom - potrebna je le organizatorjem. Gledalci vse spremljajo brez prijave." },
-            ],
-            stepAria: (n: number) => `Korak ${n}`,
-            previous: "Prejšnji",
-            next: "Naslednji",
             heroKicker: "Kaj ponujamo?",
             heroHeadingHighlight: "Futsal turnirji",
             heroHeadingRest: "na enem mestu",
@@ -929,55 +928,91 @@ export const sl: Dictionary = {
             ctaCreateTournament: "Ustvari turnir",
             ctaWatchLive: "Poglej v živo",
             ctaBrowseTournaments: "Preglej turnirje",
-            quickOverviewLabel: "HITER PREGLED",
-            quickDraw: { title: "Žreb", sub: "Avtomatski ali ročni - skupine in izločilne boje" },
-            quickLiveMatches: { title: "Tekme v živo", sub: "Merilec časa, goli, kartoni, prekrški, enajstmetrovke" },
-            quickStandingsStats: { title: "Lestvice in statistika", sub: "Razvrstitev, strelci, izločilna lestvica - vse samodejno" },
-            quickNotifications: { title: "Obvestila", sub: "Potisna obvestila za začetek, gol in konec tekme" },
-            chapterMenu: {
-                title: "Znajdi se v meniju",
-                intro: "Klikni postavko menija (ali uporabi Prejšnji / Naslednji), da vidiš, čemu služi.",
-            },
             chapterCreate: {
                 title: "Ustvarjanje turnirja",
-                intro: "Vneseš osnovne podatke, dodaš ekipe in igralce, izžrebaš skupine - urnik pa se izračuna sam.",
-                step1Title: "Dodaj ekipe in igralce",
-                step1Desc: "Vsaka ekipa ima svojo postavo - igralce s številkami in kapetanom. Ekipa lahko postavo uredi tudi sama prek povezave.",
-                step1ShotAlt: "Ekipe turnirja z odprto postavo igralcev",
-                step2Title: "Izžrebaj skupine",
-                step2Desc: "Povleci ekipe v skupine (ročni žreb) ali jih razporedi samodejno z enim klikom.",
-                drawPlaceholder: "Slika žreba kmalu",
-                step3Title: "Generiraj urnik",
-                step3Desc: "Izberi trajanje polčasa in odmora - termini vseh tekem se izračunajo sami, prerazporediš pa jih z vlečenjem.",
-                step3ShotAlt: "Urnik turnirja s termini in rezultati",
+                /** Interactive showcase - one card per entry, zipped by index
+                 *  with icon+screenshot in GuidePage.tsx's CREATE_SHOWCASE_META. */
+                features: [
+                    {
+                        title: "Dodaj ekipe in igralce",
+                        desc: "Vsaka ekipa ima svojo postavo - igralce s številkami in kapetanom. Ekipa lahko postavo uredi tudi sama prek povezave. Vrstni red na seznamu sledi uvrstitvi - izpadli po vrstnem redu izpadanja, na dnu.",
+                        shotAlt: "Seznam ekip po uvrstitvi - zmagovalec, 2. in 3. mesto, ostali po vrstnem redu izpadanja",
+                    },
+                    {
+                        title: "Izžrebaj skupine",
+                        desc: "Povleci kroglice v skupine (ročni žreb) ali jih razporedi samodejno z enim klikom. Skica se shranjuje sama, dokler je ne potrdiš.",
+                        shotAlt: "Ročni žreb: vlečenje ekip iz bobna v skupine A-D",
+                    },
+                    {
+                        title: "Skiciraj urnik",
+                        desc: "Izberi trajanje polčasa in odmora - termini se izračunajo sami. Skico lahko prilagodiš željam ekip - povleci tekmo na zgodnejši ali poznejši termin, če jo kdo potrebuje. Nič ni zaklenjeno, dokler ne potrdiš.",
+                        shotAlt: "Predogled urnika po dnevih pred potrditvijo, z odmori",
+                    },
+                    {
+                        title: "Generiraj urnik",
+                        desc: "Potrdi skico in termini se generirajo - vsaka tekma dobi točen termin, skupino in barve dresov, takoj vidno vsem.",
+                        shotAlt: "Dokončan urnik turnirja s termini, skupinami in barvami dresov",
+                    },
+                ],
             },
             chapterZapisnik: {
                 title: "Zapisnik - vodenje tekem v živo",
-                intro: "Zapisnik na mobitelu namesto papirja: vse, kar vpišeš, takoj vidijo vsi - doma, v dvorani in na velikem zaslonu.",
-                feature1Title: "Merilec časa po polčasih",
-                feature1Desc: "1. polčas → odmor → 2. polčas → konec. Ura se ustavi ob izteku in počaka nate.",
-                feature2Title: "Goli in dogodki",
-                feature2Desc: "Gol z enim dotikom na igralca - minuta se vpiše sama. Rumeni/rdeči kartoni, prekrški (akumulirani) in enajstmetrovke.",
-                feature3Title: "Turnirski način / TV prikaz",
-                feature3Desc: "Zaslon čez cel zaslon za dvorano - vse, kar vpišeš v zapisnik, je takoj na velikem zaslonu.",
-                shotAlt: "Turnirski način: rezultat v živo, merilec 2. polčasa, prekrški in strelci",
-                shotCaption: "Semafor v živo - rezultat, merilec časa, akumulirani prekrški in strelci v realnem času.",
+                /** Interactive showcase on the guide page - one card per entry,
+                 *  zipped by index with icon+screenshot in GuidePage.tsx's
+                 *  ZAPISNIK_SHOWCASE_META. Order matters. */
+                features: [
+                    {
+                        title: "Merilec časa in vnos dogodkov",
+                        desc: "1. polčas → odmor → 2. polčas → konec, ura počaka nate ob izteku. Gol z enim dotikom na igralca - minuta se vpiše sama; rumeni/rdeči kartoni, prekrški (akumulirani) in enajstmetrovke enako.",
+                        shotAlt: "Zapisnik v živo: vnos gola, kartona in prekrška po igralcu, merilec časa na vrhu",
+                    },
+                    {
+                        title: "Potek tekme",
+                        desc: "Vsaka tekma dobi svojo stran s celotnim potekom - goli, kartoni in prekrški po polčasih, postave obeh ekip in izvajanje enajstmetrovk, če pride do tega.",
+                        shotAlt: "Stran tekme: potek po polčasih z goli, kartoni, prekrški in enajstmetrovkami",
+                    },
+                    {
+                        title: "Turnirski način / TV prikaz",
+                        desc: "Zaslon čez cel zaslon za dvorano - vse, kar vpišeš v zapisnik, je takoj na velikem zaslonu.",
+                        shotAlt: "Turnirski način: rezultat v živo, merilec 2. polčasa, prekrški in strelci",
+                    },
+                    {
+                        title: "Video prenos v živo",
+                        desc: "Posnetek tekme ob živem poteku in lestvici zraven - gledalci spremljajo s katere koli naprave, brez prijave.",
+                        shotAlt: "Video prenos tekme v živo z rezultatom, potekom in obvestili",
+                    },
+                ],
             },
             chapterResults: {
                 title: "Rezultati, lestvice in statistika",
-                intro: "Po vsakem sodniškem žvižgu je vse že izračunano - brez Excela in ročnega seštevanja.",
-                step1Title: "Lestvice skupin",
-                step1Desc: "Točke, gol razlika in forma se izračunajo samodejno po vsaki vpisani tekmi.",
-                step1ShotAlt: "Lestvice skupin s točkami, gol razliko in formo",
-                step2Title: "Zaključni del",
-                step2Desc: "Izločilne boje od četrtfinala do prvaka - z rezultati in enajstmetrovkami. Za celotno izločilno lestvico pojdi z miško čez.",
-                step2ShotAlt: "Izločilni del z rezultati, enajstmetrovkami in prvakom",
-                step3Title: "Statistika",
-                step3Desc: "Najboljši strelci in goli turnirja - seznam se polni sam iz zapisnika.",
-                step3ShotAlt: "Statistika turnirja: najboljši strelci s številom golov",
+                /** Interactive showcase - one card per entry, zipped by index
+                 *  with icon+screenshot in GuidePage.tsx's RESULTS_SHOWCASE_META. */
+                features: [
+                    {
+                        title: "Lestvice skupin",
+                        desc: "Točke, gol razlika in forma se izračunajo samodejno po vsaki vpisani tekmi.",
+                        shotAlt: "Lestvice skupin s točkami, gol razliko in formo",
+                    },
+                    {
+                        title: "Zaključni del",
+                        desc: "Izločilne boje od četrtfinala do prvaka - z rezultati in enajstmetrovkami. Za celotno izločilno lestvico pojdi z miško čez.",
+                        shotAlt: "Izločilni del z rezultati, enajstmetrovkami in prvakom",
+                    },
+                    {
+                        title: "Statistika",
+                        desc: "Najboljši strelci in goli turnirja - seznam se polni sam iz zapisnika.",
+                        shotAlt: "Statistika turnirja: najboljši strelci s številom golov",
+                    },
+                ],
             },
             finalCtaHeading: "Pripravljen na turnir brez stresa?",
             finalCtaSubtitle: "Brezplačno je in traja nekaj minut - preostalo naredi aplikacija namesto tebe.",
+        },
+        sharedLinkExpiredPage: {
+            documentTitle: "Povezava je potekla - Futsal Turnirji",
+            documentDescription: "Ta povezava za prenos posnetka je potekla.",
+            title: "Povezava je potekla",
+            description: "Povezava do tega posnetka ne velja več. Obrni se na osebo, ki ti jo je poslala, za novo povezavo.",
         },
         fullscreenTournamentPage: {
             liveLabel: "V ŽIVO",
@@ -1004,22 +1039,14 @@ export const sl: Dictionary = {
             loadingTournaments: "Nalaganje turnirjev…",
             loadingTeams: "Nalaganje ekip…",
             loadingMatches: "Nalaganje tekem…",
-            loadingGoals: "Nalaganje golov…",
             noTeams: "Ta turnir še nima ekip.",
             pickTeamOption: "Izberi ekipo…",
-            noMatchesGoal: "Ta turnir še nima odigranih tekem.",
             noMatchesGeneric: "Ta turnir še nima tekem z znanimi ekipami.",
-            pickExactly3: (count: number) => `Izberi natanko 3 tekme (${count}/3):`,
+            pickExactlyN: (total: number, count: number) => `Izberi natanko ${total} tekme (${count}/${total}):`,
             pickMatchOption: "Izberi tekmo…",
-            noGoals: "Na tej tekmi ni zabeleženih golov.",
-            pickGoalOption: "Izberi gol…",
             removeItemAria: (label: string) => `Odstrani ${label} iz košarice`,
             checkoutErrorNotConfiguredTitle: "Plačilo trenutno ni na voljo",
             checkoutErrorNotConfiguredDesc: "Poskusi kasneje.",
-            checkoutErrorGoalDisabledTitle: "Posnetki golov trenutno niso naprodaj",
-            checkoutErrorGoalDisabledDesc: "Odstrani to postavko iz košarice.",
-            checkoutErrorMatchNotFinishedTitle: "Tekma še ni končana",
-            checkoutErrorMatchNotFinishedDesc: "Posnetek gola lahko kupiš šele po koncu tekme.",
             checkoutErrorTeamNoMatchesTitle: "Ekipa nima tekem",
             checkoutErrorTeamNoMatchesDesc: "Izberi drugo ekipo ali turnir.",
             checkoutErrorDuplicateTitle: "Zahteva že obstaja",
@@ -1176,8 +1203,8 @@ export const sl: Dictionary = {
             uploadedLabel: "Naloženo",
             reassignHint: "Če je posnetek vezan na napačno tekmo, ga premakni tukaj - datoteka ostane ista.",
             share: {
-                label: "TRAJNA POVEZAVA",
-                hint: "Povezava ne poteče - vsak klik ustvari novo prenašanje datoteke.",
+                label: "POVEZAVA ZA DELJENJE",
+                hint: "Velja 48 ur od generiranja. Vsak klik naloži svež prenos datoteke.",
                 copy: "Kopiraj",
                 open: "Odpri",
                 copied: "Povezava je kopirana v odložišče.",
@@ -1359,10 +1386,10 @@ export const sl: Dictionary = {
         },
         pricingPage: {
             documentTitle: "Cenik - Futsal Turnirji",
-            documentDescription: "Posnetki gola, tekme ali celotnega turnirja - izberi paket, ki ti ustreza.",
+            documentDescription: "Posnetki tekme, več tekem ali celotnega turnirja - izberi paket, ki ti ustreza.",
             kicker: "Cenik",
             heroHeading: "Tvoj trenutek na igrišču, posnet",
-            heroSubtitle: "Od enega gola do celega turnirja - izberi paket, ki ti ustreza. Vsi posnetki so v polni HD kakovosti, pripravljeni za prenos.",
+            heroSubtitle: "Od ene tekme do celega turnirja - izberi paket, ki ti ustreza. Vsi posnetki so v polni HD kakovosti, pripravljeni za prenos.",
             bestValueBadge: "Najboljša vrednost",
             cartHeading: "Košarica",
             clearCart: "Izprazni košarico",
@@ -1372,15 +1399,6 @@ export const sl: Dictionary = {
             goToCartButton: "Pojdi v košarico in plačaj",
             openCartButton: "Odpri košarico",
             tiers: {
-                goal: {
-                    name: "Gol",
-                    tagline: "En gol, pripravljen za deljenje.",
-                    features: [
-                        "Posnetek enega gola v HD kakovosti",
-                        "Pripravljen za prenos in deljenje",
-                        "Dostava praviloma v 48 h",
-                    ],
-                },
                 match: {
                     name: "Tekma",
                     tagline: "Cela tekma, oba polčasa.",
@@ -1397,6 +1415,15 @@ export const sl: Dictionary = {
                         "Posnetki katerihkoli 3 tekem s turnirja",
                         "Sam izbereš katere tekme",
                         "Ceneje kot posamezen nakup",
+                    ],
+                },
+                petarda: {
+                    name: "Petarda",
+                    tagline: "5 tekem s turnirja po tvoji izbiri.",
+                    features: [
+                        "Posnetki katerihkoli 5 tekem s turnirja",
+                        "Sam izbereš katere tekme",
+                        "15 € na tekmo namesto 20 €",
                     ],
                 },
                 team: {
@@ -1747,6 +1774,9 @@ export const sl: Dictionary = {
             drawKnockoutLabel: "Izločilne",
             liveStreamSidebarLabel: "Prenos v živo",
             deleteRequestedNotice: "Zahtevan je izbris turnirja - čaka na potrditev administratorja. Turnir ni viden na javnih seznamih.",
+            /** Title on the disabled "Uredi" button of a finished tournament.
+             *  Admins never see it - the lock does not apply to them. */
+            finishedLockedNotice: "Turnir je končan. Za odklep se obrni na administratorja.",
         },
     },
     components: {
@@ -1965,10 +1995,17 @@ export const sl: Dictionary = {
             pickerMinuteLabel: "MIN",
             hoursLabel: "Ure",
             minutesLabel: "Minute",
+            /** Optional free-text name for a break, e.g. "Izvajanje
+             *  enajstmetrovk" - helps tell multiple breaks apart in the
+             *  sketch. Purely local to the sketch; not sent to the backend. */
+            pauseNameLabel: "Naziv (neobvezno)",
+            pauseNamePlaceholder: "npr. Izvajanje enajstmetrovk",
             addPauseButton: "Dodaj odmor",
             removePauseAria: "Odstrani odmor",
             dragRowAria: "Povleci za spremembo vrstnega reda",
             pauseLabel: (formatted: string) => `Odmor · ${formatted}`,
+            /** Named break row, e.g. "Izvajanje enajstmetrovk · 15 min". */
+            namedPauseLabel: (name: string, formatted: string) => `${name} · ${formatted}`,
             confirmGenerateButton: "Potrdi in generiraj",
             reduceMatchesTooltip: "Zmanjšaj število tekem - razporedil si jih več, kot jih ima turnir",
             sketchButton: "Skiciraj",

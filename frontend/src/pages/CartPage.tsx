@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import type { ElementType } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Box, Card, chakra, Flex, Grid, Heading, Icon, Text, VStack } from "@chakra-ui/react"
-import { LuFlame, LuTarget, LuTrophy, LuVideo } from "react-icons/lu"
+import { LuFlame, LuSparkles, LuTrophy, LuVideo } from "react-icons/lu"
 import { FiCheck, FiPlus } from "react-icons/fi"
 import { useDocumentHead } from "../hooks/useDocumentHead"
 import { useCart, TIER_INFO } from "../cart/CartContext"
@@ -23,16 +23,16 @@ import type { CartTier } from "../api/recordingCart"
    ────────────────────────────────────────────────────────────────────── */
 
 const QUICK_ADD_TIERS: { id: CartTier; icon: ElementType }[] = [
-    { id: "GOAL", icon: LuTarget },
     { id: "MATCH", icon: LuVideo },
     { id: "HATTRICK", icon: LuFlame },
+    { id: "PETARDA", icon: LuSparkles },
     { id: "TEAM", icon: LuTrophy },
 ]
 
-const TIER_DICT_KEY: Record<CartTier, "goal" | "match" | "hattrick" | "team"> = {
-    GOAL: "goal",
+const TIER_DICT_KEY: Record<CartTier, "match" | "hattrick" | "petarda" | "team"> = {
     MATCH: "match",
     HATTRICK: "hattrick",
+    PETARDA: "petarda",
     TEAM: "team",
 }
 

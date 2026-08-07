@@ -13,7 +13,7 @@ import {
     VStack,
 } from "@chakra-ui/react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { FiCopy, FiDownload, FiEdit2, FiExternalLink, FiRefreshCw, FiRepeat, FiSlash, FiTrash2 } from "react-icons/fi"
 
 import {
@@ -72,7 +72,24 @@ export default function AdminRecordingDetailPage() {
     const lib = t.recordingRequest.adminLibrary
     const p = t.pages.adminRecordingDetail
     const navigate = useNavigate()
+    const queryClient = useQueryClient()
     const { uuid = "" } = useParams<{ uuid: string }>()
+
+    /**
+     * Drop the cached library list after anything on this page changes a
+     * recording.
+     *
+     * This page reads with a bare `fetchMatchRecordings` (no react-query), so
+     * its own view is always fresh - but the library tab behind it is a cached
+     * `["matchRecordings", "library", ...]` query with a 30 s staleTime. Delete
+     * something here and the list kept rendering the deleted row, which then
+     * opened as "Snimka nije pronađena": the row was cache, the detail fetch
+     * was the truth. Renames and re-maps went stale the same way, just less
+     * visibly.
+     */
+    const invalidateLibrary = useCallback(() => {
+        void queryClient.invalidateQueries({ queryKey: ["matchRecordings"] })
+    }, [queryClient])
 
     const [rec, setRec] = useState<MatchRecordingDto | null>(null)
     const [loading, setLoading] = useState(true)
@@ -153,6 +170,7 @@ export default function AdminRecordingDetailPage() {
         try {
             setBusy("rotate")
             setRec(await rotateMatchRecordingShareToken(rec.uuid))
+            invalidateLibrary()
         } finally {
             setBusy(null)
         }
@@ -163,6 +181,7 @@ export default function AdminRecordingDetailPage() {
         try {
             setBusy("rename")
             await renameMatchRecording(rec.uuid, nameInput.trim())
+            invalidateLibrary()
             await load()
         } finally {
             setBusy(null)
@@ -174,6 +193,7 @@ export default function AdminRecordingDetailPage() {
         try {
             setBusy("reassign")
             await reassignMatchRecording(rec.uuid, reassignMatchId)
+            invalidateLibrary()
             await load()
         } finally {
             setBusy(null)
@@ -186,6 +206,7 @@ export default function AdminRecordingDetailPage() {
         try {
             setBusy("delete")
             await deleteMatchRecording(rec.uuid)
+            invalidateLibrary()
             navigate("/admin/baza-snimki")
         } finally {
             setBusy(null)
@@ -256,11 +277,15 @@ export default function AdminRecordingDetailPage() {
                     </VStack>
                 </Panel>
 
-                {/* Permanent link. Auto-generated with the recording, so there
-                    is nothing to press first - the point is that it is already
+                {/* Share link. Auto-generated with the recording, so there is
+                    nothing to press first - the point is that it is already
                     there when an admin needs to paste one into a mail. Every
-                    click mints a fresh presigned URL on the backend, so the
-                    link itself never expires. */}
+                    click mints a fresh presigned URL on the backend, but the
+                    link itself now dies 48h after it was (re)generated - see
+                    MatchRecordingController#share / rotateShareToken - so a
+                    stale one an admin forgot about doesn't stay a live
+                    unauthenticated download forever. "Generiraj novu" both
+                    revokes the old link AND restarts this 48h window. */}
                 <Panel p={{ base: "3", md: "4" }}>
                     <VStack align="stretch" gap="2">
                         <Box>

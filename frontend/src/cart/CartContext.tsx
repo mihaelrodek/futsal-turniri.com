@@ -19,15 +19,15 @@ import type { CartTier } from "../api/recordingCart"
    drawer or on /kosarica before checkout is possible.
 
    Mapping onto react-use-cart's `Item` ({id, price, quantity, ...custom}):
-   `price` = EUR cents, `quantity` always 1 (a second "Gol" is a second line,
+   `price` = EUR cents, `quantity` always 1 (a second "Tekma" is a second line,
    never quantity 2), and `tier`/`label`/`config` ride along as custom fields
    (`updateItem` merges arbitrary fields, which is exactly `setItemConfig`).
    ────────────────────────────────────────────────────────────────────── */
 
 export type CartItemConfig =
-    | { kind: "GOAL"; tournamentUuid: string; tournamentName: string; matchId: number; matchLabel: string; matchEventId: number; goalLabel: string }
     | { kind: "MATCH"; tournamentUuid: string; tournamentName: string; matchId: number; matchLabel: string }
     | { kind: "HATTRICK"; tournamentUuid: string; tournamentName: string; matchIds: number[]; matchLabels: string[] }
+    | { kind: "PETARDA"; tournamentUuid: string; tournamentName: string; matchIds: number[]; matchLabels: string[] }
     | { kind: "TEAM"; tournamentUuid: string; tournamentName: string; teamId: number; teamName: string }
 
 export type CartItem = {
@@ -41,9 +41,9 @@ export type CartItem = {
 }
 
 export const TIER_INFO: Record<CartTier, { label: string; priceEurCents: number }> = {
-    GOAL: { label: "Gol", priceEurCents: 500 },
     MATCH: { label: "Tekma", priceEurCents: 2000 },
     HATTRICK: { label: "Hattrick", priceEurCents: 5000 },
+    PETARDA: { label: "Petarda", priceEurCents: 7500 },
     TEAM: { label: "Premium", priceEurCents: 10000 },
 }
 
@@ -81,11 +81,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
 export function useCart(): CartContextValue {
     const ruc = useRucCart()
     return useMemo<CartContextValue>(() => {
-        const items = ruc.items.map(toCartItem)
+        // A cart persisted BEFORE a tier was withdrawn (the "Gol" package) still
+        // holds that line in localStorage. Left in, it renders with no icon, no
+        // summary and no checkout payload, and the server would reject the
+        // order - so an unknown tier is dropped on read, and the total is
+        // recomputed from what survived rather than taken from `cartTotal`,
+        // which still counts the dropped line.
+        const items = ruc.items.map(toCartItem).filter((it) => it.tier in TIER_INFO)
+        const totalEurCents = items.reduce((sum, it) => sum + it.priceEurCents, 0)
         return {
             items,
             itemCount: items.length,
-            totalEurCents: ruc.cartTotal,
+            totalEurCents,
             allConfigured: items.length > 0 && items.every((it) => it.config != null),
             addTier: (tier) => {
                 const info = TIER_INFO[tier]

@@ -47,7 +47,18 @@ public record TeamDto(
         // and whenever the viewer isn't an organizer/admin.
         String registeredByName,
         String registeredContact,
-        String registrationNote
+        String registrationNote,
+
+        // Derived tournament placement (KnockoutService#computePlacements) -
+        // NEVER persisted, recomputed on every read from the bracket/group
+        // results. Both null while the team is still alive (or, for a
+        // group-only team, before the group stage is complete). `rank` is
+        // standard-competition-ranking (1224: ties share a number, the next
+        // tier skips ahead by the tied cohort's size) - what the frontend
+        // sorts by. `label` is the ready-to-render Croatian string ("5.
+        // mjesto", or a range "17.-27. mjesto" for a group-only elimination).
+        Integer placementRank,
+        String placementLabel
 ) {
     /** Backwards-compat constructor for callers that don't yet enrich submitter info. */
     public TeamDto(
@@ -56,7 +67,7 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, null, null,
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** Earlier constructor without co-owner / token fields. */
@@ -67,6 +78,6 @@ public record TeamDto(
     ) {
         this(id, name, isEliminated,
                 submittedByUid, pendingApproval, submittedBySlug, submittedByName,
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 }

@@ -51,12 +51,20 @@ public class MatchRecordingController {
     private static final int UPLOAD_EXPIRY_SECONDS = 3600;
     /** Presigned GET validity when an admin fetches a link to verify a file. */
     private static final int DOWNLOAD_EXPIRY_SECONDS = 172_800;
+    /** How long the permanent {@code /share/{token}} link stays live after it
+     *  was (re)issued - see {@link MatchRecording#getShareTokenCreatedAt()}. */
+    private static final long SHARE_LINK_VALID_HOURS = 48;
 
     @Inject MatchRecordingRepository repo;
     @Inject MatchRecordingRequestRepository requestRepo;
     @Inject MatchesRepository matchesRepo;
     @Inject MatchRecordingMapper mapper;
     @Inject RecordingStorageService recordingStorage;
+    /** Frontend origin for the "link istekao" redirect below - same property
+     *  {@link hr.mrodek.apps.futsal_turniri.services.EmailService} uses for
+     *  the links it emails. */
+    @org.eclipse.microprofile.config.inject.ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5181")
+    String frontendBaseUrl;
     @Inject JsonWebToken jwt;
 
     public record UploadUrlBody(@Size(max = 255) String fileName) {}
@@ -229,6 +237,12 @@ public class MatchRecordingController {
      * <p>302 rather than streaming the bytes through the app: MinIO does the
      * Range/resume handling, and the video never occupies a Quarkus worker
      * thread for the length of a download.
+     *
+     * <p>Once the token has aged past {@link #SHARE_LINK_VALID_HOURS} since it
+     * was (re)issued, this redirects to a frontend "link istekao" page
+     * instead of MinIO - a browser followed this link directly (it's pasted
+     * into chats/emails, never fetched by the SPA), so a raw 404 JSON body is
+     * the wrong thing to show; a real page explaining the link died is not.
      */
     @GET
     @Path("/share/{token}")
@@ -237,6 +251,9 @@ public class MatchRecordingController {
         var rec = repo.findByShareToken(token).orElse(null);
         // Same 404 for "no such token" and "revoked" - a probe learns nothing.
         if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (rec.getShareTokenCreatedAt().plusHours(SHARE_LINK_VALID_HOURS).isBefore(OffsetDateTime.now())) {
+            return Response.seeOther(java.net.URI.create(frontendBaseUrl + "/snimka/istekla")).build();
+        }
         String url = recordingStorage.presignedGet(
                 rec.getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, rec.getFileName());
         return Response.seeOther(java.net.URI.create(url)).build();
@@ -244,7 +261,9 @@ public class MatchRecordingController {
 
     /**
      * Issues a NEW share token, which revokes the previous link the moment it
-     * commits. The only way back from "I pasted that link in the wrong chat".
+     * commits, and restarts its 48h validity window. The only way back from
+     * "I pasted that link in the wrong chat" - and the way to hand the same
+     * recording out again once the old link has expired.
      */
     @POST
     @Path("/{uuid}/share-token")
@@ -253,6 +272,7 @@ public class MatchRecordingController {
         var rec = repo.findByUuid(uuid).orElse(null);
         if (rec == null) return Response.status(Response.Status.NOT_FOUND).build();
         rec.setShareToken(UUID.randomUUID());
+        rec.setShareTokenCreatedAt(OffsetDateTime.now());
         return Response.ok(mapper.toDto(rec)).build();
     }
 

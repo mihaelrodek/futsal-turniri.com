@@ -65,8 +65,11 @@ type MatchRow = {
     teamsKnown: boolean
 }
 /** One inserted PAUSE row: a break of `minutes` that delays every match after
- *  it. Draggable like a match row; `id` is a stable local key. */
-type PauseRow = { kind: "pause"; id: number; minutes: number }
+ *  it. Draggable like a match row; `id` is a stable local key. `label` is an
+ *  optional organizer-typed name ("Raspucavanje penala", "Dodjela nagrada")
+ *  to tell multiple pauses apart in the sketch - purely local UI, never sent
+ *  in the generate request (the backend only ever needed the minutes). */
+type PauseRow = { kind: "pause"; id: number; minutes: number; label?: string }
 type SketchRow = MatchRow | PauseRow
 
 /** Nearest scrollable ancestor - the dialog body (scrollBehavior="inside"),
@@ -389,6 +392,7 @@ export default function MultiDaySchedulePlanner({
     const [pauseFormOpen, setPauseFormOpen] = useState(false)
     const [pauseH, setPauseH] = useState("0")
     const [pauseM, setPauseM] = useState("30")
+    const [pauseName, setPauseName] = useState("")
     const pauseIdRef = useRef(1)
     /** Latest values read by the global pointer listeners / rAF loop. */
     const overIdxRef = useRef<number | null>(null)
@@ -926,10 +930,12 @@ export default function MultiDaySchedulePlanner({
         const m = Math.min(59, Math.max(0, parseInt(pauseM || "0", 10) || 0))
         const minutes = h * 60 + m
         if (minutes <= 0) return
-        setSketchRows((prev) => (prev ? [...prev, { kind: "pause", id: pauseIdRef.current++, minutes }] : prev))
+        const label = pauseName.trim() || undefined
+        setSketchRows((prev) => (prev ? [...prev, { kind: "pause", id: pauseIdRef.current++, minutes, label }] : prev))
         setPauseFormOpen(false)
         setPauseH("0")
         setPauseM("30")
+        setPauseName("")
     }
     function removePause(id: number) {
         setSketchRows((prev) => (prev ? prev.filter((r) => !(r.kind === "pause" && r.id === id)) : prev))
@@ -1104,7 +1110,9 @@ export default function MultiDaySchedulePlanner({
                                                                 >
                                                                     <FiClock size={12} />
                                                                     <Text fontFamily="mono" fontSize="12px" fontWeight={700} truncate>
-                                                                        {t.components.multiDaySchedulePlanner.pauseLabel(fmtPause(r.minutes))}
+                                                                        {r.label
+                                                                            ? t.components.multiDaySchedulePlanner.namedPauseLabel(r.label, fmtPause(r.minutes))
+                                                                            : t.components.multiDaySchedulePlanner.pauseLabel(fmtPause(r.minutes))}
                                                                     </Text>
                                                                     <Box flex="1" />
                                                                     <chakra.button
@@ -1349,6 +1357,16 @@ export default function MultiDaySchedulePlanner({
                                                         const v = e.target.value.replace(/[^\d]/g, "")
                                                         setPauseM(v === "" ? "" : String(Math.min(59, parseInt(v, 10) || 0)))
                                                     }}
+                                                />
+                                            </Box>
+                                            <Box flex="1" minW="140px">
+                                                <Text fontSize="2xs" color="fg.muted" mb="1">{t.components.multiDaySchedulePlanner.pauseNameLabel}</Text>
+                                                <Input
+                                                    size="sm"
+                                                    value={pauseName}
+                                                    onChange={(e) => setPauseName(e.target.value)}
+                                                    placeholder={t.components.multiDaySchedulePlanner.pauseNamePlaceholder}
+                                                    onKeyDown={(e) => { if (e.key === "Enter") addPause() }}
                                                 />
                                             </Box>
                                             <Button size="sm" colorPalette="pitch" onClick={addPause}>

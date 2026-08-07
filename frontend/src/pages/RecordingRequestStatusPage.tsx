@@ -67,11 +67,17 @@ function formatPrice(cents: number | null | undefined): string {
     }
 }
 
-/** Pull `{"code": "..."}` out of a 409 response body, if present. */
+/** Pull `{"code": "..."}` out of a 409/410 response body, if present. */
 function errorCode(err: unknown): string | undefined {
-    if (!isAxiosError(err) || err.response?.status !== 409) return undefined
+    if (!isAxiosError(err) || (err.response?.status !== 409 && err.response?.status !== 410)) return undefined
     const data = err.response.data as { code?: string } | undefined
     return data?.code
+}
+
+/** True for a 410 - the request's public link has aged past its 48h window
+ *  since delivery (see backend RecordingRequestController#LINK_VALID_HOURS). */
+function isExpiredError(err: unknown): boolean {
+    return isAxiosError(err) && err.response?.status === 410
 }
 
 export default function RecordingRequestStatusPage() {
@@ -83,6 +89,9 @@ export default function RecordingRequestStatusPage() {
     const [data, setData] = useState<PublicRecordingRequest | null>(null)
     const [loading, setLoading] = useState(true)
     const [notFound, setNotFound] = useState(false)
+    // Distinct from notFound - the request existed and was delivered, but its
+    // 48h public-link window (from delivery, not from creation) has passed.
+    const [expired, setExpired] = useState(false)
 
     const [checkoutBusy, setCheckoutBusy] = useState(false)
     const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -99,8 +108,13 @@ export default function RecordingRequestStatusPage() {
             const d = await fetchPublicRecordingRequest(uuid)
             setData(d)
             setNotFound(false)
-        } catch {
-            setNotFound(true)
+            setExpired(false)
+        } catch (err) {
+            if (isExpiredError(err)) {
+                setExpired(true)
+            } else {
+                setNotFound(true)
+            }
         } finally {
             setLoading(false)
         }
@@ -134,6 +148,10 @@ export default function RecordingRequestStatusPage() {
             const { url } = await createRecordingCheckout(uuid)
             window.location.href = url
         } catch (err) {
+            if (isExpiredError(err)) {
+                setExpired(true)
+                return
+            }
             const code = errorCode(err)
             if (code === "NOT_CONFIGURED") {
                 setCheckoutError(t.recordingRequest.status.checkoutErrorNotConfigured)
@@ -158,6 +176,10 @@ export default function RecordingRequestStatusPage() {
             const { url } = await fetchRecordingDownloadLink(uuid)
             window.open(url, "_blank")
         } catch (err) {
+            if (isExpiredError(err)) {
+                setExpired(true)
+                return
+            }
             const code = errorCode(err)
             if (code === "NOT_PAID") {
                 setDownloadError(t.recordingRequest.status.downloadErrorNotPaid)
@@ -175,6 +197,29 @@ export default function RecordingRequestStatusPage() {
                 <Spinner />
                 <Text color="fg.muted" fontSize="sm">{t.common.loading}</Text>
             </VStack>
+        )
+    }
+
+    if (expired) {
+        return (
+            <Card.Root maxW="md" mx="auto" mt="6" variant="outline" rounded="xl">
+                <Card.Body p="6">
+                    <VStack gap="3" align="stretch">
+                        <HStack gap="2">
+                            <FiVideo />
+                            <Text fontWeight={700}>{t.recordingRequest.status.linkExpiredTitle}</Text>
+                        </HStack>
+                        <Text fontSize="sm" color="fg.muted">
+                            {t.recordingRequest.status.linkExpiredDescription}
+                        </Text>
+                        <Button size="sm" variant="outline" mt="2" asChild>
+                            <RouterLink to={`/kontakt?razlog=PLACANJE&ref=${uuid}`}>
+                                <FiMessageSquare /> {t.recordingRequest.status.contactButton}
+                            </RouterLink>
+                        </Button>
+                    </VStack>
+                </Card.Body>
+            </Card.Root>
         )
     }
 

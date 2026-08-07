@@ -8,6 +8,7 @@ import hr.mrodek.apps.futsal_turniri.dtos.GroupMatchDto;
 import hr.mrodek.apps.futsal_turniri.dtos.GroupStandingRowDto;
 import hr.mrodek.apps.futsal_turniri.dtos.KnockoutResultRequest;
 import hr.mrodek.apps.futsal_turniri.dtos.ManualPositionsRequest;
+import hr.mrodek.apps.futsal_turniri.dtos.TeamPlacement;
 import hr.mrodek.apps.futsal_turniri.dtos.ThirdPlacedTableDto;
 import hr.mrodek.apps.futsal_turniri.enums.BracketFill;
 import hr.mrodek.apps.futsal_turniri.enums.MatchStage;
@@ -1477,6 +1478,147 @@ public class KnockoutService {
             }
         }
         return qualified;
+    }
+
+    /* ─────────────────────── derived team placements ──────────────────── */
+
+    /**
+     * Every team's final tournament placement, derived purely from the
+     * drawn bracket + its recorded results - NEVER persisted, so it can't
+     * drift out of sync with a knockout result an admin corrects after the
+     * fact (even on a FINISHED tournament - see
+     * {@code TournamentController#assertMatchesMutable}). Cheap: a handful
+     * of matches per tournament, computed fresh on every call.
+     *
+     * <p>Standard competition ("1224") ranking: rank = 1 + the number of
+     * teams that finished strictly better. The FINAL and THIRD_PLACE
+     * matches are deciders - their winner and loser get two different
+     * ranks - while every other knockout stage's losers TIE for one rank
+     * (the whole cohort eliminated in that round of this bracket run), and
+     * the next cohort's rank skips ahead by the tied cohort's size.
+     *
+     * <p>GROUPS_KNOCKOUT teams that never left the group stage share a
+     * RANGE label ({@code qualifierCount+1 .. totalTeamCount}) instead of an
+     * individual rank - there's no cross-group game to separate them - shown
+     * only once the group stage is complete (qualifiers locked in); before
+     * that they're simply absent from the map, same as a team still alive.
+     *
+     * <p>A team with a fully decided placement is a key in the returned
+     * map; a team still in play (or, for group-only teams, while the group
+     * stage isn't finished yet) is absent.
+     */
+    public Map<Long, TeamPlacement> computePlacements(Tournaments t) {
+        Map<Long, TeamPlacement> out = new HashMap<>();
+
+        List<Matches> ko = matchesRepo.list("tournament = ?1 and stage <> ?2", t, MatchStage.GROUP);
+
+        // Group-only-eliminated RANGE (GROUPS_KNOCKOUT only, group stage
+        // decided). Uses the actual drawn-bracket entrants when the bracket
+        // already carries real teams; otherwise falls back to the ranked
+        // qualifier list (still authoritative once every group match is
+        // FINISHED, even before the organizer has drawn/confirmed the
+        // bracket itself).
+        if (t.getFormat() == TournamentFormat.GROUPS_KNOCKOUT && isGroupStageComplete(t)) {
+            Set<Long> entrantIds = new HashSet<>();
+            for (Matches m : ko) {
+                if (m.getTeam1() != null) entrantIds.add(m.getTeam1().getId());
+                if (m.getTeam2() != null) entrantIds.add(m.getTeam2().getId());
+            }
+            if (entrantIds.isEmpty()) {
+                try {
+                    for (Teams tm : qualifiers(t)) entrantIds.add(tm.getId());
+                } catch (BadRequestException ignored) {
+                    // Groups not drawn yet - isGroupStageComplete already guards
+                    // against this in practice, but stay defensive.
+                }
+            }
+            if (!entrantIds.isEmpty()) {
+                List<Teams> allTeams = teamsRepo.list(
+                        "tournament.id = ?1 and pendingApproval = false", t.getId());
+                int total = allTeams.size();
+                int rangeStart = entrantIds.size() + 1;
+                if (rangeStart <= total) {
+                    String label = rangeStart == total
+                            ? rangeStart + ". mjesto"
+                            : rangeStart + ".-" + total + ". mjesto";
+                    for (Teams tm : allTeams) {
+                        if (!entrantIds.contains(tm.getId())) {
+                            out.put(tm.getId(), new TeamPlacement(rangeStart, label));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (ko.isEmpty()) return out; // no bracket drawn yet - nothing else to place
+
+        // The FIXED bracket shape (real, non-bye match counts per stage) -
+        // known once the bracket is drawn, regardless of which matches have
+        // actually been played yet.
+        Map<MatchStage, List<Matches>> realByStage = new EnumMap<>(MatchStage.class);
+        for (Matches m : ko) {
+            if (m.getTeam1() != null && m.getTeam2() != null) {
+                realByStage.computeIfAbsent(m.getStage(), k -> new ArrayList<>()).add(m);
+            }
+        }
+
+        int rank = 1;
+        // FINAL - always exactly one match / a two-slot tier: winner=rank,
+        // loser=rank+1 (a decider, not a tie).
+        List<Matches> finalMatches = realByStage.get(MatchStage.FINAL);
+        if (finalMatches != null && !finalMatches.isEmpty()) {
+            placeDecider(out, finalMatches.get(0), rank, rank + 1);
+        }
+        rank += 2;
+
+        // THIRD_PLACE - same decider shape, when the bracket was big enough
+        // to produce one (see hasThirdPlace). Its existence in the DB is the
+        // structural signal: a semi-final's loser is NOT eliminated by the
+        // semi-final itself when a third-place playoff awaits them.
+        boolean hasThirdPlaceMatch = ko.stream().anyMatch(m -> m.getStage() == MatchStage.THIRD_PLACE);
+        if (hasThirdPlaceMatch) {
+            Matches tp = ko.stream().filter(m -> m.getStage() == MatchStage.THIRD_PLACE).findFirst().orElse(null);
+            if (tp != null && tp.getTeam1() != null && tp.getTeam2() != null) {
+                placeDecider(out, tp, rank, rank + 1);
+            }
+            rank += 2;
+        }
+
+        // Every other knockout stage, best round first: its losers all TIE
+        // for the same rank (the cohort eliminated in that round). SEMIFINAL
+        // only counts here when there's no third-place decider above -
+        // otherwise its losers were already placed via the playoff.
+        MatchStage[] order = {
+                MatchStage.SEMIFINAL, MatchStage.QUARTERFINAL,
+                MatchStage.ROUND_OF_16, MatchStage.ROUND_OF_32,
+        };
+        for (MatchStage stage : order) {
+            if (stage == MatchStage.SEMIFINAL && hasThirdPlaceMatch) continue;
+            List<Matches> matches = realByStage.get(stage);
+            if (matches == null || matches.isEmpty()) continue;
+            int cohortSize = matches.size();
+            String label = rank + ". mjesto";
+            for (Matches m : matches) {
+                if (m.getStatus() == MatchStatus.FINISHED && m.getWinnerTeam() != null) {
+                    Teams winner = m.getWinnerTeam();
+                    Teams loser = winner.getId().equals(m.getTeam1().getId()) ? m.getTeam2() : m.getTeam1();
+                    out.put(loser.getId(), new TeamPlacement(rank, label));
+                }
+            }
+            rank += cohortSize;
+        }
+
+        return out;
+    }
+
+    /** Place a decider match's winner/loser at two DIFFERENT ranks (FINAL,
+     *  THIRD_PLACE) - a no-op until the match is actually FINISHED. */
+    private static void placeDecider(Map<Long, TeamPlacement> out, Matches m, int winnerRank, int loserRank) {
+        if (m.getStatus() != MatchStatus.FINISHED || m.getWinnerTeam() == null) return;
+        Teams winner = m.getWinnerTeam();
+        Teams loser = winner.getId().equals(m.getTeam1().getId()) ? m.getTeam2() : m.getTeam1();
+        out.put(winner.getId(), new TeamPlacement(winnerRank, winnerRank + ". mjesto"));
+        out.put(loser.getId(), new TeamPlacement(loserRank, loserRank + ". mjesto"));
     }
 
     /**

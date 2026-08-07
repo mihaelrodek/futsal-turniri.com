@@ -54,6 +54,28 @@ export default function Footer() {
                         color="rgba(255,255,255,0.7)"
                         css={{ "&:hover": { color: "#fff" } }}
                     >
+                        <RouterLink to="/cjenik">{t.nav.pricing}</RouterLink>
+                    </Box>
+                    <Box
+                        asChild
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.7)"
+                        css={{ "&:hover": { color: "#fff" } }}
+                    >
+                        <RouterLink to="/vodic">{t.nav.guide}</RouterLink>
+                    </Box>
+                    <Box
+                        asChild
+                        fontFamily="mono"
+                        fontSize="11px"
+                        fontWeight={600}
+                        letterSpacing="0.04em"
+                        color="rgba(255,255,255,0.7)"
+                        css={{ "&:hover": { color: "#fff" } }}
+                    >
                         <RouterLink to="/kontakt">{t.components.footer.contactLink}</RouterLink>
                     </Box>
                     <Box

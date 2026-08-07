@@ -29,6 +29,16 @@ export type TeamShort = {
     registeredContact?: string | null;
     /** The submitter's message to the organizer. Organizer-only. */
     registrationNote?: string | null;
+    /** Standard-competition-ranking ("1224") place, derived from the bracket
+     *  + group results - null while the team is still alive (or, for a
+     *  group-only-eliminated team, before the group stage is complete).
+     *  Ties (a whole round eliminated together, or a group-only-eliminated
+     *  range) share the same number; sort ascending. */
+    placementRank?: number | null;
+    /** Ready-to-render Croatian label matching `placementRank`, e.g.
+     *  "5. mjesto" or a group-only-eliminated range "17.-27. mjesto". Null
+     *  exactly when `placementRank` is null. */
+    placementLabel?: string | null;
 };
 
 // Local-only helper for brand-new rows before the server assigns an id.

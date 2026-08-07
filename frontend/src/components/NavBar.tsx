@@ -20,7 +20,7 @@ import {
 import { Link as RouterLink, useMatch, useResolvedPath, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { queryClient, PERSIST_KEY, qk } from "../queryClient"
-import { FiBell, FiGrid, FiLogOut, FiMenu, FiShoppingCart, FiUser } from "react-icons/fi"
+import { FiBell, FiBookOpen, FiGrid, FiLogOut, FiMail, FiMenu, FiShoppingCart, FiTag, FiUser } from "react-icons/fi"
 import { useAuth } from "../auth/AuthContext"
 import { useAdminView } from "../admin/AdminViewContext"
 import { getProfile } from "../api/userMe"
@@ -286,6 +286,25 @@ export default function NavBar() {
         </Switch.Root>
     )
 
+    /* Secondary pages that don't earn a slot in the primary nav - the desktop
+       capsule is full at five pills and the mobile bottom bar at four tabs +
+       FAB, and these are read-once-then-never pages, not daily destinations.
+       They live in whichever menu is already on screen: the user pill's menu
+       when signed in, the guest hamburger when not, and the drawer on mobile.
+       No new trigger anywhere, one tap from a bar the visitor can already see. */
+    const secondaryLinks = [
+        { to: "/cjenik", label: t.nav.pricing, icon: FiTag },
+        { to: "/vodic", label: t.nav.guide, icon: FiBookOpen },
+        { to: "/kontakt", label: t.nav.contact, icon: FiMail },
+    ]
+
+    /** Same three as `secondaryLinks`, shaped for a Chakra Menu. */
+    const secondaryMenuItems = secondaryLinks.map(({ to, label, icon: Icon }) => (
+        <Menu.Item key={to} value={to} onSelect={() => navigate(to)}>
+            <Icon /> {label}
+        </Menu.Item>
+    ))
+
     /** Where "Profil" goes. An admin who left the view switch ON wants the
      *  console, not their own player profile - the choice lives in profile
      *  settings and persists, so this just follows it. */
@@ -354,10 +373,11 @@ export default function NavBar() {
                 </Menu.Trigger>
                 <Menu.Positioner>
                     <Menu.Content minW="200px">
+                        {secondaryMenuItems}
                         {/* Plain content (not Menu.Item) so clicking the
                             switch/picker/button doesn't auto-close the menu -
                             stopPropagation keeps it open. */}
-                        <Box px="3" py="2" onClick={(e) => e.stopPropagation()}>
+                        <Box px="3" py="2" mt="1" borderTopWidth="1px" borderColor="border" onClick={(e) => e.stopPropagation()}>
                             <HStack justify="space-between">
                                 <MonoLabel>{t.nav.themeLabel}</MonoLabel>
                                 <ThemeSwitch size="lg" />
@@ -455,6 +475,10 @@ export default function NavBar() {
                                 </Box>
                             )}
                         </Menu.Item>
+                        {/* Cjenik / Vodič / Kontakt - see `secondaryLinks`. */}
+                        <Box mt="1" pt="1" borderTopWidth="1px" borderColor="border">
+                            {secondaryMenuItems}
+                        </Box>
                         {/* Theme + language rows - plain content, NOT
                             Menu.Item, so flipping the switch / picking a
                             language doesn't trigger item-select auto-close; a
@@ -660,6 +684,50 @@ export default function NavBar() {
                                             {t.nav.login}
                                         </Button>
                                     )}
+
+                                    {/* Cjenik / Vodič / Kontakt - see
+                                        `secondaryLinks`. Privatnost + Uvjeti
+                                        ride along as a small print row because
+                                        the footer that normally carries them
+                                        is desktop-only, so without this the
+                                        pages are unreachable on a phone. */}
+                                    <VStack align="stretch" gap="1" pt="2" borderTopWidth="1px" borderColor="border">
+                                        <Text fontSize="xs" fontWeight={700} color="fg.muted" px="1" pb="1">
+                                            {t.nav.moreLabel}
+                                        </Text>
+                                        {secondaryLinks.map(({ to, label, icon: Icon }) => (
+                                            <Button
+                                                key={to}
+                                                variant="ghost"
+                                                justifyContent="flex-start"
+                                                onClick={() => goTo(to)}
+                                            >
+                                                <Icon /> {label}
+                                            </Button>
+                                        ))}
+                                        <HStack gap="3" px="3" pt="1" wrap="wrap">
+                                            <Box
+                                                asChild
+                                                fontSize="xs"
+                                                color="fg.muted"
+                                                _hover={{ color: "fg.ink" }}
+                                            >
+                                                <RouterLink to="/privatnost" onClick={() => setMobileMenuOpen(false)}>
+                                                    {t.components.footer.privacyLink}
+                                                </RouterLink>
+                                            </Box>
+                                            <Box
+                                                asChild
+                                                fontSize="xs"
+                                                color="fg.muted"
+                                                _hover={{ color: "fg.ink" }}
+                                            >
+                                                <RouterLink to="/uvjeti" onClick={() => setMobileMenuOpen(false)}>
+                                                    {t.components.footer.termsLink}
+                                                </RouterLink>
+                                            </Box>
+                                        </HStack>
+                                    </VStack>
 
                                     <VStack align="stretch" gap="3" pt="2" borderTopWidth="1px" borderColor="border">
                                         <HStack justify="space-between">

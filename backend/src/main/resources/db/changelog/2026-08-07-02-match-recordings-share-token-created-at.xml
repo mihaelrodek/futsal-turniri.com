@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Anchor for the admin share link's 48h validity window (see
+        MatchRecordingController#share). The link itself
+        (GET /match-recordings/share/{token}) used to be permanent by design;
+        this column is what makes it start dying 48h after the token was
+        (re)issued, without touching the row's own created_at - rotating the
+        token resets this, rotating never touches created_at.
+
+        Backfilled to now(), same reasoning as delivered_at in the sibling
+        changeset: backdating to the row's real created_at would instantly
+        expire every share link already handed out.
+    -->
+    <changeSet id="2026-08-07-02-match-recordings-share-token-created-at" author="mrodek">
+        <addColumn tableName="match_recordings">
+            <column name="share_token_created_at" type="timestamptz"/>
+        </addColumn>
+
+        <sql>UPDATE match_recordings SET share_token_created_at = now() WHERE share_token_created_at IS NULL</sql>
+
+        <addNotNullConstraint tableName="match_recordings" columnName="share_token_created_at" columnDataType="timestamptz"/>
+    </changeSet>
+</databaseChangeLog>

@@ -194,14 +194,16 @@ export type RecordingDownloadLink = {
 /**
  * Short-lived presigned download link for a DELIVERED request. Fetch fresh on
  * EVERY click - the link expires quickly. 409 {"code":"NOT_DELIVERED"} when
- * the recording isn't available yet (caller shows its own message).
+ * the recording isn't available yet; 410 {"code":"LINK_EXPIRED"} once the
+ * request's public link has aged past 48h since delivery. Callers show their
+ * own message for both.
  */
 export async function fetchRecordingDownloadLink(
     uuid: string,
 ): Promise<RecordingDownloadLink> {
     const { data } = await http.get<RecordingDownloadLink>(
         `/recording-requests/${uuid}/download-link`,
-        { silentErrorStatuses: [409] },
+        { silentErrorStatuses: [409, 410] },
     )
     return data
 }
@@ -248,14 +250,15 @@ export type RecordingCheckoutSession = {
 /**
  * Start a Stripe Checkout session for an APPROVED, not-yet-paid request.
  * Redirect the browser to the returned url. 409 {"code": ...} for
- * NOT_APPROVED / ALREADY_PAID / NOT_CONFIGURED - callers branch on
- * err.response.data.code and show their own message.
+ * NOT_APPROVED / ALREADY_PAID / NOT_CONFIGURED, 410 {"code":"LINK_EXPIRED"}
+ * once the request's public link has aged past 48h since delivery - callers
+ * branch on err.response.data.code / status and show their own message.
  */
 export async function createRecordingCheckout(uuid: string): Promise<RecordingCheckoutSession> {
     const { data } = await http.post<RecordingCheckoutSession>(
         `/recording-requests/${uuid}/checkout`,
         {},
-        { silent: true, silentErrorStatuses: [409] },
+        { silent: true, silentErrorStatuses: [409, 410] },
     )
     return data
 }

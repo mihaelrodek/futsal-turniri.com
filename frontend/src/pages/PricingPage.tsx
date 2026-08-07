@@ -23,7 +23,6 @@ import {
     LuFlame,
     LuShoppingCart,
     LuSparkles,
-    LuTarget,
     LuTrophy,
     LuVideo,
 } from "react-icons/lu"
@@ -62,16 +61,16 @@ type Tier = {
  *  translated name/tagline/features (from `t.pages.pricingPage.tiers.*`)
  *  inside `useTiers()` below. */
 const TIER_META: { id: CartTier; icon: ElementType; price: string; priceValue: number; highlight?: boolean }[] = [
-    { id: "GOAL", icon: LuTarget, price: "5 €", priceValue: 5 },
     { id: "MATCH", icon: LuVideo, price: "20 €", priceValue: 20 },
     { id: "HATTRICK", icon: LuFlame, price: "50 €", priceValue: 50 },
+    { id: "PETARDA", icon: LuSparkles, price: "75 €", priceValue: 75 },
     { id: "TEAM", icon: LuTrophy, price: "100 €", priceValue: 100, highlight: true },
 ]
 
-const TIER_DICT_KEY: Record<CartTier, "goal" | "match" | "hattrick" | "team"> = {
-    GOAL: "goal",
+const TIER_DICT_KEY: Record<CartTier, "match" | "hattrick" | "petarda" | "team"> = {
     MATCH: "match",
     HATTRICK: "hattrick",
+    PETARDA: "petarda",
     TEAM: "team",
 }
 

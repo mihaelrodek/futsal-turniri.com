@@ -69,9 +69,9 @@ function formatPrice(cents: number | null | undefined): string {
     return `${Number.isInteger(eur) ? eur : eur.toFixed(2).replace(".", ",")} €`
 }
 
-/** Pull `{"code": "..."}` out of a 409 response body, if present. */
+/** Pull `{"code": "..."}` out of a 409/410 response body, if present. */
 function errorCode(err: unknown): string | undefined {
-    if (!isAxiosError(err) || err.response?.status !== 409) return undefined
+    if (!isAxiosError(err) || (err.response?.status !== 409 && err.response?.status !== 410)) return undefined
     const data = err.response.data as { code?: string } | undefined
     return data?.code
 }
@@ -197,6 +197,8 @@ export default function MyRecordingsTab() {
             const code = errorCode(err)
             if (code === "NOT_PAID") {
                 showError(t.recordingRequest.mine.downloadErrorNotPaidTitle, t.recordingRequest.mine.downloadErrorNotPaidDesc)
+            } else if (code === "LINK_EXPIRED") {
+                showError(t.recordingRequest.mine.downloadErrorLinkExpiredTitle, t.recordingRequest.mine.downloadErrorLinkExpiredDesc)
             } else if (isAxiosError(err) && err.response?.status === 409) {
                 showError(t.recordingRequest.mine.downloadErrorGenericTitle, t.recordingRequest.mine.downloadErrorGenericDesc)
             }
@@ -220,6 +222,8 @@ export default function MyRecordingsTab() {
                 queryClient.invalidateQueries({ queryKey: qk.myRecordingRequests })
             } else if (code === "NOT_APPROVED") {
                 showError(t.recordingRequest.mine.checkoutErrorNotApprovedTitle)
+            } else if (code === "LINK_EXPIRED") {
+                showError(t.recordingRequest.mine.downloadErrorLinkExpiredTitle, t.recordingRequest.mine.downloadErrorLinkExpiredDesc)
             }
             /* other errors toasted by the interceptor */
         } finally {

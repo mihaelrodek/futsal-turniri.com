@@ -1232,8 +1232,11 @@ export default function TournamentDetailsPage() {
     // "Uredi" only appears on the Detalji tab - otherwise it would open the
     // edit form (which lives in the details view) "in the background" while
     // another tab is showing.
+    // `finishedLocked`, NOT a raw status check: the finish lock is meant for
+    // organizers only, so an admin must keep the "Uredi" entry point on a
+    // FINISHED tournament - that's the whole point of "administrator otključava".
     const showEditAction =
-        canEdit && t.status !== "FINISHED" && !editingDetails && section === "details"
+        canEdit && !finishedLocked && !editingDetails && section === "details"
 
     // Steps the mobile title font down for long names so the whole name still
     // fits the 2-row clamp in the narrow (~55%) title column of the compact
@@ -1614,7 +1617,14 @@ export default function TournamentDetailsPage() {
                                             setSection("details")
                                             enterDetailsEdit()
                                         }}
-                                        disabled={t.status === "FINISHED" || editingDetails}
+                                        // Same admin carve-out as `showEditAction`
+                                        // above - see the comment there.
+                                        disabled={finishedLocked || editingDetails}
+                                        title={
+                                            finishedLocked
+                                                ? t18n.pages.tournamentDetailsPage.finishedLockedNotice
+                                                : t18n.common.edit
+                                        }
                                     >
                                         <FiEdit2 size={15} /> {t18n.common.edit}
                                     </Button>

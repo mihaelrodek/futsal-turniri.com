@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.mappers;
 
 import hr.mrodek.apps.futsal_turniri.dtos.TeamDto;
+import hr.mrodek.apps.futsal_turniri.dtos.TeamPlacement;
 import hr.mrodek.apps.futsal_turniri.model.Teams;
 import hr.mrodek.apps.futsal_turniri.model.UserProfile;
 import org.mapstruct.*;
@@ -79,15 +80,24 @@ public interface TeamMapper {
      * (primary submitter or organizer/admin). Otherwise null is returned
      * so the share link doesn't leak in team lists rendered to other
      * tournament participants.
+     *
+     * <p>{@code placements} (nullable - a null map, or a null/missing entry
+     * for this team's id, both mean "no placement yet") comes from
+     * {@link hr.mrodek.apps.futsal_turniri.services.KnockoutService#computePlacements}.
+     * Callers that never touch a team's placement (registration-time actions,
+     * where it's always null anyway) can keep using the shorter overloads
+     * below.
      */
     default TeamDto toDtoEnriched(Teams e, Map<String, UserProfile> profilesByUid,
-                                   boolean includeClaimToken) {
+                                   boolean includeClaimToken,
+                                   Map<Long, TeamPlacement> placements) {
         UserProfile prof = e.getSubmittedByUid() != null && profilesByUid != null
                 ? profilesByUid.get(e.getSubmittedByUid())
                 : null;
         UserProfile co = e.getCoSubmittedByUid() != null && profilesByUid != null
                 ? profilesByUid.get(e.getCoSubmittedByUid())
                 : null;
+        TeamPlacement placement = placements != null ? placements.get(e.getId()) : null;
         return new TeamDto(
                 e.getId() == null ? null : e.getId().intValue(),
                 e.getName(),
@@ -107,34 +117,45 @@ public interface TeamMapper {
                 // public team list.
                 includeClaimToken ? e.getRegisteredByName() : null,
                 includeClaimToken ? e.getRegisteredContact() : null,
-                includeClaimToken ? e.getRegistrationNote() : null
+                includeClaimToken ? e.getRegistrationNote() : null,
+                placement == null ? null : placement.rank(),
+                placement == null ? null : placement.label()
         );
     }
 
-    /** Backwards-compat overload - never includes the claim token. */
+    /** Backwards-compat overload - never includes the claim token or a placement. */
+    default TeamDto toDtoEnriched(Teams e, Map<String, UserProfile> profilesByUid,
+                                   boolean includeClaimToken) {
+        return toDtoEnriched(e, profilesByUid, includeClaimToken, null);
+    }
+
+    /** Backwards-compat overload - never includes the claim token or a placement. */
     default TeamDto toDtoEnriched(Teams e, Map<String, UserProfile> profilesByUid) {
-        return toDtoEnriched(e, profilesByUid, false);
+        return toDtoEnriched(e, profilesByUid, false, null);
     }
 
     default List<TeamDto> toDtoListEnriched(List<Teams> entities, Map<String, UserProfile> profilesByUid) {
-        return entities.stream().map(e -> toDtoEnriched(e, profilesByUid, false)).toList();
+        return entities.stream().map(e -> toDtoEnriched(e, profilesByUid, false, null)).toList();
     }
 
     /**
      * List variant that emits the claim token for teams where the viewer
      * is the primary submitter (so they can copy the share link). Pass
      * the viewer's UID; tokens for teams they don't own are null.
+     * {@code placements} - see {@link #toDtoEnriched}; null is fine when the
+     * caller has no bracket to derive one from.
      */
     default List<TeamDto> toDtoListEnrichedForViewer(
             List<Teams> entities,
             Map<String, UserProfile> profilesByUid,
             String viewerUid,
-            boolean viewerIsOrganizerOrAdmin
+            boolean viewerIsOrganizerOrAdmin,
+            Map<Long, TeamPlacement> placements
     ) {
         return entities.stream().map(e -> {
             boolean canSeeToken = viewerIsOrganizerOrAdmin
                     || (viewerUid != null && viewerUid.equals(e.getSubmittedByUid()));
-            return toDtoEnriched(e, profilesByUid, canSeeToken);
+            return toDtoEnriched(e, profilesByUid, canSeeToken, placements);
         }).toList();
     }
 }

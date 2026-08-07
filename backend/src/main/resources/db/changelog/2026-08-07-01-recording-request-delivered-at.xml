@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        The public status/download link at /snimke/zahtjev/{uuid} is a
+        permanent capability token today - it never expires, which is right
+        while a request is REQUESTED/APPROVED (approval can take days) but
+        wrong once DELIVERED: an old link sitting in an inbox should stop
+        granting access to the video eventually.
+
+        delivered_at is the anchor for that 48h window (see
+        RecordingRequestController#isLinkExpired), stamped ONCE when the
+        request first reaches DELIVERED - not touched by a later admin
+        re-link that just fixes a wrong mapping.
+
+        Backfilled to now() (not the row's real delivery time) for existing
+        DELIVERED rows: backdating to the true delivery date would make every
+        already-shared link expire the instant this ships, which is a support
+        ticket, not a security fix.
+    -->
+    <changeSet id="2026-08-07-01-recording-request-delivered-at" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="delivered_at" type="timestamptz"/>
+        </addColumn>
+
+        <sql>UPDATE match_recording_requests SET delivered_at = now() WHERE status = 'DELIVERED' AND delivered_at IS NULL</sql>
+    </changeSet>
+</databaseChangeLog>

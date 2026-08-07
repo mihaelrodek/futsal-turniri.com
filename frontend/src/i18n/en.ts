@@ -53,6 +53,10 @@ export const en: Dictionary = {
         map: "Map",
         stats: "Stats",
         pricing: "Pricing",
+        guide: "Guide",
+        contact: "Contact",
+        /** Heading of the secondary-pages block in the menus/drawer. */
+        moreLabel: "More",
         login: "Sign in",
         profile: "Profile",
         notifications: "Notifications",
@@ -124,6 +128,10 @@ export const en: Dictionary = {
             pageDescription: "Status of a match video recording request.",
             notFoundTitle: "Request not found",
             notFoundDescription: "The request link is invalid or the request has been deleted.",
+            /** Shown when the request WAS delivered but the link's 48h window
+             *  since delivery has passed - distinct from notFound above. */
+            linkExpiredTitle: "Link has expired",
+            linkExpiredDescription: "This link is valid for 48 hours after the recording is delivered and no longer works. Contact us and we'll send you a new one.",
             backToTournaments: "Back to tournaments",
             matchLabelFallback: "Match",
             paymentSuccess: "Payment successful! Thank you.",
@@ -187,6 +195,8 @@ export const en: Dictionary = {
             paidBadge: "Paid",
             downloadErrorNotPaidTitle: "The recording hasn't been paid for",
             downloadErrorNotPaidDesc: "Pay for the recording before downloading.",
+            downloadErrorLinkExpiredTitle: "Link has expired",
+            downloadErrorLinkExpiredDesc: "This link is valid for 48 hours after the recording is delivered. Contact us and we'll send you a new one.",
             downloadErrorGenericTitle: "The recording isn't available yet",
             downloadErrorGenericDesc: "Try again in a bit.",
             checkoutErrorNotConfiguredTitle: "Payment isn't available right now",
@@ -910,17 +920,6 @@ export const en: Dictionary = {
         guidePage: {
             documentTitle: "What We Offer - Futsal Turniri",
             documentDescription: "Everything you need for a futsal tournament in one place: creation, draw, schedule, running matches live, results, standings and stats.",
-            navItems: [
-                { label: "Tournaments", desc: "List of every tournament. Search and filter by location, entry fee and total prize, then open any tournament." },
-                { label: "Live", desc: "Matches being played right now - scores, the clock and top scorers update in real time." },
-                { label: "Create tournament", desc: "Launch a new tournament in a couple of minutes - just enter the basics and the format. Completely free." },
-                { label: "Map", desc: "Every tournament shown on a map - find the ones closest to you at a glance." },
-                { label: "Stats", desc: "All-time scorer list across every tournament - who's scored the most goals." },
-                { label: "Sign in", desc: "Google sign-in - only organizers need it. Viewers can follow everything without signing in." },
-            ],
-            stepAria: (n: number) => `Step ${n}`,
-            previous: "Previous",
-            next: "Next",
             heroKicker: "What we offer",
             heroHeadingHighlight: "Futsal tournaments",
             heroHeadingRest: "in one place",
@@ -928,55 +927,91 @@ export const en: Dictionary = {
             ctaCreateTournament: "Create tournament",
             ctaWatchLive: "Watch live",
             ctaBrowseTournaments: "Browse tournaments",
-            quickOverviewLabel: "QUICK OVERVIEW",
-            quickDraw: { title: "Draw", sub: "Automatic or manual - groups and knockout" },
-            quickLiveMatches: { title: "Live matches", sub: "Clock, goals, cards, fouls, penalties" },
-            quickStandingsStats: { title: "Standings and stats", sub: "Rankings, scorers, bracket - all automatic" },
-            quickNotifications: { title: "Notifications", sub: "Push alerts for kickoff, goals and full time" },
-            chapterMenu: {
-                title: "Find your way around the menu",
-                intro: "Click any menu item (or use Previous / Next) to see what it does.",
-            },
             chapterCreate: {
                 title: "Creating a tournament",
-                intro: "Enter the basics, add teams and players, draw the groups - the schedule builds itself.",
-                step1Title: "Add teams and players",
-                step1Desc: "Each team has its own roster - players with numbers and a captain. A team can even edit its own roster via a link.",
-                step1ShotAlt: "Tournament teams with an open player roster",
-                step2Title: "Draw the groups",
-                step2Desc: "Drag teams into groups (manual draw) or auto-assign them with one click.",
-                drawPlaceholder: "Draw screenshot coming soon",
-                step3Title: "Generate the schedule",
-                step3Desc: "Pick the half length and break - every kickoff time is calculated automatically, and you can reorder by dragging.",
-                step3ShotAlt: "Tournament schedule with kickoff times and results",
+                /** Interactive showcase - one card per entry, zipped by index
+                 *  with icon+screenshot in GuidePage.tsx's CREATE_SHOWCASE_META. */
+                features: [
+                    {
+                        title: "Add teams and players",
+                        desc: "Each team has its own roster - players with numbers and a captain. A team can even edit its own roster via a link. The list order follows placement - eliminated teams in elimination order, at the bottom.",
+                        shotAlt: "Team list sorted by placement - winner, 2nd and 3rd place, the rest in elimination order",
+                    },
+                    {
+                        title: "Draw the groups",
+                        desc: "Drag the balls into groups (manual draw) or auto-assign them with one click. The sketch saves itself until you confirm it.",
+                        shotAlt: "Manual draw: dragging teams from the pot into groups A-D",
+                    },
+                    {
+                        title: "Draft the schedule",
+                        desc: "Pick the half length and break - every kickoff time is calculated automatically. The draft can be adjusted to team requests - drag a match earlier or later if someone needs a different time. Nothing is locked until you confirm.",
+                        shotAlt: "Schedule preview by day before confirming, with breaks",
+                    },
+                    {
+                        title: "Generate the schedule",
+                        desc: "Confirm the draft and every kickoff time is generated - each match gets its exact time, group and kit colours, instantly visible to everyone.",
+                        shotAlt: "Finished tournament schedule with kickoff times, groups and kit colours",
+                    },
+                ],
             },
             chapterZapisnik: {
                 title: "Match console - running matches live",
-                intro: "A match console on your phone instead of paper: everything you enter is instantly visible to everyone - at home, in the hall, and on the big screen.",
-                feature1Title: "Clock by half",
-                feature1Desc: "1st half → break → 2nd half → full time. The clock stops when time's up and waits for you.",
-                feature2Title: "Goals and events",
-                feature2Desc: "Score a goal with one tap on a player - the minute is filled in automatically. Yellow/red cards, fouls (accumulated) and penalties.",
-                feature3Title: "Tournament mode / TV display",
-                feature3Desc: "Fullscreen scoreboard for the hall - everything you enter in the match console appears on the big screen instantly.",
-                shotAlt: "Tournament mode: live score, 2nd-half clock, fouls and top scorers",
-                shotCaption: "Live scoreboard - score, clock, accumulated fouls and top scorers in real time.",
+                /** Interactive showcase on the guide page - one card per entry,
+                 *  zipped by index with icon+screenshot in GuidePage.tsx's
+                 *  ZAPISNIK_SHOWCASE_META. Order matters. */
+                features: [
+                    {
+                        title: "Clock and event entry",
+                        desc: "1st half → break → 2nd half → full time, the clock waits for you when time's up. Score a goal with one tap on a player - the minute fills in automatically; yellow/red cards, fouls (accumulated) and penalties the same way.",
+                        shotAlt: "Live match console: entering a goal, card and foul per player, clock at the top",
+                    },
+                    {
+                        title: "Match timeline",
+                        desc: "Every match gets its own page with the full timeline - goals, cards and fouls by half, both line-ups, and the penalty shoot-out if it comes to that.",
+                        shotAlt: "Match page: timeline by half with goals, cards, fouls and penalties",
+                    },
+                    {
+                        title: "Tournament mode / TV display",
+                        desc: "Fullscreen scoreboard for the hall - everything you enter in the match console appears on the big screen instantly.",
+                        shotAlt: "Tournament mode: live score, 2nd-half clock, fouls and top scorers",
+                    },
+                    {
+                        title: "Live video stream",
+                        desc: "The match video alongside a live timeline and standings - viewers follow from any device, no sign-in required.",
+                        shotAlt: "Live video stream of a match with the score, timeline and updates",
+                    },
+                ],
             },
             chapterResults: {
                 title: "Results, standings and stats",
-                intro: "After every final whistle, everything's already calculated - no spreadsheets, no manual tallying.",
-                step1Title: "Group standings",
-                step1Desc: "Points, goal difference and form are calculated automatically after every match entered.",
-                step1ShotAlt: "Group standings with points, goal difference and form",
-                step2Title: "Knockout stage",
-                step2Desc: "Elimination from the quarter-finals to the champion - with results and penalties. Hover to see the whole bracket.",
-                step2ShotAlt: "Knockout stage with results, penalties and the champion",
-                step3Title: "Stats",
-                step3Desc: "Top scorers and tournament goals - the list fills itself in from the match console.",
-                step3ShotAlt: "Tournament stats: top scorers with goal counts",
+                /** Interactive showcase - one card per entry, zipped by index
+                 *  with icon+screenshot in GuidePage.tsx's RESULTS_SHOWCASE_META. */
+                features: [
+                    {
+                        title: "Group standings",
+                        desc: "Points, goal difference and form are calculated automatically after every match entered.",
+                        shotAlt: "Group standings with points, goal difference and form",
+                    },
+                    {
+                        title: "Knockout stage",
+                        desc: "Elimination from the quarter-finals to the champion - with results and penalties. Hover to see the whole bracket.",
+                        shotAlt: "Knockout stage with results, penalties and the champion",
+                    },
+                    {
+                        title: "Stats",
+                        desc: "Top scorers and tournament goals - the list fills itself in from the match console.",
+                        shotAlt: "Tournament stats: top scorers with goal counts",
+                    },
+                ],
             },
             finalCtaHeading: "Ready for a stress-free tournament?",
             finalCtaSubtitle: "It's free and takes a couple of minutes - the app handles the rest.",
+        },
+        sharedLinkExpiredPage: {
+            documentTitle: "Link expired - Futsal Turniri",
+            documentDescription: "This recording download link has expired.",
+            title: "This link has expired",
+            description: "The link to this recording no longer works. Contact whoever sent it to you for a new one.",
         },
         fullscreenTournamentPage: {
             liveLabel: "LIVE",
@@ -1003,22 +1038,14 @@ export const en: Dictionary = {
             loadingTournaments: "Loading tournaments…",
             loadingTeams: "Loading teams…",
             loadingMatches: "Loading matches…",
-            loadingGoals: "Loading goals…",
             noTeams: "This tournament has no teams yet.",
             pickTeamOption: "Choose a team…",
-            noMatchesGoal: "This tournament has no played matches yet.",
             noMatchesGeneric: "This tournament has no matches with known teams yet.",
-            pickExactly3: (count: number) => `Choose exactly 3 matches (${count}/3):`,
+            pickExactlyN: (total: number, count: number) => `Choose exactly ${total} matches (${count}/${total}):`,
             pickMatchOption: "Choose a match…",
-            noGoals: "No goals recorded in this match.",
-            pickGoalOption: "Choose a goal…",
             removeItemAria: (label: string) => `Remove ${label} from cart`,
             checkoutErrorNotConfiguredTitle: "Payment isn't available right now",
             checkoutErrorNotConfiguredDesc: "Try again later.",
-            checkoutErrorGoalDisabledTitle: "Goal clips aren't for sale right now",
-            checkoutErrorGoalDisabledDesc: "Remove that item from your cart.",
-            checkoutErrorMatchNotFinishedTitle: "The match hasn't finished yet",
-            checkoutErrorMatchNotFinishedDesc: "You can buy a goal clip only after the match ends.",
             checkoutErrorTeamNoMatchesTitle: "This team has no matches",
             checkoutErrorTeamNoMatchesDesc: "Choose a different team or tournament.",
             checkoutErrorDuplicateTitle: "A request already exists",
@@ -1175,8 +1202,8 @@ export const en: Dictionary = {
             uploadedLabel: "Uploaded",
             reassignHint: "If the recording is attached to the wrong match, move it here - the file itself stays.",
             share: {
-                label: "PERMANENT LINK",
-                hint: "The link never expires - each click generates a fresh download of the file.",
+                label: "SHARE LINK",
+                hint: "Valid for 48 hours after it's generated. Each click loads a fresh download of the file.",
                 copy: "Copy",
                 open: "Open",
                 copied: "Link copied to the clipboard.",
@@ -1358,10 +1385,10 @@ export const en: Dictionary = {
         },
         pricingPage: {
             documentTitle: "Pricing - Futsal Turniri",
-            documentDescription: "Goal, match, or full-tournament recordings - choose the package that fits.",
+            documentDescription: "One match, several, or a full tournament - choose the package that fits.",
             kicker: "Pricing",
             heroHeading: "Your moment on the pitch, recorded",
-            heroSubtitle: "From a single goal to a whole tournament - choose the package that fits. Every recording arrives in full HD, ready to download.",
+            heroSubtitle: "From a single match to a whole tournament - choose the package that fits. Every recording arrives in full HD, ready to download.",
             bestValueBadge: "Best value",
             cartHeading: "Cart",
             clearCart: "Empty cart",
@@ -1371,15 +1398,6 @@ export const en: Dictionary = {
             goToCartButton: "Go to cart and pay",
             openCartButton: "Open cart",
             tiers: {
-                goal: {
-                    name: "Goal",
-                    tagline: "One goal, ready to share.",
-                    features: [
-                        "HD clip of a single goal",
-                        "Ready to download and share",
-                        "Delivered within 48 h, typically",
-                    ],
-                },
                 match: {
                     name: "Match",
                     tagline: "The full match, both halves.",
@@ -1396,6 +1414,15 @@ export const en: Dictionary = {
                         "Recordings of any 3 matches from the tournament",
                         "You choose which matches",
                         "Cheaper than buying them separately",
+                    ],
+                },
+                petarda: {
+                    name: "Petarda",
+                    tagline: "5 matches of your choice from a tournament.",
+                    features: [
+                        "Recordings of any 5 matches from the tournament",
+                        "You choose which matches",
+                        "€15 per match instead of €20",
                     ],
                 },
                 team: {
@@ -1743,6 +1770,9 @@ export const en: Dictionary = {
             drawKnockoutLabel: "Knockout",
             liveStreamSidebarLabel: "Live stream",
             deleteRequestedNotice: "Deletion of this tournament has been requested - awaiting administrator confirmation. The tournament is not visible in public listings.",
+            /** Title on the disabled "Edit" button of a finished tournament.
+             *  Admins never see it - the lock does not apply to them. */
+            finishedLockedNotice: "This tournament is finished. Contact an administrator to unlock it.",
         },
     },
     components: {
@@ -1961,10 +1991,17 @@ export const en: Dictionary = {
             pickerMinuteLabel: "MIN",
             hoursLabel: "Hours",
             minutesLabel: "Minutes",
+            /** Optional free-text name for a break, e.g. "Penalty shoot-out"
+             *  or "Awards ceremony" - helps tell multiple breaks apart in the
+             *  sketch. Purely local to the sketch; not sent to the backend. */
+            pauseNameLabel: "Name (optional)",
+            pauseNamePlaceholder: "e.g. Penalty shoot-out",
             addPauseButton: "Add break",
             removePauseAria: "Remove break",
             dragRowAria: "Drag to reorder",
             pauseLabel: (formatted: string) => `Break · ${formatted}`,
+            /** Named break row, e.g. "Penalty shoot-out · 15 min". */
+            namedPauseLabel: (name: string, formatted: string) => `${name} · ${formatted}`,
             confirmGenerateButton: "Confirm and generate",
             reduceMatchesTooltip: "Reduce the match count - you've scheduled more than the tournament has",
             sketchButton: "Sketch",

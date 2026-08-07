@@ -4,15 +4,22 @@ import { http } from "./http"
  * /cjenik cart checkout - pays for one or more cart items in a single Stripe
  * Checkout Session, no admin-approval gate (backend RecordingRequestController#cartCheckout).
  */
-export type CartTier = "GOAL" | "MATCH" | "HATTRICK" | "TEAM"
+export type CartTier = "MATCH" | "HATTRICK" | "PETARDA" | "TEAM"
+
+/** How many matches each multi-match tier takes. The cart configurator and the
+ *  backend's `resolveMatches` must agree on this count exactly - a cart the
+ *  server refuses is worse than one that cannot be assembled. */
+export const TIER_MATCH_COUNT: Partial<Record<CartTier, number>> = {
+    HATTRICK: 3,
+    PETARDA: 5,
+}
 
 export type CartCheckoutItem = {
     tier: CartTier
     tournamentUuid: string
-    /** Exactly 1 match for GOAL/MATCH, exactly 3 (distinct) for HATTRICK, ignored for TEAM. */
+    /** Exactly 1 match for MATCH, 3 (distinct) for HATTRICK, 5 for PETARDA,
+     *  ignored for TEAM (resolved server-side from `teamId`). */
     matchIds: number[]
-    /** Required only for GOAL. */
-    matchEventId?: number | null
     /** Required only for TEAM. */
     teamId?: number | null
 }
@@ -31,8 +38,8 @@ export type CartCheckoutSession = {
 /**
  * Starts the combined Stripe Checkout session for the whole cart. Redirect the
  * browser to the returned url. 409 {"code": ...} for NOT_CONFIGURED /
- * GOAL_REQUESTS_DISABLED / MATCH_NOT_FINISHED / TEAM_NO_MATCHES / DUPLICATE -
- * callers branch on err.response.data.code and show their own message.
+ * TEAM_NO_MATCHES / DUPLICATE / NO_LIVESTREAM - callers branch on
+ * err.response.data.code and show their own message.
  */
 export async function createCartCheckout(payload: CartCheckoutPayload): Promise<CartCheckoutSession> {
     const { data } = await http.post<CartCheckoutSession>(

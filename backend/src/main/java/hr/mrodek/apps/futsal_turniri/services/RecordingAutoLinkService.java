@@ -42,6 +42,9 @@ public class RecordingAutoLinkService {
             if (!candidates.isEmpty()) {
                 r.setRecording(candidates.get(0)); // newest first (see MatchRecordingRepository#findByMatchId)
                 r.setStatus(RecordingRequestStatus.DELIVERED);
+                // First delivery - anchors the public link's 48h window (see
+                // RecordingRequestController#LINK_VALID_HOURS).
+                r.setDeliveredAt(OffsetDateTime.now());
                 r.setUpdatedAt(OffsetDateTime.now());
             }
         }

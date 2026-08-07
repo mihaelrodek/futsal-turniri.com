@@ -135,6 +135,16 @@ public class MatchRecordingRequest {
     @JoinColumn(name = "recording_id")
     private MatchRecording recording;
 
+    /**
+     * Stamped ONCE, the first time {@link #status} reaches DELIVERED - the
+     * anchor for the public link's 48h validity window (see
+     * RecordingRequestController#isLinkExpired). A later admin re-link that
+     * only fixes a wrong mapping does not touch this, so it never restarts
+     * the requester's clock.
+     */
+    @Column(name = "delivered_at")
+    private OffsetDateTime deliveredAt;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

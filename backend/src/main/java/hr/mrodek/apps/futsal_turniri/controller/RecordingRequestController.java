@@ -51,7 +51,9 @@ import java.util.stream.Collectors;
 /**
  * Paid match-video requests. Two kinds, same lifecycle:
  *   - FULL_MATCH (~20 EUR) - the video of one whole match.
- *   - GOAL (~5 EUR)        - a clip of one goal of that match.
+ *   - GOAL (~5 EUR)        - a clip of one goal of that match. Ad-hoc only:
+ *     the /cjenik cart no longer sells it (see CartTier), but the per-goal
+ *     request flow and every already-filed request still use this kind.
  *
  * A request may come from a signed-in user OR anonymously (contact email
  * only) - either way, an admin approves it, the requester pays via Stripe
@@ -88,6 +90,15 @@ public class RecordingRequestController {
     /** Presigned GET validity for the requester's download (48 h). */
     private static final int DOWNLOAD_EXPIRY_SECONDS = 172_800;
 
+    /**
+     * How long the public capability link ({@code /snimke/zahtjev/{uuid}} and
+     * everything it drives - status, checkout, download) keeps working after
+     * the request is DELIVERED. Counted from {@link MatchRecordingRequest#getDeliveredAt()},
+     * NOT from creation - a request can sit REQUESTED/APPROVED for days while
+     * an admin acts on it, and that wait must never burn the requester's window.
+     */
+    private static final long LINK_VALID_HOURS = 48;
+
     /** local@domain.tld, TLD at least 2 letters - deliberately simple, not RFC-exhaustive. */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$");
 
@@ -96,15 +107,20 @@ public class RecordingRequestController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9]{6,15}$");
 
     /**
-     * The 4 fixed-price /cjenik packages. GOAL/MATCH mirror {@link RecordingRequestKind}'s
-     * defaults; HATTRICK (any 3 matches of one tournament) and TEAM ("Premium" - every
-     * match of one team in a tournament) have no kind of their own - they simply resolve to
-     * several FULL_MATCH rows sharing one {@code cartGroupId} and split price.
+     * The 4 fixed-price /cjenik packages. MATCH mirrors {@link RecordingRequestKind#FULL_MATCH}'s
+     * default; HATTRICK (any 3 matches of one tournament), PETARDA (any 5) and TEAM
+     * ("Premium" - every match of one team in a tournament) have no kind of their own - they
+     * simply resolve to several FULL_MATCH rows sharing one {@code cartGroupId} and split price.
+     *
+     * <p>Every tier here is now whole matches. The single-goal clip was withdrawn from the
+     * cart and the price list; {@link RecordingRequestKind#GOAL} itself stays, because the
+     * ad-hoc per-goal request flow (gated by {@code goal_clip_requests_enabled}) and every
+     * goal request already filed still run through it.
      */
     private enum CartTier {
-        GOAL(500, "Gol"),
         MATCH(2000, "Tekma"),
         HATTRICK(5000, "Hattrick"),
+        PETARDA(7500, "Petarda"),
         TEAM(10000, "Premium");
 
         private final int priceEurCents;
@@ -165,10 +181,11 @@ public class RecordingRequestController {
 
     /**
      * One /cjenik cart line. {@code tier} is one of {@link CartTier}'s names.
-     * {@code matchIds} carries exactly 1 match for GOAL/MATCH, exactly 3
-     * (distinct) for HATTRICK, and is ignored for TEAM (every match of
-     * {@code teamId} in the tournament is resolved server-side instead).
-     * {@code matchEventId} is required only for GOAL.
+     * {@code matchIds} carries exactly 1 match for MATCH, exactly 3 (distinct)
+     * for HATTRICK, exactly 5 for PETARDA, and is ignored for TEAM (every match
+     * of {@code teamId} in the tournament is resolved server-side instead).
+     * {@code matchEventId} is unused by the cart since the goal clip left it -
+     * kept on the wire so an older tab's payload still parses.
      */
     public record CartItemBody(
             String tier, String tournamentUuid, List<Long> matchIds, Long matchEventId, Long teamId
@@ -210,6 +227,18 @@ public class RecordingRequestController {
 
     private static Response conflict(String code) {
         return Response.status(Response.Status.CONFLICT).entity(Map.of("code", code)).build();
+    }
+
+    /** True once the request's public link has aged past {@link #LINK_VALID_HOURS}
+     *  since delivery. Always false before delivery - see {@link #LINK_VALID_HOURS}. */
+    private static boolean isLinkExpired(MatchRecordingRequest r) {
+        return r.getDeliveredAt() != null
+                && r.getDeliveredAt().plusHours(LINK_VALID_HOURS).isBefore(OffsetDateTime.now());
+    }
+
+    /** 410 Gone - the capability link existed but its 48h window has passed. */
+    private static Response goneExpired() {
+        return Response.status(410).entity(Map.of("code", "LINK_EXPIRED")).build();
     }
 
     /** Trim + lower-case; blank collapses to null. */
@@ -484,6 +513,7 @@ public class RecordingRequestController {
     public Response publicView(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (isLinkExpired(r)) return goneExpired();
 
         Matches match = r.getMatch();
         String tournamentName = match.getTournament() != null ? match.getTournament().getName() : null;
@@ -509,6 +539,7 @@ public class RecordingRequestController {
     public Response checkout(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (isLinkExpired(r)) return goneExpired();
         if (r.getStatus() != RecordingRequestStatus.APPROVED && r.getStatus() != RecordingRequestStatus.DELIVERED) {
             return conflict("NOT_APPROVED");
         }
@@ -615,21 +646,13 @@ public class RecordingRequestController {
                     .orElseThrow(() -> new BadRequestException(messages.t("recording.error.tournamentNotFound")));
 
             List<Matches> matchesForItem;
-            MatchEvent goalEvent = null;
 
-            if (tier == CartTier.GOAL) {
-                if (!goalRequestsEnabled()) return conflict("GOAL_REQUESTS_DISABLED");
-                matchesForItem = resolveMatches(tournament, item.matchIds(), 1);
-                Matches m = matchesForItem.get(0);
-                goalEvent = item.matchEventId() == null ? null : eventRepo.findByIdOptional(item.matchEventId()).orElse(null);
-                if (goalEvent == null || !isGoal(goalEvent.getType()) || !goalEvent.getMatch().getId().equals(m.getId())) {
-                    throw new BadRequestException(messages.t("recording.error.goalEventRequired"));
-                }
-                if (m.getStatus() != MatchStatus.FINISHED) return conflict("MATCH_NOT_FINISHED");
-            } else if (tier == CartTier.MATCH) {
+            if (tier == CartTier.MATCH) {
                 matchesForItem = resolveMatches(tournament, item.matchIds(), 1);
             } else if (tier == CartTier.HATTRICK) {
                 matchesForItem = resolveMatches(tournament, item.matchIds(), 3);
+            } else if (tier == CartTier.PETARDA) {
+                matchesForItem = resolveMatches(tournament, item.matchIds(), 5);
             } else { // TEAM - "Premium": every match of one team in this tournament, picked server-side.
                 if (item.teamId() == null) {
                     throw new BadRequestException(messages.t("recording.error.teamNotFound"));
@@ -667,12 +690,8 @@ public class RecordingRequestController {
                 Matches m = matchesForItem.get(i);
                 var r = new MatchRecordingRequest();
                 r.setMatch(m);
-                r.setKind(tier == CartTier.GOAL ? RecordingRequestKind.GOAL : RecordingRequestKind.FULL_MATCH);
-                if (tier == CartTier.GOAL) {
-                    r.setMatchEvent(goalEvent);
-                    r.setGoalMinute(goalEvent.getMinute());
-                    r.setGoalLabel(buildGoalLabel(goalEvent));
-                }
+                // Every cart tier is whole matches now - see CartTier.
+                r.setKind(RecordingRequestKind.FULL_MATCH);
                 r.setCreatedByUid(contact.uid());
                 r.setContactEmail(contact.email());
                 r.setContactPhone(contact.phone());
@@ -824,8 +843,13 @@ public class RecordingRequestController {
             return conflict("MATCH_MISMATCH");
         }
 
+        // Stamp deliveredAt only on the FIRST transition to DELIVERED - a later
+        // re-link that just fixes a wrong mapping must not restart the
+        // requester's 48h window (see LINK_VALID_HOURS).
+        boolean alreadyDelivered = r.getStatus() == RecordingRequestStatus.DELIVERED;
         r.setRecording(rec);
         r.setStatus(RecordingRequestStatus.DELIVERED);
+        if (!alreadyDelivered) r.setDeliveredAt(OffsetDateTime.now());
         r.setUpdatedAt(OffsetDateTime.now());
 
         notifyDelivered(r);
@@ -870,6 +894,7 @@ public class RecordingRequestController {
     public Response downloadLink(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
+        if (isLinkExpired(r)) return goneExpired();
         if (r.getStatus() != RecordingRequestStatus.DELIVERED || r.getRecording() == null) {
             return conflict("NOT_DELIVERED");
         }

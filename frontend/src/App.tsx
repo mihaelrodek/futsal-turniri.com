@@ -83,6 +83,7 @@ const ClaimTeamPage = lazyWithReload(() => import('./pages/ClaimTeamPage'))
 const ClaimNamePage = lazyWithReload(() => import('./pages/ClaimNamePage'))
 const EmbedTournamentPage = lazyWithReload(() => import('./pages/EmbedTournamentPage'))
 const RecordingRequestStatusPage = lazyWithReload(() => import('./pages/RecordingRequestStatusPage'))
+const SharedLinkExpiredPage = lazyWithReload(() => import('./pages/SharedLinkExpiredPage'))
 const AdminHomePage = lazyWithReload(() => import('./pages/AdminHomePage'))
 const AdminModulePage = lazyWithReload(() => import('./pages/AdminModulePage'))
 const AdminStreamDetailPage = lazyWithReload(() => import('./pages/AdminStreamDetailPage'))
@@ -384,6 +385,7 @@ function AppShell() {
                         way an anonymous requester (no profile) tracks or
                         pays for their request. */}
                     <Route path="/snimke/zahtjev/:uuid" element={<RecordingRequestStatusPage />} />
+                    <Route path="/snimka/istekla" element={<SharedLinkExpiredPage />} />
 
                     {/* Platform-admin console. These eight screens used to be
                         tabs on the admin's own profile page; they're now their

@@ -346,8 +346,19 @@ export default function TeamsSection(props: TeamsSectionProps) {
     }
 
     const tournamentLocked = t?.status === "FINISHED"
-    const activeTeams = teams.filter((p) => !p.isEliminated)
-    const eliminatedTeams = teams.filter((p) => p.isEliminated)
+    // A team's "decided" placement drives which section it lands in - NOT
+    // the legacy `isEliminated` flag, which the live knockout/group flow only
+    // ever flips at the very end (see TournamentController#finishTournament,
+    // "the unreliable eliminated flag ... never maintains" it mid-run).
+    // `placementRank` is derived fresh on every read from the bracket/group
+    // results (KnockoutService#computePlacements), so it reflects eliminations
+    // as they happen live, not just once the organizer clicks "Finish". Rank 1
+    // (the eventual champion) stays in the "active" bucket until the podium
+    // trophy takes over below - winning isn't elimination.
+    const hasDecidedPlacement = (p: TeamShort) =>
+        !!p.isEliminated || (p.placementRank != null && p.placementRank > 1)
+    const activeTeams = teams.filter((p) => !hasDecidedPlacement(p))
+    const eliminatedTeams = teams.filter((p) => hasDecidedPlacement(p))
 
     // Podium derivation (FINISHED tournaments only)
     const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase()
@@ -370,9 +381,15 @@ export default function TeamsSection(props: TeamsSectionProps) {
         ...(thirdTeam && thirdTeam.id !== winnerTeam?.id && thirdTeam.id !== secondTeam?.id ? [thirdTeam] : []),
         ...activeTeams.filter((p) => !podiumIds.has(p.id as number)),
     ]
-    const displayEliminatedTeams: TeamShort[] = eliminatedTeams.filter(
-        (p) => !podiumIds.has(p.id as number),
-    )
+    // Sorted ascending by placementRank - a deeper knockout run (fewer teams
+    // ranked ahead) outranks an earlier exit; ties (same bracket round, or a
+    // shared group-only-eliminated range) keep their existing relative order
+    // (Array#sort is stable). A legacy `isEliminated`-only row with no
+    // computed rank (very old data) sorts last within the section.
+    const displayEliminatedTeams: TeamShort[] = eliminatedTeams
+        .filter((p) => !podiumIds.has(p.id as number))
+        .slice()
+        .sort((a, b) => (a.placementRank ?? Number.POSITIVE_INFINITY) - (b.placementRank ?? Number.POSITIVE_INFINITY))
     const capacity = typeof t.maxTeams === "number" ? t.maxTeams : null
     const atCapacity = capacity != null && teams.length >= capacity
     const overCapacity = capacity != null && teams.length > capacity
@@ -637,12 +654,19 @@ export default function TeamsSection(props: TeamsSectionProps) {
                                 {tr.teams.pendingApproval}
                             </Badge>
                         )}
-                        {/* Podium teams never show "Eliminiran": 2nd/3rd are
-                            technically eliminated, but the badge both read
+                        {/* Podium teams never show a placement badge: 2nd/3rd
+                            are technically eliminated, but the badge both read
                             oddly next to a trophy and made those cards taller
-                            than the winner's. */}
+                            than the winner's. Everyone else gets their derived
+                            finishing position ("5. mjesto", or a shared range
+                            "17.-27. mjesto" for a group-only elimination) when
+                            it's known; falls back to the flat generic badge
+                            for a team with no computable placement (e.g. very
+                            old data predating this feature). */}
                         {eliminated && !isPodiumTeam && (
-                            <Badge variant="subtle" colorPalette="gray">{tr.teams.eliminatedBadge}</Badge>
+                            <Badge variant="subtle" colorPalette="gray">
+                                {p.placementLabel ?? tr.teams.eliminatedBadge}
+                            </Badge>
                         )}
                     </HStack>
 
@@ -694,7 +718,11 @@ export default function TeamsSection(props: TeamsSectionProps) {
                 <>
                     <Box>
                         <VStack align="stretch" gap="2">
-                            {displayActiveTeams.map((p) => renderTeamRow(p, p.isEliminated))}
+                            {/* This list is exactly the "not decided yet" teams
+                                plus the podium three (rendered specially via
+                                isPodiumTeam below) - never the muted
+                                "eliminated" row treatment. */}
+                            {displayActiveTeams.map((p) => renderTeamRow(p, false))}
                         </VStack>
                     </Box>
 

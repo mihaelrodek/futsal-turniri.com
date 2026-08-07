@@ -61,6 +61,15 @@ public class MatchRecording {
     @Column(name = "share_token", nullable = false, unique = true)
     private UUID shareToken;
 
+    /**
+     * When {@link #shareToken} was (re)issued - the anchor for the share
+     * link's 48h validity window (see MatchRecordingController#share).
+     * Rotating the token ({@code rotateShareToken}) resets this; it is
+     * deliberately separate from {@link #createdAt}, which never changes.
+     */
+    @Column(name = "share_token_created_at", nullable = false)
+    private OffsetDateTime shareTokenCreatedAt;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
@@ -69,5 +78,6 @@ public class MatchRecording {
     protected void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();
         if (shareToken == null) shareToken = UUID.randomUUID();
+        if (shareTokenCreatedAt == null) shareTokenCreatedAt = OffsetDateTime.now();
     }
 }

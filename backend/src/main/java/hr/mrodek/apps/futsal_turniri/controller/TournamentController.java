@@ -1439,7 +1439,8 @@ public class TournamentController {
                         teams,
                         fetchSubmitterProfiles(teams),
                         viewerUid,
-                        viewerIsOrganizerOrAdmin
+                        viewerIsOrganizerOrAdmin,
+                        knockoutService.computePlacements(t)
                 )
         ).build();
     }
@@ -1510,7 +1511,11 @@ public class TournamentController {
         teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
         // Mid-match kit edit → the overlay follows immediately.
         pushKitsIfTeamIsLive(team);
-        return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
+        // A colour edit can happen at any point in the tournament (even after
+        // the bracket has decided a placement) - carry it along so the
+        // Ekipe-tab merge (`{...team, ...updated}`) doesn't null it back out.
+        return Response.ok(teamMapper.toDtoEnriched(team, null, false,
+                knockoutService.computePlacements(team.getTournament()))).build();
     }
 
     /**
@@ -1540,7 +1545,10 @@ public class TournamentController {
         teamDefaultKitRepo.upsert(team.getName(), team.getJerseyColor(), team.getShortsColor());
         // Mid-match kit edit → the overlay follows immediately.
         pushKitsIfTeamIsLive(team);
-        return Response.ok(teamMapper.toDtoEnriched(team, null)).build();
+        // Same reasoning as setTeamJerseyColor - keep the placement alive
+        // across the Ekipe-tab merge.
+        return Response.ok(teamMapper.toDtoEnriched(team, null, false,
+                knockoutService.computePlacements(team.getTournament()))).build();
     }
 
     /**
@@ -1665,7 +1673,8 @@ public class TournamentController {
                         all,
                         fetchSubmitterProfiles(all),
                         viewerUid,
-                        viewerIsOrganizerOrAdmin
+                        viewerIsOrganizerOrAdmin,
+                        knockoutService.computePlacements(tournament)
                 )
         ).build();
     }

@@ -15,42 +15,30 @@ import {
     chakra,
 } from "@chakra-ui/react"
 import { Link as RouterLink } from "react-router-dom"
-import { LuFlame, LuTarget, LuTrash2, LuTrophy, LuVideo } from "react-icons/lu"
+import { LuFlame, LuSparkles, LuTrash2, LuTrophy, LuVideo } from "react-icons/lu"
 import { FiCheck, FiEdit2 } from "react-icons/fi"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "../auth/AuthContext"
 import { useCart, type CartItem, type CartItemConfig } from "./CartContext"
 import { fetchTournaments } from "../api/tournaments"
 import { fetchSchedule } from "../api/schedule"
-import { fetchMatchEvents } from "../api/matchEvents"
 import { getTeams } from "../api/teams"
-import { createCartCheckout, type CartCheckoutItem } from "../api/recordingCart"
-import type { MatchEventDto } from "../types/matchEvents"
+import { createCartCheckout, TIER_MATCH_COUNT, type CartCheckoutItem } from "../api/recordingCart"
 import { showError } from "../toaster"
 import { useTranslation } from "../i18n"
 
 /* ──────────────────────────────────────────────────────────────────────────
    Shared cart building blocks, rendered by the /kosarica page (CartPage):
-   the per-item configurator (which tournament/match(es)/goal/team the
+   the per-item configurator (which tournament/match(es)/team the
    package is for), the item row, and the checkout section (anonymous
    contact fields + total + the single-Stripe-session "Plati" flow).
    ────────────────────────────────────────────────────────────────────── */
 
-export const TIER_ICON = { GOAL: LuTarget, MATCH: LuVideo, HATTRICK: LuFlame, TEAM: LuTrophy } as const
+export const TIER_ICON = { MATCH: LuVideo, HATTRICK: LuFlame, PETARDA: LuSparkles, TEAM: LuTrophy } as const
 
 export function formatPrice(cents: number): string {
     const eur = cents / 100
     return `${Number.isInteger(eur) ? eur : eur.toFixed(2).replace(".", ",")} €`
-}
-
-function isGoalEvent(e: MatchEventDto): boolean {
-    return e.type === "GOAL" || e.type === "OWN_GOAL" || e.type === "PENALTY_GOAL"
-}
-
-function goalOptionLabel(e: MatchEventDto, t: ReturnType<typeof useTranslation>): string {
-    const who = e.type === "OWN_GOAL" ? (e.playerName ? `${e.playerName} (ag)` : t.matchLive.ownGoal) : (e.playerName ?? t.matchLive.unknownScorer)
-    const when = e.type === "PENALTY_GOAL" ? t.matchLive.penaltiesShort : `${e.minute}'`
-    return `${when} — ${who}`
 }
 
 function matchLabel(team1: string | null, team2: string | null): string {
@@ -74,9 +62,12 @@ export function ItemConfigurator({
     const t = useTranslation()
     const [tournamentUuid, setTournamentUuid] = useState("")
     const [matchId, setMatchId] = useState<number | null>(null)
-    const [hattrickIds, setHattrickIds] = useState<number[]>([])
-    const [goalId, setGoalId] = useState<number | null>(null)
+    /** Selection for the multi-match tiers (Hattrick 3, Petarda 5). */
+    const [multiIds, setMultiIds] = useState<number[]>([])
     const [teamId, setTeamId] = useState<number | null>(null)
+
+    /** >0 for a multi-match tier, undefined for MATCH/TEAM. */
+    const requiredMatches = TIER_MATCH_COUNT[item.tier]
 
     const { data: tournaments, isLoading: tournamentsLoading } = useQuery({
         queryKey: ["cart", "pickerTournaments"] as const,
@@ -108,31 +99,21 @@ export function ItemConfigurator({
     const pickableMatches = useMemo(
         () =>
             (schedule?.matches ?? []).filter(
-                (m) =>
-                    m.team1Name && m.team2Name
-                    && m.livestream === true
-                    && (item.tier !== "GOAL" || m.status === "FINISHED"),
+                (m) => m.team1Name && m.team2Name && m.livestream === true,
             ),
-        [schedule, item.tier],
+        [schedule],
     )
-
-    const { data: goals, isLoading: goalsLoading } = useQuery({
-        queryKey: ["cart", "goals", tournamentUuid, matchId] as const,
-        queryFn: async () => (await fetchMatchEvents(tournamentUuid, matchId!)).filter(isGoalEvent),
-        enabled: item.tier === "GOAL" && !!tournamentUuid && matchId != null,
-    })
 
     function resetMatchSelection() {
         setMatchId(null)
-        setHattrickIds([])
-        setGoalId(null)
+        setMultiIds([])
         setTeamId(null)
     }
 
-    function toggleHattrickMatch(id: number) {
-        setHattrickIds((prev) => {
+    function toggleMultiMatch(id: number) {
+        setMultiIds((prev) => {
             if (prev.includes(id)) return prev.filter((x) => x !== id)
-            if (prev.length >= 3) return prev
+            if (requiredMatches != null && prev.length >= requiredMatches) return prev
             return [...prev, id]
         })
     }
@@ -142,8 +123,7 @@ export function ItemConfigurator({
     function canSave(): boolean {
         if (!tournament) return false
         if (item.tier === "MATCH") return matchId != null
-        if (item.tier === "GOAL") return matchId != null && goalId != null
-        if (item.tier === "HATTRICK") return hattrickIds.length === 3
+        if (requiredMatches != null) return multiIds.length === requiredMatches
         if (item.tier === "TEAM") return teamId != null
         return false
     }
@@ -153,20 +133,15 @@ export function ItemConfigurator({
         if (item.tier === "MATCH") {
             const m = pickableMatches.find((x) => x.matchId === matchId)!
             onSave({ kind: "MATCH", tournamentUuid, tournamentName: tournament.name, matchId: matchId!, matchLabel: matchLabel(m.team1Name, m.team2Name) })
-        } else if (item.tier === "GOAL") {
-            const m = pickableMatches.find((x) => x.matchId === matchId)!
-            const g = (goals ?? []).find((x) => x.id === goalId)!
-            onSave({
-                kind: "GOAL", tournamentUuid, tournamentName: tournament.name, matchId: matchId!,
-                matchLabel: matchLabel(m.team1Name, m.team2Name),
-                matchEventId: goalId!, goalLabel: goalOptionLabel(g, t),
-            })
-        } else if (item.tier === "HATTRICK") {
-            const labels = hattrickIds.map((id) => {
+        } else if (requiredMatches != null) {
+            const labels = multiIds.map((id) => {
                 const m = pickableMatches.find((x) => x.matchId === id)!
                 return matchLabel(m.team1Name, m.team2Name)
             })
-            onSave({ kind: "HATTRICK", tournamentUuid, tournamentName: tournament.name, matchIds: hattrickIds, matchLabels: labels })
+            onSave({
+                kind: item.tier === "PETARDA" ? "PETARDA" : "HATTRICK",
+                tournamentUuid, tournamentName: tournament.name, matchIds: multiIds, matchLabels: labels,
+            })
         } else if (item.tier === "TEAM") {
             const team = (teams ?? []).find((x) => x.id === teamId)!
             onSave({ kind: "TEAM", tournamentUuid, tournamentName: tournament.name, teamId: teamId!, teamName: team.name })
@@ -217,15 +192,15 @@ export function ItemConfigurator({
                 scheduleLoading ? (
                     <HStack gap="2" color="fg.muted"><Spinner size="xs" /><Text fontSize="sm">{t.pages.cartPage.loadingMatches}</Text></HStack>
                 ) : pickableMatches.length === 0 ? (
-                    <Text fontSize="sm" color="fg.muted">
-                        {item.tier === "GOAL" ? t.pages.cartPage.noMatchesGoal : t.pages.cartPage.noMatchesGeneric}
-                    </Text>
-                ) : item.tier === "HATTRICK" ? (
+                    <Text fontSize="sm" color="fg.muted">{t.pages.cartPage.noMatchesGeneric}</Text>
+                ) : requiredMatches != null ? (
                     <VStack align="stretch" gap="1" maxH="220px" overflowY="auto" borderWidth="1px" borderColor="border" rounded="md" p="2">
-                        <Text fontSize="xs" color="fg.muted">{t.pages.cartPage.pickExactly3(hattrickIds.length)}</Text>
+                        <Text fontSize="xs" color="fg.muted">
+                            {t.pages.cartPage.pickExactlyN(requiredMatches, multiIds.length)}
+                        </Text>
                         {pickableMatches.map((m) => {
-                            const checked = hattrickIds.includes(m.matchId)
-                            const disabled = !checked && hattrickIds.length >= 3
+                            const checked = multiIds.includes(m.matchId)
+                            const disabled = !checked && multiIds.length >= requiredMatches
                             return (
                                 <chakra.label
                                     key={m.matchId}
@@ -243,7 +218,7 @@ export function ItemConfigurator({
                                         type="checkbox"
                                         checked={checked}
                                         disabled={disabled}
-                                        onChange={() => toggleHattrickMatch(m.matchId)}
+                                        onChange={() => toggleMultiMatch(m.matchId)}
                                     />
                                     <Text fontSize="sm">{matchLabel(m.team1Name, m.team2Name)}</Text>
                                 </chakra.label>
@@ -254,34 +229,11 @@ export function ItemConfigurator({
                     <NativeSelect.Root size="sm">
                         <NativeSelect.Field
                             value={matchId == null ? "" : String(matchId)}
-                            onChange={(e) => {
-                                setMatchId(Number((e.target as HTMLSelectElement).value) || null)
-                                setGoalId(null)
-                            }}
+                            onChange={(e) => setMatchId(Number((e.target as HTMLSelectElement).value) || null)}
                         >
                             <option value="">{t.pages.cartPage.pickMatchOption}</option>
                             {pickableMatches.map((m) => (
                                 <option key={m.matchId} value={String(m.matchId)}>{matchLabel(m.team1Name, m.team2Name)}</option>
-                            ))}
-                        </NativeSelect.Field>
-                    </NativeSelect.Root>
-                )
-            )}
-
-            {item.tier === "GOAL" && matchId != null && (
-                goalsLoading ? (
-                    <HStack gap="2" color="fg.muted"><Spinner size="xs" /><Text fontSize="sm">{t.pages.cartPage.loadingGoals}</Text></HStack>
-                ) : (goals ?? []).length === 0 ? (
-                    <Text fontSize="sm" color="fg.muted">{t.pages.cartPage.noGoals}</Text>
-                ) : (
-                    <NativeSelect.Root size="sm">
-                        <NativeSelect.Field
-                            value={goalId == null ? "" : String(goalId)}
-                            onChange={(e) => setGoalId(Number((e.target as HTMLSelectElement).value) || null)}
-                        >
-                            <option value="">{t.pages.cartPage.pickGoalOption}</option>
-                            {(goals ?? []).map((g) => (
-                                <option key={g.id} value={String(g.id)}>{goalOptionLabel(g, t)}</option>
                             ))}
                         </NativeSelect.Field>
                     </NativeSelect.Root>
@@ -304,8 +256,8 @@ export function configSummary(item: CartItem): string {
     const c = item.config
     if (!c) return ""
     switch (c.kind) {
-        case "GOAL": return `${c.tournamentName} — ${c.matchLabel} (${c.goalLabel})`
         case "HATTRICK": return `${c.tournamentName} — ${c.matchLabels.join(", ")}`
+        case "PETARDA": return `${c.tournamentName} — ${c.matchLabels.join(", ")}`
         case "TEAM": return `${c.tournamentName} — ${c.teamName}`
         case "MATCH": return `${c.tournamentName} — ${c.matchLabel}`
     }
@@ -379,10 +331,10 @@ export function CartItemRow({ item }: { item: CartItem }) {
 export function itemToCheckoutPayload(item: CartItem): CartCheckoutItem {
     const c = item.config!
     switch (c.kind) {
-        case "GOAL":
-            return { tier: "GOAL", tournamentUuid: c.tournamentUuid, matchIds: [c.matchId], matchEventId: c.matchEventId }
         case "HATTRICK":
             return { tier: "HATTRICK", tournamentUuid: c.tournamentUuid, matchIds: c.matchIds }
+        case "PETARDA":
+            return { tier: "PETARDA", tournamentUuid: c.tournamentUuid, matchIds: c.matchIds }
         case "TEAM":
             return { tier: "TEAM", tournamentUuid: c.tournamentUuid, matchIds: [], teamId: c.teamId }
         case "MATCH":
@@ -422,8 +374,6 @@ export function CartCheckoutSection() {
                 ? (err.response.data as { code?: string })?.code
                 : undefined
             if (code === "NOT_CONFIGURED") showError(t.pages.cartPage.checkoutErrorNotConfiguredTitle, t.pages.cartPage.checkoutErrorNotConfiguredDesc)
-            else if (code === "GOAL_REQUESTS_DISABLED") showError(t.pages.cartPage.checkoutErrorGoalDisabledTitle, t.pages.cartPage.checkoutErrorGoalDisabledDesc)
-            else if (code === "MATCH_NOT_FINISHED") showError(t.pages.cartPage.checkoutErrorMatchNotFinishedTitle, t.pages.cartPage.checkoutErrorMatchNotFinishedDesc)
             else if (code === "TEAM_NO_MATCHES") showError(t.pages.cartPage.checkoutErrorTeamNoMatchesTitle, t.pages.cartPage.checkoutErrorTeamNoMatchesDesc)
             else if (code === "DUPLICATE") showError(t.pages.cartPage.checkoutErrorDuplicateTitle, t.pages.cartPage.checkoutErrorDuplicateDesc)
             else if (code === "NO_LIVESTREAM") showError(t.pages.cartPage.checkoutErrorNoLivestreamTitle, t.pages.cartPage.checkoutErrorNoLivestreamDesc)
