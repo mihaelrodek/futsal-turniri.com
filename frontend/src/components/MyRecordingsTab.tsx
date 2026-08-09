@@ -224,8 +224,12 @@ export default function MyRecordingsTab() {
                 showError(t.recordingRequest.mine.checkoutErrorNotApprovedTitle)
             } else if (code === "LINK_EXPIRED") {
                 showError(t.recordingRequest.mine.downloadErrorLinkExpiredTitle, t.recordingRequest.mine.downloadErrorLinkExpiredDesc)
+            } else {
+                // Anything else (500 - Stripe misconfigured, insufficient
+                // balance, ...) - this call is `silent: true`, so without an
+                // explicit fallback here the click just does nothing.
+                showError(t.recordingRequest.mine.checkoutErrorGenericTitle, t.recordingRequest.mine.checkoutErrorGenericDesc)
             }
-            /* other errors toasted by the interceptor */
         } finally {
             setBusyUuid(null)
         }

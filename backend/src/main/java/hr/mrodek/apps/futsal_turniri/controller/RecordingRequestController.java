@@ -698,7 +698,9 @@ public class RecordingRequestController {
                 r.setStatus(RecordingRequestStatus.APPROVED);
                 r.setCartGroupId(cartGroupId);
                 r.setPriceEurCents(shares[i]);
-                repo.save(r);
+                // NOT persisted yet - see the comment above the summary/save
+                // loop below for why every field (incl. note) must be set
+                // BEFORE the first save().
                 created.add(r);
             }
 
@@ -713,6 +715,20 @@ public class RecordingRequestController {
         // dedicated cart-order mail template.
         String summary = orderSummary.toString();
         created.get(0).setNote(summary.length() > 1000 ? summary.substring(0, 1000) : summary);
+
+        // Persist ALL rows only now that every field (including the note
+        // stashed above) is final. Saving inside the item loop above and
+        // mutating the note afterward used to persist-then-update the same
+        // row - which reliably 500'd with "null value in column created_at":
+        // @CreationTimestamp stamps created_at as part of the INSERT it
+        // generates, but never writes the value back onto the Java field, so
+        // the later dirty-checked UPDATE (triggered by the note mutation)
+        // re-sent whatever created_at still held in memory - null - and
+        // Postgres rejected it. One save per row, after every field is set,
+        // means exactly one INSERT each, with created_at correctly bound.
+        for (MatchRecordingRequest r : created) {
+            repo.save(r);
+        }
 
         String successCancelBase = emailService.baseUrl() + "/kosarica/hvala";
         String url = stripeService.createCartCheckoutSession(
@@ -888,9 +904,15 @@ public class RecordingRequestController {
      * capability (only ever emailed to the requester's contactEmail, or
      * visible to the signed-in owner / an admin). Requires the request to be
      * both paid AND delivered.
+     *
+     * <p>{@code @Transactional} only for {@link MatchRecordingRequest#getDownloadCount()}
+     * bookkeeping below - every successful call here (requester's "Preuzmi",
+     * or the admin's own "Kopiraj link") counts as one grant, so the number
+     * is a usage signal for the admin, not a confirmed-download count.
      */
     @GET
     @Path("/{uuid}/download-link")
+    @Transactional
     public Response downloadLink(@PathParam("uuid") UUID uuid) {
         var r = repo.findByUuid(uuid).orElse(null);
         if (r == null) return Response.status(Response.Status.NOT_FOUND).build();
@@ -903,6 +925,7 @@ public class RecordingRequestController {
         }
         String url = recordingStorage.presignedGet(
                 r.getRecording().getVideoObjectKey(), DOWNLOAD_EXPIRY_SECONDS, r.getRecording().getFileName());
+        r.setDownloadCount(r.getDownloadCount() + 1);
         return Response.ok(new DownloadLinkResponse(url, DOWNLOAD_EXPIRY_SECONDS)).build();
     }
 

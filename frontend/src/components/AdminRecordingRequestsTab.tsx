@@ -16,6 +16,7 @@ import { Link as RouterLink } from "react-router-dom"
 import {
     FiCheck,
     FiDollarSign,
+    FiDownload,
     FiEdit2,
     FiFilm,
     FiLink,
@@ -530,6 +531,9 @@ function RecordingRequestRow({
                             </Text>
                         </Text>
                         <HStack gap="2" wrap="wrap">
+                            <Badge size="sm" variant="subtle" colorPalette={req.downloadCount > 0 ? "blue" : "gray"}>
+                                <FiDownload /> {t.recordingRequest.adminRequests.downloadCountLabel(req.downloadCount)}
+                            </Badge>
                             {/* Payment gates the download, so the manual paid
                                 toggle (the webhook stand-in) must stay
                                 available after delivery too. */}

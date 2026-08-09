@@ -49,6 +49,8 @@ public class RecordingRequestDto {
     private UUID recordingUuid;
     private String recordingFileName;
     private Long recordingSizeBytes;
+    /** How many times a download link was granted - see MatchRecordingRequest#downloadCount. */
+    private int downloadCount;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

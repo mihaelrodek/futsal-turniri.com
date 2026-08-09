@@ -203,6 +203,13 @@ export const en: Dictionary = {
             checkoutErrorNotConfiguredDesc: "Try again in a moment.",
             checkoutErrorAlreadyPaidTitle: "The recording has already been paid for",
             checkoutErrorNotApprovedTitle: "The request hasn't been approved yet",
+            /** Fallback for anything the backend doesn't return a known
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this the "Pay" click used to fail
+             *  with zero feedback (the checkout call is `silent: true`, so
+             *  the generic toast interceptor never fires either). */
+            checkoutErrorGenericTitle: "Payment isn't possible right now",
+            checkoutErrorGenericDesc: "Try again in a moment. If it keeps happening, contact us.",
         },
 
         adminRequests: {
@@ -234,6 +241,12 @@ export const en: Dictionary = {
             linked: "Linked",
             link: "Link",
             deliveredRecordingLabel: "Linked recording from the library:",
+            /** Usage counter shown next to "Copy link" - every granted
+             *  download-link (requester's download or admin's own copy)
+             *  counts, so this is "how many times the link was issued", not
+             *  a confirmed-download count. 0 shows too, deliberately - a
+             *  delivered-but-never-fetched recording is worth noticing. */
+            downloadCountLabel: (n: number) => `Downloaded ${n}×`,
             copyLink: "Copy link",
             editRecording: "Edit recording",
             copySuccess: "Link copied to clipboard.",
@@ -1052,6 +1065,13 @@ export const en: Dictionary = {
             checkoutErrorDuplicateDesc: "One of the selected matches already has an open request.",
             checkoutErrorNoLivestreamTitle: "No recording available",
             checkoutErrorNoLivestreamDesc: "One of the selected matches was not broadcast live, so no footage exists. Remove it from the cart.",
+            /** Fallback for anything the backend doesn't return a known 409
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this, "Pay" used to fail with zero
+             *  feedback - the checkout call is `silent: true`, so the
+             *  generic toast interceptor never fires either. */
+            checkoutErrorGenericTitle: "Payment isn't possible right now",
+            checkoutErrorGenericDesc: "Try again in a moment. If it keeps happening, contact us.",
             paymentSuccessTitle: "Payment successful!",
             paymentSuccessDesc: "Thanks for your purchase. Track the status and download the recording on your profile, under the „My recordings“ tab.",
             paymentCancelledDesc: "Payment was cancelled. Your cart has been kept - you can try again.",

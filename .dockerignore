@@ -25,3 +25,12 @@ uploads/
 README.md
 DEPLOY.md
 hosting-comparison.xlsx
+
+# One-off design/production reference material - not copied into either
+# image, just build-context weight (see .gitignore for why these exist
+# uncommitted/ignored).
+promo-video/
+.design_handoff/
+design_handoff_zapisnik_zdrijeb/
+specto_logo.jpeg
+scripts/

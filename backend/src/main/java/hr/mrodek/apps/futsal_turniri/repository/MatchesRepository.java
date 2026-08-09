@@ -121,6 +121,28 @@ public class MatchesRepository implements AppRepository<Matches, Long> {
     }
 
     /**
+     * Tournament ids (from the given set) with at least one match flagged
+     * {@code livestream} - i.e. a recording could actually exist for it.
+     * Drives the /cjenik cart's tournament picker: offering a tournament
+     * that was never streamed just leads to an empty match list once
+     * selected (or, before that filter existed, a checkout the backend
+     * would reject with 409 NO_LIVESTREAM). Same distinct scalar
+     * projection as the LIVE / FINISHED lookups above - one query, no N+1.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Long> findTournamentIdsWithLivestreamMatch(List<Long> tournamentIds) {
+        if (tournamentIds == null || tournamentIds.isEmpty()) return List.of();
+        return em.createQuery("""
+                        select distinct m.tournament.id
+                        from Matches m
+                        where m.tournament.id in :ids
+                          and m.livestream = true
+                        """)
+                .setParameter("ids", tournamentIds)
+                .getResultList();
+    }
+
+    /**
      * Every match the given team was on either side of, ordered by round
      * number then table number - i.e. how the day actually played out.
      * Eager-fetches round + the opponents so the caller doesn't N+1 when

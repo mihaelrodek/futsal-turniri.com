@@ -97,4 +97,5 @@
     <include file="db/changelog/2026-08-04-02-match-events-half.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-07-01-recording-request-delivered-at.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/2026-08-07-02-match-recordings-share-token-created-at.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/2026-08-08-01-recording-request-download-count.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>

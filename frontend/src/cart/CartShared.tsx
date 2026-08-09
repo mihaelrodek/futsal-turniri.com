@@ -69,12 +69,16 @@ export function ItemConfigurator({
     /** >0 for a multi-match tier, undefined for MATCH/TEAM. */
     const requiredMatches = TIER_MATCH_COUNT[item.tier]
 
+    // Only tournaments that were actually livestreamed - one that never went
+    // live has no recording to sell, and picking it here used to leave the
+    // match dropdown empty with no explanation. Mirrors the per-match filter
+    // (pickableMatches below), just one level up.
     const { data: tournaments, isLoading: tournamentsLoading } = useQuery({
         queryKey: ["cart", "pickerTournaments"] as const,
         queryFn: async () => {
             const [upcoming, finished] = await Promise.all([
-                fetchTournaments("upcoming"),
-                fetchTournaments("finished"),
+                fetchTournaments("upcoming", { hasLivestream: true }),
+                fetchTournaments("finished", { hasLivestream: true }),
             ])
             return [...upcoming, ...finished]
         },
@@ -377,7 +381,12 @@ export function CartCheckoutSection() {
             else if (code === "TEAM_NO_MATCHES") showError(t.pages.cartPage.checkoutErrorTeamNoMatchesTitle, t.pages.cartPage.checkoutErrorTeamNoMatchesDesc)
             else if (code === "DUPLICATE") showError(t.pages.cartPage.checkoutErrorDuplicateTitle, t.pages.cartPage.checkoutErrorDuplicateDesc)
             else if (code === "NO_LIVESTREAM") showError(t.pages.cartPage.checkoutErrorNoLivestreamTitle, t.pages.cartPage.checkoutErrorNoLivestreamDesc)
-            /* other errors toasted by the interceptor */
+            else {
+                // Anything else (500 - Stripe misconfigured, insufficient
+                // balance, ...) - this call is `silent: true`, so without an
+                // explicit fallback here "Plati" just silently does nothing.
+                showError(t.pages.cartPage.checkoutErrorGenericTitle, t.pages.cartPage.checkoutErrorGenericDesc)
+            }
         } finally {
             setSubmitting(false)
         }

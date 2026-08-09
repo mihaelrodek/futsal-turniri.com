@@ -71,6 +71,10 @@ export type RecordingRequestDto = {
     recordingUuid: string | null
     recordingFileName: string | null
     recordingSizeBytes: number | null
+    /** How many times a download link was granted - see the backend's
+     *  RecordingRequestController#downloadLink comment for what it does and
+     *  doesn't count. */
+    downloadCount: number
     createdAt: string
     updatedAt: string
 }

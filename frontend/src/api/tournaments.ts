@@ -43,11 +43,19 @@ export async function createTournament(payload: CreateTournamentPayload): Promis
 
 export async function fetchTournaments(
     status: "upcoming" | "finished" = "upcoming",
-    opts?: { offset?: number; limit?: number },
+    opts?: {
+        offset?: number
+        limit?: number
+        /** Only tournaments with at least one livestreamed match - the
+         *  /cjenik cart's tournament picker uses this so it never offers a
+         *  tournament that has no recording to sell. */
+        hasLivestream?: boolean
+    },
 ): Promise<TournamentCard[]> {
-    const params: Record<string, string | number> = { status };
+    const params: Record<string, string | number | boolean> = { status };
     if (opts?.offset != null) params.offset = opts.offset;
     if (opts?.limit != null) params.limit = opts.limit;
+    if (opts?.hasLivestream) params.hasLivestream = true;
     const { data } = await http.get<TournamentCard[]>("/tournaments", { params });
     return data;
 }

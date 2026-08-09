@@ -219,6 +219,13 @@ export const hr = {
             checkoutErrorNotConfiguredDesc: "Pokušaj ponovno za koji trenutak.",
             checkoutErrorAlreadyPaidTitle: "Snimka je već plaćena",
             checkoutErrorNotApprovedTitle: "Zahtjev još nije odobren",
+            /** Fallback for anything the backend doesn't return a known
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this the "Plati" click used to fail
+             *  with zero feedback (the checkout call is `silent: true`, so
+             *  the generic toast interceptor never fires either). */
+            checkoutErrorGenericTitle: "Plaćanje trenutno nije moguće",
+            checkoutErrorGenericDesc: "Pokušaj ponovno za koji trenutak. Ako se ponavlja, javi nam se.",
         },
 
         adminRequests: {
@@ -250,6 +257,12 @@ export const hr = {
             linked: "Povezano",
             link: "Poveži",
             deliveredRecordingLabel: "Povezana snimka iz baze:",
+            /** Usage counter shown next to "Kopiraj link" - every granted
+             *  download-link (requester's Preuzmi or admin's Kopiraj link)
+             *  counts, so this is "koliko puta je link izdan", not a
+             *  confirmed-download count. 0 shows too, deliberately - a
+             *  delivered-but-never-fetched recording is worth noticing. */
+            downloadCountLabel: (n: number) => `Preuzeto ${n}×`,
             copyLink: "Poveznica",
             editRecording: "Uredi snimku",
             copySuccess: "Poveznica kopirana u međuspremnik.",
@@ -1099,6 +1112,13 @@ export const hr = {
             /** 409 NO_LIVESTREAM - a match in the cart was never filmed. */
             checkoutErrorNoLivestreamTitle: "Snimka nije dostupna",
             checkoutErrorNoLivestreamDesc: "Jedna od odabranih utakmica nije bila na prijenosu uživo, pa snimka ne postoji. Ukloni je iz košarice.",
+            /** Fallback for anything the backend doesn't return a known 409
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this, "Plati" used to fail with zero
+             *  feedback - the checkout call is `silent: true`, so the
+             *  generic toast interceptor never fires either. */
+            checkoutErrorGenericTitle: "Plaćanje trenutno nije moguće",
+            checkoutErrorGenericDesc: "Pokušaj ponovno za koji trenutak. Ako se ponavlja, javi nam se.",
             paymentSuccessTitle: "Plaćanje uspješno!",
             paymentSuccessDesc: "Hvala na kupnji. Status i preuzimanje snimke prati se na profilu, u kartici „Moje snimke“.",
             paymentCancelledDesc: "Plaćanje je prekinuto. Košarica je ostala sačuvana - možeš pokušati ponovno.",

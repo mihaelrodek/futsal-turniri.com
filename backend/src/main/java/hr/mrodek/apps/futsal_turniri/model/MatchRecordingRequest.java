@@ -136,6 +136,17 @@ public class MatchRecordingRequest {
     private MatchRecording recording;
 
     /**
+     * How many times a presigned download URL was successfully issued for
+     * this request (see RecordingRequestController#downloadLink) - counts
+     * every granted "Preuzmi" click, by the requester or an admin's own
+     * "Kopiraj link". A rough usage signal, not a confirmed-download count:
+     * the link is opened in a new tab and nothing here confirms the browser
+     * actually finished pulling the bytes.
+     */
+    @Column(name = "download_count", nullable = false)
+    private int downloadCount = 0;
+
+    /**
      * Stamped ONCE, the first time {@link #status} reaches DELIVERED - the
      * anchor for the public link's 48h validity window (see
      * RecordingRequestController#isLinkExpired). A later admin re-link that

@@ -85,3 +85,20 @@ ds-bundle/
 
 .idea
 promo-video/
+
+# ──────────────────────────────────────────────────────────
+# One-off design/production handoff scratch - JSX/HTML mockups,
+# screenshots, reference images. Not imported by any app code or
+# build (grepped for references before adding these - none found).
+# Safe to delete from disk any time; never worth re-adding.
+# ──────────────────────────────────────────────────────────
+.design_handoff/
+design_handoff_zapisnik_zdrijeb/
+specto_logo.jpeg
+
+# DaVinci overlay-render OUTPUT for a specific already-published match
+# highlight video (frontend/public/promo/*.mp4) - regenerable via
+# scripts/davinci/render-overlay.sh, not consumed by any code. The
+# render TOOL itself (render-overlay.sh, overlay-render.html, README)
+# stays tracked - only the per-match generated PNGs are disposable.
+scripts/davinci/match-*/

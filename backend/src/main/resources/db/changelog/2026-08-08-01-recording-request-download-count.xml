@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <!--
+        Counts how many times a presigned download URL was granted for a
+        recording request (RecordingRequestController#downloadLink) - lets an
+        admin see how often a paid recording was actually pulled.
+    -->
+    <changeSet id="2026-08-08-01-recording-request-download-count" author="mrodek">
+        <addColumn tableName="match_recording_requests">
+            <column name="download_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

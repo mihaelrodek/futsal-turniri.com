@@ -1014,7 +1014,12 @@ public class TournamentController {
     public List<TournamentCardDto> list(
             @QueryParam("status") @DefaultValue("upcoming") String status,
             @QueryParam("offset") @DefaultValue("0") int offset,
-            @QueryParam("limit") @DefaultValue("0") int limit) {
+            @QueryParam("limit") @DefaultValue("0") int limit,
+            // Opt-in: the /cjenik cart's tournament picker only wants
+            // tournaments a recording could actually exist for. Off by
+            // default - every other caller of this endpoint (homepage,
+            // /turniri browse) still gets the full unfiltered list.
+            @QueryParam("hasLivestream") @DefaultValue("false") boolean hasLivestream) {
         // "finished" means explicit TournamentStatus.FINISHED - date isn't
         // the source of truth (a tournament that started today and is still
         // being scored is in progress, not finished). The other bucket
@@ -1035,6 +1040,12 @@ public class TournamentController {
         // Admin-hidden tournaments stay in the list only for their creator
         // and admins (the SPA greys them out); everyone else never sees them.
         List<Tournaments> visible = items.stream().filter(this::canView).toList();
+
+        if (hasLivestream && !visible.isEmpty()) {
+            Set<Long> streamedIds = new HashSet<>(matchesRepo.findTournamentIdsWithLivestreamMatch(
+                    visible.stream().map(Tournaments::getId).toList()));
+            visible = visible.stream().filter(t -> streamedIds.contains(t.getId())).toList();
+        }
 
         if (visible.isEmpty()) return List.of();
 

@@ -204,6 +204,13 @@ export const sl: Dictionary = {
             checkoutErrorNotConfiguredDesc: "Poskusi znova čez trenutek.",
             checkoutErrorAlreadyPaidTitle: "Posnetek je že plačan",
             checkoutErrorNotApprovedTitle: "Zahteva še ni odobrena",
+            /** Fallback for anything the backend doesn't return a known
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this the "Plačaj" click used to fail
+             *  with zero feedback (the checkout call is `silent: true`, so
+             *  the generic toast interceptor never fires either). */
+            checkoutErrorGenericTitle: "Plačilo trenutno ni mogoče",
+            checkoutErrorGenericDesc: "Poskusi znova čez trenutek. Če se ponavlja, se nam oglasi.",
         },
 
         adminRequests: {
@@ -235,6 +242,11 @@ export const sl: Dictionary = {
             linked: "Povezano",
             link: "Poveži",
             deliveredRecordingLabel: "Povezan posnetek iz baze:",
+            /** Usage counter shown next to "Kopiraj povezavo" - every
+             *  granted download link (prosilec ali admin) šteje, torej je
+             *  to "kolikokrat je bila povezava izdana", ne potrjeno
+             *  prenešeno. 0 se prikaže tudi namerno. */
+            downloadCountLabel: (n: number) => `Preneseno ${n}×`,
             copyLink: "Kopiraj povezavo",
             editRecording: "Uredi posnetek",
             copySuccess: "Povezava kopirana v odložišče.",
@@ -1053,6 +1065,13 @@ export const sl: Dictionary = {
             checkoutErrorDuplicateDesc: "Za eno od izbranih tekem že obstaja odprta zahteva.",
             checkoutErrorNoLivestreamTitle: "Posnetek ni na voljo",
             checkoutErrorNoLivestreamDesc: "Ena od izbranih tekem ni bila v živo, zato posnetek ne obstaja. Odstrani jo iz košarice.",
+            /** Fallback for anything the backend doesn't return a known 409
+             *  {code} for - e.g. a 500 (Stripe misconfigured, insufficient
+             *  balance, ...). Without this, "Plačaj" used to fail with zero
+             *  feedback - the checkout call is `silent: true`, so the
+             *  generic toast interceptor never fires either. */
+            checkoutErrorGenericTitle: "Plačilo trenutno ni mogoče",
+            checkoutErrorGenericDesc: "Poskusi znova čez trenutek. Če se ponavlja, se nam oglasi.",
             paymentSuccessTitle: "Plačilo uspešno!",
             paymentSuccessDesc: "Hvala za nakup. Status in prenos posnetka spremljaš na profilu, v zavihku „Moji posnetki“.",
             paymentCancelledDesc: "Plačilo je bilo prekinjeno. Košarica je ostala shranjena - lahko poskusiš znova.",

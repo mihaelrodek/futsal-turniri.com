@@ -36,6 +36,7 @@ public interface RecordingRequestMapper {
             @Mapping(target = "recordingUuid", source = "recording.uuid"),
             @Mapping(target = "recordingFileName", source = "recording.fileName"),
             @Mapping(target = "recordingSizeBytes", source = "recording.videoSizeBytes"),
+            @Mapping(target = "downloadCount", source = "downloadCount"),
             @Mapping(target = "createdAt", source = "createdAt"),
             @Mapping(target = "updatedAt", source = "updatedAt"),
     })
