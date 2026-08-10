@@ -19,6 +19,29 @@ import { emailForUsername } from "../api/auth"
 import { useTranslation } from "../i18n"
 import type { Dictionary } from "../i18n"
 
+// Minimal ambient typing for the Google Identity Services script - loaded
+// dynamically below, no @types package for it in this project.
+declare global {
+    interface Window {
+        google?: {
+            accounts: {
+                id: {
+                    initialize(config: {
+                        client_id: string
+                        callback: (response: { credential: string }) => void
+                        auto_select?: boolean
+                        cancel_on_tap_outside?: boolean
+                    }): void
+                    prompt(): void
+                }
+            }
+        }
+    }
+}
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
+const GSI_SCRIPT_ID = "google-identity-services"
+
 /** Translate Firebase auth error codes into user-friendly messages. */
 function authErrorMessage(err: any, t: Dictionary): string {
     const code: string = err?.code ?? ""
@@ -47,7 +70,7 @@ export default function LoginPage() {
     const navigate = useNavigate()
     const location = useLocation()
     const [searchParams] = useSearchParams()
-    const { signInWithIdentifier, signInWithGoogle, user, loading: authLoading } = useAuth()
+    const { signInWithIdentifier, signInWithGoogle, signInWithGoogleCredential, user, loading: authLoading } = useAuth()
     const t = useTranslation()
 
     // Holds an email OR a username; resolved in signInWithIdentifier.
@@ -85,6 +108,55 @@ export default function LoginPage() {
             navigate(redirectTo, { replace: true })
         }
     }, [authLoading, user?.uid, redirectTo, navigate])
+
+    /**
+     * Google One Tap - if the visitor already has an active Google session
+     * in the browser, offer instant sign-in without a click. Only runs
+     * once we know they're NOT already logged in here. Google may still
+     * withhold the prompt (cooldown after a dismissal, no active Google
+     * session, FedCM restrictions) - the regular "Nastavi s Google" button
+     * below is the fallback either way.
+     */
+    useEffect(() => {
+        if (authLoading || user || !GOOGLE_CLIENT_ID) return
+        let cancelled = false
+
+        function handleCredentialResponse(response: { credential: string }) {
+            if (cancelled) return
+            signInWithGoogleCredential(response.credential)
+                .then(() => navigate(redirectTo, { replace: true }))
+                .catch((e: any) => setError(authErrorMessage(e, t)))
+        }
+
+        function init() {
+            if (cancelled || !window.google) return
+            window.google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID!,
+                callback: handleCredentialResponse,
+                auto_select: false,
+                cancel_on_tap_outside: true,
+            })
+            window.google.accounts.id.prompt()
+        }
+
+        let script = document.getElementById(GSI_SCRIPT_ID) as HTMLScriptElement | null
+        if (!script) {
+            script = document.createElement("script")
+            script.id = GSI_SCRIPT_ID
+            script.src = "https://accounts.google.com/gsi/client"
+            script.async = true
+            script.defer = true
+            document.head.appendChild(script)
+        }
+        if (window.google) init()
+        else script.addEventListener("load", init)
+
+        return () => {
+            cancelled = true
+            script?.removeEventListener("load", init)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [authLoading, user])
 
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault()

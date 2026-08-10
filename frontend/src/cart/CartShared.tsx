@@ -315,14 +315,14 @@ export function CartItemRow({ item }: { item: CartItem }) {
                 />
             ) : item.config ? (
                 <HStack justify="space-between" align="center" mt="1.5" gap="2">
-                    <Text fontSize="xs" color="fg.muted" truncate>{configSummary(item)}</Text>
+                    <Text fontSize="xs" color="fg.muted" truncate minW="0" flex="1">{configSummary(item)}</Text>
                     <Button size="2xs" variant="ghost" flexShrink={0} onClick={() => setEditing(true)}>
                         <FiEdit2 /> {t.common.edit}
                     </Button>
                 </HStack>
             ) : (
                 <HStack justify="space-between" align="center" mt="1.5" gap="2">
-                    <Text fontSize="xs" color="orange.fg" truncate>{t.pages.cartPage.unconfiguredLabel}</Text>
+                    <Text fontSize="xs" color="orange.fg" truncate minW="0" flex="1">{t.pages.cartPage.unconfiguredLabel}</Text>
                     <Button size="2xs" variant="solid" colorPalette="pitch" flexShrink={0} onClick={() => setEditing(true)}>
                         {t.pages.cartPage.configureButton}
                     </Button>

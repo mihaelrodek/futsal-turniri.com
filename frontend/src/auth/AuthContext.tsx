@@ -39,6 +39,8 @@ type AuthValue = {
     ) => Promise<void>
     /** Google OAuth sign-in (popup on desktop; SDK handles redirect fallback). */
     signInWithGoogle: () => Promise<void>
+    /** Google OAuth sign-in from a Google Identity Services ID token (One Tap). */
+    signInWithGoogleCredential: (idToken: string) => Promise<void>
     /** Sign out the current user. */
     signOut: () => Promise<void>
 }
@@ -145,6 +147,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const [{ auth, googleProvider }, { signInWithPopup }] =
                     await Promise.all([getFirebase(), import("firebase/auth")])
                 await signInWithPopup(auth, googleProvider)
+            },
+            async signInWithGoogleCredential(idToken) {
+                const [{ auth }, { GoogleAuthProvider, signInWithCredential }] =
+                    await Promise.all([getFirebase(), import("firebase/auth")])
+                await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
             },
             async signOut() {
                 const [{ auth }, { signOut: fbSignOut }] =
