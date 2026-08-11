@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5436:5432"
+      - "5487:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,8 +26,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "9012:9000"  # S3 API
-      - "9013:9001"  # Web console
+      - "9087:9000"  # S3 API
+      - "9187:9001"  # Web console
     volumes:
       - minio_data:/data
     healthcheck:
@@ -53,7 +53,7 @@ services:
         echo "Waiting for MinIO..."; sleep 2;
       done;
       mc mb -p minio/$MINIO_BUCKET || true;
-      printf "[{\"AllowedOrigin\":[\"http://localhost:5181\",\"http://127.0.0.1:5181\"],\"AllowedMethod\":[\"GET\",\"PUT\",\"POST\",\"DELETE\",\"HEAD\"],\"AllowedHeader\":[\"*\"],\"ExposeHeader\":[\"ETag\"],\"MaxAgeSeconds\":3000}]" > /tmp/cors.json;
+      printf "[{\"AllowedOrigin\":[\"http://localhost:5187\",\"http://127.0.0.1:5187\"],\"AllowedMethod\":[\"GET\",\"PUT\",\"POST\",\"DELETE\",\"HEAD\"],\"AllowedHeader\":[\"*\"],\"ExposeHeader\":[\"ETag\"],\"MaxAgeSeconds\":3000}]" > /tmp/cors.json;
       mc cors set minio/$MINIO_BUCKET /tmp/cors.json || true;
       echo "MinIO bucket $MINIO_BUCKET created and CORS set.";
       '

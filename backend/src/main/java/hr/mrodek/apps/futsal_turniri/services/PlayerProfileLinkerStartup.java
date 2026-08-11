@@ -1,6 +1,7 @@
 package hr.mrodek.apps.futsal_turniri.services;
 
 import io.quarkus.runtime.StartupEvent;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -43,9 +44,15 @@ public class PlayerProfileLinkerStartup {
         // once every StartupEvent observer has returned, so doing the whole
         // pass inline would make the app answer 502 through the reverse proxy
         // for as long as it takes. Nothing depends on it having finished.
-        Thread worker = new Thread(this::runQuietly, "player-profile-backfill");
-        worker.setDaemon(true);
-        worker.start();
+        //
+        // Runs on Quarkus's Mutiny worker pool, NOT a bare `new Thread(...)`:
+        // linkPlayerById is @Transactional, and the Narayana JTA interceptor
+        // needs an active CDI request context to open a transaction. A raw
+        // thread has none - ArcContainer.getActiveContext returns null and
+        // every call throws, silently swallowed by the catch below (so the
+        // backfill "ran" but linked nothing). The worker pool is a
+        // Quarkus-managed thread, so the context exists.
+        Infrastructure.getDefaultWorkerPool().execute(this::runQuietly);
     }
 
     private void runQuietly() {

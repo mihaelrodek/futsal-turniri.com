@@ -17,7 +17,7 @@ import java.util.List;
  * <p>Currently checks:
  * <ul>
  *   <li>{@code CORS_ORIGINS} is set when running in prod (otherwise the
- *       {@code http://localhost:5175} default would silently reject every
+ *       {@code http://localhost:5187} default would silently reject every
  *       real frontend request).</li>
  *   <li>{@code FIREBASE_PROJECT_ID} is set when running in prod (otherwise
  *       the OIDC issuer points at the dev Firebase project).</li>

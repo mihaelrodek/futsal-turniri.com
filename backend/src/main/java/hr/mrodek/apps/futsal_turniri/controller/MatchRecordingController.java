@@ -76,7 +76,7 @@ public class MatchRecordingController {
     /** Frontend origin for the "link istekao" redirect below - same property
      *  {@link hr.mrodek.apps.futsal_turniri.services.EmailService} uses for
      *  the links it emails. */
-    @org.eclipse.microprofile.config.inject.ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5181")
+    @org.eclipse.microprofile.config.inject.ConfigProperty(name = "app.mail.base-url", defaultValue = "http://localhost:5187")
     String frontendBaseUrl;
     @Inject JsonWebToken jwt;
 
